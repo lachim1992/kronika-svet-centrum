@@ -22,7 +22,7 @@ interface Props {
 
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; province_id: string | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
-type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; parcel_index: number | null };
+type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
 type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
@@ -120,6 +120,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [showRoutes, setShowRoutes] = useState(true);
   const [showNodes, setShowNodes] = useState(true);
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
   const [infrastructure, setInfrastructure] = useState<TileInfrastructure[]>([]);
   const [buildingTemplates, setBuildingTemplates] = useState<BuildingTemplate[]>([]);
@@ -138,7 +139,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes, contentRes, infrastructureRes, templateRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
-      supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, parcel_index").eq("session_id", sessionId).eq("is_active", true),
+      supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, controlled_by, production_output, wealth_output, food_value, parcel_index").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
@@ -274,6 +275,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const selectedCell = selected ? tileCell(selected) : null;
   const selectedParcel = tileParcels.find(parcel => parcel.id === selectedParcelId) || null;
   const selectedParcelContents = selectedParcel ? parcelContents.filter(item => item.parcel_id === selectedParcel.id) : [];
+  const selectedNode = nodes.find(node => node.id === selectedNodeId) || null;
+  const selectedParcelNodes = selectedParcel && selectedCell ? nodes.filter(node => {
+    const cell = entityCell(node);
+    return node.node_tier === "micro" && cell.a === selectedCell.a && cell.b === selectedCell.b && node.parcel_index === selectedParcel.parcel_index;
+  }) : [];
   const selectedParcelUsed = selectedParcelContents.reduce((sum, item) => sum + item.slots_used, 0);
   const selectedInfrastructure = selectedCell ? infrastructure.find(item => item.grid_x === selectedCell.a && item.grid_y === selectedCell.b) : undefined;
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
@@ -308,8 +314,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [sessionId]);
 
   useEffect(() => {
-    if (!selected) { setTileParcels([]); setSelectedParcelId(null); return; }
+    if (!selected) { setTileParcels([]); setSelectedParcelId(null); setSelectedNodeId(null); return; }
     setSelectedParcelId(null);
+    setSelectedNodeId(null);
     const cell = tileCell(selected);
     void loadTileParcels(cell.a, cell.b);
   }, [selected, tileCell, loadTileParcels]);
@@ -529,6 +536,33 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     </g>;
   };
 
+  const renderSelectedCellSubnodes = (centerPoint: { x: number; y: number }) => {
+    if (!selectedCell) return null;
+    return nodes.filter(node => {
+      const cell = entityCell(node);
+      return node.node_tier === "micro" && node.parcel_index !== null && cell.a === selectedCell.a && cell.b === selectedCell.b;
+    }).map((node, order) => {
+      const index = node.parcel_index;
+      if (index === null) return null;
+      const parcel = tileParcels.find(item => item.parcel_index === index);
+      if (!parcel) return null;
+      const corners = parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y);
+      const point = { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
+      const active = selectedNodeId === node.id;
+      const style = NODE_STYLE[node.node_type] || NODE_STYLE.resource_node;
+      return <g key={node.id} role="button" tabIndex={0} aria-label={`Otevřít subuzel ${node.name}`}
+        className="cursor-pointer" transform={`translate(${point.x},${point.y - order * 2})`}
+        onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); setSelectedNodeId(node.id); }}
+        onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); setSelectedNodeId(node.id); } }}>
+        <circle r={active ? 5.5 : 4.5} fill="var(--map-marker)" stroke={active ? "var(--map-focus)" : style.accent} strokeWidth={active ? 2 : 1.2} />
+        {node.node_type === "fortress" ? <Shield x="-2.7" y="-2.7" width="5.4" height="5.4" stroke={style.accent} />
+          : node.node_type === "trade_hub" || node.node_type === "port" ? <Store x="-2.7" y="-2.7" width="5.4" height="5.4" stroke={style.accent} />
+          : <Factory x="-2.7" y="-2.7" width="5.4" height="5.4" stroke={style.accent} />}
+        <title>{`${node.name} · parcela ${index + 1}`}</title>
+      </g>;
+    });
+  };
+
   const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
   const focusTile = (tile: Tile, requestedCityId?: string) => {
     const element = viewportRef.current; if (!element) return;
@@ -619,6 +653,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 : footprint.length > 0 && renderCityFootprint(footprint, point, holderOwn)}
             </g>;
           })}
+          {selected && tileParcels.length > 0 && renderSelectedCellSubnodes(at(selectedCell?.a ?? 0, selectedCell?.b ?? 0))}
           {!cityLayerCityId && riverSegments.map(segment => {
             const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
             const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
@@ -733,7 +768,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const affordable = treasury.gold >= cost.gold && treasury.production >= cost.production;
                 const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild" && affordable;
                 return <button key={parcel.id} type="button" disabled={claimingParcel !== null}
-                  onClick={() => { setSelectedParcelId(parcel.id); if (canClaim) void claimParcel(parcel); }}
+                  onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); if (canClaim) void claimParcel(parcel); }}
                   title={`${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.capacity_slots} slotů · ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
                   className={`aspect-square border text-[8px] leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
                     parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
@@ -756,7 +791,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
         {selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
           <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p><h3 className="text-sm">{SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</h3></div><span className="text-xs text-muted-foreground">{selectedParcelUsed}/{selectedParcel.capacity_slots} slotů</span></div>
-          {selectedParcelContents.length > 0 && <div className="space-y-1 text-xs">{selectedParcelContents.map(item => <div key={item.id} className="flex justify-between border-b border-border/50 py-1"><span className="capitalize">{item.entity_type}</span><span>{item.slots_used} slot</span></div>)}</div>}
+          {(selectedParcelContents.length > 0 || selectedParcelNodes.length > 0) && <div className="space-y-1 text-xs">
+            {selectedParcelContents.filter(item => item.entity_type !== "node").map(item => <div key={item.id} className="flex justify-between border-b border-border/50 py-1"><span className="capitalize">{item.entity_type}</span><span>{item.slots_used} slot</span></div>)}
+            {selectedParcelNodes.map(node => <button key={node.id} type="button" className="flex w-full items-center justify-between border-b border-border/50 py-1 text-left hover:text-primary" onClick={() => setSelectedNodeId(node.id)}><span>{node.name}</span><span className="text-muted-foreground">subuzel</span></button>)}
+          </div>}
+          {selectedNode && selectedParcelNodes.some(node => node.id === selectedNode.id) && <div className="border-l-2 border-primary bg-background/60 p-2 text-xs">
+            <p className="font-medium">{selectedNode.name}</p>
+            <p className="mt-1 text-muted-foreground">{selectedNode.node_subtype || selectedNode.node_type} · správce {selectedNode.controlled_by || "nezávislý"}</p>
+            <div className="mt-2 flex gap-3"><span>Produkce {selectedNode.production_output}</span><span>Bohatství {selectedNode.wealth_output}</span><span>Potraviny {selectedNode.food_value}</span></div>
+          </div>}
           {selectedParcel.owner_player === playerName && selectedParcelUsed < selectedParcel.capacity_slots && <>
             <div><p className="mb-2 text-xs font-medium">Postavit budovu</p><div className="grid grid-cols-2 gap-2">{buildingTemplates.slice(0, 6).map(template => <Button key={template.id} size="sm" variant="outline" className="h-auto justify-start px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildOnParcel(template)}>{buildingAction === `building-${template.id}` ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <Factory className="mr-1 h-3 w-3"/>}{template.name}</Button>)}</div></div>
             <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="justify-start text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{key === "guard_post" ? <Shield className="mr-1 h-3 w-3"/> : key.includes("trade") || key.includes("wharf") ? <Store className="mr-1 h-3 w-3"/> : <Factory className="mr-1 h-3 w-3"/>}{label}</Button>)}</div></div>
