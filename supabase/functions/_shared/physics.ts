@@ -1976,9 +1976,10 @@ export interface AStarResult {
 /** @deprecated Use astarHexPath instead */
 export type DijkstraResult = AStarResult;
 
-/** Axial hex distance heuristic */
-function hexDist(q1: number, r1: number, q2: number, r2: number): number {
+/** Grid distance heuristic (topology-aware) */
+function gridDist(q1: number, r1: number, q2: number, r2: number, kind: PathGridKind = "hex6"): number {
   const dq = q1 - q2, dr = r1 - r2;
+  if (kind === "square4") return Math.abs(dq) + Math.abs(dr);
   return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
 }
 
