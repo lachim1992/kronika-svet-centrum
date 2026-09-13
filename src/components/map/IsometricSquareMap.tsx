@@ -682,8 +682,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const openNode = () => {
               const tile = tiles.find(candidate => { const candidateCell = tileCell(candidate); return candidateCell.a === cell.a && candidateCell.b === cell.b; });
               if (!tile) return;
-              setSelectedNodeId(node.id);
               focusTile(tile, cityByCell.get(cellKey(cell.a, cell.b)));
+              window.setTimeout(() => setSelectedNodeId(node.id), 0);
             };
             return <g key={node.id} role="button" tabIndex={0} aria-label={`Otevřít uzel ${node.name}`} className="cursor-pointer"
               onClick={event => { event.stopPropagation(); openNode(); }}
