@@ -23,6 +23,7 @@ const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentT
       <IsometricSquareMap
         sessionId={sessionId}
         playerName={currentPlayerName}
+        currentTurn={currentTurn}
         onCityClick={onCityClick}
         gridKind={gridKind}
       />
