@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, ArrowUpRight, Castle, Factory, Flag, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Castle, Factory, Flag, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -234,6 +234,20 @@ const MAX_ZOOM = 8;
 const LABEL_ZOOM = 1.15;
 const clampZoom = (value: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
 
+/** Map layer visibility that survives reloads, one localStorage key per layer. */
+function useMapLayer(key: string, initial = true) {
+  const storageKey = `ch_mapLayer_${key}`;
+  const [visible, setVisible] = useState(() => {
+    if (typeof window === "undefined") return initial;
+    const stored = window.localStorage.getItem(storageKey);
+    return stored === null ? initial : stored === "1";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem(storageKey, visible ? "1" : "0");
+  }, [storageKey, visible]);
+  return [visible, setVisible] as const;
+}
+
 export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange }: Props) {
   const isMobile = useIsMobile();
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -257,9 +271,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
   const [treasury, setTreasury] = useState({ gold: 0, production: 0 });
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
-  const [showRoutes, setShowRoutes] = useState(true);
-  const [showNodes, setShowNodes] = useState(true);
-  const [showLabels, setShowLabels] = useState(true);
+  const [showRoutes, setShowRoutes] = useMapLayer("routes");
+  const [showNodes, setShowNodes] = useMapLayer("nodes");
+  const [showLabels, setShowLabels] = useMapLayer("labels");
+  const [showSubBiomes, setShowSubBiomes] = useMapLayer("subBiomes");
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
@@ -1122,7 +1137,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
-              {!active && zoom >= 1.2 && <g pointerEvents="none">
+              {!active && showSubBiomes && zoom >= 1.2 && <g pointerEvents="none">
                 <g opacity=".34">
                   {subBiomesOf(tile, cell.a, cell.b).map(parcel => (
                     <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY)}
@@ -1285,6 +1300,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <Button size="icon" variant={showRoutes ? "secondary" : "ghost"} aria-label={showRoutes ? "Skrýt toky a cesty" : "Zobrazit toky a cesty"} aria-pressed={showRoutes} onClick={() => setShowRoutes(value => !value)}><RouteIcon className={`h-4 w-4 ${showRoutes ? "" : "opacity-40"}`} /></Button>
         <Button size="icon" variant={showNodes ? "secondary" : "ghost"} aria-label={showNodes ? "Skrýt uzly" : "Zobrazit uzly"} aria-pressed={showNodes} onClick={() => setShowNodes(value => !value)}><Landmark className={`h-4 w-4 ${showNodes ? "" : "opacity-40"}`} /></Button>
         <Button size="icon" variant={showLabels ? "secondary" : "ghost"} aria-label={showLabels ? "Skrýt názvy měst" : "Zobrazit názvy měst"} aria-pressed={showLabels} onClick={() => setShowLabels(value => !value)}><Flag className={`h-4 w-4 ${showLabels ? "" : "opacity-40"}`} /></Button>
+        <Button size="icon" variant={showSubBiomes ? "secondary" : "ghost"} aria-label={showSubBiomes ? "Skrýt subbiomy" : "Zobrazit subbiomy"} aria-pressed={showSubBiomes} onClick={() => setShowSubBiomes(value => !value)}><Grid3x3 className={`h-4 w-4 ${showSubBiomes ? "" : "opacity-40"}`} /></Button>
       </div>
       <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>Čtvercová síť · izometrické zobrazení</span></div>
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
