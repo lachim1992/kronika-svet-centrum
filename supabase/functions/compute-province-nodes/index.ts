@@ -6,12 +6,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
 const hexKey = (q: number, r: number) => `${q},${r}`;
-const axialDist = (q1: number, r1: number, q2: number, r2: number) => {
-  const dq = q1 - q2, dr = r1 - r2;
-  return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
-};
+let GRID_KIND: GridKind = "square4";
+let NEIGHBORS: ReadonlyArray<readonly [number, number]> = neighborOffsets("square4");
+const axialDist = (q1: number, r1: number, q2: number, r2: number) =>
+  cellDistance(GRID_KIND, q1, r1, q2, r2);
 
 function seededRandom(seed: string): number {
   let h = 0;

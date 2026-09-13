@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { loadGridKind, neighborOffsets } from "../_shared/topology.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
