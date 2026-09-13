@@ -174,18 +174,28 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return map;
   }, [cityParcels]);
 
-  /** Stacked army placements — several war bands on one cell fan out instead of overlapping. */
-  const armyPlacements = useMemo(() => {
-    const perCell = new Map<string, number>();
-    return armies.map(army => {
+  /** One war-band illustration per cell; further stacks are folded into a count badge. */
+  const armyGroups = useMemo(() => {
+    const groups = new Map<string, { cell: { a: number; b: number }; list: Army[] }>();
+    armies.forEach(army => {
       const cell = entityCell(army);
       const key = cellKey(cell.a, cell.b);
-      const index = perCell.get(key) || 0;
-      perCell.set(key, index + 1);
-      return { army, cell, offsetX: 14 + index * 12, offsetY: -30 - index * 10 };
+      const group = groups.get(key) || { cell, list: [] };
+      group.list.push(army);
+      groups.set(key, group);
     });
+    return [...groups.entries()].map(([key, group]) => ({
+      key,
+      cell: group.cell,
+      list: [...group.list].sort((left, right) => right.soldiers - left.soldiers),
+    }));
   }, [armies, entityCell]);
   const selectedArmy = useMemo(() => armies.find(army => army.id === selectedArmyId) || null, [armies, selectedArmyId]);
+  const selectedArmyStack = useMemo(() => {
+    if (!selectedArmy) return [];
+    const cell = entityCell(selectedArmy);
+    return armyGroups.find(group => group.key === cellKey(cell.a, cell.b))?.list || [];
+  }, [selectedArmy, armyGroups, entityCell]);
 
   const sortedTiles = useMemo(() => [...tiles].sort((left, right) => {
     const a = tileCell(left); const b = tileCell(right); return (a.a + a.b) - (b.a + b.b);
