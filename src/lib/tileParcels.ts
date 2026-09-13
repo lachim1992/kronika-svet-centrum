@@ -293,7 +293,6 @@ function waterLayout(
   neighbours: NeighbourTerrain[],
 ): Map<number, SubBiomeDef> {
   const water = new Map<number, SubBiomeDef>();
-  const cellSeed = `${sessionId}:${gridX}:${gridY}`;
 
   if (isWaterTerrain(terrain)) {
     for (let index = 0; index < TILE_PARCEL_COUNT; index += 1) water.set(index, WATER_DEFS.open_water);
