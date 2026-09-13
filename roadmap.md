@@ -17,9 +17,9 @@
 - [x] Apply tactical map tokens and chosen typography
 - [ ] Verify square-grid mechanics, desktop, and mobile
 - [ ] Add guarded admin migration workflow for existing worlds
-- [ ] Add living city parcels and map growth
+- [x] Add living city parcels and map growth
   - [x] Persist urban cells and 4×4 parcels without duplicating building effects
   - [x] Add command-dispatch expansion and parcel assignment guards
   - [x] Advance developing city cells during committed turns
-  - [ ] Render animated city clusters, parcel zoom, field detail, and growth controls
-  - [ ] Verify expansion commands and parcel rendering end to end
+  - [x] Render animated city clusters, parcel zoom, field detail, and growth controls
+  - [x] Verify parcel rendering, field selection, and deployed expansion command end to end
