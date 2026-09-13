@@ -40,6 +40,11 @@ export default function IsometricSquareMap({ sessionId, playerName, onCityClick,
   const [pan, setPan] = useState({ x: 0, y: 40 });
   const [selected, setSelected] = useState<Tile | null>(null);
 
+  const tileCell = useCallback((tile: Tile) => ({
+    a: gridKind === "square4" && tile.grid_x !== null ? tile.grid_x : tile.q,
+    b: gridKind === "square4" && tile.grid_y !== null ? tile.grid_y : tile.r,
+  }), [gridKind]);
+
   const load = useCallback(async () => {
     const [tileRes, cityRes, nodeRes, routeRes, armyRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, biome_family, owner_player, mean_height").eq("session_id", sessionId).limit(4000),
@@ -61,7 +66,7 @@ export default function IsometricSquareMap({ sessionId, playerName, onCityClick,
     if (!tiles.length) return { x: 0, y: 0 };
     const points = tiles.map(t => projectCell("square4", tileCell(t), TILE_SIZE));
     return { x: points.reduce((s, p) => s + p.x, 0) / points.length, y: points.reduce((s, p) => s + p.y, 0) / points.length };
-  }, [tiles]);
+  }, [tiles, tileCell]);
 
   const home = useCallback(() => {
     const el = viewportRef.current;
@@ -70,7 +75,6 @@ export default function IsometricSquareMap({ sessionId, playerName, onCityClick,
   }, [center]);
   useEffect(() => { if (tiles.length) home(); }, [tiles.length, home]);
 
-  const tileCell = (tile: Tile) => ({ a: gridKind === "square4" && tile.grid_x !== null ? tile.grid_x : tile.q, b: gridKind === "square4" && tile.grid_y !== null ? tile.grid_y : tile.r });
   const entityCell = (entity: { grid_x: number | null; grid_y: number | null; hex_q?: number; hex_r?: number; province_q?: number; province_r?: number }) => ({
     a: gridKind === "square4" && entity.grid_x !== null ? entity.grid_x : entity.hex_q ?? entity.province_q ?? 0,
     b: gridKind === "square4" && entity.grid_y !== null ? entity.grid_y : entity.hex_r ?? entity.province_r ?? 0,
@@ -79,7 +83,7 @@ export default function IsometricSquareMap({ sessionId, playerName, onCityClick,
   const sortedTiles = useMemo(() => [...tiles].sort((a, b) => {
     const ac = tileCell(a); const bc = tileCell(b);
     return (ac.a + ac.b) - (bc.a + bc.b);
-  }), [tiles, gridKind]);
+  }), [tiles, tileCell]);
 
   const at = (x: number, y: number) => {
     const p = projectCell("square4", { a: x, b: y }, TILE_SIZE);
@@ -95,7 +99,7 @@ export default function IsometricSquareMap({ sessionId, playerName, onCityClick,
       <svg className="h-full w-full">
         <defs>
           <filter id="iso-shadow"><feDropShadow dx="0" dy="5" stdDeviation="4" floodOpacity=".35" /></filter>
-          <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="#72d8d6" strokeWidth="1" opacity=".22"><animate attributeName="stroke-dashoffset" values="0;30" dur="5s" repeatCount="indefinite" /></path></pattern>
+          <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="var(--map-water-glint)" strokeWidth="1" opacity=".22"><animate attributeName="stroke-dashoffset" values="0;30" dur="5s" repeatCount="indefinite" /></path></pattern>
         </defs>
         <g transform={`scale(${zoom})`}>
           {sortedTiles.map(tile => {
@@ -115,7 +119,7 @@ export default function IsometricSquareMap({ sessionId, playerName, onCityClick,
           {armies.map(army => { const cell=entityCell(army); const p=at(cell.a,cell.b); const own=army.player_name===playerName; return <g key={army.id} transform={`translate(${p.x+16},${p.y-30})`} filter="url(#iso-shadow)"><circle r="11" fill={own ? "var(--map-city-own)" : "var(--map-city-rival)"} stroke="var(--map-marker-edge)" strokeWidth="2"/><Shield x="-6" y="-6" width="12" height="12" fill="none" stroke="var(--map-marker-edge)"/><Flag x="5" y="-20" width="14" height="14" fill="var(--map-route)" stroke="var(--map-marker-edge)"/><title>{army.name} · {army.soldiers} vojáků · morálka {army.morale}</title></g>; })}
         </g>
       </svg>
-      <div className="absolute bottom-4 right-4 flex items-center gap-1 rounded-lg border border-amber-300/20 bg-slate-950/80 p-1 shadow-xl backdrop-blur-md">
+      <div className="map-floating-control absolute bottom-4 right-4 flex items-center gap-1 p-1">
         <Button size="icon" variant="ghost" onClick={() => setZoom(z => Math.max(.45,z-.15))}><Minus className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" onClick={home}><Home className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" onClick={() => setZoom(z => Math.min(2.2,z+.15))}><Plus className="h-4 w-4" /></Button>

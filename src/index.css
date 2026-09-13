@@ -87,6 +87,7 @@
     --map-background: 194 61% 7%;
     --map-water: hsl(188 76% 36%);
     --map-water-edge: hsl(191 82% 24%);
+    --map-water-glint: hsl(179 56% 65%);
     --map-plains: hsl(84 41% 40%);
     --map-plains-edge: hsl(96 41% 29%);
     --map-forest: hsl(115 38% 29%);
