@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { cellDistance, loadGridKind, neighborOffsets, type GridKind } from "../_shared/topology.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -197,6 +198,8 @@ Deno.serve(async (req) => {
     }
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    GRID_KIND = await loadGridKind(sb, session_id);
+    NEIGHBORS = neighborOffsets(GRID_KIND);
 
     // Load provinces, hexes, cities, AND existing nodes
     const [provRes, hexRes, cityRes, existingNodesRes] = await Promise.all([
