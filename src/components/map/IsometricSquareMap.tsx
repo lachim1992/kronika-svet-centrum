@@ -630,6 +630,29 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     toast.success(`${tier.label}: ${tier.turns === 1 ? "dokončeno" : "stavba zahájena"}`); await load();
   };
 
+  /** Found a brand-new settlement straight on the map cell the player is inspecting. */
+  const foundCityHere = async () => {
+    if (!selected || !selectedCell) return;
+    if (!newCityName.trim()) { toast.error("Zadej název osady"); return; }
+    setBuildingAction("found-city");
+    const result = await dispatchCommand({
+      sessionId, turnNumber: currentTurn, actor: { name: playerName, type: "player" },
+      commandType: "FOUND_CITY",
+      commandPayload: {
+        cityName: newCityName.trim(), provinceId: selected.province_id || null, provinceName: "",
+        provinceQ: selectedCell.a, provinceR: selectedCell.b,
+        ...(selectedParcel ? { parcelIndex: selectedParcel.parcel_index } : {}),
+      },
+    });
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Osadu nelze založit"); return; }
+    toast.success(`Osada ${newCityName.trim()} byla založena`);
+    setNewCityName("");
+    await loadTileParcels(selectedCell.a, selectedCell.b); await load();
+  };
+
+
+
   /** Corner points of a single parcel, in draw order A(top) B(right) C(bottom) D(left). */
   const parcelCorners = (centerPoint: { x: number; y: number }, px: number, py: number) => {
     const point = (a: number, b: number) => ({ x: centerPoint.x + (a - b) * TILE_SIZE, y: centerPoint.y + (a + b - 1) * TILE_SIZE / 2 });
