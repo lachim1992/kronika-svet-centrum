@@ -11,8 +11,29 @@ import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastruc
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 
-interface Props {
-  sessionId: string;
+interface Props {useEffect(() => {
+    if (!selected) {
+      setTileParcels([]);
+      setSelectedParcelId(null);
+      setSelectedNodeId(null);
+      lastSelectedId.current = null;
+      return;
+    }
+
+    if (selected.id !== lastSelectedId.current) {
+      setSelectedParcelId(null);
+      lastSelectedId.current = selected.id;
+      const cell = tileCell(selected);
+      void loadTileParcels(cell.a, cell.b);
+    }
+
+    if (selectedNodeId) {
+      const node = nodes.find(item => item.id === selectedNodeId);
+      const cell = node ? entityCell(node) : null;
+      const selectedTileCell = tileCell(selected);
+      if (!cell || cell.a !== selectedTileCell.a || cell.b !== selectedTileCell.b) setSelectedNodeId(null);
+    }
+  }, [selected, selectedNodeId, nodes, entityCell, tileCell, loadTileParcels]);sessionId: string;
   playerName: string;
   currentTurn?: number;
   onCityClick?: (cityId: string) => void;
