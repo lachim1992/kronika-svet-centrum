@@ -436,7 +436,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, TILE_SIZE), []);
   const terrainOf = useCallback((tile: Tile) => ({
     biome_family: tile.biome_family, elevation: tile.mean_height, has_river: tile.has_river,
-    river_direction: tile.river_direction, is_passable: tile.is_passable,
+    river_direction: tile.river_direction, is_coastal: tile.coastal, is_passable: tile.is_passable,
   }), []);
   /**
    * Deterministic sub-biome survey of a cell, cached per cell so the macro map can tint the
