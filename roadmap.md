@@ -1,7 +1,7 @@
 # Map-first square-grid roadmap
 
 - [x] Introduce shared grid geometry contract
-- [ ] Add grid geometry regression tests
+- [x] Add grid geometry regression tests
 - [x] Add per-world grid version and additive square coordinates
 - [ ] Support square-grid generation, discovery, movement, and pathfinding server-side
   - [x] New worlds persist square-grid identity and generated terrain coordinates
@@ -9,6 +9,7 @@
   - [ ] Convert discovery, province growth, battles, and flow A* to topology-aware operations
 - [x] Add dual isometric square renderer preserving core map interactions and authoritative flow paths
 - [x] Convert desktop shell to persistent map with top tabs and collapsible workspace
+- [x] Open desktop modules in a right-side 40% command panel
 - [x] Make the isometric renderer visible for legacy worlds through a read-only coordinate adapter
 - [x] Make top modules collapsible back to the map and constrain workspace coverage
 - [x] Render cities, nodes, routes, and deployed armies in the shared isometric view
