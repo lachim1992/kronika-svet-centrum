@@ -641,7 +641,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <div className="pr-10">
           <p className="text-[10px] font-semibold uppercase text-primary">Pole {selectedCell?.a}, {selectedCell?.b}</p>
           <h2 className="mt-1 text-xl capitalize">{selected.biome_family.replace("_", " ")}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{selected.owner_player || "Neutrální území"} · {selected.is_passable === false ? "Neprůchodné" : "Průchodné"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{selected.owner_player || "Neutrální území"} · {selected.is_passable === false ? "Neprůchodné" : "Průchodné"}{selected.has_river ? " · Řeka" : ""}</p>
         </div>
 
         <section className="mt-5 border-y border-border/70 py-4">
