@@ -50,7 +50,8 @@ async function invokeFn(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${serviceKey}`,
-        apikey: anonKey,
+        // Must match Authorization — mixing the anon key here returns 401 "Conflicting API keys".
+        apikey: serviceKey,
       },
       body: JSON.stringify(body),
     });
