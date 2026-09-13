@@ -806,10 +806,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <p className="mt-2 text-xs text-muted-foreground">
               {claimHost
                 ? `Klikni na volnou parcelu a ${claimHost.name} ji vykoupí. V pokladně máš ${treasury.gold} zlata a ${treasury.production} produkce.`
-                : selectedCity
-                  ? `${selectedCity.name} patří ${selectedCity.owner_player} — cizí parcely vykupovat nelze.`
-                  : "Parcely lze vykupovat jen z pole vašeho města nebo z pole hned vedle něj."}
+                : foreignOwner
+                  ? `Toto pole ovládá ${foreignOwner} — parcely tu vykupovat nelze.`
+                  : selectedCity
+                    ? `${selectedCity.name} patří ${selectedCity.owner_player} — cizí parcely vykupovat nelze.`
+                    : "Parcely lze vykupovat jen z pole vašeho města nebo z pole hned vedle něj."}
             </p>
+
           </>}
         </section>
 
