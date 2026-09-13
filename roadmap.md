@@ -31,4 +31,6 @@
 - [x] Add player-built production, military, and trade subnodes
 - [x] Add three-level automatic local infrastructure per macro cell
 - [x] Render subnodes on their assigned sub-parcels and make them selectable
+- [x] Keep camera, city layer, and parcel selection stable after map actions
+- [x] Animate building and local-road construction in the city parcel style
 - [ ] Verify parcel management and local roads end to end

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowUpRight, Castle, Factory, Flag, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -519,7 +519,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const width = (b.x - a.x) * .52; const height = width * .78;
     if (building) return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`} className="iso-construction-site">
       <path d={`M${-width} 2 L0 ${height * .5 + 2} L${width} 2 L0 ${-height * .5} Z`} fill="var(--map-city-wall-dark)" opacity=".36" />
-      <g className="iso-construction-rise" style={{ "--construction-rise": `${Math.max(.18, progress / 100)}` } as React.CSSProperties}>
+      <g className="iso-construction-rise" style={{ "--construction-rise": `${Math.max(.18, progress / 100)}` } as CSSProperties}>
         <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".78" />
         <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${-height * .1} Z`} fill="var(--map-city-wall-light)" opacity=".78" />
       </g>

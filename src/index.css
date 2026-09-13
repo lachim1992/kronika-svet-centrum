@@ -259,9 +259,45 @@
     0%, 100% { opacity: .35; }
     50% { opacity: 1; }
   }
+  .iso-construction-rise {
+    transform-box: fill-box;
+    transform-origin: center bottom;
+    transform: scaleY(var(--construction-rise, .35));
+    animation: iso-construction-rise 2.4s ease-in-out infinite alternate;
+  }
+  .iso-construction-scaffold {
+    stroke-dasharray: 2 1.5;
+    animation: iso-scaffold-work 1.8s linear infinite;
+  }
+  .iso-construction-worker {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: iso-worker-shift 2.8s ease-in-out infinite alternate;
+  }
+  .iso-construction-road {
+    animation: iso-road-build 1.2s linear infinite;
+  }
+  @keyframes iso-construction-rise {
+    from { transform: scaleY(var(--construction-rise, .35)); opacity: .72; }
+    to { transform: scaleY(min(1, calc(var(--construction-rise, .35) + .08))); opacity: .94; }
+  }
+  @keyframes iso-scaffold-work {
+    to { stroke-dashoffset: -7; }
+  }
+  @keyframes iso-worker-shift {
+    from { transform: translateX(-3px); }
+    to { transform: translateX(3px); }
+  }
+  @keyframes iso-road-build {
+    to { stroke-dashoffset: -7; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .iso-active-route { animation: none; }
     .iso-city-hearth { animation: none; opacity: .8; }
+    .iso-construction-rise,
+    .iso-construction-scaffold,
+    .iso-construction-worker,
+    .iso-construction-road { animation: none; }
   }
   .scrollbar-hide {
     -ms-overflow-style: none;
