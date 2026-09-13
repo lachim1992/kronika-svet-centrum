@@ -3,6 +3,7 @@ import {
   hexTraversalCost, computeFlowPath,
   type HexCostContext, type FlowPathInput,
 } from "../_shared/physics.ts";
+import { cellDistance, loadGridKind, type GridKind } from "../_shared/topology.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,16 +13,11 @@ const corsHeaders = {
 
 const HEX_PAGE_SIZE = 1000;
 
-const axialDist = (q1: number, r1: number, q2: number, r2: number) => {
-  const dq = q1 - q2;
-  const dr = r1 - r2;
-  return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
-};
-
 const isAdjacentStep = (
   a: { q: number; r: number },
   b: { q: number; r: number },
-) => axialDist(a.q, a.r, b.q, b.r) === 1;
+  kind: GridKind,
+) => cellDistance(kind, a.q, a.r, b.q, b.r) === 1;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -35,6 +31,7 @@ Deno.serve(async (req) => {
     }
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const gridKind = await loadGridKind(sb, session_id);
 
     // 1. Load all hexes for this session (paged)
     const hexRows: any[] = [];
@@ -150,7 +147,7 @@ Deno.serve(async (req) => {
         flowType: route.route_type || "trade",
       };
 
-      const result = computeFlowPath(input, costFn, 50);
+      const result = computeFlowPath(input, costFn, 50, gridKind);
 
       if (!result) {
         failedPaths++;
@@ -159,7 +156,7 @@ Deno.serve(async (req) => {
 
       let hasInvalidStep = false;
       for (let i = 1; i < result.hex_path.length; i++) {
-        if (!isAdjacentStep(result.hex_path[i - 1], result.hex_path[i])) {
+        if (!isAdjacentStep(result.hex_path[i - 1], result.hex_path[i], gridKind)) {
           hasInvalidStep = true;
           break;
         }
@@ -177,6 +174,7 @@ Deno.serve(async (req) => {
         node_b: result.node_b,
         flow_type: result.flow_type,
         hex_path: result.hex_path,
+        path_cells: result.hex_path.map(c => ({ x: c.q, y: c.r, cost: c.cost })),
         total_cost: result.total_cost,
         bottleneck_hex: result.bottleneck,
         bottleneck_cost: result.bottleneck?.cost ?? 0,
