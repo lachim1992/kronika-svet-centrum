@@ -829,7 +829,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
 
 
+  /** Single reason the selected parcel accepts nothing at all — shown instead of hiding the menu. */
+  const parcelBlock = useMemo(() => {
+    if (!selectedParcel) return null;
+    if (!selectedParcel.buildable) return "Tato parcela je nezastavitelná (voda, skála nebo prudký sráz).";
+    if (selectedParcel.owner_player !== playerName) {
+      return selectedParcel.owner_player
+        ? `Parcelu drží ${selectedParcel.owner_player}.`
+        : "Parcela ještě není tvoje — klikni na ni v mřížce a město ji vykoupí, pak se dá stavět.";
+    }
+    if (!selectedParcel.city_id) return "Parcela není přiřazena žádnému tvému městu.";
+    if (selectedParcelUsed >= selectedParcel.capacity_slots) return "Parcela je plná — všechny stavební sloty jsou obsazené.";
+    return null;
+  }, [selectedParcel, selectedParcelUsed, playerName]);
+
   /** Why this subnode cannot be placed on the selected parcel right now — null means buildable. */
+
   const subnodeBlockReason = (option: SubnodeOption): string | null => {
     if (!selectedParcel || !selectedParcel.city_id) return "Nejdřív parcelu zaber pro město";
     if (selectedParcel.owner_player !== playerName) return "Parcela ti nepatří";
@@ -1434,11 +1449,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <p className="mt-1 text-muted-foreground">{selectedNode.node_subtype || selectedNode.node_type} · správce {selectedNode.controlled_by || "nezávislý"}</p>
             <div className="mt-2 flex gap-3"><span>Produkce {selectedNode.production_output}</span><span>Bohatství {selectedNode.wealth_output}</span><span>Potraviny {selectedNode.food_value}</span></div>
           </div>}
-          {selectedParcel.owner_player === playerName && selectedParcelUsed < selectedParcel.capacity_slots && <>
+          {parcelBlock && <p className="border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-200">{parcelBlock}</p>}
+          <>
             <div>
               <p className="mb-2 text-xs font-medium">Obytné čtvrti</p>
               <div className="grid grid-cols-2 gap-2">{RESIDENTIAL_DISTRICTS.map(district => (
-                <Button key={district.key} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction || !selectedCity || selectedCity.owner_player !== playerName} onClick={() => void buildDistrict(district)}>
+                <Button key={district.key} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction || !!parcelBlock || !selectedCity || selectedCity.owner_player !== playerName} onClick={() => void buildDistrict(district)}>
+
                   <span className="flex w-full items-center gap-2">
                     {buildingAction === `district-${district.key}`
                       ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -1472,7 +1489,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                       onChange={event => setProductionPick(current => ({ ...current, [district.key]: event.target.value }))}>
                       {choices.map(key => <option key={key} value={key}>{DEMAND_BASKETS.find(b => b.key === key)?.label || key}</option>)}
                     </select>
-                    <Button size="sm" className="h-7 px-2 text-[11px]" disabled={!!buildingAction || !selectedCity || selectedCity.owner_player !== playerName || labour.free <= 0}
+                    <Button size="sm" className="h-7 px-2 text-[11px]" disabled={!!buildingAction || !!parcelBlock || !selectedCity || selectedCity.owner_player !== playerName || labour.free <= 0}
                       onClick={() => void buildDistrict(district, picked)}>
                       {buildingAction === `district-${district.key}` ? <Loader2 className="h-3 w-3 animate-spin" /> : "Postavit"}
                     </Button>
@@ -1489,7 +1506,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 <div key={category}>
                   <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{BUILD_CATEGORY_LABEL[category] || category}</p>
                   <div className="grid grid-cols-2 gap-2">{templates.map(template => (
-                    <Button key={template.id} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildOnParcel(template)}>
+                    <Button key={template.id} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction || !!parcelBlock} onClick={() => void buildOnParcel(template)}>
                       <span className="flex w-full items-center gap-2">
                         {buildingAction === `building-${template.id}`
                           ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -1518,7 +1535,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               })}</div>
             </div>
 
-          </>}
+          </>
+
         </section>}
 
         {!selectedCity && !foreignOwner && <section className="mt-4 space-y-2 border border-primary/25 bg-primary/5 p-3">
