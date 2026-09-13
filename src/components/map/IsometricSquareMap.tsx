@@ -663,6 +663,27 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           strokeDasharray={roadBuilding || roadTier === 1 ? "2 1.5" : undefined} strokeLinecap="round" opacity=".95" pointerEvents="none"
           className={roadBuilding ? "iso-construction-road" : undefined} />;
       })}
+      {/* the through-road: same channel the macro map draws, with bridges over the river */}
+      {(roadTier > 0 || selectedInfrastructure?.status === "building") && selectedRoadPlan?.branches.flatMap((branch, branchIndex) => {
+        const centre = (sub: { x: number; y: number }) => {
+          const corners = parcelCorners(centerPoint, sub.x, sub.y);
+          return { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
+        };
+        return branch.slice(1).map((sub, index) => {
+          const from = centre(branch[index]); const to = centre(sub);
+          return <line key={`through-road-${branchIndex}-${index}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+            stroke="var(--map-route)" strokeWidth={roadTier === 3 ? 3 : roadTier === 2 ? 2.4 : 1.6}
+            strokeDasharray={selectedInfrastructure?.status === "building" || roadTier === 1 ? "3 2" : undefined}
+            strokeLinecap="round" opacity=".95" pointerEvents="none" />;
+        });
+      })}
+      {selectedRoadPlan?.bridges.map((sub, index) => {
+        const corners = parcelCorners(centerPoint, sub.x, sub.y);
+        const point = { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
+        return <rect key={`bridge-${index}`} x={point.x - 4} y={point.y - 2} width="8" height="4" rx="1"
+          fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".6" pointerEvents="none" />;
+      })}
+
       {tileParcels.filter(parcel => parcel.status === "occupied").map((parcel, index) => {
         const entity = constructionByParcel.get(parcel.id);
         const progress = entity?.status === "building"
