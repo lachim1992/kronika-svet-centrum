@@ -55,7 +55,8 @@ async function findRetreatHex(
   winnerQ: number,
   winnerR: number,
 ): Promise<{ q: number; r: number } | null> {
-  const candidates = HEX_NEIGHBORS.map(([dq, dr]) => ({ q: loserQ + dq, r: loserR + dr }));
+  const gridKind = await loadGridKind(supabase, sessionId);
+  const candidates = neighborOffsets(gridKind).map(([dq, dr]) => ({ q: loserQ + dq, r: loserR + dr }));
 
   // Get all stacks on candidate hexes (any active, any owner ≠ loser)
   const { data: stacksOnHexes } = await supabase
@@ -85,7 +86,7 @@ async function findRetreatHex(
 
   const valid = candidates
     .filter(c => !blocked.has(`${c.q},${c.r}`))
-    .map(c => ({ ...c, dist: hexDistance(c.q, c.r, winnerQ, winnerR) }))
+    .map(c => ({ ...c, dist: cellDistance(gridKind, c.q, c.r, winnerQ, winnerR) }))
     .sort((a, b) => b.dist - a.dist);
 
   return valid.length > 0 ? { q: valid[0].q, r: valid[0].r } : null;
