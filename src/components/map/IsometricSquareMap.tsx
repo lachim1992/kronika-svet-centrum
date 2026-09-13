@@ -355,6 +355,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const holder = cityOwned[0]?.city_id ? cityById.get(cityOwned[0].city_id) : undefined;
     const holderColor = holder ? (holder.owner_player === playerName ? "var(--map-city-own)" : "var(--map-city-rival)") : "var(--map-city-own)";
     const hatchFill = holder && holder.owner_player !== playerName ? "url(#iso-city-hatch-rival)" : "url(#iso-city-hatch)";
+    const occupiedIndexes = tileParcels.filter(parcel => parcelContents.some(item => item.parcel_id === parcel.id)).map(parcel => parcel.parcel_index);
+    const roadTier = selectedInfrastructure?.level || 0;
     return <g>
       {tileParcels.map(parcel => {
         const base = SUB_BIOME_COLOR[parcel.sub_biome] || "var(--map-plains)";
@@ -380,6 +382,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <line key={`survey-wall-${index}`} x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y}
           stroke={holderColor} strokeWidth="1.6" strokeLinecap="round" opacity=".9" />
       ))}
+      {roadTier > 0 && localRoadSegments(occupiedIndexes).map((segment, index) => {
+        const centre = (point: { x: number; y: number }) => {
+          const corners = parcelCorners(centerPoint, point.x, point.y);
+          return { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
+        };
+        const from = centre(segment.from); const to = centre(segment.to);
+        return <line key={`local-road-${index}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+          stroke="var(--map-route)" strokeWidth={roadTier === 3 ? 2.2 : roadTier === 2 ? 1.6 : 1}
+          strokeDasharray={roadTier === 1 ? "2 1.5" : undefined} strokeLinecap="round" opacity=".95" pointerEvents="none" />;
+      })}
       {tileParcels.filter(parcel => parcel.status === "occupied").map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
     </g>;
   };
@@ -720,10 +732,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const mine = parcel.owner_player === playerName;
                 const affordable = treasury.gold >= cost.gold && treasury.production >= cost.production;
                 const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild" && affordable;
-                return <button key={parcel.id} type="button" disabled={!canClaim || claimingParcel !== null}
-                  onClick={() => void claimParcel(parcel)}
+                return <button key={parcel.id} type="button" disabled={claimingParcel !== null}
+                  onClick={() => { setSelectedParcelId(parcel.id); if (canClaim) void claimParcel(parcel); }}
                   title={`${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.capacity_slots} slotů · ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
-                  className={`aspect-square border text-[8px] leading-none transition-colors ${
+                  className={`aspect-square border text-[8px] leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
                     parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
                     : parcel.status === "claimed" ? (mine ? "border-primary/40 bg-primary/10" : "border-border bg-muted/40")
                     : !parcel.buildable ? "border-border/40 bg-muted/20 text-muted-foreground"
@@ -741,6 +753,19 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </p>
           </>}
         </section>
+
+        {selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
+          <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p><h3 className="text-sm">{SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</h3></div><span className="text-xs text-muted-foreground">{selectedParcelUsed}/{selectedParcel.capacity_slots} slotů</span></div>
+          {selectedParcelContents.length > 0 && <div className="space-y-1 text-xs">{selectedParcelContents.map(item => <div key={item.id} className="flex justify-between border-b border-border/50 py-1"><span className="capitalize">{item.entity_type}</span><span>{item.slots_used} slot</span></div>)}</div>}
+          {selectedParcel.owner_player === playerName && selectedParcelUsed < selectedParcel.capacity_slots && <>
+            <div><p className="mb-2 text-xs font-medium">Postavit budovu</p><div className="grid grid-cols-2 gap-2">{buildingTemplates.slice(0, 6).map(template => <Button key={template.id} size="sm" variant="outline" className="h-auto justify-start px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildOnParcel(template)}>{buildingAction === `building-${template.id}` ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <Factory className="mr-1 h-3 w-3"/>}{template.name}</Button>)}</div></div>
+            <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="justify-start text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{key === "guard_post" ? <Shield className="mr-1 h-3 w-3"/> : key.includes("trade") || key.includes("wharf") ? <Store className="mr-1 h-3 w-3"/> : <Factory className="mr-1 h-3 w-3"/>}{label}</Button>)}</div></div>
+          </>}
+        </section>}
+
+        {selected.owner_player === playerName && <section className="mt-4 border border-border p-3">
+          <div className="flex items-center justify-between"><div><p className="text-xs font-medium">Místní infrastruktura</p><p className="text-[11px] text-muted-foreground">{selectedInfrastructure?.status === "building" ? `Ve výstavbě · ${selectedInfrastructure.progress} %` : selectedInfrastructure?.level ? tileInfrastructureLevel(selectedInfrastructure.level)?.label : "Bez cest"}</p></div><Button size="sm" disabled={!!buildingAction || selectedInfrastructure?.status === "building" || (selectedInfrastructure?.level || 0) >= 3} onClick={() => void upgradeLocalRoad()}>{buildingAction === "infrastructure" && <Loader2 className="mr-1 h-3 w-3 animate-spin"/>}{selectedInfrastructure?.level ? "Vylepšit" : "Postavit stezku"}</Button></div>
+        </section>}
 
         {selectedCity && <div className="mt-5 space-y-4">
           <div className="border-y border-border/70 py-4">

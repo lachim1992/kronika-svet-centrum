@@ -2676,12 +2676,15 @@ async function occupyParcel(supabase: any, sessionId: string, parcelId: string, 
   const update = kind === "building"
     ? { status: "occupied", land_use: landUse, building_id: entityId }
     : { status: "occupied", land_use: landUse, district_id: entityId };
-  await supabase.from("tile_parcels").update(update).eq("id", parcelId).eq("status", "claimed");
-  await supabase.from(kind === "building" ? "city_buildings" : "city_districts")
+  const { error: parcelError } = await supabase.from("tile_parcels").update(update).eq("id", parcelId).in("status", ["claimed", "occupied"]);
+  if (parcelError) return parcelError;
+  const { error: entityError } = await supabase.from(kind === "building" ? "city_buildings" : "city_districts")
     .update({ parcel_id: parcelId }).eq("id", entityId);
-  await supabase.from("tile_parcel_contents").insert({
+  if (entityError) return entityError;
+  const { error: contentError } = await supabase.from("tile_parcel_contents").insert({
     session_id: sessionId, parcel_id: parcelId, entity_type: kind, entity_id: entityId, slots_used: 1,
   });
+  return contentError;
 }
 
 /**
@@ -2890,7 +2893,8 @@ async function executeAssignCityParcel(
   const { data: entity } = await supabase.from(table).select("id, category, district_type").eq("id", entityId).eq("city_id", cityId).maybeSingle();
   if (!entity) return { events: [], error: "Objekt nepatří do vybraného města" };
   const landUse = kind === "district" ? (entity.district_type || "residential") : categoryToLandUse(entity.category);
-  await occupyParcel(supabase, sessionId, parcelId, kind, entityId, landUse);
+  const occupancyError = await occupyParcel(supabase, sessionId, parcelId, kind, entityId, landUse);
+  if (occupancyError) return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
   return insertEvents(supabase, commandId, [{ ...base, event_type: "city_planning", city_id: cityId, note: `${city.name} upravilo parcelní plán.`, importance: "minor", reference: { cityId, parcelId, buildingId, districtId } }]);
 }
 
@@ -3000,8 +3004,18 @@ async function executeBuildBuilding(
     level_data: building.level_data || [],
   }).select("id").single();
 
-  if (insertErr) return { events: [], error: `Insert failed: ${insertErr.message}` };
-  if (targetParcel) await occupyParcel(supabase, sessionId, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category));
+  if (insertErr) {
+    await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+    return { events: [], error: `Insert failed: ${insertErr.message}` };
+  }
+  if (targetParcel) {
+    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category));
+    if (occupancyError) {
+      await supabase.from("city_buildings").delete().eq("id", inserted.id);
+      await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+      return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
+    }
+  }
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
@@ -3129,8 +3143,18 @@ async function executeBuildDistrict(
     description: district.description || null,
   }).select("id").single();
 
-  if (dErr) return { events: [], error: `District insert failed: ${dErr.message}` };
-  if (targetParcel) await occupyParcel(supabase, sessionId, targetParcel.id, "district", inserted.id, district.district_type || "residential");
+  if (dErr) {
+    await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+    return { events: [], error: `District insert failed: ${dErr.message}` };
+  }
+  if (targetParcel) {
+    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "district", inserted.id, district.district_type || "residential");
+    if (occupancyError) {
+      await supabase.from("city_districts").delete().eq("id", inserted.id);
+      await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+      return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
+    }
+  }
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
