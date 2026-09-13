@@ -543,6 +543,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 : footprint.length > 0 && renderCityFootprint(footprint, point, holderOwn)}
             </g>;
           })}
+          {!cityLayerCityId && riverSegments.map(segment => {
+            const from = at(segment.from.a, segment.from.b);
+            const to = at(segment.to.a, segment.to.b);
+            // The mouth stops at the shoreline instead of running into open water.
+            const end = segment.mouth ? { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } : to;
+            return <g key={segment.id} pointerEvents="none">
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water-edge)" strokeWidth="5" strokeLinecap="round" opacity=".55" />
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water)" strokeWidth="2.6" strokeLinecap="round" opacity=".95" />
+            </g>;
+          })}
           {!cityLayerCityId && showRoutes && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
           {!cityLayerCityId && showNodes && nodes.map(node => {
             if (node.node_type === "primary_city" || node.node_type === "secondary_city") return null;
