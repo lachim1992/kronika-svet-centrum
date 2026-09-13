@@ -348,3 +348,38 @@ export function subBiomeLabel(key: string): string {
 export function subBiomeColor(key: string): string {
   return SUB_BIOME_COLORS[key] || "hsl(88 24% 44%)";
 }
+
+/** How many of the 36 sub-parcels an army physically camps on. */
+export function armyParcelFootprint(soldiers: number): number {
+  const men = Math.max(0, soldiers);
+  if (men < 600) return 1;
+  if (men < 1500) return 2;
+  if (men < 3000) return 4;
+  if (men < 6000) return 6;
+  return 9;
+}
+
+/**
+ * Deterministic camp block inside the 6x6 parcel grid.
+ * Movement stays on the main square grid — this only says where inside the cell the tents stand.
+ */
+export function armyCampParcels(anchorIndex: number, footprint: number): number[] {
+  const width = footprint >= 9 ? 3 : footprint >= 4 ? 2 : footprint;
+  const height = Math.ceil(footprint / width);
+  const ax = Math.min(TILE_PARCEL_COLS - width, Math.max(0, anchorIndex % TILE_PARCEL_COLS));
+  const ay = Math.min(TILE_PARCEL_ROWS - height, Math.max(0, Math.floor(anchorIndex / TILE_PARCEL_COLS)));
+  const cells: number[] = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width && cells.length < footprint; x += 1) {
+      cells.push((ay + y) * TILE_PARCEL_COLS + (ax + x));
+    }
+  }
+  return cells;
+}
+
+/** Stable fallback parcel when the army has no stored camp parcel yet. */
+export function fallbackArmyParcel(id: string): number {
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) hash = (hash * 31 + id.charCodeAt(index)) % 997;
+  return hash % TILE_PARCEL_COUNT;
+}

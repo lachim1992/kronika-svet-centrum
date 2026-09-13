@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
-import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS } from "@/lib/tileParcels";
+import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel } from "@/lib/tileParcels";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 
@@ -22,7 +22,7 @@ interface Props {
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
 type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string };
-type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean };
+type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
 type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
 /** One of the 36 sub-parcels of a map cell — the only city land model. */
@@ -130,7 +130,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
-      supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
+      supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
       supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
     ]);
@@ -524,16 +524,34 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const own = lead.player_name === playerName;
             const stacked = group.list.length;
             const active = group.list.some(army => army.id === selectedArmyId);
+            const banner = own ? "var(--map-city-own)" : "var(--map-city-rival)";
+            // The camp sits on concrete sub-parcels; size of the army decides how many it takes.
+            const anchor = lead.parcel_index ?? fallbackArmyParcel(lead.id);
+            const camp = armyCampParcels(anchor, armyParcelFootprint(group.list.reduce((sum, army) => sum + army.soldiers, 0)));
+            const centreOf = (index: number) => {
+              const px = (index % TILE_PARCEL_COLS + .5) / TILE_PARCEL_COLS;
+              const py = (Math.floor(index / TILE_PARCEL_COLS) + .5) / TILE_PARCEL_ROWS;
+              return { x: (px - py) * TILE_SIZE, y: (px + py - 1) * TILE_SIZE / 2 };
+            };
+            const seat = camp.reduce((sum, index) => { const c = centreOf(index); return { x: sum.x + c.x / camp.length, y: sum.y + c.y / camp.length }; }, { x: 0, y: 0 });
             const openArmy = () => { setSelectedArmyId(lead.id); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(true); };
             return <g key={group.key} data-map-army={lead.id} role="button" tabIndex={0} aria-label={`Armáda ${lead.name}`}
-              transform={`translate(${point.x + 16},${point.y - 30})`} filter="url(#iso-shadow)" className="cursor-pointer"
+              className="cursor-pointer"
               onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
-              <ArmyMarker army={lead} own={own} active={active} />
-              {stacked > 1 && <g transform="translate(15,-19)">
-                <circle r="7" fill="var(--map-marker)" stroke={own ? "var(--map-city-own)" : "var(--map-city-rival)"} strokeWidth="1.2" />
-                <text textAnchor="middle" y="2.6" fontSize="7.5" fontWeight="700" fill="var(--map-label)">{stacked}</text>
-              </g>}
+              {/* the cell the army stands on */}
+              <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill="none" stroke={active ? "var(--map-focus)" : banner} strokeWidth={active ? 2.4 : 1.4} strokeDasharray="4 3" opacity=".85" />
+              {/* occupied sub-parcels */}
+              {camp.map(index => <polygon key={index} points={parcelQuad(point, index % TILE_PARCEL_COLS, Math.floor(index / TILE_PARCEL_COLS))}
+                fill={banner} opacity={active ? .38 : .26} stroke={banner} strokeWidth=".6" />)}
+              <g transform={`translate(${point.x + seat.x},${point.y + seat.y - 12})`} filter="url(#iso-shadow)">
+                <ArmyMarker army={lead} own={own} active={active} />
+                {stacked > 1 && <g transform="translate(15,-19)">
+                  <circle r="7" fill="var(--map-marker)" stroke={banner} strokeWidth="1.2" />
+                  <text textAnchor="middle" y="2.6" fontSize="7.5" fontWeight="700" fill="var(--map-label)">{stacked}</text>
+                </g>}
+                <title>{`${lead.name} · pole ${group.cell.a}, ${group.cell.b} · ${camp.length} sub-čtverců`}</title>
+              </g>
             </g>;
           })}
         </g>
@@ -632,7 +650,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <div><strong className="block text-foreground">{selectedArmy.unit_count}</strong><span className="text-muted-foreground">jednotek</span></div>
             <div><strong className="block text-foreground">{Math.round(selectedArmy.power)}</strong><span className="text-muted-foreground">síla</span></div>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">Pole {entityCell(selectedArmy).a}, {entityCell(selectedArmy).b} · {selectedArmy.assignment} · {selectedArmy.moved_this_turn ? "v tomto kole se pohnula" : "toto kolo stojí"}</p>
+          <p className="mt-3 text-xs text-muted-foreground">Pole {entityCell(selectedArmy).a}, {entityCell(selectedArmy).b} · tábor na sub-čtverci {(selectedArmy.parcel_index ?? fallbackArmyParcel(selectedArmy.id)) + 1} ({armyParcelFootprint(selectedArmyStack.reduce((sum, army) => sum + army.soldiers, 0) || selectedArmy.soldiers)} sub-čtverců) · {selectedArmy.assignment} · {selectedArmy.moved_this_turn ? "v tomto kole se pohnula" : "toto kolo stojí"}</p>
         </section>
         <div className="mt-4 flex items-center gap-2">
           <Shield className="h-4 w-4 text-primary"/>

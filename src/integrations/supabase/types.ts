@@ -6368,6 +6368,7 @@ export type Database = {
           moved_this_turn: boolean
           name: string
           owner_player: string | null
+          parcel_index: number | null
           player_name: string
           power: number
           province_id: string | null
@@ -6412,6 +6413,7 @@ export type Database = {
           moved_this_turn?: boolean
           name: string
           owner_player?: string | null
+          parcel_index?: number | null
           player_name: string
           power?: number
           province_id?: string | null
@@ -6456,6 +6458,7 @@ export type Database = {
           moved_this_turn?: boolean
           name?: string
           owner_player?: string | null
+          parcel_index?: number | null
           player_name?: string
           power?: number
           province_id?: string | null
