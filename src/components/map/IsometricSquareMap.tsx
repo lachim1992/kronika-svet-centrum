@@ -1452,17 +1452,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                   </div>
                 </div>;
               })}</div>
-              {labour.production.length > 0 && <div className="mt-3 space-y-1">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Výroba ve městě</p>
-                {labour.production.map(district => <div key={district.id} className="flex items-center gap-2 text-[11px]">
-                  <span className="flex-1 truncate">{district.name}{district.is_staffed ? "" : " · neobsazená"}</span>
-                  <select className="h-6 rounded border border-input bg-background px-1 text-[10px]" value={district.basket_key || "staple_food"}
-                    disabled={!!buildingAction || selectedCity?.owner_player !== playerName}
-                    onChange={event => void setDistrictProduction(district.id, event.target.value)}>
-                    {DEMAND_BASKETS.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
-                  </select>
-                </div>)}
-              </div>}
             </div>
 
             <div>
