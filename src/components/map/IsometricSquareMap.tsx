@@ -125,6 +125,12 @@ const LAND_USE_SPRITE: Record<string, string> = {
   military: buildMilitary, sacred: spriteShrine, civic: buildCulture,
   infrastructure: buildInfrastructure, agricultural: spriteFarmstead,
 };
+/** Sprites for the production district families shown in the build panel. */
+const DISTRICT_SPRITE: Record<string, string> = {
+  farm_belt: spriteFarmstead, craft_row: spriteWorkshop, manufactory_yard: buildInfrastructure,
+  depot_quarter: spriteTradePost, arsenal_quarter: buildMilitary,
+};
+
 
 /** District families live in a shared catalogue so the server validates the same numbers. */
 import { RESIDENTIAL_DISTRICTS, PRODUCTION_DISTRICTS, PRODUCTION_PER_RESIDENTIAL, type DistrictBlueprint } from "@/lib/cityDistricts";
