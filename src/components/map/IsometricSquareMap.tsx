@@ -1535,33 +1535,40 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               })}</div>
             </div>
 
+            {!selectedCity && !foreignOwner && <div className="rounded border border-border/60 p-2">
+              <p className="text-xs font-medium">Založit osadu na této parcele</p>
+              {CITY_ALLOWED_BIOMES.includes(selected.biome_family) && selected.is_passable !== false ? <>
+                <div className="mt-2 flex gap-2">
+                  <Input value={newCityName} onChange={event => setNewCityName(event.target.value)} placeholder="Název osady" className="h-8 text-xs" />
+                  <Button size="sm" disabled={!!buildingAction || !newCityName.trim()} onClick={() => void foundCityHere()}>
+                    {buildingAction === "found-city" ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={spriteHamlet} alt="" className="h-5 w-5 object-contain" />}
+                    <span className="ml-1">Založit</span>
+                  </Button>
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">Osada vznikne na parcele {selectedParcel.parcel_index + 1}.</p>
+              </> : <p className="mt-1 text-[11px] text-muted-foreground">Zde osadu založit nelze — vhodné jsou pláně, kopce, les a bažiny na průchodném poli.</p>}
+            </div>}
+
+            {selected.owner_player === playerName && <div className="rounded border border-border/60 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <div><p className="text-xs font-medium">Cesta přes parcelu</p><p className="text-[11px] text-muted-foreground">{selectedInfrastructure?.status === "building" ? `Ve výstavbě · ${selectedInfrastructure.progress} %` : selectedInfrastructure?.level ? tileInfrastructureLevel(selectedInfrastructure.level)?.label : "Bez cest"}</p></div>
+                <Button size="sm" disabled={!!buildingAction || selectedInfrastructure?.status === "building" || (selectedInfrastructure?.level || 0) >= 3} onClick={() => void upgradeLocalRoad()}>{buildingAction === "infrastructure" && <Loader2 className="mr-1 h-3 w-3 animate-spin"/>}{selectedInfrastructure?.level ? "Vylepšit" : "Postavit stezku"}</Button>
+              </div>
+              {selectedRoadPlan?.cost && (selectedInfrastructure?.level || 0) < 3 && <p className="mt-2 text-[11px] text-muted-foreground">
+                {selectedRoadPlan.tier?.label}: {selectedRoadPlan.cost.gold} zlata · {selectedRoadPlan.cost.production} produkce
+                {selectedRoadPlan.bridges.length ? ` · ${selectedRoadPlan.bridges.length}× most přes řeku` : ""}
+              </p>}
+              <p className="mt-1 text-[10px] text-muted-foreground">Cesta jen prochází podčtverci — nezabírá stavební slot, parcely pod ní zůstávají volné.</p>
+            </div>}
+
           </>
 
         </section>}
 
-        {!selectedCity && !foreignOwner && <section className="mt-4 space-y-2 border border-primary/25 bg-primary/5 p-3">
-          <p className="text-xs font-medium">Založit osadu na tomto poli</p>
-          {CITY_ALLOWED_BIOMES.includes(selected.biome_family) && selected.is_passable !== false ? <>
-            <div className="flex gap-2">
-              <Input value={newCityName} onChange={event => setNewCityName(event.target.value)} placeholder="Název osady" className="h-8 text-xs" />
-              <Button size="sm" disabled={!!buildingAction || !newCityName.trim()} onClick={() => void foundCityHere()}>
-                {buildingAction === "found-city" ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={spriteHamlet} alt="" className="h-5 w-5 object-contain" />}
-                <span className="ml-1">Založit</span>
-              </Button>
-            </div>
-            <p className="text-[10px] text-muted-foreground">Osada vznikne{selectedParcel ? ` na parcele ${selectedParcel.parcel_index + 1}` : " na nejvhodnější parcele"} tohoto pole.</p>
-          </> : <p className="text-[11px] text-muted-foreground">Zde osadu založit nelze — vhodné jsou pláně, kopce, les a bažiny na průchodném poli.</p>}
+        {!selectedParcel && <section className="mt-4 border border-border p-3 text-[11px] text-muted-foreground">
+          Klikni na podčtverec v mřížce výše — všechny akce (vykoupení, čtvrti, budovy, subuzly, cesty i založení osady) se otevřou pro vybranou parcelu.
         </section>}
 
-
-        {selected.owner_player === playerName && <section className="mt-4 border border-border p-3">
-          <div className="flex items-center justify-between"><div><p className="text-xs font-medium">Místní infrastruktura</p><p className="text-[11px] text-muted-foreground">{selectedInfrastructure?.status === "building" ? `Ve výstavbě · ${selectedInfrastructure.progress} %` : selectedInfrastructure?.level ? tileInfrastructureLevel(selectedInfrastructure.level)?.label : "Bez cest"}</p></div><Button size="sm" disabled={!!buildingAction || selectedInfrastructure?.status === "building" || (selectedInfrastructure?.level || 0) >= 3} onClick={() => void upgradeLocalRoad()}>{buildingAction === "infrastructure" && <Loader2 className="mr-1 h-3 w-3 animate-spin"/>}{selectedInfrastructure?.level ? "Vylepšit" : "Postavit stezku"}</Button></div>
-          {selectedRoadPlan?.cost && (selectedInfrastructure?.level || 0) < 3 && <p className="mt-2 text-[11px] text-muted-foreground">
-            {selectedRoadPlan.tier?.label}: {selectedRoadPlan.cost.gold} zlata · {selectedRoadPlan.cost.production} produkce
-            {selectedRoadPlan.bridges.length ? ` · ${selectedRoadPlan.bridges.length}× most přes řeku` : ""}
-          </p>}
-          <p className="mt-1 text-[10px] text-muted-foreground">Cesta jen prochází podčtverci — nezabírá stavební slot, parcely pod ní zůstávají volné. Slabě vyznačená trasa je plán.</p>
-        </section>}
 
 
         {selectedCity && <div className="mt-5 space-y-4">
