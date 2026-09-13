@@ -28,12 +28,14 @@ export async function ensureTileParcels(
 
   // The cell plus its four cardinal neighbours: the own biome dominates, neighbours only
   // bleed into the parcels along the shared border.
-  const { data: patch } = await supabase.from("province_hexes")
+  const { data: patch, error: patchError } = await supabase.from("province_hexes")
     .select("grid_x, grid_y, biome_family, elevation, has_river, is_coastal, is_passable")
     .eq("session_id", sessionId)
     .gte("grid_x", gridX - 1).lte("grid_x", gridX + 1)
     .gte("grid_y", gridY - 1).lte("grid_y", gridY + 1);
+  if (patchError) console.error("parcelgen patch error", patchError.message);
   const patchRows = patch || [];
+  console.log("parcelgen", gridX, gridY, "rows", patchRows.length, JSON.stringify(patchRows.map((r: any) => [r.grid_x, r.grid_y, r.biome_family])));
   const tile = patchRows.find((row: any) => row.grid_x === gridX && row.grid_y === gridY);
   const neighbours = [[1, 0], [-1, 0], [0, 1], [0, -1]]
     .map(([dx, dy]) => {
