@@ -96,6 +96,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [tileParcels, setTileParcels] = useState<TileParcel[]>([]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
+  const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
 
   const tileCell = useCallback((tile: Tile) => ({
     a: tile.grid_x !== null ? tile.grid_x : tile.q,
