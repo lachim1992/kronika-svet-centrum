@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -231,6 +233,59 @@ Deno.serve(async (req) => {
       }
     }
     console.log("[building-bonus]", JSON.stringify(bw));
+
+    // ════════════════════════════════════════════
+    // District families: housing staffs workshops, workshops fill baskets
+    // One residential district staffs PRODUCTION_PER_RESIDENTIAL production districts;
+    // production districts beyond that stand idle and supply nothing.
+    // ════════════════════════════════════════════
+    const { data: districts } = await sb.from("city_districts")
+      .select("id, city_id, district_type, basket_key, basket_output, basket_quality, demand_bonus, population_capacity, is_staffed, created_at")
+      .eq("session_id", session_id).eq("status", "completed").order("created_at", { ascending: true });
+
+    const cityDemandBonus = new Map<string, number>();
+    const staffingUpdates: { id: string; is_staffed: boolean }[] = [];
+    const districtsByCity = new Map<string, any[]>();
+    for (const d of (districts || [])) {
+      const bag = districtsByCity.get(d.city_id) || [];
+      bag.push(d);
+      districtsByCity.set(d.city_id, bag);
+    }
+
+    const dw = { staffed: 0, idle: 0, output: 0 };
+    for (const [cityId, bag] of districtsByCity) {
+      const residential = bag.filter(d => d.district_type === "residential");
+      const production = bag.filter(d => d.district_type === "production");
+      const slots = residential.length * PRODUCTION_PER_RESIDENTIAL;
+
+      // Households consume: their demand bonus lands on the survival + civic baskets.
+      const demandBonus = residential.reduce((sum, d) => sum + (Number(d.demand_bonus) || 0), 0);
+      if (demandBonus > 0) cityDemandBonus.set(cityId, demandBonus);
+
+      production.forEach((d, index) => {
+        const staffed = index < slots;
+        if (Boolean(d.is_staffed) !== staffed) staffingUpdates.push({ id: d.id, is_staffed: staffed });
+        if (!staffed) { dw.idle++; return; }
+        dw.staffed++;
+        const basket = resolveBasketKey(d.basket_key || "staple_food", warnings);
+        const qty = Number(d.basket_output) || 0;
+        if (!VALID_BASKETS.has(basket) || qty <= 0) return;
+        let districtBag = cityBuildingBonus.get(cityId);
+        if (!districtBag) { districtBag = new Map(); cityBuildingBonus.set(cityId, districtBag); }
+        const cur = districtBag.get(basket) || { qty: 0, qSum: 0, cnt: 0 };
+        cur.qty += qty;
+        cur.qSum += Math.min(3, Math.max(0, Number(d.basket_quality) || 1));
+        cur.cnt += 1;
+        districtBag.set(basket, cur);
+        dw.output += qty;
+      });
+    }
+    for (const upd of staffingUpdates) {
+      await sb.from("city_districts").update({ is_staffed: upd.is_staffed }).eq("id", upd.id);
+    }
+    console.log("[district-production]", JSON.stringify(dw));
+
+
 
     const goodsMap = new Map(goods.map(g => [g.key, g]));
     const cityMap = new Map(cities.map(c => [c.id, c]));
@@ -593,8 +648,11 @@ Deno.serve(async (req) => {
           (city.population_clerics || 0) * (pw.clerics || 0) +
           (city.population_warriors || 0) * (pw.warriors || 0);
         const tierMult = 1 / bc.tier;
-        const demand = Math.round(weightedPop * 0.01 * tierMult * 10) / 10;
+        // Households in residential districts consume on top of the raw population curve.
+        const housingDemand = cityDemandBonus.get(city.id) || 0;
+        const demand = Math.round((weightedPop * 0.01 + housingDemand) * tierMult * 10) / 10;
         if (demand > 0) demands.set(bk, demand);
+
       }
       cityDemands.set(city.id, demands);
     }

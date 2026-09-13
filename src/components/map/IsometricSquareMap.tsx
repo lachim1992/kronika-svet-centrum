@@ -126,13 +126,10 @@ const LAND_USE_SPRITE: Record<string, string> = {
   infrastructure: buildInfrastructure, agricultural: spriteFarmstead,
 };
 
-/** Player-buildable residential districts — the direct lever on housing capacity. */
-const RESIDENTIAL_DISTRICTS = [
-  { key: "quarter", name: "Obytná čtvrť", district_type: "residential", population_capacity: 250, build_cost_wealth: 25, build_cost_wood: 25, build_cost_stone: 10, build_turns: 2, stability_modifier: 1, peasant_attraction: 6, description: "Hustá zástavba domů pro rodiny řemeslníků a rolníků." },
-  { key: "tenements", name: "Nájemní domy", district_type: "residential", population_capacity: 400, build_cost_wealth: 45, build_cost_wood: 30, build_cost_stone: 25, build_turns: 3, stability_modifier: -1, burgher_attraction: 8, description: "Vysoké nájemní domy — mnoho lidí, méně klidu." },
-  { key: "colony", name: "Dělnická kolonie", district_type: "residential", population_capacity: 300, build_cost_wealth: 30, build_cost_wood: 35, build_cost_stone: 5, build_turns: 2, production_modifier: 3, peasant_attraction: 10, description: "Kolonie u dílen a polí, láká pracovní sílu." },
-  { key: "suburb", name: "Předměstí", district_type: "residential", population_capacity: 200, build_cost_wealth: 20, build_cost_wood: 20, build_cost_stone: 5, build_turns: 1, stability_modifier: 2, peasant_attraction: 4, description: "Rozvolněné domky na okraji města." },
-];
+/** District families live in a shared catalogue so the server validates the same numbers. */
+import { RESIDENTIAL_DISTRICTS, PRODUCTION_DISTRICTS, PRODUCTION_PER_RESIDENTIAL, type DistrictBlueprint } from "@/lib/cityDistricts";
+import { DEMAND_BASKETS } from "@/lib/goodsCatalog";
+
 
 interface Props {
   sessionId: string;
@@ -153,6 +150,12 @@ type ParcelContent = { id: string; parcel_id: string; entity_type: string; entit
 type TileInfrastructure = { id: string; grid_x: number; grid_y: number; owner_player: string; level: number; target_level: number | null; status: string; progress: number };
 type BuildingTemplate = { id: string; name: string; category: string; description: string; cost_wealth: number; cost_wood: number; cost_stone: number; cost_iron: number; build_turns: number; effects: unknown; max_level: number; level_data: unknown };
 type ConstructionEntity = { id: string; name: string; status: string; build_started_turn: number; build_duration: number; completed_turn: number | null; parcel_id: string | null };
+/** A city district — either housing or a workshop pointed at one demand basket. */
+type CityDistrict = {
+  id: string; city_id: string; name: string; status: string; district_type: string;
+  basket_key: string | null; basket_output: number; is_staffed: boolean; population_capacity: number; parcel_id: string | null;
+};
+
 /** One of the 36 sub-parcels of a map cell — the only city land model. */
 type TileParcel = {
   id: string; grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number;
@@ -260,6 +263,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [recentlyBuiltParcelId, setRecentlyBuiltParcelId] = useState<string | null>(null);
   const [buildingAction, setBuildingAction] = useState<string | null>(null);
   const [newCityName, setNewCityName] = useState("");
+  const [districts, setDistricts] = useState<CityDistrict[]>([]);
+  const [productionPick, setProductionPick] = useState<Record<string, string>>({});
+
 
 
   const tileCell = useCallback((tile: Tile) => ({
@@ -284,7 +290,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
       supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
       supabase.from("city_buildings").select("id, name, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
-      supabase.from("city_districts").select("id, name, status, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
+      supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
     setRoutes((routeRes.data || []) as unknown as Route[]); setArmies((armyRes.data || []) as Army[]);
@@ -292,10 +298,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setParcelContents((contentRes.data || []) as ParcelContent[]);
     setInfrastructure((infrastructureRes.data || []) as TileInfrastructure[]);
     setBuildingTemplates((templateRes.data || []) as unknown as BuildingTemplate[]);
+    setDistricts((districtRes.data || []) as unknown as CityDistrict[]);
     setConstructionEntities([
       ...((buildingRes.data || []) as ConstructionEntity[]),
-      ...((districtRes.data || []).map(item => ({ ...item, build_duration: item.build_turns })) as ConstructionEntity[]),
+      ...((districtRes.data || []).filter((item: any) => item.parcel_id).map((item: any) => ({ ...item, build_duration: item.build_turns })) as ConstructionEntity[]),
     ]);
+
     setTreasury({ gold: Number(realmRes.data?.gold_reserve || 0), production: Number(realmRes.data?.production_reserve || 0) });
   }, [sessionId, playerName]);
 
@@ -711,19 +719,31 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   };
 
   /** Residential districts raise the city's housing capacity, so they get their own action. */
-  const buildDistrict = async (district: typeof RESIDENTIAL_DISTRICTS[number]) => {
+  const buildDistrict = async (district: DistrictBlueprint, basketKey?: string) => {
     if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
     setBuildingAction(`district-${district.key}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_DISTRICT", commandPayload: {
-      cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id, district,
+      cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id, district, basketKey,
     }});
     setBuildingAction(null);
     if (!result.ok) { toast.error(result.error || "Čtvrť se nepodařilo založit"); return; }
     setRecentlyBuiltParcelId(selectedParcel.id);
     window.setTimeout(() => setRecentlyBuiltParcelId(current => current === selectedParcel.id ? null : current), 2600);
-    toast.success(`${district.name} vzniká na parcele ${selectedParcel.parcel_index + 1} · +${district.population_capacity} obyvatel`);
+    toast.success(district.district_type === "residential"
+      ? `${district.name} vzniká · +${district.population_capacity} obyvatel`
+      : `${district.name} vzniká · vyrábí ${basketKey}`);
     await loadTileParcels(selectedParcel.grid_x, selectedParcel.grid_y); await load();
   };
+
+  /** Re-point a finished production district at a different basket. */
+  const setDistrictProduction = async (districtId: string, basketKey: string) => {
+    setBuildingAction(`switch-${districtId}`);
+    const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "SET_DISTRICT_PRODUCTION", commandPayload: { districtId, basketKey } });
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Přenastavení se nepodařilo"); return; }
+    toast.success(`Čtvrť nyní vyrábí ${basketKey}`); await load();
+  };
+
 
 
 
