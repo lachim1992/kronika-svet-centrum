@@ -1168,6 +1168,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </>}
         </section>}
 
+        {!selectedCity && !foreignOwner && <section className="mt-4 space-y-2 border border-primary/25 bg-primary/5 p-3">
+          <p className="text-xs font-medium">Založit osadu na tomto poli</p>
+          {CITY_ALLOWED_BIOMES.includes(selected.biome_family) && selected.is_passable !== false ? <>
+            <div className="flex gap-2">
+              <Input value={newCityName} onChange={event => setNewCityName(event.target.value)} placeholder="Název osady" className="h-8 text-xs" />
+              <Button size="sm" disabled={!!buildingAction || !newCityName.trim()} onClick={() => void foundCityHere()}>
+                {buildingAction === "found-city" ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={spriteHamlet} alt="" className="h-5 w-5 object-contain" />}
+                <span className="ml-1">Založit</span>
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Osada vznikne{selectedParcel ? ` na parcele ${selectedParcel.parcel_index + 1}` : " na nejvhodnější parcele"} tohoto pole.</p>
+          </> : <p className="text-[11px] text-muted-foreground">Zde osadu založit nelze — vhodné jsou pláně, kopce, les a bažiny na průchodném poli.</p>}
+        </section>}
+
+
         {selected.owner_player === playerName && <section className="mt-4 border border-border p-3">
           <div className="flex items-center justify-between"><div><p className="text-xs font-medium">Místní infrastruktura</p><p className="text-[11px] text-muted-foreground">{selectedInfrastructure?.status === "building" ? `Ve výstavbě · ${selectedInfrastructure.progress} %` : selectedInfrastructure?.level ? tileInfrastructureLevel(selectedInfrastructure.level)?.label : "Bez cest"}</p></div><Button size="sm" disabled={!!buildingAction || selectedInfrastructure?.status === "building" || (selectedInfrastructure?.level || 0) >= 3} onClick={() => void upgradeLocalRoad()}>{buildingAction === "infrastructure" && <Loader2 className="mr-1 h-3 w-3 animate-spin"/>}{selectedInfrastructure?.level ? "Vylepšit" : "Postavit stezku"}</Button></div>
         </section>}
