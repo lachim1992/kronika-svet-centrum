@@ -15,7 +15,7 @@ const ArmyMarkerBase = ({ army, own, active }: { army: ArmyGlyph; own: boolean; 
   const banner = own ? "var(--map-city-own)" : "var(--map-city-rival)";
   const soldiers = Math.max(0, army.soldiers);
   const tier = soldiers >= 4000 ? 3 : soldiers >= 1200 ? 2 : 1;
-  const files = tier === 3 ? 5 : tier === 3 - 1 ? 4 : 3;
+  const files = tier === 3 ? 5 : tier === 2 ? 4 : 3;
   const rows = tier === 3 ? 2 : 1;
   const morale = Math.max(0, Math.min(100, army.morale));
 
