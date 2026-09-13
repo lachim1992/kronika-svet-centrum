@@ -382,6 +382,37 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <p className="mt-1 text-xs text-muted-foreground">{selected.owner_player || "Neutrální území"} · {selected.is_passable === false ? "Neprůchodné" : "Průchodné"}</p>
         </div>
 
+        <section className="mt-5 border-y border-border/70 py-4">
+          <div className="mb-2 flex items-baseline justify-between">
+            <h3 className="text-sm">Podparcely pole ({TILE_PARCEL_COLS}×{TILE_PARCEL_ROWS})</h3>
+            <span className="text-[10px] text-muted-foreground">{claimedSlots * POPULATION_PER_SLOT} míst k bydlení</span>
+          </div>
+          {parcelsLoading && <p className="text-xs text-muted-foreground">Vyměřuji parcely…</p>}
+          {!parcelsLoading && !tileParcels.length && <p className="text-xs text-muted-foreground">Toto pole nemá vyměřené parcely.</p>}
+          {!parcelsLoading && tileParcels.length > 0 && <>
+            <div className="grid grid-cols-8 gap-[3px]">
+              {tileParcels.map(parcel => {
+                const cost = parcelClaimCost(Number(parcel.build_cost_multiplier || 1), claimedForCity);
+                const mine = parcel.owner_player === playerName;
+                const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild";
+                return <button key={parcel.id} type="button" disabled={!canClaim || claimingParcel !== null}
+                  onClick={() => void claimParcel(parcel)}
+                  title={`${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.capacity_slots} slotů${canClaim ? ` · ${cost.gold} zlata / ${cost.production} produkce` : ""}`}
+                  className={`aspect-square border text-[8px] leading-none transition-colors ${
+                    parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
+                    : parcel.status === "claimed" ? (mine ? "border-primary/40 bg-primary/10" : "border-border bg-muted/40")
+                    : !parcel.buildable ? "border-border/40 bg-muted/20 text-muted-foreground"
+                    : canClaim ? "border-border bg-card hover:border-primary hover:bg-primary/10" : "border-border bg-card"}`}>
+                  {parcel.status === "occupied" ? "🏠" : parcel.status === "claimed" ? "▣" : !parcel.buildable ? "▲" : parcel.parcel_index + 1}
+                </button>;
+              })}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {claimHost ? `Klikni na volnou parcelu a ${claimHost.name} ji vykoupí. Cena i kapacita vycházejí z podterénu.` : "Parcely lze vykupovat jen z pole vašeho města nebo z pole hned vedle něj."}
+            </p>
+          </>}
+        </section>
+
         {selectedCity && <div className="mt-5 space-y-4">
           <div className="border-y border-border/70 py-4">
             <div className="flex items-start justify-between gap-3"><div><p className="font-display text-lg">{selectedCity.name}</p><p className="text-xs text-muted-foreground">{selectedCity.settlement_level} · úroveň {selectedCity.development_level}</p></div><Button size="sm" variant="outline" onClick={() => onCityClick?.(selectedCity.id)}>Otevřít město <ArrowUpRight className="ml-1 h-3.5 w-3.5"/></Button></div>
