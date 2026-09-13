@@ -317,6 +317,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
     setRoutes((routeRes.data || []) as unknown as Route[]); setArmies((armyRes.data || []) as Army[]);
     setCityParcels((parcelRes.data || []) as TileParcel[]);
+    setStoredSubBiomes((subBiomeRes.data || []) as StoredSubBiome[]);
     setParcelContents((contentRes.data || []) as ParcelContent[]);
     setInfrastructure((infrastructureRes.data || []) as TileInfrastructure[]);
     setBuildingTemplates((templateRes.data || []) as unknown as BuildingTemplate[]);
