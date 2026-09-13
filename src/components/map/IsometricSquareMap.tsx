@@ -419,15 +419,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {city.population_total > city.housing_capacity && <path d="M-27 -11 L-22 -20 L-17 -11 Z" fill="var(--map-focus)"><title>Tlak na růst</title></path>}
             </g>;
           })}
-          {!cityLayerCityId && armyPlacements.map(({ army, cell, offsetX, offsetY }) => {
-            const point = at(cell.a, cell.b);
-            const own = army.player_name === playerName;
-            const openArmy = () => { setSelectedArmyId(army.id); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(true); };
-            return <g key={army.id} data-map-army={army.id} role="button" tabIndex={0} aria-label={`Armáda ${army.name}`}
-              transform={`translate(${point.x + offsetX},${point.y + offsetY})`} filter="url(#iso-shadow)" className="cursor-pointer"
+          {!cityLayerCityId && armyGroups.map(group => {
+            const point = at(group.cell.a, group.cell.b);
+            const lead = group.list[0];
+            const own = lead.player_name === playerName;
+            const stacked = group.list.length;
+            const active = group.list.some(army => army.id === selectedArmyId);
+            const openArmy = () => { setSelectedArmyId(lead.id); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(true); };
+            return <g key={group.key} data-map-army={lead.id} role="button" tabIndex={0} aria-label={`Armáda ${lead.name}`}
+              transform={`translate(${point.x + 16},${point.y - 30})`} filter="url(#iso-shadow)" className="cursor-pointer"
               onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
-              <ArmyMarker army={army} own={own} active={selectedArmyId === army.id} />
+              <ArmyMarker army={lead} own={own} active={active} />
+              {stacked > 1 && <g transform="translate(15,-19)">
+                <circle r="7" fill="var(--map-marker)" stroke={own ? "var(--map-city-own)" : "var(--map-city-rival)"} strokeWidth="1.2" />
+                <text textAnchor="middle" y="2.6" fontSize="7.5" fontWeight="700" fill="var(--map-label)">{stacked}</text>
+              </g>}
             </g>;
           })}
         </g>
