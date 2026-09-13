@@ -11,8 +11,29 @@ import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastruc
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 
-interface Props {
-  sessionId: string;
+interface Props {useEffect(() => {
+    if (!selected) {
+      setTileParcels([]);
+      setSelectedParcelId(null);
+      setSelectedNodeId(null);
+      lastSelectedId.current = null;
+      return;
+    }
+
+    if (selected.id !== lastSelectedId.current) {
+      setSelectedParcelId(null);
+      lastSelectedId.current = selected.id;
+      const cell = tileCell(selected);
+      void loadTileParcels(cell.a, cell.b);
+    }
+
+    if (selectedNodeId) {
+      const node = nodes.find(item => item.id === selectedNodeId);
+      const cell = node ? entityCell(node) : null;
+      const selectedTileCell = tileCell(selected);
+      if (!cell || cell.a !== selectedTileCell.a || cell.b !== selectedTileCell.b) setSelectedNodeId(null);
+    }
+  }, [selected, selectedNodeId, nodes, entityCell, tileCell, loadTileParcels]);sessionId: string;
   playerName: string;
   currentTurn?: number;
   onCityClick?: (cityId: string) => void;
@@ -111,6 +132,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 40 });
   const [selected, setSelected] = useState<Tile | null>(null);
+  const hasInitialized = useRef(false);
   const [cityLayerCityId, setCityLayerCityId] = useState<string | null>(null);
   const [tileParcels, setTileParcels] = useState<TileParcel[]>([]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
@@ -176,7 +198,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const home = useCallback(() => {
     const element = viewportRef.current; if (!element) return;
     setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y }); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false);
-  }, [center, onDetailOpenChange]);
+  useEffect(() => {
+    if (tiles.length > 0 && !hasInitialized.current) {
+      home();
+      hasInitialized.current = true;
+    }
+  }, [tiles.length, home]);
   useEffect(() => { if (tiles.length) home(); }, [tiles.length, home]);
 
   const cityById = useMemo(() => new Map(cities.map(city => [city.id, city])), [cities]);
