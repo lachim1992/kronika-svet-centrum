@@ -122,6 +122,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
   const [showRoutes, setShowRoutes] = useState(true);
   const [showNodes, setShowNodes] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
