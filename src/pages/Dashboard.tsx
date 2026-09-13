@@ -77,6 +77,7 @@ const Dashboard = () => {
   const [showChronicle0, setShowChronicle0] = useState(false);
   const [showVictory, setShowVictory] = useState(false);
   const [cityActionsTarget, setCityActionsTarget] = useState<string | null>(null);
+  const [mapDetailOpen, setMapDetailOpen] = useState(false);
   const gridKind = worldFoundation?.grid_kind === "square4" ? "square4" : "hex6";
 
   const currentTurn = session?.current_turn ?? 0;
@@ -349,7 +350,8 @@ const Dashboard = () => {
           currentTurn={session.current_turn}
           onCityClick={handleCityClickToWiki}
           gridKind={gridKind}
-          backgroundMode={activeTab !== "worldmap"}
+          backgroundMode={activeTab !== "worldmap" && !mapDetailOpen}
+          onDetailOpenChange={setMapDetailOpen}
         />
       }
       header={
@@ -487,7 +489,7 @@ const Dashboard = () => {
       }
     >
       <ErrorBoundary>
-      <div className={activeTab === "worldmap" ? "hidden" : "map-workspace-panel"}>
+      <div className={activeTab === "worldmap" || mapDetailOpen ? "hidden" : "map-workspace-panel"}>
       {activeTab === "home" && <HomeTab {...sharedProps} onFoundCity={() => setShowFoundDialog(true)} onTabChange={(tab) => setActiveTab(tab as TabId)} />}
       {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
       {activeTab === "realm" && <RealmTab {...sharedProps} />}

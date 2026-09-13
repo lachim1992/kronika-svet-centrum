@@ -13,6 +13,7 @@ interface Props {
   currentTurn?: number;
   onCityClick?: (cityId: string) => void;
   gridKind?: "hex6" | "square4";
+  onDetailOpenChange?: (open: boolean) => void;
 }
 
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean };
@@ -41,7 +42,7 @@ const LAND_USE_COLOR: Record<string, string> = {
   sacred: "var(--map-focus)", infrastructure: "var(--map-route)",
 };
 
-export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6" }: Props) {
+export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
   const [tiles, setTiles] = useState<Tile[]>([]);
@@ -88,8 +89,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [tiles, tileCell]);
   const home = useCallback(() => {
     const element = viewportRef.current; if (!element) return;
-    setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y }); setSelected(null);
-  }, [center]);
+    setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y }); setSelected(null); onDetailOpenChange?.(false);
+  }, [center, onDetailOpenChange]);
   useEffect(() => { if (tiles.length) home(); }, [tiles.length, home]);
 
   const cityById = useMemo(() => new Map(cities.map(city => [city.id, city])), [cities]);
@@ -123,6 +124,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const element = viewportRef.current; if (!element) return;
     const cell = tileCell(tile); const projected = projectCell("square4", cell, TILE_SIZE); const targetZoom = 1.65;
     setSelected(tile); setZoom(targetZoom);
+    onDetailOpenChange?.(true);
     setPan({ x: element.clientWidth * 0.38 / targetZoom - projected.x, y: element.clientHeight * 0.46 / targetZoom - projected.y });
   };
   const expandCity = async () => {
@@ -199,7 +201,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       <div className="map-floating-control absolute left-4 top-4 z-20 flex items-center gap-2 px-3 py-2 text-xs"><Layers3 className="h-4 w-4 text-primary"/><span>{gridKind === "square4" ? "Čtvercová síť" : "Původní svět"} · izometrické zobrazení</span></div>
 
       {selected && <aside className="map-tile-detail animate-slide-in-right absolute bottom-0 right-0 top-0 z-40 w-full overflow-y-auto border-l border-primary/20 bg-background/95 p-5 shadow-2xl backdrop-blur-xl sm:w-[380px]">
-        <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail" onClick={() => setSelected(null)}><X className="h-4 w-4"/></Button>
+        <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail" onClick={() => { setSelected(null); onDetailOpenChange?.(false); }}><X className="h-4 w-4"/></Button>
         <div className="pr-10">
           <p className="text-[10px] font-semibold uppercase text-primary">Pole {selectedCell?.a}, {selectedCell?.b}</p>
           <h2 className="mt-1 text-xl capitalize">{selected.biome_family.replace("_", " ")}</h2>
@@ -211,7 +213,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <div className="flex items-start justify-between gap-3"><div><p className="font-display text-lg">{selectedCity.name}</p><p className="text-xs text-muted-foreground">{selectedCity.settlement_level} · úroveň {selectedCity.development_level}</p></div><Button size="sm" variant="outline" onClick={() => onCityClick?.(selectedCity.id)}>Otevřít město <ArrowUpRight className="ml-1 h-3.5 w-3.5"/></Button></div>
           </div>
           <section><div className="mb-2 flex justify-between text-xs"><span>Zaplnění města</span><strong>{growthPressure} %</strong></div><Progress value={growthPressure} className="h-2"/><div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs"><div><strong className="block text-foreground">{selectedCity.population_total.toLocaleString("cs-CZ")}</strong><span className="text-muted-foreground">obyvatel</span></div><div><strong className="block text-foreground">{occupiedParcels}/{cityParcelCount}</strong><span className="text-muted-foreground">parcel</span></div><div><strong className="block text-foreground">{netGrowth >= 0 ? "+" : ""}{netGrowth}</strong><span className="text-muted-foreground">růst/kolo</span></div></div></section>
-          <section><h3 className="mb-2 text-sm">Parcely tohoto pole</h3><div className="grid grid-cols-4 gap-1.5">{selectedParcels.sort((a,b) => a.parcel_y-b.parcel_y || a.parcel_x-b.parcel_x).map(parcel => <div key={parcel.id} className={`aspect-square border p-1 text-[9px] ${parcel.status === "occupied" ? "border-primary/50 bg-primary/10" : parcel.status === "locked" ? "border-border/40 bg-muted/20 text-muted-foreground" : "border-border bg-card"}`} title={`${parcel.land_use} · ${parcel.status}`}><span className="block text-xs">{parcel.status === "occupied" ? "🏠" : parcel.status === "locked" ? "🔒" : "·"}</span>{parcel.parcel_x + 1}:{parcel.parcel_y + 1}</div>)}</div></section>
+          <section><h3 className="mb-2 text-sm">Parcely tohoto pole</h3><div className="grid grid-cols-4 gap-1.5">{[...selectedParcels].sort((a,b) => a.parcel_y-b.parcel_y || a.parcel_x-b.parcel_x).map(parcel => <div key={parcel.id} className={`aspect-square border p-1 text-[9px] ${parcel.status === "occupied" ? "border-primary/50 bg-primary/10" : parcel.status === "locked" ? "border-border/40 bg-muted/20 text-muted-foreground" : "border-border bg-card"}`} title={`${parcel.land_use} · ${parcel.status}`}><span className="block text-xs">{parcel.status === "occupied" ? "🏠" : parcel.status === "locked" ? "🔒" : "·"}</span>{parcel.parcel_x + 1}:{parcel.parcel_y + 1}</div>)}</div></section>
           {selectedUrbanCell?.status === "developing" && <section className="border border-primary/25 bg-primary/5 p-3"><div className="mb-2 flex items-center justify-between text-xs"><span>Urbanizace pole</span><strong>{selectedUrbanCell.development_progress} %</strong></div><Progress value={selectedUrbanCell.development_progress} className="h-2"/><p className="mt-2 text-xs text-muted-foreground">Postupuje při uzavření každého kola.</p></section>}
         </div>}
 
