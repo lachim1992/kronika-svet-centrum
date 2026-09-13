@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateWorldTerrain, hashSeed, type TerrainParams } from "../_shared/terrain.ts";
+import { buildRiverNetwork, type RiverCell } from "../_shared/riverNetwork.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
