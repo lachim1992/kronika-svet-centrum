@@ -151,14 +151,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const renderParcelGrid = (urbanCell: UrbanCell, centerPoint: { x: number; y: number }) => {
     const cellParcels = parcelsByUrbanCell.get(urbanCell.id) || [];
+    const size = TILE_SIZE / 4;
     return <g>
       {cellParcels.map(parcel => {
-        const dx = (parcel.parcel_x - parcel.parcel_y) * 5.1;
-        const dy = (parcel.parcel_x + parcel.parcel_y - 3) * 2.55;
+        const dx = (parcel.parcel_x - parcel.parcel_y) * size;
+        const dy = (parcel.parcel_x + parcel.parcel_y - 3) * size * .5;
         const fill = parcel.status === "locked" ? "var(--map-parcel-locked)" : LAND_USE_COLOR[parcel.land_use] || LAND_USE_COLOR.open;
         return <g key={parcel.id} transform={`translate(${centerPoint.x + dx},${centerPoint.y + dy})`}>
-          <polygon points={squareDiamondPoints({ x: 0, y: 0 }, 5)} fill={fill} stroke="var(--map-marker-edge)" strokeWidth=".45" opacity={parcel.status === "locked" ? .45 : .92} />
-          {parcel.status === "occupied" && <path d="M-2 1 V-4 L0 -6 L2 -4 V1 Z" fill="var(--map-label)" stroke="var(--map-marker-edge)" strokeWidth=".5" />}
+          <polygon points={squareDiamondPoints({ x: 0, y: 0 }, size - .8)} fill={fill} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity={parcel.status === "locked" ? .5 : .95} />
+          {parcel.status === "occupied" && <path d="M-3.4 1.6 V-5.5 L0 -8.5 L3.4 -5.5 V1.6 Z" fill="var(--map-city-wall-light)" stroke="var(--map-marker-edge)" strokeWidth=".7" />}
+          <title>{`Parcela ${parcel.parcel_x + 1}:${parcel.parcel_y + 1} · ${parcel.land_use} · ${parcel.status}`}</title>
         </g>;
       })}
       {urbanCell.status === "developing" && <circle cx={centerPoint.x} cy={centerPoint.y} r="18" fill="none" stroke="var(--map-focus)" strokeWidth="2" strokeDasharray={`${Math.max(1, urbanCell.development_progress)} 100`} pathLength="100" />}
