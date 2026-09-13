@@ -193,6 +193,36 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return map;
   }, [cityParcels]);
 
+  /**
+   * River network on the macro map. Every river cell links to each cardinal neighbour
+   * that carries water too, so the drawn line is the same connected system the
+   * sub-parcel channels follow inside the cells.
+   */
+  const riverSegments = useMemo(() => {
+    const riverCells = new Map<string, { a: number; b: number }>();
+    const waterCells = new Set<string>();
+    tiles.forEach(tile => {
+      const cell = tileCell(tile);
+      const key = cellKey(cell.a, cell.b);
+      if (tile.biome_family === "sea" || Number(tile.mean_height ?? 40) < 8) waterCells.add(key);
+      else if (tile.has_river) riverCells.set(key, cell);
+    });
+    const steps = [{ da: 1, db: 0 }, { da: -1, db: 0 }, { da: 0, db: 1 }, { da: 0, db: -1 }];
+    const segments: Array<{ id: string; from: { a: number; b: number }; to: { a: number; b: number }; mouth: boolean }> = [];
+    riverCells.forEach((cell, key) => {
+      steps.forEach(step => {
+        const neighbour = { a: cell.a + step.da, b: cell.b + step.db };
+        const neighbourKey = cellKey(neighbour.a, neighbour.b);
+        const isWater = waterCells.has(neighbourKey);
+        if (!isWater && !riverCells.has(neighbourKey)) return;
+        // Draw each river link once; the mouth into open water is always drawn from land.
+        if (!isWater && neighbourKey < key) return;
+        segments.push({ id: `${key}>${neighbourKey}`, from: cell, to: neighbour, mouth: isWater });
+      });
+    });
+    return segments;
+  }, [tiles, tileCell]);
+
   /** One war-band illustration per cell; further stacks are folded into a count badge. */
   const armyGroups = useMemo(() => {
     const groups = new Map<string, { cell: { a: number; b: number }; list: Army[] }>();
