@@ -1451,7 +1451,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </div>}
           {parcelBlock && <p className="border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-200">{parcelBlock}</p>}
           {selectedParcel.status === "wild" && selectedParcel.buildable && !!claimHost && <Button size="sm" className="w-full" disabled={claimingParcel !== null || !!buildingAction} onClick={() => void claimParcel(selectedParcel)}>
-            {claimingParcel === selectedParcel.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+            {claimingParcel !== null ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
             Vykoupit parcelu · {parcelClaimCost(Number(selectedParcel.build_cost_multiplier || 1), claimedForCity).gold} zlata / {parcelClaimCost(Number(selectedParcel.build_cost_multiplier || 1), claimedForCity).production} produkce
           </Button>}
 
