@@ -141,7 +141,7 @@ function fnv1a(text: string): number {
 }
 
 /** Stable pseudo-random in [0,1) for a seed string. */
-function seeded(text: string): number {
+export function seeded(text: string): number {
   return fnv1a(text) / 0x100000000;
 }
 
