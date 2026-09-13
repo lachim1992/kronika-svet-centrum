@@ -234,6 +234,20 @@ const MAX_ZOOM = 8;
 const LABEL_ZOOM = 1.15;
 const clampZoom = (value: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
 
+/** Map layer visibility that survives reloads, one localStorage key per layer. */
+function useMapLayer(key: string, initial = true) {
+  const storageKey = `ch_mapLayer_${key}`;
+  const [visible, setVisible] = useState(() => {
+    if (typeof window === "undefined") return initial;
+    const stored = window.localStorage.getItem(storageKey);
+    return stored === null ? initial : stored === "1";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem(storageKey, visible ? "1" : "0");
+  }, [storageKey, visible]);
+  return [visible, setVisible] as const;
+}
+
 export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange }: Props) {
   const isMobile = useIsMobile();
   const viewportRef = useRef<HTMLDivElement>(null);
