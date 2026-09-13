@@ -8,6 +8,7 @@ import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS } from "@/lib/tileParcels";
 import { useIsMobile } from "@/hooks/use-mobile";
+import ArmyMarker from "@/components/map/ArmyMarker";
 
 interface Props {
   sessionId: string;
