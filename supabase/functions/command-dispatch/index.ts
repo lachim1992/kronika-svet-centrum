@@ -2970,9 +2970,17 @@ async function executeUpgradeTileInfrastructure(
   const self = (around || []).find((row: any) => row.grid_x === gridX && row.grid_y === gridY) || {};
   const terrainOf = (row: any) => ({ biome_family: row.biome_family, elevation: row.mean_height,
     has_river: row.has_river, river_direction: row.river_direction, is_passable: row.is_passable });
+  // The trace only reaches neighbours that already carry a road or hold a settlement — same rule as the map.
+  const { data: neighbourRoads } = await supabase.from("tile_infrastructure").select("grid_x, grid_y")
+    .eq("session_id", sessionId).in("grid_x", [gridX - 1, gridX, gridX + 1]).in("grid_y", [gridY - 1, gridY, gridY + 1]);
+  const { data: neighbourSeats } = await supabase.from("tile_parcels").select("grid_x, grid_y")
+    .eq("session_id", sessionId).not("city_id", "is", null)
+    .in("grid_x", [gridX - 1, gridX, gridX + 1]).in("grid_y", [gridY - 1, gridY, gridY + 1]);
+  const connected = new Set([...(neighbourRoads || []), ...(neighbourSeats || [])].map((row: any) => `${row.grid_x},${row.grid_y}`));
   const steps = neighbourRows
-    .filter((row: any) => row.is_passable !== false && row.biome_family !== "sea")
+    .filter((row: any) => row.is_passable !== false && row.biome_family !== "sea" && connected.has(`${row.grid_x},${row.grid_y}`))
     .map((row: any) => ({ dx: row.grid_x - gridX, dy: row.grid_y - gridY }));
+
   const bridges = tileBridgeCells(sessionId, gridX, gridY, steps, terrainOf(self),
     neighbourRows.map((row: any) => ({ dx: row.grid_x - gridX, dy: row.grid_y - gridY, terrain: terrainOf(row) }))).length;
   const cost = tileRoadCost(tier, bridges);
