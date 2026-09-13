@@ -637,13 +637,14 @@ Deno.serve(async (req) => {
       const target = Number(project.target_level || 1);
       const nextProgress = Math.min(100, Number(project.progress || 0) + Math.ceil(100 / target));
       const complete = nextProgress >= 100;
-      await supabase.from("tile_infrastructure").update({
+      const infrastructureUpdate: Record<string, unknown> = {
         progress: nextProgress,
         status: complete ? "completed" : "building",
-        level: complete ? target : undefined,
         target_level: complete ? null : target,
         completed_turn: complete ? turnNumber : null,
-      }).eq("id", project.id);
+      };
+      if (complete) infrastructureUpdate.level = target;
+      await supabase.from("tile_infrastructure").update(infrastructureUpdate).eq("id", project.id);
       if (complete) await safeInsert(supabase.from("game_events").insert({
         session_id: sessionId, turn_number: turnNumber, player: project.owner_player,
         actor_type: "system", event_type: "construction", confirmed: true, truth_state: "canon",
