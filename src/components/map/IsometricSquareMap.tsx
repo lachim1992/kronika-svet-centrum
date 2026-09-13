@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Props {
   sessionId: string;
@@ -43,7 +44,10 @@ const LAND_USE_COLOR: Record<string, string> = {
 };
 
 export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange }: Props) {
+  const isMobile = useIsMobile();
   const viewportRef = useRef<HTMLDivElement>(null);
+  const pinchRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [cities, setCities] = useState<City[]>([]);
@@ -195,10 +199,34 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   return (
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
-      onPointerDown={(event) => { dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false }; }}
-      onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; const dx = event.clientX - drag.x; const dy = event.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true; if (drag.moved) setPan({ x: drag.panX + dx / zoom, y: drag.panY + dy / zoom }); }}
-      onPointerUp={() => { window.setTimeout(() => { dragRef.current = null; }, 0); }}
-      onPointerLeave={() => { dragRef.current = null; }}
+      style={{ touchAction: "none" }}
+      onPointerDown={(event) => {
+        pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (pinchRef.current.size === 2) {
+          const [a, b] = [...pinchRef.current.values()];
+          pinchStartRef.current = { distance: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom };
+          dragRef.current = null;
+          return;
+        }
+        dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
+      }}
+      onPointerMove={(event) => {
+        if (pinchRef.current.has(event.pointerId)) pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        const start = pinchStartRef.current;
+        if (start && pinchRef.current.size === 2) {
+          const [a, b] = [...pinchRef.current.values()];
+          const distance = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+          setZoom(Math.max(.45, Math.min(2.4, start.zoom * (distance / start.distance))));
+          return;
+        }
+        const drag = dragRef.current; if (!drag) return;
+        const dx = event.clientX - drag.x; const dy = event.clientY - drag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
+        if (drag.moved) setPan({ x: drag.panX + dx / zoom, y: drag.panY + dy / zoom });
+      }}
+      onPointerUp={(event) => { pinchRef.current.delete(event.pointerId); if (pinchRef.current.size < 2) pinchStartRef.current = null; window.setTimeout(() => { dragRef.current = null; }, 0); }}
+      onPointerCancel={(event) => { pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null; }}
+      onPointerLeave={(event) => { pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null; }}
       onWheel={(event) => { event.preventDefault(); setZoom(value => Math.max(.45, Math.min(2.4, value * (event.deltaY > 0 ? .9 : 1.1)))); }}>
       <svg className="h-full w-full">
         <defs>
@@ -245,15 +273,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </g>
       </svg>
 
-      <div className="map-floating-control absolute bottom-4 right-4 z-30 flex items-center gap-1 p-1">
+      <div className={`map-floating-control absolute right-3 z-50 flex items-center gap-1 p-1 ${isMobile ? (selected ? "bottom-[66vh]" : "bottom-20") : "bottom-4"}`}>
         <Button size="icon" variant="ghost" aria-label="Oddálit" onClick={() => setZoom(value => Math.max(.45, value - .15))}><Minus className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" aria-label="Celá mapa" onClick={home}><Home className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" aria-label="Přiblížit" onClick={() => setZoom(value => Math.min(2.4, value + .15))}><Plus className="h-4 w-4" /></Button>
       </div>
-      <div className="map-floating-control absolute left-4 top-4 z-20 flex items-center gap-2 px-3 py-2 text-xs"><Layers3 className="h-4 w-4 text-primary"/><span>{gridKind === "square4" ? "Čtvercová síť" : "Původní svět"} · izometrické zobrazení</span></div>
+      <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>{gridKind === "square4" ? "Čtvercová síť" : "Původní svět"} · izometrické zobrazení</span></div>
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {cityCells.length} polí</p></div></div>}
 
-      {selected && <aside className="map-tile-detail absolute bottom-0 right-0 top-0 z-40 w-full overflow-y-auto border-l border-primary/20 bg-background/95 p-5 shadow-2xl backdrop-blur-xl sm:w-[380px]">
+      {selected && <aside className={`map-tile-detail absolute z-40 overflow-y-auto border-primary/20 bg-background/95 shadow-2xl backdrop-blur-xl ${isMobile ? "inset-x-0 bottom-0 max-h-[64vh] rounded-t-2xl border-t p-4" : "bottom-0 right-0 top-0 w-[380px] border-l p-5"}`}>
         <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail" onClick={() => { setSelected(null); onDetailOpenChange?.(false); }}><X className="h-4 w-4"/></Button>
         <div className="pr-10">
           <p className="text-[10px] font-semibold uppercase text-primary">Pole {selectedCell?.a}, {selectedCell?.b}</p>
