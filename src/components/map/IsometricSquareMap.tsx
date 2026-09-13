@@ -1137,7 +1137,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
-              {!active && zoom >= 1.2 && <g pointerEvents="none">
+              {!active && showSubBiomes && zoom >= 1.2 && <g pointerEvents="none">
                 <g opacity=".34">
                   {subBiomesOf(tile, cell.a, cell.b).map(parcel => (
                     <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY)}
