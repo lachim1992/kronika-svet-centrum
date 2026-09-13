@@ -44,12 +44,11 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Get or create world_seed
-    const { data: session } = await sb
-      .from("game_sessions")
-      .select("id, world_seed")
-      .eq("id", session_id)
-      .single();
+    // Get or create world_seed and resolve the immutable topology.
+    const [{ data: session }, { data: foundation }] = await Promise.all([
+      sb.from("game_sessions").select("id, world_seed").eq("id", session_id).single(),
+      sb.from("world_foundations").select("grid_kind").eq("session_id", session_id).maybeSingle(),
+    ]);
 
     if (!session) {
       return new Response(
@@ -59,6 +58,7 @@ Deno.serve(async (req) => {
     }
 
     let worldSeed = session.world_seed;
+    const gridKind = foundation?.grid_kind === "square4" ? "square4" : "hex6";
     if (!worldSeed) {
       worldSeed = crypto.randomUUID();
       await sb.from("game_sessions").update({ world_seed: worldSeed }).eq("id", session_id);
@@ -155,6 +155,8 @@ Deno.serve(async (req) => {
         session_id,
         q: hex.q,
         r: hex.r,
+        grid_x: gridKind === "square4" ? hex.q : null,
+        grid_y: gridKind === "square4" ? hex.r : null,
         seed: hex.seed,
         mean_height: hex.meanHeight,
         moisture_band: hex.moistureBand,
@@ -191,6 +193,7 @@ Deno.serve(async (req) => {
       hexCount: insertedCount,
       mapWidth: mapW,
       mapHeight: mapH,
+      gridKind,
       startPositions: map.startPositions,
       macroRegions: regionRows.length,
       riverCount: map.rivers.length,

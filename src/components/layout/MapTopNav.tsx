@@ -1,5 +1,6 @@
 import { BarChart3, BookOpen, Brain, Crown, Globe, Home, Map, Newspaper, Shield, Swords, Timer, Trophy, Wrench, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { TabId } from "./BottomNav";
 
 interface Props {
@@ -37,20 +38,24 @@ export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPers
         {items.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id;
           return (
-            <button
+            <Button
               key={id}
               type="button"
-              onClick={() => onTabChange(id)}
+              variant="ghost"
+              size="sm"
+              onClick={() => onTabChange(active && id !== "worldmap" ? "worldmap" : id)}
+              aria-pressed={active}
+              title={active && id !== "worldmap" ? `Zavřít ${label}` : `Otevřít ${label}`}
               className={cn(
-                "group relative flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-medium tracking-wide transition-all",
+                "group relative h-8 shrink-0 gap-1.5 rounded-md border px-2.5 text-[11px] font-medium tracking-normal transition-all",
                 active
                   ? "border-primary/55 bg-primary/15 text-primary shadow-[inset_0_-2px_0_hsl(var(--primary))]"
-                  : "border-transparent text-slate-300 hover:border-white/10 hover:bg-white/5 hover:text-white",
+                  : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground",
               )}
             >
               <Icon className="h-3.5 w-3.5" strokeWidth={active ? 2.2 : 1.5} />
-              <span>{label}</span>
-            </button>
+              <span className="hidden lg:inline">{label}</span>
+            </Button>
           );
         })}
       </div>

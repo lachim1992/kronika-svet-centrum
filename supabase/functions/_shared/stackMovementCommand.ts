@@ -33,7 +33,7 @@ export async function applyStackMove(
   // Load stack
   const { data: stack, error: stackErr } = await supabase
     .from("military_stacks")
-    .select("id, player_name, hex_q, hex_r, moved_this_turn, is_deployed")
+    .select("id, player_name, hex_q, hex_r, grid_x, grid_y, moved_this_turn, is_deployed")
     .eq("id", stackId)
     .eq("session_id", sessionId)
     .maybeSingle();
@@ -44,9 +44,21 @@ export async function applyStackMove(
     return { ok: false, error: "Tato jednotka se již tento tah přesunula.", code: "ALREADY_MOVED" };
   }
 
-  // Server validates: path[0] === current pos
+  const { data: foundation } = await supabase
+    .from("world_foundations")
+    .select("grid_kind")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  const gridKind = foundation?.grid_kind === "square4" ? "square4" : "hex6";
+  const stackQ = gridKind === "square4" ? stack.grid_x : stack.hex_q;
+  const stackR = gridKind === "square4" ? stack.grid_y : stack.hex_r;
+  if (typeof stackQ !== "number" || typeof stackR !== "number") {
+    return { ok: false, error: "Stack nemá platnou pozici pro tento typ mapy.", code: "POSITION_MISSING" };
+  }
+
+  // Server validates: path[0] === current position in the world's topology.
   const start = plannedPath[0];
-  if (start.q !== stack.hex_q || start.r !== stack.hex_r) {
+  if (start.q !== stackQ || start.r !== stackR) {
     return { ok: false, error: "Plánovaná cesta nezačíná na pozici stacku.", code: "PATH_START_MISMATCH" };
   }
 
@@ -56,18 +68,24 @@ export async function applyStackMove(
   const minQ = Math.min(...qList) - 1, maxQ = Math.max(...qList) + 1;
   const minR = Math.min(...rList) - 1, maxR = Math.max(...rList) + 1;
 
-  const { data: hexRows } = await supabase
+  let terrainQuery = supabase
     .from("province_hexes")
-    .select("q, r, biome_family, is_passable, has_river, has_bridge")
-    .eq("session_id", sessionId)
-    .gte("q", minQ).lte("q", maxQ)
-    .gte("r", minR).lte("r", maxR);
+    .select("q, r, grid_x, grid_y, biome_family, is_passable, has_river, has_bridge")
+    .eq("session_id", sessionId);
+  terrainQuery = gridKind === "square4"
+    ? terrainQuery.gte("grid_x", minQ).lte("grid_x", maxQ).gte("grid_y", minR).lte("grid_y", maxR)
+    : terrainQuery.gte("q", minQ).lte("q", maxQ).gte("r", minR).lte("r", maxR);
+  const { data: hexRows } = await terrainQuery;
 
   const lookup = new Map<string, HexInfo>();
-  for (const h of (hexRows || [])) lookup.set(hexKey(h.q, h.r), h);
+  for (const h of (hexRows || [])) {
+    const q = gridKind === "square4" ? h.grid_x : h.q;
+    const r = gridKind === "square4" ? h.grid_y : h.r;
+    if (typeof q === "number" && typeof r === "number") lookup.set(hexKey(q, r), { ...h, q, r });
+  }
 
-  const roadEdges = await buildRoadEdgeIndex(supabase, sessionId);
-  const allowed = computeAllowedMove(plannedPath, lookup, roadEdges);
+  const roadEdges = await buildRoadEdgeIndex(supabase, sessionId, gridKind);
+  const allowed = computeAllowedMove(plannedPath, lookup, roadEdges, gridKind);
 
   if (allowed.allowedSteps === 0) {
     return {
@@ -78,19 +96,18 @@ export async function applyStackMove(
   }
 
   // Atomic conditional update — guards against concurrent writers.
-  const { data: updated, error: updErr } = await supabase
+  const positionUpdate = gridKind === "square4"
+    ? { grid_x: allowed.finalHex.q, grid_y: allowed.finalHex.r, hex_q: allowed.finalHex.q, hex_r: allowed.finalHex.r, moved_this_turn: true }
+    : { hex_q: allowed.finalHex.q, hex_r: allowed.finalHex.r, moved_this_turn: true };
+  let updateQuery = supabase
     .from("military_stacks")
-    .update({
-      hex_q: allowed.finalHex.q,
-      hex_r: allowed.finalHex.r,
-      moved_this_turn: true,
-    })
+    .update(positionUpdate)
     .eq("id", stackId)
-    .eq("session_id", sessionId)
-    .eq("hex_q", stack.hex_q)
-    .eq("hex_r", stack.hex_r)
-    .select("id")
-    .maybeSingle();
+    .eq("session_id", sessionId);
+  updateQuery = gridKind === "square4"
+    ? updateQuery.eq("grid_x", stackQ).eq("grid_y", stackR)
+    : updateQuery.eq("hex_q", stackQ).eq("hex_r", stackR);
+  const { data: updated, error: updErr } = await updateQuery.select("id").maybeSingle();
 
   if (updErr) return { ok: false, error: `Move failed: ${updErr.message}`, code: "WRITE_FAILED" };
   if (!updated) {

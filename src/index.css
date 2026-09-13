@@ -83,6 +83,35 @@
     /* Elevated surface */
     --surface-elevated: 224 32% 19%;
 
+    /* Isometric tactical map */
+    --map-background: 194 61% 7%;
+    --map-water: hsl(188 76% 36%);
+    --map-water-edge: hsl(191 82% 24%);
+    --map-water-glint: hsl(179 56% 65%);
+    --map-plains: hsl(84 41% 40%);
+    --map-plains-edge: hsl(96 41% 29%);
+    --map-forest: hsl(115 38% 29%);
+    --map-forest-edge: hsl(142 40% 19%);
+    --map-hills: hsl(41 33% 41%);
+    --map-hills-edge: hsl(35 32% 28%);
+    --map-mountain: hsl(120 2% 47%);
+    --map-mountain-edge: hsl(180 3% 29%);
+    --map-desert: hsl(43 50% 57%);
+    --map-desert-edge: hsl(37 42% 42%);
+    --map-swamp: hsl(143 18% 34%);
+    --map-swamp-edge: hsl(157 28% 22%);
+    --map-tundra: hsl(176 10% 59%);
+    --map-tundra-edge: hsl(181 11% 43%);
+    --map-focus: hsl(43 78% 65%);
+    --map-route: hsl(39 54% 60%);
+    --map-marker: hsl(194 35% 12%);
+    --map-marker-edge: hsl(195 25% 8%);
+    --map-city-own: hsl(42 66% 63%);
+    --map-city-rival: hsl(7 47% 49%);
+    --map-city-base: hsl(147 22% 19%);
+    --map-label: hsl(44 100% 91%);
+    --map-label-edge: hsl(195 41% 5%);
+
     /* Card premium styling */
     --card-shadow: 0 4px 24px -8px hsl(228 40% 3% / 0.6), inset 0 1px 0 0 hsl(43 64% 52% / 0.05);
     --card-shadow-hover: 0 8px 32px -8px hsl(43 64% 52% / 0.12);
@@ -161,18 +190,40 @@
     box-shadow: 0 10px 30px rgb(0 0 0 / .25);
     backdrop-filter: blur(14px);
   }
+  .bg-map {
+    background-color: hsl(var(--map-background));
+  }
+  .map-floating-control {
+    border: 1px solid hsl(var(--primary) / .22);
+    border-radius: calc(var(--radius) - 2px);
+    color: hsl(var(--foreground));
+    background: hsl(var(--background) / .86);
+    box-shadow: var(--card-shadow);
+    backdrop-filter: blur(12px);
+  }
   .map-workspace-panel {
     pointer-events: auto;
-    width: min(1180px, calc(100% - 32px));
-    max-height: calc(100vh - 154px);
-    margin: 14px auto 0;
-    padding: 18px;
+    width: min(1040px, calc(100% - 40px));
+    max-height: min(68vh, calc(100vh - 170px));
+    margin: 8px auto 0;
+    padding: 14px;
     overflow-y: auto;
     border: 1px solid hsl(43 64% 52% / .22);
     border-radius: 0 0 16px 16px;
     background: linear-gradient(180deg, hsl(222 34% 12% / .97), hsl(222 34% 10% / .93));
     box-shadow: 0 20px 70px rgb(0 0 0 / .58), inset 0 1px hsl(43 64% 70% / .08);
     backdrop-filter: blur(18px);
+  }
+  @media (max-width: 767px) {
+    .map-workspace-panel {
+      width: 100%;
+      max-height: calc(100vh - 132px);
+      margin-top: 0;
+      padding: 10px;
+      border-left: 0;
+      border-right: 0;
+      border-radius: 0;
+    }
   }
   .map-first-shell main:has(.map-workspace-panel.hidden) {
     pointer-events: none;

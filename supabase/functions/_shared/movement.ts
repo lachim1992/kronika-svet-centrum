@@ -10,6 +10,7 @@
 //  - impassable hex is never entered.
 
 export type Hex = { q: number; r: number };
+export type GridKind = "hex6" | "square4";
 
 export type HexInfo = {
   q: number;
@@ -33,6 +34,10 @@ export const AXIAL_NEIGHBORS: ReadonlyArray<{ dq: number; dr: number }> = [
   { dq: 0, dr: 1 }, { dq: 0, dr: -1 },
   { dq: 1, dr: -1 }, { dq: -1, dr: 1 },
 ];
+export const SQUARE_NEIGHBORS: ReadonlyArray<{ dq: number; dr: number }> = [
+  { dq: 1, dr: 0 }, { dq: -1, dr: 0 },
+  { dq: 0, dr: 1 }, { dq: 0, dr: -1 },
+];
 
 export const HARD_BIOMES = new Set(["mountains", "mountain", "swamp", "dense_forest"]);
 
@@ -44,13 +49,18 @@ export function edgeKey(a: Hex, b: Hex): string {
   return ak < bk ? `${ak}|${bk}` : `${bk}|${ak}`;
 }
 
-export function hexDistance(a: Hex, b: Hex): number {
+export function gridDistance(a: Hex, b: Hex, gridKind: GridKind = "hex6"): number {
   const dq = a.q - b.q, dr = a.r - b.r;
+  if (gridKind === "square4") return Math.abs(dq) + Math.abs(dr);
   return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr));
 }
 
-export function areAdjacent(a: Hex, b: Hex): boolean {
-  return hexDistance(a, b) === 1;
+export function hexDistance(a: Hex, b: Hex): number {
+  return gridDistance(a, b, "hex6");
+}
+
+export function areAdjacent(a: Hex, b: Hex, gridKind: GridKind = "hex6"): boolean {
+  return gridDistance(a, b, gridKind) === 1;
 }
 
 export function isHardTerrain(hex?: HexInfo | null): boolean {
@@ -74,6 +84,7 @@ export function isImpassable(hex?: HexInfo | null): boolean {
 export async function buildRoadEdgeIndex(
   supabase: any,
   sessionId: string,
+  gridKind: GridKind = "hex6",
 ): Promise<RoadEdgeIndex> {
   const idx: RoadEdgeIndex = new Map();
 
@@ -95,18 +106,22 @@ export async function buildRoadEdgeIndex(
 
   const { data: flows } = await supabase
     .from("flow_paths")
-    .select("route_id, hex_path")
+    .select("route_id, hex_path, path_cells")
     .eq("session_id", sessionId)
     .in("route_id", Array.from(openRouteIds));
 
   for (const fp of (flows || [])) {
-    const path = fp.hex_path as Array<{ q: number; r: number }> | null;
+    const rawPath = gridKind === "square4" && Array.isArray(fp.path_cells) ? fp.path_cells : fp.hex_path;
+    const path = (rawPath as Array<{ q?: number; r?: number; x?: number; y?: number }> | null)?.map(cell => ({
+      q: gridKind === "square4" ? cell.x ?? cell.q ?? 0 : cell.q ?? cell.x ?? 0,
+      r: gridKind === "square4" ? cell.y ?? cell.r ?? 0 : cell.r ?? cell.y ?? 0,
+    })) ?? null;
     if (!Array.isArray(path) || path.length < 2) continue;
     for (let i = 0; i < path.length - 1; i++) {
       const a = path[i], b = path[i + 1];
       if (typeof a?.q !== "number" || typeof a?.r !== "number") continue;
       if (typeof b?.q !== "number" || typeof b?.r !== "number") continue;
-      if (!areAdjacent(a, b)) continue;
+      if (!areAdjacent(a, b, gridKind)) continue;
       idx.set(edgeKey(a, b), { routeId: fp.route_id, complete: true, open: true });
     }
   }
@@ -130,6 +145,7 @@ export function computeAllowedMove(
   plannedPath: Hex[],
   hexLookup: Map<string, HexInfo>,
   roadEdges: RoadEdgeIndex,
+  gridKind: GridKind = "hex6",
 ): AllowedMove {
   if (!plannedPath || plannedPath.length === 0) {
     return { allowedSteps: 0, finalHex: { q: 0, r: 0 }, usedRoadBonus: false, blockedReason: "empty_path" };
@@ -140,7 +156,7 @@ export function computeAllowedMove(
   }
 
   const step1 = plannedPath[1];
-  if (!areAdjacent(start, step1)) {
+  if (!areAdjacent(start, step1, gridKind)) {
     return { allowedSteps: 0, finalHex: start, usedRoadBonus: false, blockedReason: "step1_not_adjacent" };
   }
   const step1Info = hexLookup.get(hexKey(step1.q, step1.r));
@@ -160,7 +176,7 @@ export function computeAllowedMove(
   // Try step 2 with road bonus
   if (plannedPath.length >= 3) {
     const step2 = plannedPath[2];
-    if (!areAdjacent(step1, step2)) {
+    if (!areAdjacent(step1, step2, gridKind)) {
       return { allowedSteps, finalHex, usedRoadBonus: false, blockedReason: "step2_not_adjacent" };
     }
     const step2Info = hexLookup.get(hexKey(step2.q, step2.r));
@@ -196,16 +212,18 @@ export function stepToward(
   from: Hex,
   target: Hex,
   hexLookup: Map<string, HexInfo>,
+  gridKind: GridKind = "hex6",
 ): Hex | null {
   let best: Hex | null = null;
   let bestDist = Infinity;
-  for (const n of AXIAL_NEIGHBORS) {
+  const offsets = gridKind === "square4" ? SQUARE_NEIGHBORS : AXIAL_NEIGHBORS;
+  for (const n of offsets) {
     const cand = { q: from.q + n.dq, r: from.r + n.dr };
     const info = hexLookup.get(hexKey(cand.q, cand.r));
     if (info && isImpassable(info)) continue;
     // Allow stepping into unknown hex (no info) to avoid AI getting stuck on map fog;
     // executor will re-validate at write time.
-    const d = hexDistance(cand, target);
+    const d = gridDistance(cand, target, gridKind);
     if (d < bestDist) { bestDist = d; best = cand; }
   }
   return best;
@@ -221,6 +239,12 @@ export async function planShortHopToward(
   from: Hex,
   target: Hex,
 ): Promise<{ path: Hex[]; usedRoadBonus: boolean }> {
+  const { data: foundation } = await supabase
+    .from("world_foundations")
+    .select("grid_kind")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  const gridKind: GridKind = foundation?.grid_kind === "square4" ? "square4" : "hex6";
   // Pull a 3-hex radius around `from` to validate up to 2 steps
   const minQ = from.q - 3, maxQ = from.q + 3;
   const minR = from.r - 3, maxR = from.r + 3;
@@ -235,15 +259,15 @@ export async function planShortHopToward(
   const lookup = new Map<string, HexInfo>();
   for (const h of (hexes || [])) lookup.set(hexKey(h.q, h.r), h);
 
-  const step1 = stepToward(from, target, lookup);
+  const step1 = stepToward(from, target, lookup, gridKind);
   if (!step1) return { path: [from], usedRoadBonus: false };
 
   const candidate2: Hex[] = [from, step1];
-  const step2 = stepToward(step1, target, lookup);
+  const step2 = stepToward(step1, target, lookup, gridKind);
   if (step2 && (step2.q !== from.q || step2.r !== from.r)) candidate2.push(step2);
 
-  const roadEdges = await buildRoadEdgeIndex(supabase, sessionId);
-  const allowed = computeAllowedMove(candidate2, lookup, roadEdges);
+  const roadEdges = await buildRoadEdgeIndex(supabase, sessionId, gridKind);
+  const allowed = computeAllowedMove(candidate2, lookup, roadEdges, gridKind);
 
   const finalPath: Hex[] = [from];
   if (allowed.allowedSteps >= 1) finalPath.push(allowed.finalHex);
