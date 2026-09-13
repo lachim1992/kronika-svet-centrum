@@ -126,16 +126,6 @@ function seeded(text: string): number {
   return fnv1a(text) / 0x100000000;
 }
 
-function pick(defs: SubBiomeDef[], roll: number): SubBiomeDef {
-  const total = defs.reduce((sum, def) => sum + def.weight, 0);
-  let cursor = roll * total;
-  for (const def of defs) {
-    cursor -= def.weight;
-    if (cursor <= 0) return def;
-  }
-  return defs[defs.length - 1];
-}
-
 function pickWeighted(defs: Array<SubBiomeDef & { blendWeight: number }>, roll: number): SubBiomeDef {
   const total = defs.reduce((sum, def) => sum + def.blendWeight, 0);
   let cursor = roll * total;
