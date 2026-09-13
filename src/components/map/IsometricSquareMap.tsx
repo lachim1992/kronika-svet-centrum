@@ -684,10 +684,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         className="cursor-pointer" transform={`translate(${point.x},${point.y - order * 2})`}
         onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); setSelectedNodeId(node.id); }}
         onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); setSelectedNodeId(node.id); } }}>
-        <circle r={active ? 5.5 : 4.5} fill="var(--map-marker)" stroke={active ? "var(--map-focus)" : style.accent} strokeWidth={active ? 2 : 1.2} />
-        {node.node_type === "fortress" ? <Shield x="-2.7" y="-2.7" width="5.4" height="5.4" stroke={style.accent} />
-          : node.node_type === "trade_hub" || node.node_type === "port" ? <Store x="-2.7" y="-2.7" width="5.4" height="5.4" stroke={style.accent} />
-          : <Factory x="-2.7" y="-2.7" width="5.4" height="5.4" stroke={style.accent} />}
+        {active && <polygon points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y).split(" ").map(pair => {
+          const [x, y] = pair.split(",").map(Number);
+          return `${x - point.x},${y - point.y}`;
+        }).join(" ")} fill="none" stroke="var(--map-focus)" strokeWidth="1.2" />}
+        {renderWorkplaceGlyph(node, 1.1)}
         <title>{`${node.name} · parcela ${index + 1}`}</title>
       </g>;
     });
