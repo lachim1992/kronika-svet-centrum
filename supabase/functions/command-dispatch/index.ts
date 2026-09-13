@@ -2672,7 +2672,7 @@ async function getAvailableParcel(supabase: any, cityId: string, requestedParcel
   return null;
 }
 
-async function occupyParcel(supabase: any, parcelId: string, kind: "building" | "district", entityId: string, landUse: string) {
+async function occupyParcel(supabase: any, sessionId: string, parcelId: string, kind: "building" | "district", entityId: string, landUse: string) {
   const update = kind === "building"
     ? { status: "occupied", land_use: landUse, building_id: entityId }
     : { status: "occupied", land_use: landUse, district_id: entityId };
@@ -2680,7 +2680,7 @@ async function occupyParcel(supabase: any, parcelId: string, kind: "building" | 
   await supabase.from(kind === "building" ? "city_buildings" : "city_districts")
     .update({ parcel_id: parcelId }).eq("id", entityId);
   await supabase.from("tile_parcel_contents").insert({
-    session_id: undefined, parcel_id: parcelId, entity_type: kind, entity_id: entityId, slots_used: 1,
+    session_id: sessionId, parcel_id: parcelId, entity_type: kind, entity_id: entityId, slots_used: 1,
   });
 }
 
@@ -2775,7 +2775,7 @@ async function executeAssignCityParcel(
   const { data: entity } = await supabase.from(table).select("id, category, district_type").eq("id", entityId).eq("city_id", cityId).maybeSingle();
   if (!entity) return { events: [], error: "Objekt nepatří do vybraného města" };
   const landUse = kind === "district" ? (entity.district_type || "residential") : categoryToLandUse(entity.category);
-  await occupyParcel(supabase, parcelId, kind, entityId, landUse);
+  await occupyParcel(supabase, sessionId, parcelId, kind, entityId, landUse);
   return insertEvents(supabase, commandId, [{ ...base, event_type: "city_planning", city_id: cityId, note: `${city.name} upravilo parcelní plán.`, importance: "minor", reference: { cityId, parcelId, buildingId, districtId } }]);
 }
 
@@ -2886,7 +2886,7 @@ async function executeBuildBuilding(
   }).select("id").single();
 
   if (insertErr) return { events: [], error: `Insert failed: ${insertErr.message}` };
-  if (targetParcel) await occupyParcel(supabase, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category));
+  if (targetParcel) await occupyParcel(supabase, sessionId, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category));
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
@@ -3015,7 +3015,7 @@ async function executeBuildDistrict(
   }).select("id").single();
 
   if (dErr) return { events: [], error: `District insert failed: ${dErr.message}` };
-  if (targetParcel) await occupyParcel(supabase, targetParcel.id, "district", inserted.id, district.district_type || "residential");
+  if (targetParcel) await occupyParcel(supabase, sessionId, targetParcel.id, "district", inserted.id, district.district_type || "residential");
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
