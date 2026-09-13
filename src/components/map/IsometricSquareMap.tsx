@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
+import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS } from "@/lib/tileParcels";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Props {
@@ -24,6 +25,11 @@ type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: nu
 type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
 type UrbanCell = { id: string; city_id: string; grid_x: number; grid_y: number; cell_role: string; status: string; development_progress: number; claim_order: number };
+type TileParcel = {
+  id: string; parcel_index: number; parcel_x: number; parcel_y: number; sub_biome: string; elevation: number;
+  buildable: boolean; build_cost_multiplier: number; capacity_slots: number; status: string;
+  land_use: string | null; city_id: string | null; owner_player: string | null;
+};
 type Parcel = { id: string; city_id: string; urban_cell_id: string; parcel_x: number; parcel_y: number; land_use: string; status: string; building_id: string | null; district_id: string | null };
 
 const TILE_SIZE = 42;
@@ -35,6 +41,34 @@ const BIOMES: Record<string, [string, string]> = {
   mountains: ["var(--map-mountain)", "var(--map-mountain-edge)"], mountain: ["var(--map-mountain)", "var(--map-mountain-edge)"],
   desert: ["var(--map-desert)", "var(--map-desert-edge)"], swamp: ["var(--map-swamp)", "var(--map-swamp-edge)"],
   tundra: ["var(--map-tundra)", "var(--map-tundra-edge)"],
+};
+
+const SUB_BIOME_LABEL: Record<string, string> = {
+  fertile_flat: "úrodná rovina", grassland: "pastvina", hillock: "pahorek", boggy_dip: "mokrá sníženina",
+  dry_flat: "vyprahlá rovina", gravel_rise: "štěrkový hřbet", dense_forest: "hustý les", clearing: "průsek",
+  creek_bank: "břeh potoka", ridge_woods: "lesnatý hřeben", thick_canopy: "neprostupný prales", terrace: "terasa",
+  saddle: "sedlo", steep_slope: "prudký svah", sheltered_hollow: "chráněná úžlabina", crag: "skalní stěna",
+  mountain_shelf: "horská police", pass_floor: "dno průsmyku", sand_flat: "písečná plošina", dune: "duna",
+  rocky_patch: "kamenitá plocha", oasis_edge: "okraj oázy", frozen_flat: "zmrzlá rovina",
+  permafrost_rise: "permafrostový hřbet", reed_marsh: "rákosiště", raised_bank: "vyvýšený břeh",
+  fertile_silt: "úrodné nánosy", shore: "pobřeží", harbour_flat: "přístavní rovina", cliff_edge: "útes",
+  open_water: "otevřená voda", river_bank: "břeh řeky", open_ground: "otevřená zem", shallow_dip: "mírná sníženina",
+  thicket: "houští",
+};
+
+const SUB_BIOME_COLOR: Record<string, string> = {
+  fertile_flat: "var(--map-plains)", grassland: "var(--map-plains)", dry_flat: "var(--map-desert)",
+  hillock: "var(--map-hills)", terrace: "var(--map-hills)", saddle: "var(--map-hills)",
+  steep_slope: "var(--map-mountain)", crag: "var(--map-mountain)", mountain_shelf: "var(--map-mountain)",
+  pass_floor: "var(--map-hills)", dense_forest: "var(--map-forest)", ridge_woods: "var(--map-forest)",
+  thick_canopy: "var(--map-forest)", clearing: "var(--map-plains)", thicket: "var(--map-forest)",
+  creek_bank: "var(--map-water)", river_bank: "var(--map-water)", shore: "var(--map-water-edge)",
+  harbour_flat: "var(--map-water-edge)", open_water: "var(--map-water)", cliff_edge: "var(--map-mountain-edge)",
+  boggy_dip: "var(--map-swamp)", reed_marsh: "var(--map-swamp)", raised_bank: "var(--map-swamp-edge)",
+  fertile_silt: "var(--map-plains-edge)", sand_flat: "var(--map-desert)", dune: "var(--map-desert-edge)",
+  oasis_edge: "var(--map-plains)", rocky_patch: "var(--map-hills-edge)", gravel_rise: "var(--map-hills-edge)",
+  frozen_flat: "var(--map-tundra)", permafrost_rise: "var(--map-tundra-edge)",
+  sheltered_hollow: "var(--map-plains)", shallow_dip: "var(--map-plains)", open_ground: "var(--map-plains)",
 };
 
 const LAND_USE_COLOR: Record<string, string> = {
@@ -61,6 +95,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selected, setSelected] = useState<Tile | null>(null);
   const [cityLayerCityId, setCityLayerCityId] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
+  const [tileParcels, setTileParcels] = useState<TileParcel[]>([]);
+  const [parcelsLoading, setParcelsLoading] = useState(false);
+  const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
 
   const tileCell = useCallback((tile: Tile) => ({
     a: gridKind === "square4" && tile.grid_x !== null ? tile.grid_x : tile.q,
@@ -124,6 +161,61 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const growthPressure = cityForPressure ? Math.min(100, Math.round(cityForPressure.population_total / Math.max(1, cityParcelCount * PARCEL_CAPACITY) * 100)) : 0;
   const occupiedParcels = selectedCity ? parcels.filter(parcel => parcel.city_id === selectedCity.id && parcel.status === "occupied").length : 0;
   const netGrowth = cityForPressure ? Math.round(cityForPressure.population_total * ((cityForPressure.birth_rate || 0) - (cityForPressure.death_rate || 0)) + (cityForPressure.migration_pressure || 0)) : 0;
+
+  const loadTileParcels = useCallback(async (gridX: number, gridY: number) => {
+    setParcelsLoading(true);
+    const { data, error } = await supabase.functions.invoke("tile-parcels", { body: { session_id: sessionId, grid_x: gridX, grid_y: gridY } });
+    setParcelsLoading(false);
+    if (error) { setTileParcels([]); return; }
+    setTileParcels(((data as { parcels?: TileParcel[] })?.parcels || []) as TileParcel[]);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!selected) { setTileParcels([]); return; }
+    const cell = tileCell(selected);
+    void loadTileParcels(cell.a, cell.b);
+  }, [selected, tileCell, loadTileParcels]);
+
+  const claimedSlots = useMemo(() => tileParcels.reduce((sum, parcel) =>
+    parcel.status === "claimed" || parcel.status === "occupied" ? sum + (parcel.capacity_slots || 0) : sum, 0), [tileParcels]);
+  const claimHost = selectedCity || expansionCity;
+  const claimedForCity = useMemo(() => tileParcels.filter(parcel => parcel.city_id && parcel.city_id === claimHost?.id).length, [tileParcels, claimHost]);
+
+  const claimParcel = async (parcel: TileParcel) => {
+    if (!claimHost || !selectedCell) return;
+    setClaimingParcel(parcel.parcel_index);
+    const result = await dispatchCommand({
+      sessionId, turnNumber: currentTurn, actor: { name: playerName },
+      commandType: "CLAIM_TILE_PARCEL",
+      commandPayload: { cityId: claimHost.id, gridX: selectedCell.a, gridY: selectedCell.b, parcelIndex: parcel.parcel_index },
+    });
+    setClaimingParcel(null);
+    if (!result.ok) { toast.error(result.error || "Parcelu nelze získat"); return; }
+    toast.success(`${claimHost.name} zabralo parcelu ${parcel.parcel_index + 1}`);
+    await loadTileParcels(selectedCell.a, selectedCell.b);
+    await load();
+  };
+
+  const parcelQuad = (centerPoint: { x: number; y: number }, px: number, py: number) => {
+    const point = (a: number, b: number) => `${centerPoint.x + (a - b) * TILE_SIZE},${centerPoint.y + (a + b - 1) * TILE_SIZE / 2}`;
+    const a0 = px / TILE_PARCEL_COLS; const a1 = (px + 1) / TILE_PARCEL_COLS;
+    const b0 = py / TILE_PARCEL_ROWS; const b1 = (py + 1) / TILE_PARCEL_ROWS;
+    return [point(a0, b0), point(a1, b0), point(a1, b1), point(a0, b1)].join(" ");
+  };
+
+  const renderTileParcels = (centerPoint: { x: number; y: number }) => <g>
+    {tileParcels.map(parcel => {
+      const base = SUB_BIOME_COLOR[parcel.sub_biome] || "var(--map-plains)";
+      const fill = parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "open"] || LAND_USE_COLOR.open)
+        : parcel.status === "claimed" ? "var(--map-parcel-open)" : base;
+      return <g key={parcel.id}>
+        <polygon points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)} fill={fill}
+          stroke={parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"} strokeWidth=".5"
+          opacity={parcel.buildable ? (parcel.status === "wild" ? .78 : .95) : .55} />
+        <title>{`${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}`}</title>
+      </g>;
+    })}
+  </g>;
 
   const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
   const focusTile = (tile: Tile, requestedCityId?: string) => {
@@ -243,6 +335,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
               {tile.biome_family.includes("forest") && !urbanCell && <Trees x={point.x - 8} y={point.y - 11} width="16" height="16" fill="var(--map-forest-edge)" stroke="var(--map-label)" strokeWidth=".8" />}
+               {active && tileParcels.length > 0 && renderTileParcels(point)}
                {urbanCell && (cityLayerCityId ? cityLayerCityId === urbanCell.city_id : zoom >= 2) && renderParcelGrid(urbanCell, point)}
             </g>;
           })}
