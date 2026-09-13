@@ -1,14 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { loadGridKind, neighborOffsets, ringCells } from "../_shared/topology.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const NEIGHBORS = [
-  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
