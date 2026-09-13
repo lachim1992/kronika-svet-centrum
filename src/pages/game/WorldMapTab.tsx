@@ -13,9 +13,10 @@ interface Props {
   onCityClick?: (cityId: string) => void;
   gridKind?: "hex6" | "square4";
   backgroundMode?: boolean;
+  onDetailOpenChange?: (open: boolean) => void;
 }
 
-const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentTurn, onCityClick, gridKind = "hex6", backgroundMode = false }: Props) => {
+const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentTurn, onCityClick, gridKind = "hex6", backgroundMode = false, onDetailOpenChange }: Props) => {
   const isMobile = useIsMobile();
 
   return (
@@ -23,8 +24,10 @@ const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentT
       <IsometricSquareMap
         sessionId={sessionId}
         playerName={currentPlayerName}
+        currentTurn={currentTurn}
         onCityClick={onCityClick}
         gridKind={gridKind}
+        onDetailOpenChange={onDetailOpenChange}
       />
 
       {/* Stage 8 floating overlays */}
