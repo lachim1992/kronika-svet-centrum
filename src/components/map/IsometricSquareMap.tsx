@@ -818,7 +818,20 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
 
 
+  /** Why this subnode cannot be placed on the selected parcel right now — null means buildable. */
+  const subnodeBlockReason = (option: SubnodeOption): string | null => {
+    if (!selectedParcel || !selectedParcel.city_id) return "Nejdřív parcelu zaber pro město";
+    if (selectedParcel.owner_player !== playerName) return "Parcela ti nepatří";
+    if (!selectedParcel.buildable) return "Nezastavitelná parcela";
+    if (selectedParcelUsed >= selectedParcel.capacity_slots) return "Parcela je plná";
+    if (option.key === "river_wharf" && !selected?.has_river && !selected?.coastal) return "Vyžaduje řeku nebo pobřeží";
+    if (option.key === "farmstead" && ["mountains", "mountain", "desert"].includes(selected?.biome_family || "")) return "Nevhodný terén";
+    if (treasury.gold < option.gold || treasury.production < option.production) return `Chybí zdroje (${option.gold} zlata, ${option.production} produkce)`;
+    return null;
+  };
+
   const buildSubnode = async (subtype: string, label: string) => {
+
     if (!selectedParcel) return;
     setBuildingAction(`node-${subtype}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_SUBNODE", commandPayload: { parcelId: selectedParcel.id, subtype } });
