@@ -447,8 +447,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
    */
   const subBiomeCache = useRef(new Map<string, TileParcelSpec[]>());
   useEffect(() => { subBiomeCache.current.clear(); }, [tiles, sessionId]);
+  /** Already materialized sub-parcels are the truth; the hint must never diverge from them. */
+  const storedSubBiomesByCell = useMemo(() => {
+    const map = new Map<string, TileParcelSpec[]>();
+    storedSubBiomes.forEach(row => {
+      const key = cellKey(row.grid_x, row.grid_y);
+      const spec = {
+        parcelIndex: row.parcel_index, parcelX: row.parcel_x, parcelY: row.parcel_y, subBiome: row.sub_biome,
+      } as TileParcelSpec;
+      map.set(key, [...(map.get(key) || []), spec]);
+    });
+    return map;
+  }, [storedSubBiomes]);
   const subBiomesOf = useCallback((tile: Tile, a: number, b: number) => {
     const key = cellKey(a, b);
+    const stored = storedSubBiomesByCell.get(key);
+    if (stored && stored.length) return stored;
     const cached = subBiomeCache.current.get(key);
     if (cached) return cached;
     const neighbours = CARDINAL_STEPS.flatMap(step => {
@@ -458,7 +472,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const specs = generateTileParcels(sessionId, a, b, terrainOf(tile), neighbours);
     subBiomeCache.current.set(key, specs);
     return specs;
-  }, [tileByCell, terrainOf, sessionId]);
+  }, [storedSubBiomesByCell, tileByCell, terrainOf, sessionId]);
+
 
   /** Which borders a cell's road reaches: neighbours that carry a road or hold a settlement. */
   const roadStepsOf = useCallback((a: number, b: number) => CARDINAL_STEPS.filter(step => {
