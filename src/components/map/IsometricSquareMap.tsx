@@ -392,6 +392,85 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return segments;
   }, [tiles, tileCell, sessionId]);
 
+  const tileByCell = useMemo(() => new Map(tiles.map(tile => {
+    const cell = tileCell(tile); return [cellKey(cell.a, cell.b), tile] as const;
+  })), [tiles, tileCell]);
+  const infrastructureByCell = useMemo(
+    () => new Map(infrastructure.map(item => [cellKey(item.grid_x, item.grid_y), item])),
+    [infrastructure],
+  );
+  /** Screen point of one sub-parcel, in unpanned map space. */
+  const subPoint = useCallback((a: number, b: number, px: number, py: number) => projectCell("square4", {
+    a: a + (px + .5) / TILE_PARCEL_COLS - .5,
+    b: b + (py + .5) / TILE_PARCEL_ROWS - .5,
+  }, TILE_SIZE), []);
+  const terrainOf = useCallback((tile: Tile) => ({
+    biome_family: tile.biome_family, elevation: tile.mean_height, has_river: tile.has_river,
+    river_direction: tile.river_direction, is_passable: tile.is_passable,
+  }), []);
+  /** Which borders a cell's road reaches: neighbours that carry a road or hold a settlement. */
+  const roadStepsOf = useCallback((a: number, b: number) => CARDINAL_STEPS.filter(step => {
+    const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
+    if (!neighbour || neighbour.is_passable === false || neighbour.biome_family === "sea") return false;
+    return !!infrastructureByCell.get(cellKey(a + step.dx, b + step.dy)) || !!cityByCell.get(cellKey(a + step.dx, b + step.dy));
+  }), [tileByCell, infrastructureByCell, cityByCell]);
+
+  /**
+   * Macro roads trace the very same sub-parcel channel as the opened parcel layer, and every
+   * sub-parcel where the trace meets the river is drawn (and charged) as a bridge.
+   */
+  const roadNetwork = useMemo(() => {
+    const segments: Array<{ id: string; from: { x: number; y: number }; to: { x: number; y: number }; level: number; building: boolean }> = [];
+    const bridges: Array<{ id: string; point: { x: number; y: number } }> = [];
+    infrastructure.forEach(item => {
+      const tile = tileByCell.get(cellKey(item.grid_x, item.grid_y));
+      if (!tile) return;
+      const steps = roadStepsOf(item.grid_x, item.grid_y);
+      const branches = tileRoadBranches(sessionId, item.grid_x, item.grid_y, steps);
+      branches.forEach((branch, branchIndex) => {
+        for (let index = 0; index < branch.length - 1; index += 1) {
+          segments.push({
+            id: `road-${item.id}-${branchIndex}-${index}`,
+            from: subPoint(item.grid_x, item.grid_y, branch[index].x, branch[index].y),
+            to: subPoint(item.grid_x, item.grid_y, branch[index + 1].x, branch[index + 1].y),
+            level: item.level || 1,
+            building: item.status === "building",
+          });
+        }
+      });
+      const neighbours = CARDINAL_STEPS.flatMap(step => {
+        const neighbour = tileByCell.get(cellKey(item.grid_x + step.dx, item.grid_y + step.dy));
+        return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
+      });
+      tileBridgeCells(sessionId, item.grid_x, item.grid_y, steps, terrainOf(tile), neighbours).forEach((cell, index) => {
+        bridges.push({ id: `bridge-${item.id}-${index}`, point: subPoint(item.grid_x, item.grid_y, cell.x, cell.y) });
+      });
+    });
+    return { segments, bridges };
+  }, [infrastructure, tileByCell, roadStepsOf, sessionId, subPoint, terrainOf]);
+
+  /** Trade flows ride the road trace instead of cutting straight across cell centres. */
+  const routePolylines = useMemo(() => routes.flatMap(route => {
+    const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path;
+    if (!Array.isArray(path) || path.length < 2) return [];
+    const cells = path.map(cell => ({ a: cell.x ?? cell.q ?? 0, b: cell.y ?? cell.r ?? 0 }));
+    const points: Array<{ x: number; y: number }> = [];
+    cells.forEach((cell, index) => {
+      const previous = cells[index - 1]; const next = cells[index + 1];
+      const steps = [previous, next].flatMap(other => other
+        ? [{ dx: Math.sign(other.a - cell.a), dy: Math.sign(other.b - cell.b) }]
+        : []).filter(step => Math.abs(step.dx) + Math.abs(step.dy) === 1);
+      if (!steps.length) { points.push(subPoint(cell.a, cell.b, 2, 2)); return; }
+      const branches = tileRoadBranches(sessionId, cell.a, cell.b, steps);
+      const toPrevious = previous ? branches[0] : null;
+      const toNext = previous ? branches[1] : branches[0];
+      (toPrevious || []).forEach(sub => points.push(subPoint(cell.a, cell.b, sub.x, sub.y)));
+      [...(toNext || [])].reverse().forEach(sub => points.push(subPoint(cell.a, cell.b, sub.x, sub.y)));
+    });
+    return [{ id: route.route_id || JSON.stringify(path), points }];
+  }), [routes, gridKind, sessionId, subPoint]);
+
+
   /** One war-band illustration per cell; further stacks are folded into a count badge. */
   const armyGroups = useMemo(() => {
     const groups = new Map<string, { cell: { a: number; b: number }; list: Army[] }>();
