@@ -70,6 +70,17 @@ const NODE_SPRITE: Record<string, string> = {
 const nodeSprite = (node: { node_type: string; node_subtype: string | null }) =>
   NODE_SPRITE[node.node_subtype || ""] || NODE_SPRITE[node.node_type] || spriteHamlet;
 
+/** Buildable subnodes — costs mirror SUBNODE_DEFS in command-dispatch. */
+type SubnodeOption = { key: string; label: string; gold: number; production: number; hint: string };
+const SUBNODE_OPTIONS: SubnodeOption[] = [
+  { key: "farmstead", label: "Produkční dvůr", gold: 35, production: 45, hint: "+4 zásoby" },
+  { key: "workshop", label: "Řemeslná dílna", gold: 45, production: 55, hint: "+5 produkce" },
+  { key: "guard_post", label: "Strážnice", gold: 50, production: 65, hint: "kontrola pole" },
+  { key: "trade_post", label: "Obchodní stanice", gold: 70, production: 40, hint: "+5 bohatství" },
+  { key: "river_wharf", label: "Říční překladiště", gold: 80, production: 60, hint: "říční obchod" },
+];
+
+
 /** Painted picture for a building or district — matched by name first, then category. */
 const BUILD_NAME_SPRITE: Array<[RegExp, string]> = [
   [/arén/i, buildArena],
