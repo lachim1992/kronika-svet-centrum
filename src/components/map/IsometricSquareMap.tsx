@@ -178,7 +178,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const claimedSlots = useMemo(() => tileParcels.reduce((sum, parcel) =>
     parcel.status === "claimed" || parcel.status === "occupied" ? sum + (parcel.capacity_slots || 0) : sum, 0), [tileParcels]);
-  const claimHost = selectedCity || expansionCity;
+  // Only your own city can buy parcels — a rival settlement must never offer the action.
+  const claimHost = [selectedCity, expansionCity].find(city => city?.owner_player === playerName);
   const claimedForCity = useMemo(() => tileParcels.filter(parcel => parcel.city_id && parcel.city_id === claimHost?.id).length, [tileParcels, claimHost]);
 
   const claimParcel = async (parcel: TileParcel) => {
@@ -408,7 +409,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               })}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              {claimHost ? `Klikni na volnou parcelu a ${claimHost.name} ji vykoupí. Cena i kapacita vycházejí z podterénu.` : "Parcely lze vykupovat jen z pole vašeho města nebo z pole hned vedle něj."}
+              {claimHost
+                ? `Klikni na volnou parcelu a ${claimHost.name} ji vykoupí. Cena i kapacita vycházejí z podterénu.`
+                : selectedCity
+                  ? `${selectedCity.name} patří ${selectedCity.owner_player} — cizí parcely vykupovat nelze.`
+                  : "Parcely lze vykupovat jen z pole vašeho města nebo z pole hned vedle něj."}
             </p>
           </>}
         </section>
