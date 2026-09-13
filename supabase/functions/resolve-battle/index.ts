@@ -43,15 +43,7 @@ function seededRandom(seed: number): number {
   return (s & 0x7fffffff) / 0x7fffffff;
 }
 
-// ═══ HEX HELPERS (axial coords) ═══
-const HEX_NEIGHBORS = [
-  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-];
-function hexDistance(aq: number, ar: number, bq: number, br: number): number {
-  const dq = aq - bq;
-  const dr = ar - br;
-  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
-}
+// ═══ GRID HELPERS (topology-aware) ═══
 
 // Pick best retreat hex: empty of enemy stacks/cities, farthest from winner
 async function findRetreatHex(
