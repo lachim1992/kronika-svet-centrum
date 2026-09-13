@@ -201,10 +201,10 @@ Deno.serve(async (req) => {
 
     // Load provinces, hexes, cities, AND existing nodes
     const [provRes, hexRes, cityRes, existingNodesRes] = await Promise.all([
-      sb.from("provinces").select("id, name, owner_player, center_q, center_r").eq("session_id", session_id),
-      sb.from("province_hexes").select("id, q, r, province_id, biome_family, coastal, mean_height, is_passable, movement_cost").eq("session_id", session_id).limit(10000),
-      sb.from("cities").select("id, name, province_id, province_q, province_r, is_capital, settlement_level, population_total, owner_player").eq("session_id", session_id),
-      sb.from("province_nodes").select("id, hex_q, hex_r, node_tier, node_subtype, city_id").eq("session_id", session_id),
+      sb.from("provinces").select("id, name, owner_player, center_q, center_r, center_x, center_y").eq("session_id", session_id),
+      sb.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, coastal, mean_height, is_passable, movement_cost").eq("session_id", session_id).limit(10000),
+      sb.from("cities").select("id, name, province_id, province_q, province_r, grid_x, grid_y, is_capital, settlement_level, population_total, owner_player").eq("session_id", session_id),
+      sb.from("province_nodes").select("id, hex_q, hex_r, grid_x, grid_y, node_tier, node_subtype, city_id").eq("session_id", session_id),
     ]);
 
     const provinces = provRes.data || [];
@@ -573,6 +573,8 @@ Deno.serve(async (req) => {
         const { _parentMajorIdx, _parentMinorIdx, _parentExistingId, ...rest } = n;
         return {
           ...rest,
+          grid_x: rest.hex_q,
+          grid_y: rest.hex_r,
           fortification_level: rest.fortification_level ?? 0,
           infrastructure_level: rest.infrastructure_level ?? 0,
           population: rest.population ?? 0,

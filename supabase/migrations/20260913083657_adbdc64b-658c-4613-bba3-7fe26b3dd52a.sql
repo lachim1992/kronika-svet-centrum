@@ -1,0 +1,1 @@
+ALTER TABLE public.world_foundations ALTER COLUMN grid_kind SET DEFAULT 'square4';
