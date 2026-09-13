@@ -2901,7 +2901,9 @@ async function executeBuildSubnode(
   const { data: parcel } = await supabase.from("tile_parcels")
     .select("id, city_id, owner_player, grid_x, grid_y, parcel_index, buildable, capacity_slots, sub_biome")
     .eq("id", parcelId).eq("session_id", sessionId).maybeSingle();
-  if (!parcel || parcel.owner_player !== actor.name || !parcel.city_id) return { events: [], error: "Parcela vám nepatří" };
+  if (!parcel) return { events: [], error: "Parcela nebyla nalezena" };
+  if (parcel.owner_player !== actor.name) return { events: [], error: parcel.owner_player ? `Parcelu drží ${parcel.owner_player}` : "Nejdřív parcelu zaber pro své město" };
+  if (!parcel.city_id) return { events: [], error: "Parcela není přiřazena žádnému tvému městu" };
   if (!parcel.buildable) return { events: [], error: "Na této parcele nelze stavět" };
 
   const { data: contents } = await supabase.from("tile_parcel_contents").select("slots_used").eq("parcel_id", parcelId);
@@ -2911,9 +2913,17 @@ async function executeBuildSubnode(
   const { data: tile } = await supabase.from("province_hexes")
     .select("province_id, biome_family, coastal, has_river, is_passable")
     .eq("session_id", sessionId).eq("grid_x", parcel.grid_x).eq("grid_y", parcel.grid_y).maybeSingle();
-  if (!tile?.province_id || tile.is_passable === false) return { events: [], error: "Pole nemá platnou provincii" };
+  if (!tile) return { events: [], error: "Pole nebylo nalezeno" };
+  if (tile.is_passable === false) return { events: [], error: "Pole je neprůchodné" };
   if (subtype === "river_wharf" && !tile.coastal && !tile.has_river) return { events: [], error: "Překladiště vyžaduje řeku nebo pobřeží" };
   if (subtype === "farmstead" && ["mountains", "mountain", "desert"].includes(String(tile.biome_family))) return { events: [], error: "Produkční dvůr se pro tento terén nehodí" };
+
+  // Provinces are optional on square-grid worlds — fall back to the owning city's province.
+  let provinceId: string | null = tile.province_id ?? null;
+  const { data: parcelCity } = await supabase.from("cities")
+    .select("id, name, province_id, owner_player").eq("id", parcel.city_id).eq("session_id", sessionId).maybeSingle();
+  if (!parcelCity || parcelCity.owner_player !== actor.name) return { events: [], error: "Město u této parcely ti nepatří" };
+  if (!provinceId) provinceId = parcelCity.province_id ?? null;
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
@@ -2922,15 +2932,17 @@ async function executeBuildSubnode(
   }
 
   const { data: node, error: nodeError } = await supabase.from("province_nodes").insert({
-    session_id: sessionId, province_id: tile.province_id, city_id: parcel.city_id,
+    session_id: sessionId, province_id: provinceId, city_id: parcel.city_id,
     name: String(payload.name || def.label).slice(0, 80), node_type: def.nodeType, node_tier: "micro",
     node_subtype: subtype, node_class: "transit", hex_q: parcel.grid_x, hex_r: parcel.grid_y,
     grid_x: parcel.grid_x, grid_y: parcel.grid_y, parcel_index: parcel.parcel_index,
     controlled_by: actor.name, built_by: actor.name, built_turn: turnNumber, biome_at_build: tile.biome_family,
     production_output: Number(def.resource.production || 0), wealth_output: Number(def.resource.wealth || 0),
     food_value: Number(def.resource.supplies || 0), resource_output: def.resource,
-    capability_tags: def.capabilities, flow_role: def.group === "trade" ? "producer" : def.group === "military" ? "regulator" : "producer",
+    capability_tags: def.capabilities, production_role: def.role,
+    flow_role: def.group === "trade" ? "producer" : def.group === "military" ? "regulator" : "producer",
     fortification_level: def.group === "military" ? 1 : 0, is_active: true, upgrade_level: 1, max_upgrade_level: 3,
+
   }).select("id").single();
   if (nodeError || !node) return { events: [], error: nodeError?.message || "Subuzel se nepodařilo vytvořit" };
 
