@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { generateTileParcels, TILE_PARCEL_COUNT } from "../_shared/tileParcels.ts";
+import { seatCityOnParcels } from "../_shared/citySeat.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,7 +79,27 @@ Deno.serve(async (req) => {
       parcels = refreshed ?? parcels;
     }
 
-    return json({ ok: true, tile: tile ?? null, parcels });
+    // Self-heal: a city standing on this cell always owns a seat parcel.
+    const { data: city } = await sb.from("cities")
+      .select("id, name, owner_player, population_total, founded_parcel_index")
+      .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
+    if (city && !parcels.some((row: { city_id: string | null }) => row.city_id === city.id)) {
+      const { data: session } = await sb.from("game_sessions").select("current_turn").eq("id", sessionId).maybeSingle();
+      const result = await seatCityOnParcels(sb, {
+        sessionId, cityId: city.id, cityName: city.name, ownerPlayer: city.owner_player,
+        gridX, gridY, population: Number(city.population_total || 0),
+        turnNumber: Number(session?.current_turn || 1),
+        preferredIndex: city.founded_parcel_index ?? null,
+      });
+      if (result.seatIndex !== null && city.founded_parcel_index !== result.seatIndex) {
+        await sb.from("cities").update({ founded_parcel_index: result.seatIndex }).eq("id", city.id);
+      }
+      const { data: healed } = await sb.from("tile_parcels")
+        .select("*").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).order("parcel_index");
+      parcels = healed ?? parcels;
+    }
+
+    return json({ ok: true, tile: tile ?? null, city: city ?? null, parcels });
   } catch (error) {
     console.error("tile-parcels error:", error);
     return json({ error: (error as Error).message }, 500);
