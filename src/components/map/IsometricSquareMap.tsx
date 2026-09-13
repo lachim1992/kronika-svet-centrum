@@ -633,6 +633,33 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   };
 
   const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
+  const viewRef = useRef({ zoom, pan });
+  viewRef.current = { zoom, pan };
+  const zoomBy = (factor: number, screenX?: number, screenY?: number) => {
+    const { zoom: current, pan: currentPan } = viewRef.current;
+    const next = clampZoom(current * factor);
+    if (next === current) return;
+    const element = viewportRef.current;
+    const px = screenX ?? (element ? element.clientWidth / 2 : 0);
+    const py = screenY ?? (element ? element.clientHeight / 2 : 0);
+    const shift = 1 / next - 1 / current;
+    setPan({ x: currentPan.x + px * shift, y: currentPan.y + py * shift });
+    setZoom(next);
+  };
+  const zoomHandlerRef = useRef(zoomBy);
+  zoomHandlerRef.current = zoomBy;
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const dy = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1);
+      const rect = element.getBoundingClientRect();
+      zoomHandlerRef.current(Math.exp(-dy * 0.0018), event.clientX - rect.left, event.clientY - rect.top);
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, []);
   const focusTile = (tile: Tile, requestedCityId?: string) => {
     const element = viewportRef.current; if (!element) return;
     const cell = tileCell(tile); const projected = projectCell("square4", cell, TILE_SIZE);
