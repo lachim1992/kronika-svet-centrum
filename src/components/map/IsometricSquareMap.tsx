@@ -692,7 +692,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   /** Painted sprite of what the node actually is — no ramparts, no towers. */
   const renderWorkplaceGlyph = (node: Node, scale = 1) => {
     const style = NODE_STYLE[node.node_type] || NODE_STYLE.resource_node;
-    const size = 13 * scale;
+    const size = 10.5 * scale;
     return <g>
       <ellipse cx="0" cy="2.4" rx={size * .38} ry={size * .17} fill="var(--map-city-wall-dark)" opacity=".22" />
       <image href={nodeSprite(node)} x={-size / 2} y={-size * .82} width={size} height={size}
