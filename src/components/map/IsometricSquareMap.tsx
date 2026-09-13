@@ -1208,7 +1208,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 strokeDasharray={segment.building || segment.level === 1 ? "4 3" : undefined} opacity=".95" />
             </g>;
           })}
-          {!cityLayerCityId && roadNetwork.bridges.map(bridge => {
+          {roadNetwork.bridges.map(bridge => {
             const point = { x: bridge.point.x + pan.x, y: bridge.point.y + pan.y };
             return <g key={bridge.id} pointerEvents="none">
               <rect x={point.x - 5} y={point.y - 2.6} width="10" height="5.2" rx="1.4" fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".8" />
