@@ -105,6 +105,8 @@ const BUILD_NAME_SPRITE: Array<[RegExp, string]> = [
   [/přístav|dok|loděnic|molo/i, spritePort],
   [/čtvrť|obytn|domy|kolonie|předmě|nájem/i, buildResidential],
 ];
+/** Terrain a new settlement may be founded on — mirrors the server rule in FOUND_CITY. */
+const CITY_ALLOWED_BIOMES = ["plains", "hills", "forest", "swamp"];
 
 const CATEGORY_SPRITE: Record<string, string> = {
   economic: spriteWorkshop, cultural: buildCulture, infrastructure: buildInfrastructure,
