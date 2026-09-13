@@ -746,7 +746,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       const size = width * 3.1;
       return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
         <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".3" />
-        <image href={sprite} x={-size / 2} y={-size * .82} width={size} height={size} preserveAspectRatio="xMidYMid meet" />
+        <image href={sprite} x={-size / 2} y={-size + height * .55} width={size} height={size} preserveAspectRatio="xMidYMax meet" />
         <title>{built?.name || parcel.land_use || "Zástavba"}</title>
       </g>;
     }
