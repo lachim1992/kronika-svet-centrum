@@ -10,6 +10,7 @@ import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
+import { CARDINAL_STEPS, tileBridgeCells, tileRoadBranches, tileRoadCost } from "@/lib/tileRoads";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
@@ -1047,7 +1048,29 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water)" strokeWidth="1.15" strokeLinecap="round" opacity=".95" />
             </g>;
           })}
-          {!cityLayerCityId && showRoutes && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
+          {!cityLayerCityId && roadNetwork.segments.map(segment => {
+            const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
+            const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
+            const width = segment.level >= 3 ? 4.4 : segment.level === 2 ? 3.4 : 2.4;
+            return <g key={segment.id} pointerEvents="none">
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 1.4} strokeLinecap="round" opacity=".35" />
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-route)" strokeWidth={width} strokeLinecap="round"
+                strokeDasharray={segment.building || segment.level === 1 ? "4 3" : undefined} opacity=".95" />
+            </g>;
+          })}
+          {!cityLayerCityId && roadNetwork.bridges.map(bridge => {
+            const point = { x: bridge.point.x + pan.x, y: bridge.point.y + pan.y };
+            return <g key={bridge.id} pointerEvents="none">
+              <rect x={point.x - 5} y={point.y - 2.6} width="10" height="5.2" rx="1.4" fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".8" />
+              <line x1={point.x - 5} y1={point.y - 2.6} x2={point.x + 5} y2={point.y - 2.6} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity=".8" />
+            </g>;
+          })}
+          {!cityLayerCityId && showRoutes && routePolylines.map(route => (
+            <polyline key={route.id} points={route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ")}
+              fill="none" stroke="var(--map-route)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
+              opacity=".95" className="iso-active-route" pointerEvents="none" />
+          ))}
+
           {showNodes && nodes.map(node => {
             if (node.node_type === "primary_city" || node.node_type === "secondary_city") return null;
             const cell = entityCell(node);
