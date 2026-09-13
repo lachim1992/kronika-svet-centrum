@@ -316,10 +316,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   useEffect(() => {
     if (!selected) { setTileParcels([]); setSelectedParcelId(null); setSelectedNodeId(null); return; }
     setSelectedParcelId(null);
-    setSelectedNodeId(null);
+    if (selectedNodeId) {
+      const node = nodes.find(item => item.id === selectedNodeId);
+      const cell = node ? entityCell(node) : null;
+      const selectedTileCell = tileCell(selected);
+      if (!cell || cell.a !== selectedTileCell.a || cell.b !== selectedTileCell.b) setSelectedNodeId(null);
+    }
     const cell = tileCell(selected);
     void loadTileParcels(cell.a, cell.b);
-  }, [selected, tileCell, loadTileParcels]);
+  }, [selected, selectedNodeId, nodes, entityCell, tileCell, loadTileParcels]);
+
+  useEffect(() => {
+    if (!selectedNodeId || !tileParcels.length) return;
+    const node = nodes.find(item => item.id === selectedNodeId);
+    const parcel = node?.parcel_index === null || node?.parcel_index === undefined
+      ? undefined : tileParcels.find(item => item.parcel_index === node.parcel_index);
+    if (parcel) setSelectedParcelId(parcel.id);
+  }, [selectedNodeId, tileParcels, nodes]);
 
   const claimedSlots = useMemo(() => tileParcels.reduce((sum, parcel) =>
     parcel.status === "claimed" || parcel.status === "occupied" ? sum + (parcel.capacity_slots || 0) : sum, 0), [tileParcels]);
@@ -476,7 +489,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const wallColor = own ? "var(--map-city-own)" : "var(--map-city-rival)";
     const edges = footprintWallEdges(parcels, centerPoint);
     const occupied = parcels.filter(parcel => parcel.status === "occupied");
-    return <g pointerEvents="none">
+    return <g>
       {parcels.map(parcel => (
         <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
           fill={parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open) : "var(--map-parcel-open)"}
@@ -666,8 +679,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {!cityLayerCityId && showNodes && nodes.map(node => {
             if (node.node_type === "primary_city" || node.node_type === "secondary_city") return null;
             const cell = entityCell(node);
-            if (cityByCell.get(cellKey(cell.a, cell.b))) return null;
-            return <g key={node.id}>{renderNodeCompound(node, at(cell.a, cell.b))}</g>;
+            const openNode = () => {
+              const tile = tiles.find(candidate => { const candidateCell = tileCell(candidate); return candidateCell.a === cell.a && candidateCell.b === cell.b; });
+              if (!tile) return;
+              setSelectedNodeId(node.id);
+              focusTile(tile, cityByCell.get(cellKey(cell.a, cell.b)));
+            };
+            return <g key={node.id} role="button" tabIndex={0} aria-label={`Otevřít uzel ${node.name}`} className="cursor-pointer"
+              onClick={event => { event.stopPropagation(); openNode(); }}
+              onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openNode(); } }}>
+              {renderNodeCompound(node, at(cell.a, cell.b))}
+            </g>;
           })}
           {cities.map(city => {
             const cell = cityCellOf(city); const point = at(cell.a, cell.b);
