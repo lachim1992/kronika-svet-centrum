@@ -852,8 +852,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   /** Why this subnode cannot be placed on the selected parcel right now — null means buildable. */
 
   const subnodeBlockReason = (option: SubnodeOption): string | null => {
-    if (!selectedParcel || !selectedParcel.city_id) return "Nejdřív parcelu zaber pro město";
-    if (selectedParcel.owner_player !== playerName) return "Parcela ti nepatří";
+    if (!selectedParcel) return "Vyber podčtverec";
+    if (selectedParcel.owner_player && selectedParcel.owner_player !== playerName) return `Parcelu drží ${selectedParcel.owner_player}`;
+    if (foreignOwner) return `Pole ovládá ${foreignOwner}`;
     if (!selectedParcel.buildable) return "Nezastavitelná parcela";
     if (selectedParcelUsed >= selectedParcel.capacity_slots) return "Parcela je plná";
     if (option.key === "river_wharf" && !selected?.has_river && !selected?.coastal) return "Vyžaduje řeku nebo pobřeží";
