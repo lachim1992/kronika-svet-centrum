@@ -568,18 +568,79 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     </g>;
   };
 
+  /** Small animated workplace glyph — what the sub-node actually does, no ramparts. */
+  const renderWorkplaceGlyph = (node: Node, scale = 1) => {
+    const style = NODE_STYLE[node.node_type] || NODE_STYLE.resource_node;
+    const subtype = node.node_subtype || node.node_type;
+    const shed = <g>
+      <path d="M-3.6 1.2 L0 -1.8 L3.6 1.2 L0 3.2 Z" fill="var(--map-city-wall-dark)" opacity=".85" />
+      <path d="M-3.6 1.2 L0 -1.8 L3.6 1.2 L0 .2 Z" fill="var(--map-city-wall-light)" />
+    </g>;
+    const inner = (() => {
+      if (subtype === "farmstead" || style.landUse === "agricultural" || node.node_type === "resource_node") return <g>
+        {shed}
+        {[-4.6, -2.6, 2.6, 4.6].map((offset, index) => (
+          <path key={offset} className="iso-crop-sway" style={{ animationDelay: `${index * .4}s` }}
+            d={`M${offset} 2.6 L${offset} -.6`} stroke="var(--map-forest-edge)" strokeWidth=".9" strokeLinecap="round" />
+        ))}
+      </g>;
+      if (subtype === "workshop" || style.landUse === "industrial") return <g>
+        {shed}
+        <path d="M1.4 -1.9 L1.4 -4.2 L2.6 -4.2 L2.6 -1.9 Z" fill="var(--map-city-wall-dark)" />
+        {[0, 1, 2].map(index => (
+          <circle key={index} className="iso-smoke-puff" style={{ animationDelay: `${index * 1}s` }}
+            cx="2" cy="-4.4" r="1.1" fill="var(--map-label)" opacity=".45" />
+        ))}
+      </g>;
+      if (subtype === "guard_post" || style.landUse === "military") return <g>
+        {shed}
+        <circle className="iso-patrol-step" cx="0" cy="3.4" r=".9" fill={style.accent} />
+        <path d="M-.4 -2 L-.4 -5.4 L2.4 -4.6 L-.4 -3.8" fill={style.accent} stroke={style.accent} strokeWidth=".4" />
+      </g>;
+      if (subtype === "trade_post" || style.landUse === "commercial") return <g>
+        {shed}
+        <g className="iso-trade-bob">
+          <rect x="-2.4" y="-4.6" width="4.8" height="1.5" rx=".4" fill={style.accent} opacity=".9" />
+          <rect x="-1.4" y="1" width="1.6" height="1.4" fill="var(--map-marker)" />
+        </g>
+      </g>;
+      if (subtype === "river_wharf" || node.node_type === "port") return <g>
+        {shed}
+        <path d="M-4.8 3 L4.8 3" stroke="var(--map-route)" strokeWidth="1.4" strokeLinecap="round" strokeDasharray="2 2" className="iso-wharf-wave" />
+        <path d="M0 -1.9 L0 -5.6 M0 -5.6 L2.4 -4.4 L0 -3.4" fill="var(--map-marker)" stroke={style.accent} strokeWidth=".5" />
+      </g>;
+      return <g>
+        {shed}
+        <circle className="iso-city-hearth" cx="0" cy=".6" r="1" fill="var(--map-window)" />
+      </g>;
+    })();
+    return <g transform={`scale(${scale})`}>{inner}</g>;
+  };
+
   /** Node compound drawn in the same parcel/rampart language as city footprints. */
   const renderNodeCompound = (node: Node, centerPoint: { x: number; y: number }) => {
     const style = NODE_STYLE[node.node_type] || NODE_STYLE.resource_node;
     // Every node owns a concrete sub-parcel; its tier decides how many parcels the compound covers.
-    const size = node.node_tier === "major" ? 9 : node.node_tier === "minor" ? 4 : 2;
+    const micro = node.node_tier === "micro";
+    const size = node.node_tier === "major" ? 6 : node.node_tier === "minor" ? 3 : 1;
     const anchor = node.parcel_index ?? fallbackArmyParcel(node.id);
     const parcels = armyCampParcels(anchor, size).map((index, order) => ({
       id: `${node.id}-${order}`, parcel_x: index % TILE_PARCEL_COLS, parcel_y: Math.floor(index / TILE_PARCEL_COLS),
       parcel_index: index, status: "occupied", land_use: style.landUse,
     })) as unknown as TileParcel[];
     const edges = footprintWallEdges(parcels, centerPoint);
-    const walled = style.walled;
+    const walled = style.walled && !micro;
+    if (micro) {
+      const corners = parcelCorners(centerPoint, parcels[0].parcel_x, parcels[0].parcel_y);
+      const center = { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
+      return <g pointerEvents="auto">
+        <polygon points={parcelQuad(centerPoint, parcels[0].parcel_x, parcels[0].parcel_y)}
+          fill={LAND_USE_COLOR[style.landUse] || LAND_USE_COLOR.open}
+          stroke={style.accent} strokeWidth=".4" opacity=".9" />
+        <g transform={`translate(${center.x},${center.y})`}>{renderWorkplaceGlyph(node, .9)}</g>
+        <title>{`${node.name} · ${style.label}`}</title>
+      </g>;
+    }
     return <g pointerEvents="auto">
       {parcels.map(parcel => (
         <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
@@ -623,10 +684,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         className="cursor-pointer" transform={`translate(${point.x},${point.y - order * 2})`}
         onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); setSelectedNodeId(node.id); }}
         onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); setSelectedNodeId(node.id); } }}>
-        <circle r={active ? 5.5 : 4.5} fill="var(--map-marker)" stroke={active ? "var(--map-focus)" : style.accent} strokeWidth={active ? 2 : 1.2} />
-        {node.node_type === "fortress" ? <Shield x="-2.7" y="-2.7" width="5.4" height="5.4" stroke={style.accent} />
-          : node.node_type === "trade_hub" || node.node_type === "port" ? <Store x="-2.7" y="-2.7" width="5.4" height="5.4" stroke={style.accent} />
-          : <Factory x="-2.7" y="-2.7" width="5.4" height="5.4" stroke={style.accent} />}
+        {active && <polygon points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y).split(" ").map(pair => {
+          const [x, y] = pair.split(",").map(Number);
+          return `${x - point.x},${y - point.y}`;
+        }).join(" ")} fill="none" stroke="var(--map-focus)" strokeWidth="1.2" />}
+        {renderWorkplaceGlyph(node, 1.1)}
         <title>{`${node.name} · parcela ${index + 1}`}</title>
       </g>;
     });

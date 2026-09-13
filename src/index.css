@@ -291,12 +291,48 @@
   @keyframes iso-road-build {
     to { stroke-dashoffset: -7; }
   }
+  .iso-crop-sway {
+    transform-origin: bottom center;
+    animation: iso-crop-sway 3.4s ease-in-out infinite alternate;
+  }
+  .iso-smoke-puff {
+    animation: iso-smoke-puff 3.2s ease-out infinite;
+  }
+  .iso-patrol-step {
+    animation: iso-worker-shift 3.6s ease-in-out infinite alternate;
+  }
+  .iso-trade-bob {
+    animation: iso-trade-bob 2.8s ease-in-out infinite alternate;
+  }
+  .iso-wharf-wave {
+    animation: iso-wharf-wave 2.6s linear infinite;
+  }
+  @keyframes iso-crop-sway {
+    from { transform: rotate(-6deg); }
+    to { transform: rotate(6deg); }
+  }
+  @keyframes iso-smoke-puff {
+    0% { transform: translateY(0) scale(.6); opacity: .55; }
+    100% { transform: translateY(-7px) scale(1.25); opacity: 0; }
+  }
+  @keyframes iso-trade-bob {
+    from { transform: translateY(0); }
+    to { transform: translateY(-2px); }
+  }
+  @keyframes iso-wharf-wave {
+    to { stroke-dashoffset: -6; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .iso-active-route { animation: none; }
     .iso-city-hearth { animation: none; opacity: .8; }
     .iso-construction-rise,
     .iso-construction-scaffold,
     .iso-construction-worker,
+    .iso-crop-sway,
+    .iso-smoke-puff,
+    .iso-patrol-step,
+    .iso-trade-bob,
+    .iso-wharf-wave,
     .iso-construction-road { animation: none; }
   }
   .scrollbar-hide {
