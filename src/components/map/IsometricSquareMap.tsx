@@ -730,8 +730,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           strokeDasharray={roadBuilding || roadTier === 1 ? "2 1.5" : undefined} strokeLinecap="round" opacity=".95" pointerEvents="none"
           className={roadBuilding ? "iso-construction-road" : undefined} />;
       })}
-      {/* the through-road: same channel the macro map draws, with bridges over the river */}
-      {(roadTier > 0 || selectedInfrastructure?.status === "building") && selectedRoadPlan?.branches.flatMap((branch, branchIndex) => {
+      {/* the through-road: same channel the macro map draws, with bridges over the river.
+          Roads only cross the sub-parcels — they never take a building slot, so a planned
+          trace is drawn even before the project is paid for. */}
+      {selectedRoadPlan?.branches.flatMap((branch, branchIndex) => {
+        const planned = roadTier === 0 && selectedInfrastructure?.status !== "building";
         const centre = (sub: { x: number; y: number }) => {
           const corners = parcelCorners(centerPoint, sub.x, sub.y);
           return { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
@@ -739,9 +742,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         return branch.slice(1).map((sub, index) => {
           const from = centre(branch[index]); const to = centre(sub);
           return <line key={`through-road-${branchIndex}-${index}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-            stroke="var(--map-route)" strokeWidth={roadTier === 3 ? 3 : roadTier === 2 ? 2.4 : 1.6}
-            strokeDasharray={selectedInfrastructure?.status === "building" || roadTier === 1 ? "3 2" : undefined}
-            strokeLinecap="round" opacity=".95" pointerEvents="none" />;
+            stroke="var(--map-route)" strokeWidth={planned ? 1.2 : roadTier === 3 ? 3 : roadTier === 2 ? 2.4 : 1.6}
+            strokeDasharray={planned || selectedInfrastructure?.status === "building" || roadTier === 1 ? "3 2" : undefined}
+            strokeLinecap="round" opacity={planned ? .4 : .95} pointerEvents="none" />;
         });
       })}
       {selectedRoadPlan?.bridges.map((sub, index) => {
@@ -1195,7 +1198,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water)" strokeWidth="1.15" strokeLinecap="round" opacity=".95" />
             </g>;
           })}
-          {!cityLayerCityId && roadNetwork.segments.map(segment => {
+          {roadNetwork.segments.map(segment => {
             const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
             const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
             const width = segment.level >= 3 ? 4.4 : segment.level === 2 ? 3.4 : 2.4;
@@ -1205,7 +1208,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 strokeDasharray={segment.building || segment.level === 1 ? "4 3" : undefined} opacity=".95" />
             </g>;
           })}
-          {!cityLayerCityId && roadNetwork.bridges.map(bridge => {
+          {roadNetwork.bridges.map(bridge => {
             const point = { x: bridge.point.x + pan.x, y: bridge.point.y + pan.y };
             return <g key={bridge.id} pointerEvents="none">
               <rect x={point.x - 5} y={point.y - 2.6} width="10" height="5.2" rx="1.4" fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".8" />
@@ -1500,6 +1503,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             {selectedRoadPlan.tier?.label}: {selectedRoadPlan.cost.gold} zlata · {selectedRoadPlan.cost.production} produkce
             {selectedRoadPlan.bridges.length ? ` · ${selectedRoadPlan.bridges.length}× most přes řeku` : ""}
           </p>}
+          <p className="mt-1 text-[10px] text-muted-foreground">Cesta jen prochází podčtverci — nezabírá stavební slot, parcely pod ní zůstávají volné. Slabě vyznačená trasa je plán.</p>
         </section>}
 
 
