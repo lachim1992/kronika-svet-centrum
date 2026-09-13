@@ -98,6 +98,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [parcelsLoading, setParcelsLoading] = useState(false);
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
+  const [showRoutes, setShowRoutes] = useState(true);
+  const [showNodes, setShowNodes] = useState(true);
 
   const tileCell = useCallback((tile: Tile) => ({
     a: tile.grid_x !== null ? tile.grid_x : tile.q,
@@ -478,6 +480,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <Button size="icon" variant="ghost" aria-label="Oddálit" onClick={() => setZoom(value => Math.max(.45, value - .15))}><Minus className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" aria-label="Celá mapa" onClick={home}><Home className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" aria-label="Přiblížit" onClick={() => setZoom(value => Math.min(2.4, value + .15))}><Plus className="h-4 w-4" /></Button>
+        <span className="mx-1 h-5 w-px bg-border" />
+        <Button size="icon" variant={showRoutes ? "secondary" : "ghost"} aria-label={showRoutes ? "Skrýt toky a cesty" : "Zobrazit toky a cesty"} aria-pressed={showRoutes} onClick={() => setShowRoutes(value => !value)}><Route className={`h-4 w-4 ${showRoutes ? "" : "opacity-40"}`} /></Button>
+        <Button size="icon" variant={showNodes ? "secondary" : "ghost"} aria-label={showNodes ? "Skrýt uzly" : "Zobrazit uzly"} aria-pressed={showNodes} onClick={() => setShowNodes(value => !value)}><Landmark className={`h-4 w-4 ${showNodes ? "" : "opacity-40"}`} /></Button>
       </div>
       <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>Čtvercová síť · izometrické zobrazení</span></div>
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
