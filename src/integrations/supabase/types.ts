@@ -1460,6 +1460,9 @@ export type Database = {
       }
       city_districts: {
         Row: {
+          basket_key: string | null
+          basket_output: number
+          basket_quality: number
           build_cost_stone: number
           build_cost_wealth: number
           build_cost_wood: number
@@ -1471,12 +1474,14 @@ export type Database = {
           completed_turn: number | null
           created_at: string
           current_population: number
+          demand_bonus: number
           description: string | null
           district_type: string
           grain_modifier: number
           id: string
           image_url: string | null
           influence_modifier: number
+          is_staffed: boolean
           military_attraction: number
           name: string
           parcel_id: string | null
@@ -1489,6 +1494,9 @@ export type Database = {
           wealth_modifier: number
         }
         Insert: {
+          basket_key?: string | null
+          basket_output?: number
+          basket_quality?: number
           build_cost_stone?: number
           build_cost_wealth?: number
           build_cost_wood?: number
@@ -1500,12 +1508,14 @@ export type Database = {
           completed_turn?: number | null
           created_at?: string
           current_population?: number
+          demand_bonus?: number
           description?: string | null
           district_type?: string
           grain_modifier?: number
           id?: string
           image_url?: string | null
           influence_modifier?: number
+          is_staffed?: boolean
           military_attraction?: number
           name?: string
           parcel_id?: string | null
@@ -1518,6 +1528,9 @@ export type Database = {
           wealth_modifier?: number
         }
         Update: {
+          basket_key?: string | null
+          basket_output?: number
+          basket_quality?: number
           build_cost_stone?: number
           build_cost_wealth?: number
           build_cost_wood?: number
@@ -1529,12 +1542,14 @@ export type Database = {
           completed_turn?: number | null
           created_at?: string
           current_population?: number
+          demand_bonus?: number
           description?: string | null
           district_type?: string
           grain_modifier?: number
           id?: string
           image_url?: string | null
           influence_modifier?: number
+          is_staffed?: boolean
           military_attraction?: number
           name?: string
           parcel_id?: string | null

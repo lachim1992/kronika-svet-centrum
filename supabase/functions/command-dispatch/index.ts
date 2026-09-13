@@ -22,6 +22,15 @@ import {
 } from "../_shared/citySeat.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
+import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
+
+/** The 12 canonical demand baskets a production district may be pointed at. */
+const CANONICAL_BASKETS = new Set([
+  "staple_food", "basic_clothing", "tools", "fuel", "drinking_water", "storage_logistics",
+  "admin_supplies", "construction", "metalwork", "military_supply", "luxury_clothing", "feast",
+]);
+const resolveBasketKey = (raw: string) => (CANONICAL_BASKETS.has(raw) ? raw : "staple_food");
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -464,8 +473,12 @@ async function executeCommand(
     case "BUILD_DISTRICT":
       return await executeBuildDistrict(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "SET_DISTRICT_PRODUCTION":
+      return await executeSetDistrictProduction(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "ASSIGN_CITY_PARCEL":
       return await executeAssignCityParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
 
     case "CLAIM_TILE_PARCEL":
       return await executeClaimTileParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
@@ -3228,10 +3241,28 @@ async function executeBuildDistrict(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { cityId, cityName, district, chronicleText, parcelId } = payload;
+  const { cityId, cityName, district, chronicleText, parcelId, basketKey } = payload;
   if (!cityId || !district) return { events: [], error: "Missing cityId or district" };
+  const isProduction = district.district_type === "production";
+  let chosenBasket: string | null = null;
+  if (isProduction) {
+    chosenBasket = resolveBasketKey(String(basketKey || district.baskets?.[0] || "staple_food"));
+    if (Array.isArray(district.baskets) && district.baskets.length > 0 && !district.baskets.includes(chosenBasket)) {
+      return { events: [], error: "Tato čtvrť neumí vyrábět zvolený koš" };
+    }
+    // One residential district staffs two production districts — the labour gate.
+    const { data: existing } = await supabase.from("city_districts")
+      .select("district_type, status").eq("session_id", sessionId).eq("city_id", cityId)
+      .in("status", ["completed", "building"]);
+    const residential = (existing || []).filter((d: any) => d.district_type === "residential").length;
+    const production = (existing || []).filter((d: any) => d.district_type === "production").length;
+    if (production >= residential * PRODUCTION_PER_RESIDENTIAL) {
+      return { events: [], error: `Chybí pracovní síla — postav obytnou čtvrť (${production}/${residential * PRODUCTION_PER_RESIDENTIAL} obsazeno)` };
+    }
+  }
   const targetParcel = await getAvailableParcel(supabase, cityId, parcelId);
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
+
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
@@ -3269,6 +3300,11 @@ async function executeBuildDistrict(
     status: buildTurns <= 1 ? "completed" : "building",
     completed_turn: buildTurns <= 1 ? turnNumber : null,
     description: district.description || null,
+    basket_key: chosenBasket,
+    basket_output: isProduction ? (district.basket_output || 0) : 0,
+    basket_quality: district.basket_quality || 1,
+    demand_bonus: district.demand_bonus || 0,
+
   }).select("id").single();
 
   if (dErr) {
@@ -3288,11 +3324,43 @@ async function executeBuildDistrict(
     ...base,
     event_type: "construction",
     city_id: cityId,
-    note: `${actor.name} založil čtvrť ${district.name} v ${cityName}.`,
+    note: `${actor.name} založil čtvrť ${district.name} v ${cityName}${chosenBasket ? ` — výroba: ${chosenBasket}` : ""}.`,
     importance: "normal",
-    reference: { districtId: inserted.id, districtName: district.name, cityId, parcelId: targetParcel?.id || null },
+    reference: { districtId: inserted.id, districtName: district.name, cityId, parcelId: targetParcel?.id || null, basketKey: chosenBasket },
   }], chronicleText, { districtId: inserted.id });
 }
+
+/**
+ * SET_DISTRICT_PRODUCTION — point an existing production district at another demand basket.
+ * Payload: { districtId, basketKey }
+ */
+async function executeSetDistrictProduction(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { districtId, basketKey } = payload;
+  if (!districtId || !basketKey) return { events: [], error: "Missing districtId or basketKey" };
+  const { data: district } = await supabase.from("city_districts")
+    .select("id, name, city_id, district_type, cities!inner(name, owner_player)")
+    .eq("session_id", sessionId).eq("id", districtId).maybeSingle();
+  if (!district) return { events: [], error: "Čtvrť nenalezena" };
+  if (district.cities?.owner_player !== actor.name) return { events: [], error: "Čtvrť patří jiné říši" };
+  if (district.district_type !== "production") return { events: [], error: "Jen produkční čtvrť lze nastavit na výrobu" };
+
+  const resolved = resolveBasketKey(String(basketKey));
+  const { error: uErr } = await supabase.from("city_districts").update({ basket_key: resolved }).eq("id", districtId);
+  if (uErr) return { events: [], error: `Nastavení výroby selhalo: ${uErr.message}` };
+
+  return insertEvents(supabase, commandId, [{
+    ...base,
+    event_type: "economy",
+    city_id: district.city_id,
+    note: `${district.name} v ${district.cities?.name || "?"} přešla na výrobu ${resolved}.`,
+    importance: "minor",
+    reference: { districtId, basketKey: resolved },
+  }]);
+}
+
 
 /**
  * UPGRADE_SETTLEMENT — deduct consumable resources, update city level.
