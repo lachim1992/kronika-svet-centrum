@@ -5,6 +5,7 @@
  * All game state mutations should go through this helper.
  */
 import { supabase } from "@/integrations/supabase/client";
+import { isSandboxMode } from "@/hooks/useSandboxMode";
 
 interface CommandActor {
   name: string;
@@ -46,6 +47,8 @@ export async function dispatchCommand(params: {
       commandType: params.commandType,
       commandPayload: params.commandPayload,
       commandId,
+      // Testing mode: skip resource costs & construction waiting, keep effects.
+      sandbox: isSandboxMode(),
     },
   });
 

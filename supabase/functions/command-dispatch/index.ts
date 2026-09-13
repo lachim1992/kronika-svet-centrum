@@ -100,6 +100,13 @@ Deno.serve(async (req) => {
 
     const effectiveTurn = turnNumber ?? session.current_turn;
 
+    // ── Sandbox (testing) mode ──
+    // Removes the economic gate only: resources are topped up before the command
+    // and every queued construction is finished immediately, so the real game
+    // effects of each change are visible right away. All other rules still apply.
+    const sandbox = body.sandbox === true && actor?.type !== "ai_faction";
+    if (sandbox) await sandboxTopUp(supabase, sessionId, actor);
+
     // ── Execute command ──
     const result = await executeCommand(
       supabase, sessionId, effectiveTurn, actor, commandType, commandPayload, commandId
@@ -107,6 +114,10 @@ Deno.serve(async (req) => {
 
     if (result.error) {
       return json({ error: result.error }, result.status || 400);
+    }
+
+    if (sandbox && !result.idempotent) {
+      await sandboxInstantComplete(supabase, sessionId, actor, effectiveTurn);
     }
 
     // ── Audit log ──
@@ -242,6 +253,97 @@ async function getRealmByActor(
     .maybeSingle();
 
   return data;
+}
+
+// ═══════════════════════════════════════════
+// SANDBOX (TESTING) HELPERS
+// ═══════════════════════════════════════════
+
+const SANDBOX_FLOOR = 1_000_000;
+
+/** Raise the actor's ledger so no command can fail on cost checks. Effects stay real. */
+async function sandboxTopUp(supabase: any, sessionId: string, actor: Actor) {
+  try {
+    const realm = await getRealmByActor(
+      supabase, sessionId, actor,
+      "id, gold_reserve, production_reserve, grain_reserve, manpower_pool",
+    );
+    if (!realm) return;
+
+    const patch: Record<string, number> = {};
+    for (const key of ["gold_reserve", "production_reserve", "grain_reserve", "manpower_pool"]) {
+      const current = Number((realm as any)[key] || 0);
+      if (current < SANDBOX_FLOOR) patch[key] = SANDBOX_FLOOR;
+    }
+    if (Object.keys(patch).length === 0) return;
+
+    await supabase.from("realm_resources").update(patch).eq("id", realm.id);
+    console.log(`[command-dispatch] sandbox top-up for ${actor.name}:`, Object.keys(patch).join(", "));
+  } catch (e) {
+    console.warn("[command-dispatch] sandbox top-up failed:", (e as Error).message);
+  }
+}
+
+/** Finish everything the actor has queued so the resulting game effects apply now. */
+async function sandboxInstantComplete(
+  supabase: any,
+  sessionId: string,
+  actor: Actor,
+  turnNumber: number,
+) {
+  try {
+    const { data: cities } = await supabase
+      .from("cities")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("owner_player", actor.name);
+    const cityIds = (cities || []).map((c: any) => c.id);
+
+    if (cityIds.length > 0) {
+      await supabase
+        .from("city_buildings")
+        .update({ status: "completed", completed_turn: turnNumber })
+        .eq("session_id", sessionId)
+        .in("city_id", cityIds)
+        .neq("status", "completed");
+
+      await supabase
+        .from("city_districts")
+        .update({ status: "completed", completed_turn: turnNumber })
+        .eq("session_id", sessionId)
+        .in("city_id", cityIds)
+        .neq("status", "completed");
+    }
+
+    const { data: infra } = await supabase
+      .from("tile_infrastructure")
+      .select("id, level, target_level")
+      .eq("session_id", sessionId)
+      .eq("owner_player", actor.name)
+      .neq("status", "completed");
+
+    for (const row of infra || []) {
+      await supabase
+        .from("tile_infrastructure")
+        .update({
+          level: row.target_level ?? row.level,
+          target_level: null,
+          progress: 100,
+          status: "completed",
+          completed_turn: turnNumber,
+        })
+        .eq("id", row.id);
+    }
+
+    await supabase
+      .from("node_projects")
+      .update({ status: "completed", progress: 100, completed_turn: turnNumber })
+      .eq("session_id", sessionId)
+      .eq("initiated_by", actor.name)
+      .neq("status", "completed");
+  } catch (e) {
+    console.warn("[command-dispatch] sandbox instant-complete failed:", (e as Error).message);
+  }
 }
 
 // ═══════════════════════════════════════════

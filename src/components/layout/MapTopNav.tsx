@@ -1,6 +1,7 @@
-import { BarChart3, BookOpen, Brain, Crown, Globe, Home, Map, Newspaper, Shield, Swords, Timer, Trophy, Wrench, Zap } from "lucide-react";
+import { BarChart3, BookOpen, Brain, Crown, FlaskConical, Globe, Home, Map, Newspaper, Shield, Swords, Timer, Trophy, Wrench, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useSandboxMode } from "@/hooks/useSandboxMode";
 import type { TabId } from "./BottomNav";
 
 interface Props {
@@ -26,6 +27,7 @@ const baseItems: Array<{ id: TabId; label: string; icon: React.ElementType }> = 
 ];
 
 export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPersistentTab }: Props) {
+  const { sandbox, toggleSandbox } = useSandboxMode();
   const items = [
     ...baseItems,
     ...(showPersistentTab ? [{ id: "persistent" as TabId, label: "Persistent", icon: Timer }] : []),
@@ -58,6 +60,27 @@ export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPers
             </Button>
           );
         })}
+        <div className="ml-auto flex shrink-0 items-center pl-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={toggleSandbox}
+            aria-pressed={sandbox}
+            title={sandbox
+              ? "Testovací režim je zapnutý: stavby a úpravy nic nestojí a dokončí se hned"
+              : "Zapnout testovací režim: stavby a úpravy bez nákladů a čekání"}
+            className={cn(
+              "h-8 shrink-0 gap-1.5 rounded-md border px-2.5 text-[11px] font-medium transition-all",
+              sandbox
+                ? "border-amber-400/60 bg-amber-400/15 text-amber-300"
+                : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground",
+            )}
+          >
+            <FlaskConical className="h-3.5 w-3.5" strokeWidth={sandbox ? 2.2 : 1.5} />
+            <span className="hidden lg:inline">{sandbox ? "Test: zapnuto" : "Test režim"}</span>
+          </Button>
+        </div>
       </div>
     </nav>
   );
