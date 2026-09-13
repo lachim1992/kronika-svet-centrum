@@ -21,6 +21,10 @@ import spritePort from "@/assets/map/node-port.png";
 import spriteShrine from "@/assets/map/node-shrine.png";
 import spriteMine from "@/assets/map/node-mine.png";
 import spriteRuin from "@/assets/map/node-ruin.png";
+import buildResidential from "@/assets/map/build-residential.png";
+import buildCulture from "@/assets/map/build-culture.png";
+import buildInfrastructure from "@/assets/map/build-infrastructure.png";
+import buildMilitary from "@/assets/map/build-military.png";
 
 const NODE_SPRITE: Record<string, string> = {
   farmstead: spriteFarmstead, workshop: spriteWorkshop, guard_post: spriteGuardPost,
@@ -32,6 +36,45 @@ const NODE_SPRITE: Record<string, string> = {
 };
 const nodeSprite = (node: { node_type: string; node_subtype: string | null }) =>
   NODE_SPRITE[node.node_subtype || ""] || NODE_SPRITE[node.node_type] || spriteHamlet;
+
+/** Painted picture for a building or district — matched by name first, then category. */
+const BUILD_NAME_SPRITE: Array<[RegExp, string]> = [
+  [/farm|vinice|ryb/i, spriteFarmstead],
+  [/kovárn|manufaktur|sklárn|pila|dílna|papír/i, spriteWorkshop],
+  [/důl|lom|hut/i, spriteMine],
+  [/tržišt|mincovn|obchod|celnic|sklad|sýpk/i, spriteTradePost],
+  [/přístav|dok|loděnic/i, spritePort],
+  [/chrám|klášter|svatyn|katedrál/i, spriteShrine],
+  [/hradb|bašt|věž|citadel/i, spriteFortress],
+  [/kasárn|zbrojnic|jízd|střelnic|výcvik/i, buildMilitary],
+  [/akvadukt|kanalizac|studn|lázn|most|silnic|cest/i, buildInfrastructure],
+  [/knihovn|divadl|arén|stadion|soud|škol|bard|univerz/i, buildCulture],
+  [/čtvrť|obytn|domy|kolonie|předmě|nájem/i, buildResidential],
+];
+const CATEGORY_SPRITE: Record<string, string> = {
+  economic: spriteWorkshop, cultural: buildCulture, infrastructure: buildInfrastructure,
+  military: buildMilitary, residential: buildResidential,
+};
+const buildSprite = (name: string, category?: string) =>
+  BUILD_NAME_SPRITE.find(([pattern]) => pattern.test(name))?.[1]
+  || CATEGORY_SPRITE[category || ""] || spriteHamlet;
+const BUILD_CATEGORY_LABEL: Record<string, string> = {
+  economic: "Hospodářství", cultural: "Kultura a víra", infrastructure: "Infrastruktura",
+  military: "Vojenství", residential: "Bydlení", administrative: "Správa", ostatní: "Ostatní",
+};
+const LAND_USE_SPRITE: Record<string, string> = {
+  residential: buildResidential, commercial: spriteTradePost, industrial: spriteWorkshop,
+  military: buildMilitary, sacred: spriteShrine, civic: buildCulture,
+  infrastructure: buildInfrastructure, agricultural: spriteFarmstead,
+};
+
+/** Player-buildable residential districts — the direct lever on housing capacity. */
+const RESIDENTIAL_DISTRICTS = [
+  { key: "quarter", name: "Obytná čtvrť", district_type: "residential", population_capacity: 250, build_cost_wealth: 25, build_cost_wood: 25, build_cost_stone: 10, build_turns: 2, stability_modifier: 1, peasant_attraction: 6, description: "Hustá zástavba domů pro rodiny řemeslníků a rolníků." },
+  { key: "tenements", name: "Nájemní domy", district_type: "residential", population_capacity: 400, build_cost_wealth: 45, build_cost_wood: 30, build_cost_stone: 25, build_turns: 3, stability_modifier: -1, burgher_attraction: 8, description: "Vysoké nájemní domy — mnoho lidí, méně klidu." },
+  { key: "colony", name: "Dělnická kolonie", district_type: "residential", population_capacity: 300, build_cost_wealth: 30, build_cost_wood: 35, build_cost_stone: 5, build_turns: 2, production_modifier: 3, peasant_attraction: 10, description: "Kolonie u dílen a polí, láká pracovní sílu." },
+  { key: "suburb", name: "Předměstí", district_type: "residential", population_capacity: 200, build_cost_wealth: 20, build_cost_wood: 20, build_cost_stone: 5, build_turns: 1, stability_modifier: 2, peasant_attraction: 4, description: "Rozvolněné domky na okraji města." },
+];
 
 interface Props {
   sessionId: string;
@@ -496,6 +539,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     toast.success(`${template.name} se staví na parcele ${selectedParcel.parcel_index + 1}`); await loadTileParcels(selectedParcel.grid_x, selectedParcel.grid_y); await load();
   };
 
+  /** Residential districts raise the city's housing capacity, so they get their own action. */
+  const buildDistrict = async (district: typeof RESIDENTIAL_DISTRICTS[number]) => {
+    if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
+    setBuildingAction(`district-${district.key}`);
+    const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_DISTRICT", commandPayload: {
+      cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id, district,
+    }});
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Čtvrť se nepodařilo založit"); return; }
+    setRecentlyBuiltParcelId(selectedParcel.id);
+    window.setTimeout(() => setRecentlyBuiltParcelId(current => current === selectedParcel.id ? null : current), 2600);
+    toast.success(`${district.name} vzniká na parcele ${selectedParcel.parcel_index + 1} · +${district.population_capacity} obyvatel`);
+    await loadTileParcels(selectedParcel.grid_x, selectedParcel.grid_y); await load();
+  };
+
+
+
   const buildSubnode = async (subtype: string, label: string) => {
     if (!selectedParcel) return;
     setBuildingAction(`node-${subtype}`);
@@ -555,6 +615,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       <circle r="1.2" cy={height * .6 + 2} fill="var(--map-focus)" className="iso-construction-worker" />
       <title>Výstavba · {progress} %</title>
     </g>;
+    const sprite = LAND_USE_SPRITE[parcel.land_use || ""];
+    if (sprite) {
+      const size = width * 2.6;
+      return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
+        <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".3" />
+        <image href={sprite} x={-size / 2} y={-size * .78} width={size} height={size} preserveAspectRatio="xMidYMid meet" />
+      </g>;
+    }
     return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
       <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".85" />
       <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${-height * .1} Z`} fill="var(--map-city-wall-light)" opacity=".95" />
@@ -948,8 +1016,43 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <div className="mt-2 flex gap-3"><span>Produkce {selectedNode.production_output}</span><span>Bohatství {selectedNode.wealth_output}</span><span>Potraviny {selectedNode.food_value}</span></div>
           </div>}
           {selectedParcel.owner_player === playerName && selectedParcelUsed < selectedParcel.capacity_slots && <>
-            <div><p className="mb-2 text-xs font-medium">Postavit budovu</p><div className="grid grid-cols-2 gap-2">{buildingTemplates.slice(0, 6).map(template => <Button key={template.id} size="sm" variant="outline" className="h-auto justify-start px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildOnParcel(template)}>{buildingAction === `building-${template.id}` ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <Factory className="mr-1 h-3 w-3"/>}{template.name}</Button>)}</div></div>
-            <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="justify-start text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{key === "guard_post" ? <Shield className="mr-1 h-3 w-3"/> : key.includes("trade") || key.includes("wharf") ? <Store className="mr-1 h-3 w-3"/> : <Factory className="mr-1 h-3 w-3"/>}{label}</Button>)}</div></div>
+            <div>
+              <p className="mb-2 text-xs font-medium">Obytné čtvrti</p>
+              <div className="grid grid-cols-2 gap-2">{RESIDENTIAL_DISTRICTS.map(district => (
+                <Button key={district.key} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction || !selectedCity || selectedCity.owner_player !== playerName} onClick={() => void buildDistrict(district)}>
+                  <span className="flex w-full items-center gap-2">
+                    {buildingAction === `district-${district.key}`
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <img src={buildResidential} alt="" className="h-7 w-7 object-contain" />}
+                    <span className="flex-1 leading-tight">{district.name}</span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">+{district.population_capacity} obyvatel · {district.build_cost_wealth} zlata · {district.build_turns} t.</span>
+                </Button>
+              ))}</div>
+              {(!selectedCity || selectedCity.owner_player !== playerName) && <p className="mt-1 text-[10px] text-muted-foreground">Čtvrti lze zakládat jen na parcele vlastního města.</p>}
+            </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between"><p className="text-xs font-medium">Postavit budovu</p><span className="text-[10px] text-muted-foreground">{buildingTemplates.length} možností</span></div>
+              <div className="max-h-72 space-y-3 overflow-y-auto pr-1">{Object.entries(buildingTemplates.reduce<Record<string, BuildingTemplate[]>>((groups, template) => {
+                const key = template.category || "ostatní"; (groups[key] ||= []).push(template); return groups;
+              }, {})).map(([category, templates]) => (
+                <div key={category}>
+                  <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{BUILD_CATEGORY_LABEL[category] || category}</p>
+                  <div className="grid grid-cols-2 gap-2">{templates.map(template => (
+                    <Button key={template.id} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildOnParcel(template)}>
+                      <span className="flex w-full items-center gap-2">
+                        {buildingAction === `building-${template.id}`
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <img src={buildSprite(template.name, template.category)} alt="" className="h-7 w-7 object-contain" />}
+                        <span className="flex-1 leading-tight">{template.name}</span>
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{template.cost_wealth} zlata · {template.build_turns} t.</span>
+                    </Button>
+                  ))}</div>
+                </div>
+              ))}</div>
+            </div>
+            <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="h-auto justify-start gap-2 px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{buildingAction === `node-${key}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <img src={NODE_SPRITE[key] || spriteHamlet} alt="" className="h-7 w-7 object-contain"/>}<span className="flex-1 leading-tight">{label}</span></Button>)}</div></div>
           </>}
         </section>}
 
