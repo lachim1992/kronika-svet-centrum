@@ -192,6 +192,15 @@ export function parcelPopulationCapacity(slots: number): number {
   return slots * POPULATION_PER_SLOT;
 }
 
+/** Claim cost of one sub-parcel: terrain multiplier scaled by how much the city already holds. */
+export function parcelClaimCost(multiplier: number, alreadyClaimed: number): { gold: number; production: number } {
+  const scale = 1 + alreadyClaimed * 0.04;
+  return {
+    gold: Math.round(35 * multiplier * scale),
+    production: Math.round(25 * multiplier * scale),
+  };
+}
+
 export const SUB_BIOME_LABELS: Record<string, string> = {
   fertile_flat: "Úrodná rovina",
   grassland: "Pastvina",
