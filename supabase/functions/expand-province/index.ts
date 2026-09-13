@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { loadGridKind, neighborOffsets } from "../_shared/topology.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,9 +8,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const NEIGHBORS = [
-  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -29,6 +28,9 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    const NEIGHBORS = neighborOffsets(await loadGridKind(sb, session_id));
+
 
     // 1. Verify the province belongs to the player
     const { data: province } = await sb

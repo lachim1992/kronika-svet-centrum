@@ -1954,12 +1954,17 @@ export function hexTraversalCost(
   return Math.round(cost * 100) / 100;
 }
 
-/** Axial hex neighbors */
+/** Grid neighbours per topology */
 const HEX_NEIGHBORS = [
   { dq: 1, dr: 0 }, { dq: -1, dr: 0 },
   { dq: 0, dr: 1 }, { dq: 0, dr: -1 },
   { dq: 1, dr: -1 }, { dq: -1, dr: 1 },
 ];
+const SQUARE_NEIGHBORS = [
+  { dq: 1, dr: 0 }, { dq: -1, dr: 0 },
+  { dq: 0, dr: 1 }, { dq: 0, dr: -1 },
+];
+export type PathGridKind = "hex6" | "square4";
 
 export interface AStarResult {
   path: Array<{ q: number; r: number; cost: number }>;
@@ -1971,9 +1976,10 @@ export interface AStarResult {
 /** @deprecated Use astarHexPath instead */
 export type DijkstraResult = AStarResult;
 
-/** Axial hex distance heuristic */
-function hexDist(q1: number, r1: number, q2: number, r2: number): number {
+/** Grid distance heuristic (topology-aware) */
+function gridDist(q1: number, r1: number, q2: number, r2: number, kind: PathGridKind = "hex6"): number {
   const dq = q1 - q2, dr = r1 - r2;
+  if (kind === "square4") return Math.abs(dq) + Math.abs(dr);
   return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
 }
 
@@ -1988,7 +1994,9 @@ export function astarHexPath(
   endQ: number, endR: number,
   hexCostFn: (q: number, r: number) => number,
   maxRange: number = 40,
+  gridKind: PathGridKind = "hex6",
 ): AStarResult | null {
+  const offsets = gridKind === "square4" ? SQUARE_NEIGHBORS : HEX_NEIGHBORS;
   const key = (q: number, r: number) => `${q},${r}`;
   const startKey = key(startQ, startR);
   const endKey = key(endQ, endR);
@@ -2005,7 +2013,7 @@ export function astarHexPath(
   const pq: Array<{ q: number; r: number; g: number; f: number }> = [];
 
   gScore.set(startKey, 0);
-  const startH = hexDist(startQ, startR, endQ, endR);
+  const startH = gridDist(startQ, startR, endQ, endR, gridKind);
   pq.push({ q: startQ, r: startR, g: 0, f: startH });
 
   while (pq.length > 0) {
@@ -2020,7 +2028,7 @@ export function astarHexPath(
     if (ck === endKey) break;
 
     // Expand neighbors
-    for (const { dq, dr } of HEX_NEIGHBORS) {
+    for (const { dq, dr } of offsets) {
       const nq = current.q + dq;
       const nr = current.r + dr;
       const nk = key(nq, nr);
@@ -2028,7 +2036,7 @@ export function astarHexPath(
       if (visited.has(nk)) continue;
 
       // Range limit
-      const dFromStart = hexDist(nq, nr, startQ, startR);
+      const dFromStart = gridDist(nq, nr, startQ, startR, gridKind);
       if (dFromStart > maxRange) continue;
 
       const edgeCost = hexCostFn(nq, nr);
@@ -2038,7 +2046,7 @@ export function astarHexPath(
       if (tentativeG < (gScore.get(nk) ?? Infinity)) {
         gScore.set(nk, tentativeG);
         prev.set(nk, ck);
-        const h = hexDist(nq, nr, endQ, endR); // admissible: min biome cost = 1.0
+        const h = gridDist(nq, nr, endQ, endR, gridKind); // admissible: min biome cost = 1.0
         pq.push({ q: nq, r: nr, g: tentativeG, f: tentativeG + h });
       }
     }
@@ -2104,12 +2112,14 @@ export function computeFlowPath(
   input: FlowPathInput,
   hexCostFn: (q: number, r: number) => number,
   maxRange: number = 40,
+  gridKind: PathGridKind = "hex6",
 ): FlowPathResult | null {
   const result = astarHexPath(
     input.nodeA.hex_q, input.nodeA.hex_r,
     input.nodeB.hex_q, input.nodeB.hex_r,
     hexCostFn,
     maxRange,
+    gridKind,
   );
 
   if (!result) return null;

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { cellDistance, loadGridKind, neighborOffsets } from "../_shared/topology.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,15 +44,7 @@ function seededRandom(seed: number): number {
   return (s & 0x7fffffff) / 0x7fffffff;
 }
 
-// ═══ HEX HELPERS (axial coords) ═══
-const HEX_NEIGHBORS = [
-  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-];
-function hexDistance(aq: number, ar: number, bq: number, br: number): number {
-  const dq = aq - bq;
-  const dr = ar - br;
-  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
-}
+// ═══ GRID HELPERS (topology-aware) ═══
 
 // Pick best retreat hex: empty of enemy stacks/cities, farthest from winner
 async function findRetreatHex(
@@ -63,7 +56,8 @@ async function findRetreatHex(
   winnerQ: number,
   winnerR: number,
 ): Promise<{ q: number; r: number } | null> {
-  const candidates = HEX_NEIGHBORS.map(([dq, dr]) => ({ q: loserQ + dq, r: loserR + dr }));
+  const gridKind = await loadGridKind(supabase, sessionId);
+  const candidates = neighborOffsets(gridKind).map(([dq, dr]) => ({ q: loserQ + dq, r: loserR + dr }));
 
   // Get all stacks on candidate hexes (any active, any owner ≠ loser)
   const { data: stacksOnHexes } = await supabase
@@ -93,7 +87,7 @@ async function findRetreatHex(
 
   const valid = candidates
     .filter(c => !blocked.has(`${c.q},${c.r}`))
-    .map(c => ({ ...c, dist: hexDistance(c.q, c.r, winnerQ, winnerR) }))
+    .map(c => ({ ...c, dist: cellDistance(gridKind, c.q, c.r, winnerQ, winnerR) }))
     .sort((a, b) => b.dist - a.dist);
 
   return valid.length > 0 ? { q: valid[0].q, r: valid[0].r } : null;

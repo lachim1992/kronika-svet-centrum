@@ -3,10 +3,10 @@
 - [x] Introduce shared grid geometry contract
 - [x] Add grid geometry regression tests
 - [x] Add per-world grid version and additive square coordinates
-- [ ] Support square-grid generation, discovery, movement, and pathfinding server-side
+- [x] Support square-grid generation, discovery, movement, and pathfinding server-side
   - [x] New worlds persist square-grid identity and generated terrain coordinates
   - [x] Player and AI short-hop movement enforce four-direction adjacency
-  - [ ] Convert discovery, province growth, battles, and flow A* to topology-aware operations
+  - [x] Convert discovery, province growth, battles, and flow A* to topology-aware operations
 - [x] Add dual isometric square renderer preserving core map interactions and authoritative flow paths
 - [x] Convert desktop shell to persistent map with top tabs and collapsible workspace
 - [x] Open desktop modules in a right-side 40% command panel

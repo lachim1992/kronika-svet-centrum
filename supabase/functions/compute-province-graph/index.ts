@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { loadGridKind, neighborOffsets } from "../_shared/topology.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,9 +8,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const NEIGHBORS = [
-  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-];
 
 const hexKey = (q: number, r: number) => `${q},${r}`;
 
@@ -29,6 +28,9 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    const NEIGHBORS = neighborOffsets(await loadGridKind(sb, session_id));
+
 
     // 1. Load all provinces for session
     const { data: provinces } = await sb

@@ -1,14 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { loadGridKind, neighborOffsets, ringCells } from "../_shared/topology.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const NEIGHBORS = [
-  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -29,6 +26,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    const gridKind = await loadGridKind(sb, session_id);
+    const NEIGHBORS = neighborOffsets(gridKind);
+
 
     // 1. Get player's current discoveries to validate adjacency
     const { data: discoveries } = await sb
@@ -167,13 +168,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 5. Bootstrap: if player had 0 discoveries, auto-reveal 2-ring (19 hexes)
+    // 5. Bootstrap: if player had 0 discoveries, auto-reveal everything within 2 steps
     const isBootstrap = discoveredIds.size === 0;
     if (isBootstrap) {
-      const RING2 = [
-        [1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1],
-        [2,0],[-2,0],[0,2],[0,-2],[2,-2],[-2,2],[2,-1],[-2,1],[1,1],[-1,-1],[1,-2],[-1,2],
-      ];
+      const RING2 = ringCells(gridKind, 2);
       const neighborHexes = await Promise.all(
         RING2.map(([dq, dr]) =>
           fetch(funcUrl, {
