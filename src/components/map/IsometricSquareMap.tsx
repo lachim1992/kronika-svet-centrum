@@ -629,7 +629,18 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       parcel_index: index, status: "occupied", land_use: style.landUse,
     })) as unknown as TileParcel[];
     const edges = footprintWallEdges(parcels, centerPoint);
-    const walled = style.walled;
+    const walled = style.walled && !micro;
+    if (micro) {
+      const corners = parcelCorners(centerPoint, parcels[0].parcel_x, parcels[0].parcel_y);
+      const center = { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
+      return <g pointerEvents="auto">
+        <polygon points={parcelQuad(centerPoint, parcels[0].parcel_x, parcels[0].parcel_y)}
+          fill={LAND_USE_COLOR[style.landUse] || LAND_USE_COLOR.open}
+          stroke={style.accent} strokeWidth=".4" opacity=".9" />
+        <g transform={`translate(${center.x},${center.y})`}>{renderWorkplaceGlyph(node, .9)}</g>
+        <title>{`${node.name} · ${style.label}`}</title>
+      </g>;
+    }
     return <g pointerEvents="auto">
       {parcels.map(parcel => (
         <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
