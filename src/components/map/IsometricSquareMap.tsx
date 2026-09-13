@@ -1478,7 +1478,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 </div>
               ))}</div>
             </div>
-            <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="h-auto justify-start gap-2 px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{buildingAction === `node-${key}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <img src={NODE_SPRITE[key] || spriteHamlet} alt="" className="h-7 w-7 object-contain"/>}<span className="flex-1 leading-tight">{label}</span></Button>)}</div></div>
+            <div>
+              <p className="mb-2 text-xs font-medium">Vytvořit subuzel</p>
+              <div className="grid grid-cols-2 gap-2">{SUBNODE_OPTIONS.map(option => {
+                const reason = subnodeBlockReason(option);
+                return <Button key={option.key} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs"
+                  disabled={!!buildingAction || !!reason} title={reason || undefined}
+                  onClick={() => void buildSubnode(option.key, option.label)}>
+                  <span className="flex w-full items-center gap-2">
+                    {buildingAction === `node-${option.key}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={NODE_SPRITE[option.key] || spriteHamlet} alt="" className="h-7 w-7 object-contain" />}
+                    <span className="flex-1 leading-tight">{option.label}</span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{reason || `${option.gold} zlata · ${option.production} produkce`}</span>
+                </Button>;
+              })}</div>
+            </div>
+
           </>}
         </section>}
 
