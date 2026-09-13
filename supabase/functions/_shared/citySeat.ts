@@ -28,19 +28,25 @@ export async function ensureTileParcels(
 
   // The cell plus its four cardinal neighbours: the own biome dominates, neighbours only
   // bleed into the parcels along the shared border.
-  const { data: patch, error: patchError } = await supabase.from("province_hexes")
-    .select("grid_x, grid_y, biome_family, elevation, has_river, is_coastal, is_passable")
+  const { data: patch } = await supabase.from("province_hexes")
+    .select("grid_x, grid_y, biome_family, mean_height, has_river, coastal, is_passable")
     .eq("session_id", sessionId)
     .gte("grid_x", gridX - 1).lte("grid_x", gridX + 1)
     .gte("grid_y", gridY - 1).lte("grid_y", gridY + 1);
-  if (patchError) console.error("parcelgen patch error", patchError.message);
   const patchRows = patch || [];
-  console.log("parcelgen", gridX, gridY, "rows", patchRows.length, JSON.stringify(patchRows.map((r: any) => [r.grid_x, r.grid_y, r.biome_family])));
-  const tile = patchRows.find((row: any) => row.grid_x === gridX && row.grid_y === gridY);
+  const asTerrain = (row: any) => ({
+    biome_family: row.biome_family,
+    elevation: row.mean_height,
+    has_river: row.has_river,
+    is_coastal: row.coastal,
+    is_passable: row.is_passable,
+  });
+  const tileRow = patchRows.find((row: any) => row.grid_x === gridX && row.grid_y === gridY);
+  const tile = tileRow ? asTerrain(tileRow) : null;
   const neighbours = [[1, 0], [-1, 0], [0, 1], [0, -1]]
     .map(([dx, dy]) => {
-      const terrain = patchRows.find((row: any) => row.grid_x === gridX + dx && row.grid_y === gridY + dy);
-      return terrain ? { dx, dy, terrain } : null;
+      const row = patchRows.find((r: any) => r.grid_x === gridX + dx && r.grid_y === gridY + dy);
+      return row ? { dx, dy, terrain: asTerrain(row) } : null;
     })
     .filter(Boolean) as Array<{ dx: number; dy: number; terrain: any }>;
 
