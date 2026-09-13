@@ -1,4 +1,3 @@
-import WorldHexMap from "@/components/WorldHexMap";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ManpowerHUDCard from "@/components/map/ManpowerHUDCard";
 import WorldMapBuildPanel from "@/components/map/WorldMapBuildPanel";
@@ -21,15 +20,12 @@ const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentT
 
   return (
     <div className="relative h-full w-full min-h-[300px]">
-      {gridKind === "square4" ? (
-        <IsometricSquareMap sessionId={sessionId} playerName={currentPlayerName} onCityClick={onCityClick} />
-      ) : <WorldHexMap
+      <IsometricSquareMap
         sessionId={sessionId}
         playerName={currentPlayerName}
-        myRole={myRole}
-        currentTurn={currentTurn}
         onCityClick={onCityClick}
-      />}
+        gridKind={gridKind}
+      />
 
       {/* Stage 8 floating overlays */}
       {!backgroundMode && <ManpowerHUDCard sessionId={sessionId} playerName={currentPlayerName} />}
