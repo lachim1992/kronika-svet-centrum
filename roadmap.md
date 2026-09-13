@@ -13,10 +13,10 @@
 - [x] Make the isometric renderer visible for legacy worlds through a read-only coordinate adapter
 - [x] Make top modules collapsible back to the map and constrain workspace coverage
 - [x] Render cities, nodes, routes, and deployed armies in the shared isometric view
-- [ ] Adapt remaining mobile map controls and panel behavior
+- [x] Adapt remaining mobile map controls and panel behavior
 - [x] Apply tactical map tokens and chosen typography
-- [ ] Verify square-grid mechanics, desktop, and mobile
-- [ ] Add guarded admin migration workflow for existing worlds
+- [x] Verify square-grid mechanics, desktop, and mobile
+- [x] Add guarded admin migration workflow for existing worlds
 - [x] Add living city parcels and map growth
   - [x] Persist urban cells and 4×4 parcels without duplicating building effects
   - [x] Add command-dispatch expansion and parcel assignment guards
