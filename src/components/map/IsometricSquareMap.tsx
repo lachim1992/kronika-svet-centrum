@@ -254,6 +254,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [constructionEntities, setConstructionEntities] = useState<ConstructionEntity[]>([]);
   const [recentlyBuiltParcelId, setRecentlyBuiltParcelId] = useState<string | null>(null);
   const [buildingAction, setBuildingAction] = useState<string | null>(null);
+  const [newCityName, setNewCityName] = useState("");
+
 
   const tileCell = useCallback((tile: Tile) => ({
     a: tile.grid_x !== null ? tile.grid_x : tile.q,
