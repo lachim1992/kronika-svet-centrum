@@ -100,6 +100,13 @@ Deno.serve(async (req) => {
 
     const effectiveTurn = turnNumber ?? session.current_turn;
 
+    // ── Sandbox (testing) mode ──
+    // Removes the economic gate only: resources are topped up before the command
+    // and every queued construction is finished immediately, so the real game
+    // effects of each change are visible right away. All other rules still apply.
+    const sandbox = body.sandbox === true && actor?.type !== "ai_faction";
+    if (sandbox) await sandboxTopUp(supabase, sessionId, actor);
+
     // ── Execute command ──
     const result = await executeCommand(
       supabase, sessionId, effectiveTurn, actor, commandType, commandPayload, commandId
@@ -107,6 +114,10 @@ Deno.serve(async (req) => {
 
     if (result.error) {
       return json({ error: result.error }, result.status || 400);
+    }
+
+    if (sandbox && !result.idempotent) {
+      await sandboxInstantComplete(supabase, sessionId, actor, effectiveTurn);
     }
 
     // ── Audit log ──
