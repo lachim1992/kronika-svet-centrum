@@ -2878,14 +2878,15 @@ async function executeClaimTileParcel(
 
 const SUBNODE_DEFS: Record<string, {
   label: string; nodeType: string; group: string; gold: number; production: number;
-  resource: Record<string, number>; capabilities: string[];
+  resource: Record<string, number>; capabilities: string[]; role: string;
 }> = {
-  farmstead: { label: "Produkční dvůr", nodeType: "resource_node", group: "production", gold: 35, production: 45, resource: { supplies: 4, production: 2 }, capabilities: ["food_production"] },
-  workshop: { label: "Řemeslná dílna", nodeType: "resource_node", group: "production", gold: 45, production: 55, resource: { production: 5, wealth: 1 }, capabilities: ["craft_production"] },
-  guard_post: { label: "Strážnice", nodeType: "fortress", group: "military", gold: 50, production: 65, resource: {}, capabilities: ["military_control"] },
-  trade_post: { label: "Obchodní stanice", nodeType: "trade_hub", group: "trade", gold: 70, production: 40, resource: { wealth: 5 }, capabilities: ["trade_access"] },
-  river_wharf: { label: "Říční překladiště", nodeType: "port", group: "trade", gold: 80, production: 60, resource: { wealth: 4, supplies: 1 }, capabilities: ["river_trade", "storage"] },
+  farmstead: { label: "Produkční dvůr", nodeType: "resource_node", group: "production", gold: 35, production: 45, resource: { supplies: 4, production: 2 }, capabilities: ["farming", "herding", "milling"], role: "source" },
+  workshop: { label: "Řemeslná dílna", nodeType: "resource_node", group: "production", gold: 45, production: 55, resource: { production: 5, wealth: 1 }, capabilities: ["crafting", "smithing", "toolmaking"], role: "processing" },
+  guard_post: { label: "Strážnice", nodeType: "fortress", group: "military", gold: 50, production: 65, resource: {}, capabilities: ["garrison"], role: "control" },
+  trade_post: { label: "Obchodní stanice", nodeType: "trade_hub", group: "trade", gold: 70, production: 40, resource: { wealth: 5 }, capabilities: ["trade_access", "storage"], role: "transit" },
+  river_wharf: { label: "Říční překladiště", nodeType: "port", group: "trade", gold: 80, production: 60, resource: { wealth: 4, supplies: 1 }, capabilities: ["shipping", "storage"], role: "transit" },
 };
+
 
 /** BUILD_SUBNODE — place a small production, military, or trade node on a held parcel. */
 async function executeBuildSubnode(
