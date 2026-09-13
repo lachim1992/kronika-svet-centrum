@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 
 import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
-import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells } from "@/lib/tileParcels";
+import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
 import { CARDINAL_STEPS, tileBridgeCells, tileRoadBranches, tileRoadCost } from "@/lib/tileRoads";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -423,6 +423,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     biome_family: tile.biome_family, elevation: tile.mean_height, has_river: tile.has_river,
     river_direction: tile.river_direction, is_passable: tile.is_passable,
   }), []);
+  /**
+   * Deterministic sub-biome survey of a cell, cached per cell so the macro map can tint the
+   * hinted sub-parcel grid with the very same terrain the opened parcel layer shows.
+   */
+  const subBiomeCache = useRef(new Map<string, TileParcelSpec[]>());
+  useEffect(() => { subBiomeCache.current.clear(); }, [tiles, sessionId]);
+  const subBiomesOf = useCallback((tile: Tile, a: number, b: number) => {
+    const key = cellKey(a, b);
+    const cached = subBiomeCache.current.get(key);
+    if (cached) return cached;
+    const neighbours = CARDINAL_STEPS.flatMap(step => {
+      const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
+      return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
+    });
+    const specs = generateTileParcels(sessionId, a, b, terrainOf(tile), neighbours);
+    subBiomeCache.current.set(key, specs);
+    return specs;
+  }, [tileByCell, terrainOf, sessionId]);
+
   /** Which borders a cell's road reaches: neighbours that carry a road or hold a settlement. */
   const roadStepsOf = useCallback((a: number, b: number) => CARDINAL_STEPS.filter(step => {
     const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
@@ -1102,20 +1121,28 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
-              {/* faint sub-parcel grid so the landscape layout reads already on the macro map */}
-              {!active && zoom >= 1.2 && <g pointerEvents="none" opacity=".14">
-                {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
-                  const fraction = (index + 1) / TILE_PARCEL_COLS;
-                  const line = (ax: number, ay: number, bx: number, by: number) =>
-                    ({ x1: point.x + (ax - ay) * TILE_SIZE, y1: point.y + (ax + ay - 1) * TILE_SIZE / 2,
-                      x2: point.x + (bx - by) * TILE_SIZE, y2: point.y + (bx + by - 1) * TILE_SIZE / 2 });
-                  const across = line(fraction, 0, fraction, 1);
-                  const along = line(0, fraction, 1, fraction);
-                  return <g key={`subgrid-${index}`}>
-                    <line {...across} stroke="var(--map-label)" strokeWidth=".5" />
-                    <line {...along} stroke="var(--map-label)" strokeWidth=".5" />
-                  </g>;
-                })}
+              {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
+              {!active && zoom >= 1.2 && <g pointerEvents="none">
+                <g opacity=".34">
+                  {subBiomesOf(tile, cell.a, cell.b).map(parcel => (
+                    <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY)}
+                      fill={SUB_BIOME_COLOR[parcel.subBiome] || colors[0]} stroke="none" />
+                  ))}
+                </g>
+                <g opacity=".12">
+                  {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
+                    const fraction = (index + 1) / TILE_PARCEL_COLS;
+                    const line = (ax: number, ay: number, bx: number, by: number) =>
+                      ({ x1: point.x + (ax - ay) * TILE_SIZE, y1: point.y + (ax + ay - 1) * TILE_SIZE / 2,
+                        x2: point.x + (bx - by) * TILE_SIZE, y2: point.y + (bx + by - 1) * TILE_SIZE / 2 });
+                    const across = line(fraction, 0, fraction, 1);
+                    const along = line(0, fraction, 1, fraction);
+                    return <g key={`subgrid-${index}`}>
+                      <line {...across} stroke="var(--map-label)" strokeWidth=".5" />
+                      <line {...along} stroke="var(--map-label)" strokeWidth=".5" />
+                    </g>;
+                  })}
+                </g>
               </g>}
 
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
