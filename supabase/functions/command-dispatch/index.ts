@@ -350,6 +350,12 @@ async function executeCommand(
     case "BUILD_DISTRICT":
       return await executeBuildDistrict(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "EXPAND_CITY_CELL":
+      return await executeExpandCityCell(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "ASSIGN_CITY_PARCEL":
+      return await executeAssignCityParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "UPGRADE_INFRASTRUCTURE":
       return await executeUpgradeInfrastructure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
@@ -2614,6 +2620,130 @@ async function getRealmFull(supabase: any, sessionId: string, playerName: string
   return data;
 }
 
+const CITY_CELL_PARCELS = 16;
+const POPULATION_PER_PARCEL = 175;
+
+async function getAvailableParcel(supabase: any, cityId: string, requestedParcelId?: string) {
+  let query = supabase.from("city_parcels")
+    .select("id, city_id, urban_cell_id, parcel_x, parcel_y, status")
+    .eq("city_id", cityId)
+    .eq("status", "open")
+    .order("parcel_y")
+    .order("parcel_x")
+    .limit(1);
+  if (requestedParcelId) query = query.eq("id", requestedParcelId);
+  const { data } = await query.maybeSingle();
+  return data;
+}
+
+async function occupyParcel(supabase: any, parcelId: string, kind: "building" | "district", entityId: string, landUse: string) {
+  const update = kind === "building"
+    ? { status: "occupied", land_use: landUse, building_id: entityId }
+    : { status: "occupied", land_use: landUse, district_id: entityId };
+  await supabase.from("city_parcels").update(update).eq("id", parcelId).eq("status", "open");
+  await supabase.from(kind === "building" ? "city_buildings" : "city_districts")
+    .update({ parcel_id: parcelId }).eq("id", entityId);
+}
+
+async function executeExpandCityCell(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const cityId = String(payload.cityId || "");
+  const gridX = Number(payload.gridX);
+  const gridY = Number(payload.gridY);
+  if (!cityId || !Number.isInteger(gridX) || !Number.isInteger(gridY)) {
+    return { events: [], error: "Neplatné město nebo souřadnice pole" };
+  }
+
+  const [{ data: city }, { data: foundation }, { data: cells }] = await Promise.all([
+    supabase.from("cities").select("id, name, owner_player, population_total").eq("id", cityId).eq("session_id", sessionId).maybeSingle(),
+    supabase.from("world_foundations").select("grid_kind").eq("session_id", sessionId).maybeSingle(),
+    supabase.from("city_urban_cells").select("id, grid_x, grid_y, status").eq("city_id", cityId).eq("session_id", sessionId),
+  ]);
+  if (!city || city.owner_player !== actor.name) return { events: [], error: "Toto město vám nepatří" };
+  if (foundation?.grid_kind !== "square4") return { events: [], error: "Rozšiřování parcel je dostupné pouze na čtvercové mapě" };
+  if (!cells?.length) return { events: [], error: "Město nemá výchozí městské pole" };
+  const adjacent = cells.some((cell: any) => Math.abs(cell.grid_x - gridX) + Math.abs(cell.grid_y - gridY) === 1);
+  if (!adjacent) return { events: [], error: "Nové městské pole musí přímo sousedit s městem" };
+
+  const { data: tile } = await supabase.from("province_hexes")
+    .select("id, is_passable, owner_player, biome_family")
+    .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
+  if (!tile || tile.is_passable === false || tile.biome_family === "sea") return { events: [], error: "Toto pole nelze zastavět" };
+  if (tile.owner_player && tile.owner_player !== actor.name) return { events: [], error: "Pole ovládá jiná říše" };
+
+  const { data: occupied } = await supabase.from("city_urban_cells")
+    .select("id").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
+  if (occupied) return { events: [], error: "Pole už patří jinému městskému celku" };
+
+  const parcelCapacity = cells.length * CITY_CELL_PARCELS * POPULATION_PER_PARCEL;
+  const growthPressure = Math.min(100, Math.round((city.population_total / Math.max(1, parcelCapacity)) * 100));
+  if (growthPressure < 70) return { events: [], error: `Tlak na růst je pouze ${growthPressure} %. Potřeba je 70 %.` };
+
+  const expansionOrder = cells.length;
+  const costGold = 100 + expansionOrder * 50;
+  const costProduction = 80 + expansionOrder * 40;
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold})` };
+  if ((realm.production_reserve || 0) < costProduction) return { events: [], error: `Nedostatek produkce (potřeba ${costProduction})` };
+
+  await supabase.from("realm_resources").update({
+    gold_reserve: realm.gold_reserve - costGold,
+    production_reserve: realm.production_reserve - costProduction,
+  }).eq("id", realm.id);
+  const { data: urbanCell, error: cellError } = await supabase.from("city_urban_cells").insert({
+    session_id: sessionId, city_id: cityId, grid_x: gridX, grid_y: gridY,
+    cell_role: "expansion", status: "developing", claim_order: expansionOrder,
+    development_progress: 0, development_turns: 3, started_turn: turnNumber,
+    cost_gold: costGold, cost_production: costProduction,
+  }).select("id").single();
+  if (cellError || !urbanCell) return { events: [], error: cellError?.message || "Rozšíření se nepodařilo" };
+
+  const parcels = Array.from({ length: 16 }, (_, index) => ({
+    session_id: sessionId, city_id: cityId, urban_cell_id: urbanCell.id,
+    parcel_x: index % 4, parcel_y: Math.floor(index / 4), status: "locked", land_use: "open",
+  }));
+  await supabase.from("city_parcels").insert(parcels);
+
+  return insertEvents(supabase, commandId, [{
+    ...base, event_type: "city_expansion", city_id: cityId,
+    note: `${city.name} zahájilo rozšíření do pole ${gridX}, ${gridY}.`, importance: "normal",
+    reference: { cityId, urbanCellId: urbanCell.id, gridX, gridY, costGold, costProduction, growthPressure },
+  }], { urbanCellId: urbanCell.id });
+}
+
+async function executeAssignCityParcel(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { cityId, parcelId, buildingId, districtId } = payload;
+  if (!cityId || !parcelId || (!buildingId && !districtId) || (buildingId && districtId)) {
+    return { events: [], error: "Neplatné přiřazení parcely" };
+  }
+  const { data: city } = await supabase.from("cities").select("id, name, owner_player").eq("id", cityId).eq("session_id", sessionId).maybeSingle();
+  if (!city || city.owner_player !== actor.name) return { events: [], error: "Toto město vám nepatří" };
+  const parcel = await getAvailableParcel(supabase, cityId, parcelId);
+  if (!parcel) return { events: [], error: "Parcela není volná" };
+  const kind = buildingId ? "building" : "district";
+  const entityId = buildingId || districtId;
+  const table = kind === "building" ? "city_buildings" : "city_districts";
+  const { data: entity } = await supabase.from(table).select("id, category, district_type").eq("id", entityId).eq("city_id", cityId).maybeSingle();
+  if (!entity) return { events: [], error: "Objekt nepatří do vybraného města" };
+  const landUse = kind === "district" ? (entity.district_type || "residential") : categoryToLandUse(entity.category);
+  await occupyParcel(supabase, parcelId, kind, entityId, landUse);
+  return insertEvents(supabase, commandId, [{ ...base, event_type: "city_planning", city_id: cityId, note: `${city.name} upravilo parcelní plán.`, importance: "minor", reference: { cityId, parcelId, buildingId, districtId } }]);
+}
+
+function categoryToLandUse(category?: string) {
+  if (category === "military" || category === "fortification") return "military";
+  if (category === "religious") return "sacred";
+  if (category === "infrastructure") return "infrastructure";
+  if (category === "economic" || category === "trade") return "commercial";
+  return "civic";
+}
+
 /**
  * BUILD_BUILDING — full server-side: deduct resources, insert city_buildings row, emit event.
  * Payload: { cityId, cityName, template?, ai? (full building data), chronicleText? }
@@ -2622,7 +2752,7 @@ async function executeBuildBuilding(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  let { cityId, cityName, building, isAiGenerated, chronicleText } = payload;
+  let { cityId, cityName, building, isAiGenerated, chronicleText, parcelId } = payload;
 
   // Back-compat: AI faction calls send buildingName/templateId without a building object.
   // Resolve the template into a building payload so the command does not 400 on legacy callers.
@@ -2657,6 +2787,9 @@ async function executeBuildBuilding(
   }
 
   if (!cityId || !building) return { events: [], error: "Missing cityId or building" };
+
+  const targetParcel = await getAvailableParcel(supabase, cityId, parcelId);
+  if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
 
   // Resolve city name if missing
   if (!cityName) {
@@ -2710,6 +2843,7 @@ async function executeBuildBuilding(
   }).select("id").single();
 
   if (insertErr) return { events: [], error: `Insert failed: ${insertErr.message}` };
+  if (targetParcel) await occupyParcel(supabase, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category));
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
@@ -2717,7 +2851,7 @@ async function executeBuildBuilding(
     city_id: cityId,
     note: payload.note || `Stavba ${building.name} v ${cityName}.`,
     importance: "normal",
-    reference: { buildingId: inserted.id, buildingName: building.name, cityId, cityName },
+    reference: { buildingId: inserted.id, buildingName: building.name, cityId, cityName, parcelId: targetParcel?.id || null },
   }], chronicleText, { buildingId: inserted.id });
 }
 
@@ -2794,8 +2928,10 @@ async function executeBuildDistrict(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { cityId, cityName, district, chronicleText } = payload;
+  const { cityId, cityName, district, chronicleText, parcelId } = payload;
   if (!cityId || !district) return { events: [], error: "Missing cityId or district" };
+  const targetParcel = await getAvailableParcel(supabase, cityId, parcelId);
+  if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
@@ -2836,6 +2972,7 @@ async function executeBuildDistrict(
   }).select("id").single();
 
   if (dErr) return { events: [], error: `District insert failed: ${dErr.message}` };
+  if (targetParcel) await occupyParcel(supabase, targetParcel.id, "district", inserted.id, district.district_type || "residential");
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
@@ -2843,7 +2980,7 @@ async function executeBuildDistrict(
     city_id: cityId,
     note: `${actor.name} založil čtvrť ${district.name} v ${cityName}.`,
     importance: "normal",
-    reference: { districtId: inserted.id, districtName: district.name, cityId },
+    reference: { districtId: inserted.id, districtName: district.name, cityId, parcelId: targetParcel?.id || null },
   }], chronicleText, { districtId: inserted.id });
 }
 
