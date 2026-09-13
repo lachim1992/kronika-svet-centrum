@@ -78,11 +78,7 @@ Deno.serve(async (req) => {
       parcels = refreshed ?? parcels;
     }
 
-    const { data: urbanCell } = await sb.from("city_urban_cells")
-      .select("id, city_id, status, development_progress, development_turns, cell_role")
-      .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
-
-    return json({ ok: true, tile: tile ?? null, urban_cell: urbanCell ?? null, parcels });
+    return json({ ok: true, tile: tile ?? null, parcels });
   } catch (error) {
     console.error("tile-parcels error:", error);
     return json({ error: (error as Error).message }, 500);

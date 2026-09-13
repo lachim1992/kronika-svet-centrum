@@ -98,7 +98,6 @@ Deno.serve(async (req) => {
 
         // Apply projections from emitted events
         await projectCityUpdates(supabase, tickResults.cityEvents || []);
-        await projectUrbanGrowth(supabase, sessionId, turnNumber);
         await projectInfluenceUpdates(supabase, sessionId, turnNumber, tickResults.influenceRecords || []);
         await projectTensionUpdates(supabase, sessionId, turnNumber, tickResults.tensionRecords || []);
         await projectCityStateUpdates(supabase, tickResults.cityStateUpdates || []);
@@ -1835,33 +1834,6 @@ async function projectCityUpdates(supabase: any, cityEvents: any[]) {
   }
   for (const [cityId, updates] of Object.entries(merged)) {
     await supabase.from("cities").update(updates).eq("id", cityId);
-  }
-}
-
-async function projectUrbanGrowth(supabase: any, sessionId: string, turnNumber: number) {
-  const { data: developing } = await supabase.from("city_urban_cells")
-    .select("id, city_id, grid_x, grid_y, development_progress, development_turns, cities(name, population_total)")
-    .eq("session_id", sessionId).eq("status", "developing");
-  for (const cell of developing || []) {
-    const turns = Math.max(1, cell.development_turns || 3);
-    const population = Number((cell.cities as any)?.population_total || 0);
-    const populationMomentum = Math.min(12, Math.floor(population / 1000) * 2);
-    const nextProgress = Math.min(100, (cell.development_progress || 0) + Math.ceil(100 / turns) + populationMomentum);
-    const completed = nextProgress >= 100;
-    await supabase.from("city_urban_cells").update({
-      development_progress: nextProgress,
-      status: completed ? "urbanized" : "developing",
-      completed_turn: completed ? turnNumber : null,
-    }).eq("id", cell.id);
-    if (completed) {
-      await supabase.from("city_parcels").update({ status: "open" }).eq("urban_cell_id", cell.id).eq("status", "locked");
-      await supabase.from("game_events").insert({
-        session_id: sessionId, turn_number: turnNumber, player: "Systém", actor_type: "system",
-        event_type: "city_expansion_complete", confirmed: true, truth_state: "canon", city_id: cell.city_id,
-        note: `${(cell.cities as any)?.name || "Město"} dokončilo urbanizaci pole ${cell.grid_x}, ${cell.grid_y}.`,
-        importance: "normal", reference: { urbanCellId: cell.id, gridX: cell.grid_x, gridY: cell.grid_y },
-      });
-    }
   }
 }
 
