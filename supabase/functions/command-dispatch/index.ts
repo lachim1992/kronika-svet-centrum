@@ -2714,7 +2714,6 @@ async function executeClaimTileParcel(
   if (parcel.city_id && parcel.city_id !== cityId) return { events: [], error: "Parcelu už drží jiné město" };
   if (parcel.status !== "wild") return { events: [], error: "Parcela už je obsazená" };
 
-  const held = await cityParcelCapacity(supabase, sessionId, cityId);
   const cost = parcelClaimCost(Number(parcel.build_cost_multiplier || 1), held.claimed);
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
