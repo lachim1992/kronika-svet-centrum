@@ -447,7 +447,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {tile.biome_family.includes("forest") && !footprint.length && <Trees x={point.x - 8} y={point.y - 11} width="16" height="16" fill="var(--map-forest-edge)" stroke="var(--map-label)" strokeWidth=".8" />}
               {active && tileParcels.length > 0
                 ? renderTileParcels(point)
-                : footprint.length > 0 && renderCityFootprint(footprint, point)}
+                : footprint.length > 0 && renderCityFootprint(footprint, point, holderOwn)}
             </g>;
           })}
           {!cityLayerCityId && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
