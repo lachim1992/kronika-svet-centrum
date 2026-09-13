@@ -673,7 +673,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         if (start && pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
           const distance = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-          setZoom(Math.max(.45, Math.min(2.4, start.zoom * (distance / start.distance))));
+          setZoom(clampZoom(start.zoom * (distance / start.distance)));
           return;
         }
         const drag = dragRef.current; if (!drag) return;
