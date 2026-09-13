@@ -146,7 +146,8 @@ interface Props {
   onDetailOpenChange?: (open: boolean) => void;
 }
 
-type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; province_id: string | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null };
+type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; province_id: string | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null; coastal: boolean | null };
+type StoredSubBiome = { grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number; sub_biome: string };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
 type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
@@ -286,6 +287,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [newCityName, setNewCityName] = useState("");
   const [districts, setDistricts] = useState<CityDistrict[]>([]);
   const [productionPick, setProductionPick] = useState<Record<string, string>>({});
+  const [storedSubBiomes, setStoredSubBiomes] = useState<StoredSubBiome[]>([]);
 
 
 
@@ -299,13 +301,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }), []);
 
   const load = useCallback(async () => {
-    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes, contentRes, infrastructureRes, templateRes, buildingRes, districtRes] = await Promise.all([
-      supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction").eq("session_id", sessionId).limit(4000),
+    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, templateRes, buildingRes, districtRes] = await Promise.all([
+      supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction, coastal").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, controlled_by, production_output, wealth_output, food_value, parcel_index").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
+      supabase.from("tile_parcels").select("grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId).limit(40000),
       supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
       supabase.from("tile_parcel_contents").select("id, parcel_id, entity_type, entity_id, slots_used").eq("session_id", sessionId),
       supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
@@ -316,6 +319,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
     setRoutes((routeRes.data || []) as unknown as Route[]); setArmies((armyRes.data || []) as Army[]);
     setCityParcels((parcelRes.data || []) as TileParcel[]);
+    setStoredSubBiomes((subBiomeRes.data || []) as StoredSubBiome[]);
     setParcelContents((contentRes.data || []) as ParcelContent[]);
     setInfrastructure((infrastructureRes.data || []) as TileInfrastructure[]);
     setBuildingTemplates((templateRes.data || []) as unknown as BuildingTemplate[]);
@@ -436,7 +440,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, TILE_SIZE), []);
   const terrainOf = useCallback((tile: Tile) => ({
     biome_family: tile.biome_family, elevation: tile.mean_height, has_river: tile.has_river,
-    river_direction: tile.river_direction, is_passable: tile.is_passable,
+    river_direction: tile.river_direction, is_coastal: tile.coastal, is_passable: tile.is_passable,
   }), []);
   /**
    * Deterministic sub-biome survey of a cell, cached per cell so the macro map can tint the
@@ -444,8 +448,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
    */
   const subBiomeCache = useRef(new Map<string, TileParcelSpec[]>());
   useEffect(() => { subBiomeCache.current.clear(); }, [tiles, sessionId]);
+  /** Already materialized sub-parcels are the truth; the hint must never diverge from them. */
+  const storedSubBiomesByCell = useMemo(() => {
+    const map = new Map<string, TileParcelSpec[]>();
+    storedSubBiomes.forEach(row => {
+      const key = cellKey(row.grid_x, row.grid_y);
+      const spec = {
+        parcelIndex: row.parcel_index, parcelX: row.parcel_x, parcelY: row.parcel_y, subBiome: row.sub_biome,
+      } as TileParcelSpec;
+      map.set(key, [...(map.get(key) || []), spec]);
+    });
+    return map;
+  }, [storedSubBiomes]);
   const subBiomesOf = useCallback((tile: Tile, a: number, b: number) => {
     const key = cellKey(a, b);
+    const stored = storedSubBiomesByCell.get(key);
+    if (stored && stored.length) return stored;
     const cached = subBiomeCache.current.get(key);
     if (cached) return cached;
     const neighbours = CARDINAL_STEPS.flatMap(step => {
@@ -455,7 +473,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const specs = generateTileParcels(sessionId, a, b, terrainOf(tile), neighbours);
     subBiomeCache.current.set(key, specs);
     return specs;
-  }, [tileByCell, terrainOf, sessionId]);
+  }, [storedSubBiomesByCell, tileByCell, terrainOf, sessionId]);
+
 
   /** Which borders a cell's road reaches: neighbours that carry a road or hold a settlement. */
   const roadStepsOf = useCallback((a: number, b: number) => CARDINAL_STEPS.filter(step => {
@@ -1138,7 +1157,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
               {!active && showSubBiomes && zoom >= 1.2 && <g pointerEvents="none">
-                <g opacity=".34">
+                <g opacity=".5">
                   {subBiomesOf(tile, cell.a, cell.b).map(parcel => (
                     <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY)}
                       fill={SUB_BIOME_COLOR[parcel.subBiome] || colors[0]} stroke="none" />
