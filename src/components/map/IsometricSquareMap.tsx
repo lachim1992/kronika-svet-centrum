@@ -433,8 +433,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const holderCityId = cityByCell.get(cellKey(cell.a, cell.b));
             const inActiveCity = cityLayerCityId && holderCityId === cityLayerCityId;
             const footprint = parcelsByCell.get(cellKey(cell.a, cell.b)) || [];
+            const holderCity = holderCityId ? cityById.get(holderCityId) : undefined;
+            const holderOwn = holderCity ? holderCity.owner_player === playerName : true;
+            const holderColor = holderCity ? (holderOwn ? "var(--map-city-own)" : "var(--map-city-rival)") : colors[1];
             return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }} className="cursor-pointer">
-              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]} stroke={active || inActiveCity ? "var(--map-focus)" : colors[1]} strokeWidth={active ? 2.8 : inActiveCity ? 1.8 : 1} opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />
+              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]}
+                stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
+                strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
+                opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />
+              {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
               {tile.biome_family.includes("forest") && !footprint.length && <Trees x={point.x - 8} y={point.y - 11} width="16" height="16" fill="var(--map-forest-edge)" stroke="var(--map-label)" strokeWidth=".8" />}
