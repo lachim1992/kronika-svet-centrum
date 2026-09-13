@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
-import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel } from "@/lib/tileParcels";
+import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells } from "@/lib/tileParcels";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 
@@ -193,35 +193,42 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return map;
   }, [cityParcels]);
 
-  /**
-   * River network on the macro map. Every river cell links to each cardinal neighbour
-   * that carries water too, so the drawn line is the same connected system the
-   * sub-parcel channels follow inside the cells.
-   */
+  /** Macro rivers use the exact same 6×6 channel footprint as the opened parcel layer. */
   const riverSegments = useMemo(() => {
-    const riverCells = new Map<string, { a: number; b: number }>();
-    const waterCells = new Set<string>();
-    tiles.forEach(tile => {
+    const tileByCell = new Map(tiles.map(tile => { const cell = tileCell(tile); return [cellKey(cell.a, cell.b), tile] as const; }));
+    const points = new Map<string, { x: number; y: number }>();
+    tiles.filter(tile => tile.has_river).forEach(tile => {
       const cell = tileCell(tile);
-      const key = cellKey(cell.a, cell.b);
-      if (tile.biome_family === "sea" || Number(tile.mean_height ?? 40) < 8) waterCells.add(key);
-      else if (tile.has_river) riverCells.set(key, cell);
+      const neighbours = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }].flatMap(step => {
+        const neighbour = tileByCell.get(cellKey(cell.a + step.dx, cell.b + step.dy));
+        return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: {
+          biome_family: neighbour.biome_family, elevation: neighbour.mean_height,
+          has_river: neighbour.has_river, river_direction: neighbour.river_direction,
+          is_passable: neighbour.is_passable,
+        } }] : [];
+      });
+      riverChannelCells(sessionId, cell.a, cell.b, {
+        biome_family: tile.biome_family, elevation: tile.mean_height, has_river: tile.has_river,
+        river_direction: tile.river_direction, is_passable: tile.is_passable,
+      }, neighbours).forEach(parcel => {
+        const key = cellKey(cell.a * TILE_PARCEL_COLS + parcel.x, cell.b * TILE_PARCEL_ROWS + parcel.y);
+        const center = projectCell("square4", {
+          a: cell.a + (parcel.x + .5) / TILE_PARCEL_COLS - .5,
+          b: cell.b + (parcel.y + .5) / TILE_PARCEL_ROWS - .5,
+        }, TILE_SIZE);
+        points.set(key, center);
+      });
     });
-    const steps = [{ da: 1, db: 0 }, { da: -1, db: 0 }, { da: 0, db: 1 }, { da: 0, db: -1 }];
-    const segments: Array<{ id: string; from: { a: number; b: number }; to: { a: number; b: number }; mouth: boolean }> = [];
-    riverCells.forEach((cell, key) => {
-      steps.forEach(step => {
-        const neighbour = { a: cell.a + step.da, b: cell.b + step.db };
-        const neighbourKey = cellKey(neighbour.a, neighbour.b);
-        const isWater = waterCells.has(neighbourKey);
-        if (!isWater && !riverCells.has(neighbourKey)) return;
-        // Draw each river link once; the mouth into open water is always drawn from land.
-        if (!isWater && neighbourKey < key) return;
-        segments.push({ id: `${key}>${neighbourKey}`, from: cell, to: neighbour, mouth: isWater });
+    const segments: Array<{ id: string; from: { x: number; y: number }; to: { x: number; y: number } }> = [];
+    points.forEach((point, key) => {
+      const [x, y] = key.split(",").map(Number);
+      [{ x: x + 1, y }, { x, y: y + 1 }].forEach(next => {
+        const nextKey = cellKey(next.x, next.y); const end = points.get(nextKey);
+        if (end) segments.push({ id: `${key}>${nextKey}`, from: point, to: end });
       });
     });
     return segments;
-  }, [tiles, tileCell]);
+  }, [tiles, tileCell, sessionId]);
 
   /** One war-band illustration per cell; further stacks are folded into a count badge. */
   const armyGroups = useMemo(() => {
@@ -348,7 +355,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       {/* city land is ringed so the built-up block reads at a glance */}
       {wallEdges.map((edge, index) => (
         <line key={`survey-wall-${index}`} x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y}
-          stroke={holderColor} strokeWidth="2.2" strokeLinecap="round" opacity=".95" />
+          stroke={holderColor} strokeWidth="1.6" strokeLinecap="round" opacity=".9" />
       ))}
       {tileParcels.filter(parcel => parcel.status === "occupied").map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
     </g>;
@@ -401,15 +408,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       ))}
       {edges.map((edge, index) => (
         <g key={`wall-${index}`}>
-          <line x1={edge.from.x} y1={edge.from.y + 2.4} x2={edge.to.x} y2={edge.to.y + 2.4} stroke="var(--map-city-wall-dark)" strokeWidth="3.4" strokeLinecap="round" opacity=".9" />
-          <line x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y} stroke="var(--map-city-wall-light)" strokeWidth="2.2" strokeLinecap="round" />
-          <line x1={edge.from.x} y1={edge.from.y - 1.4} x2={edge.to.x} y2={edge.to.y - 1.4} stroke={wallColor} strokeWidth=".9" strokeLinecap="round" opacity=".95" />
+          <line x1={edge.from.x} y1={edge.from.y + 1.6} x2={edge.to.x} y2={edge.to.y + 1.6} stroke="var(--map-city-wall-dark)" strokeWidth="2.4" strokeLinecap="round" opacity=".88" />
+          <line x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y} stroke="var(--map-city-wall-light)" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1={edge.from.x} y1={edge.from.y - .9} x2={edge.to.x} y2={edge.to.y - .9} stroke={wallColor} strokeWidth=".65" strokeLinecap="round" opacity=".92" />
         </g>
       ))}
       {edges.filter((_, index) => index % 3 === 0).map((edge, index) => (
         <g key={`tower-${index}`} transform={`translate(${edge.from.x},${edge.from.y})`}>
-          <rect x="-2.2" y="-7" width="4.4" height="8.4" fill="var(--map-city-wall-light)" stroke="var(--map-city-wall-dark)" strokeWidth=".5" />
-          <rect x="-2.8" y="-8.4" width="5.6" height="1.8" fill={wallColor} />
+          <rect x="-1.6" y="-5.2" width="3.2" height="6.2" fill="var(--map-city-wall-light)" stroke="var(--map-city-wall-dark)" strokeWidth=".4" />
+          <rect x="-2" y="-6.2" width="4" height="1.3" fill={wallColor} />
         </g>
       ))}
       {occupied.map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
@@ -544,10 +551,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </g>;
           })}
           {!cityLayerCityId && riverSegments.map(segment => {
-            const from = at(segment.from.a, segment.from.b);
-            const to = at(segment.to.a, segment.to.b);
-            // The mouth stops at the shoreline instead of running into open water.
-            const end = segment.mouth ? { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } : to;
+            const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
+            const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
             return <g key={segment.id} pointerEvents="none">
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water-edge)" strokeWidth="2.4" strokeLinecap="round" opacity=".48" />
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water)" strokeWidth="1.15" strokeLinecap="round" opacity=".95" />
