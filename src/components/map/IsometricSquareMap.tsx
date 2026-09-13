@@ -497,10 +497,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </g>;
       })}
       {/* city land is ringed so the built-up block reads at a glance */}
-      {wallEdges.map((edge, index) => (
-        <line key={`survey-wall-${index}`} x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y}
-          stroke={holderColor} strokeWidth="1.6" strokeLinecap="round" opacity=".9" />
-      ))}
+      {renderWallRun(wallEdges, holderColor, 2, "survey-wall")}
       {(roadTier > 0 || selectedInfrastructure?.status === "building") && localRoadSegments(occupiedIndexes).map((segment, index) => {
         const centre = (point: { x: number; y: number }) => {
           const corners = parcelCorners(centerPoint, point.x, point.y);
@@ -586,19 +583,65 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return { a: point(a0, b0), b: point(a1, b0), c: point(a1, b1), d: point(a0, b1) };
   };
 
-  /** Outer edges of a held parcel block — the line the ramparts follow. */
+  /** Outer edges of a held parcel block — the line the ramparts follow, each edge only once. */
   const footprintWallEdges = (parcels: TileParcel[], centerPoint: { x: number; y: number }) => {
     const held = new Set(parcels.map(parcel => `${parcel.parcel_x},${parcel.parcel_y}`));
+    const seen = new Set<string>();
     const edges: { from: { x: number; y: number }; to: { x: number; y: number } }[] = [];
+    const push = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const round = (point: { x: number; y: number }) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+      const key = [round(from), round(to)].sort().join("|");
+      if (seen.has(key)) return;
+      seen.add(key);
+      edges.push({ from, to });
+    };
     parcels.forEach(parcel => {
       const { a, b, c, d } = parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y);
-      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y - 1}`)) edges.push({ from: a, to: b });
-      if (!held.has(`${parcel.parcel_x + 1},${parcel.parcel_y}`)) edges.push({ from: b, to: c });
-      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y + 1}`)) edges.push({ from: c, to: d });
-      if (!held.has(`${parcel.parcel_x - 1},${parcel.parcel_y}`)) edges.push({ from: d, to: a });
+      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y - 1}`)) push(a, b);
+      if (!held.has(`${parcel.parcel_x + 1},${parcel.parcel_y}`)) push(b, c);
+      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y + 1}`)) push(c, d);
+      if (!held.has(`${parcel.parcel_x - 1},${parcel.parcel_y}`)) push(d, a);
     });
     return edges;
   };
+
+  /** Corners where the rampart turns — the only places a tower belongs. */
+  const wallCorners = (edges: { from: { x: number; y: number }; to: { x: number; y: number } }[]) => {
+    const byPoint = new Map<string, { point: { x: number; y: number }; dirs: Set<string> }>();
+    edges.forEach(edge => {
+      const dir = `${Math.sign(Math.round(edge.to.x - edge.from.x))},${Math.sign(Math.round((edge.to.y - edge.from.y) * 10))}`;
+      [edge.from, edge.to].forEach(point => {
+        const key = `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+        const entry = byPoint.get(key) || { point, dirs: new Set<string>() };
+        entry.dirs.add(dir);
+        byPoint.set(key, entry);
+      });
+    });
+    return [...byPoint.values()].filter(entry => entry.dirs.size > 1).map(entry => entry.point);
+  };
+
+  /** One low stone rampart run, drawn as a solid wall face with a lit crown. */
+  const renderWallRun = (
+    edges: { from: { x: number; y: number }; to: { x: number; y: number } }[],
+    wallColor: string, height = 2.4, prefix = "wall",
+  ) => <g>
+    {edges.map((edge, index) => (
+      <path key={`${prefix}-face-${index}`}
+        d={`M${edge.from.x} ${edge.from.y} L${edge.to.x} ${edge.to.y} L${edge.to.x} ${edge.to.y - height} L${edge.from.x} ${edge.from.y - height} Z`}
+        fill="var(--map-city-wall-dark)" stroke="none" opacity=".92" />
+    ))}
+    {edges.map((edge, index) => (
+      <line key={`${prefix}-crown-${index}`} x1={edge.from.x} y1={edge.from.y - height} x2={edge.to.x} y2={edge.to.y - height}
+        stroke="var(--map-city-wall-light)" strokeWidth=".9" strokeLinecap="square" />
+    ))}
+    {wallCorners(edges).map((point, index) => (
+      <g key={`${prefix}-tower-${index}`} transform={`translate(${point.x},${point.y})`}>
+        <rect x="-1.1" y={-height - 2.2} width="2.2" height={height + 2.4} fill="var(--map-city-wall-light)" stroke="var(--map-city-wall-dark)" strokeWidth=".3" />
+        <rect x="-1.4" y={-height - 3} width="2.8" height=".9" fill={wallColor} />
+      </g>
+    ))}
+  </g>;
+
 
   /** Small house or an active construction site, built in the same visual language as the walls. */
   const renderParcelHouse = (parcel: TileParcel, centerPoint: { x: number; y: number }, index: number, building = false, progress = 100) => {
@@ -617,7 +660,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     </g>;
     const sprite = LAND_USE_SPRITE[parcel.land_use || ""];
     if (sprite) {
-      const size = width * 2.6;
+      const size = width * 2;
       return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
         <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".3" />
         <image href={sprite} x={-size / 2} y={-size * .78} width={size} height={size} preserveAspectRatio="xMidYMid meet" />
@@ -641,19 +684,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           fill={parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open) : "var(--map-parcel-open)"}
           stroke="var(--map-marker-edge)" strokeWidth=".35" opacity={parcel.status === "occupied" ? .95 : .72} />
       ))}
-      {edges.map((edge, index) => (
-        <g key={`wall-${index}`}>
-          <line x1={edge.from.x} y1={edge.from.y + 1.6} x2={edge.to.x} y2={edge.to.y + 1.6} stroke="var(--map-city-wall-dark)" strokeWidth="2.4" strokeLinecap="round" opacity=".88" />
-          <line x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y} stroke="var(--map-city-wall-light)" strokeWidth="1.5" strokeLinecap="round" />
-          <line x1={edge.from.x} y1={edge.from.y - .9} x2={edge.to.x} y2={edge.to.y - .9} stroke={wallColor} strokeWidth=".65" strokeLinecap="round" opacity=".92" />
-        </g>
-      ))}
-      {edges.filter((_, index) => index % 3 === 0).map((edge, index) => (
-        <g key={`tower-${index}`} transform={`translate(${edge.from.x},${edge.from.y})`}>
-          <rect x="-1.6" y="-5.2" width="3.2" height="6.2" fill="var(--map-city-wall-light)" stroke="var(--map-city-wall-dark)" strokeWidth=".4" />
-          <rect x="-2" y="-6.2" width="4" height="1.3" fill={wallColor} />
-        </g>
-      ))}
+      {renderWallRun(edges, wallColor, 2.2, "wall")}
       {occupied.map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
     </g>;
   };
@@ -661,7 +692,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   /** Painted sprite of what the node actually is — no ramparts, no towers. */
   const renderWorkplaceGlyph = (node: Node, scale = 1) => {
     const style = NODE_STYLE[node.node_type] || NODE_STYLE.resource_node;
-    const size = 13 * scale;
+    const size = 10.5 * scale;
     return <g>
       <ellipse cx="0" cy="2.4" rx={size * .38} ry={size * .17} fill="var(--map-city-wall-dark)" opacity=".22" />
       <image href={nodeSprite(node)} x={-size / 2} y={-size * .82} width={size} height={size}
