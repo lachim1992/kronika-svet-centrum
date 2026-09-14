@@ -1,14 +1,11 @@
+import { cellDistance, loadGridKind } from "../_shared/topology.ts";
+import { checkDb } from "../_shared/database-result.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-const axialDist = (q1: number, r1: number, q2: number, r2: number) => {
-  const dq = q1 - q2, dr = r1 - r2;
-  return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
 };
 
 interface Node {
@@ -69,18 +66,6 @@ function calcMetrics(a: Node, b: Node, dist: number, routeType: string): Partial
   };
 }
 
-/** Find the nearest node from `candidates` to `target` */
-function findNearest(target: Node, candidates: Node[]): Node | null {
-  if (candidates.length === 0) return null;
-  let best = candidates[0];
-  let bestDist = axialDist(target.hex_q, target.hex_r, best.hex_q, best.hex_r);
-  for (let i = 1; i < candidates.length; i++) {
-    const d = axialDist(target.hex_q, target.hex_r, candidates[i].hex_q, candidates[i].hex_r);
-    if (d < bestDist) { bestDist = d; best = candidates[i]; }
-  }
-  return best;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -94,6 +79,20 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+    const gridKind = await loadGridKind(sb, session_id);
+    const distance = (q1: number, r1: number, q2: number, r2: number) => cellDistance(gridKind, q1, r1, q2, r2);
+    /** Find the nearest node from `candidates` to `target` */
+    function findNearest(target: Node, candidates: Node[]): Node | null {
+      if (candidates.length === 0) return null;
+      let best = candidates[0];
+      let bestDist = distance(target.hex_q, target.hex_r, best.hex_q, best.hex_r);
+      for (let i = 1; i < candidates.length; i++) {
+        const d = distance(target.hex_q, target.hex_r, candidates[i].hex_q, candidates[i].hex_r);
+        if (d < bestDist) { bestDist = d; best = candidates[i]; }
+      }
+      return best;
+    }
+
     const [nodesRes, adjRes] = await Promise.all([
       sb.from("province_nodes")
         .select("id, province_id, node_type, node_tier, node_subtype, name, hex_q, hex_r, strategic_value, economic_value, defense_value, parent_node_id, is_major, flow_role, metadata")
@@ -104,12 +103,15 @@ Deno.serve(async (req) => {
         .eq("session_id", session_id),
     ]);
 
+    checkDb(nodesRes, "read province_nodes");
+    checkDb(adjRes, "read province_adjacency");
     const nodes: Node[] = (nodesRes.data || [])
       .map((n: any) => ({ ...n, metadata: n.metadata || {} }))
       .filter((n: Node) => n.node_type !== "pass");
     const adjacency = adjRes.data || [];
 
     if (nodes.length === 0) {
+      checkDb(await sb.from("province_routes").delete().eq("session_id", session_id).eq("route_origin", "generated"), "clear inactive generated routes");
       return new Response(JSON.stringify({ ok: true, routes_created: 0, reason: "no nodes" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -118,10 +120,11 @@ Deno.serve(async (req) => {
     // ── PROTECTED ROUTES (Etapa 2): load existing non-generated routes
     // (player_built, treaty, event) — these are IMMUTABLE: we never delete or
     // modify them, and we skip generating duplicates between the same node pair.
-    const { data: protectedRows } = await sb.from("province_routes")
+    const { data: protectedRows, error: protectedRowsError } = await sb.from("province_routes")
       .select("id, node_a, node_b, route_origin, planned_hex_path, metadata")
       .eq("session_id", session_id)
       .neq("route_origin", "generated");
+    checkDb({ error: protectedRowsError }, "read protected routes");
     const protectedPairs = new Set<string>();
     for (const r of protectedRows || []) {
       const a = r.node_a as string, b = r.node_b as string;
@@ -208,7 +211,7 @@ Deno.serve(async (req) => {
       // passing through one endpoint's hex; instead register as waypoint.
       if (tryRegisterAsWaypoint(a, b)) { routeSet.add(key); return; }
       routeSet.add(key);
-      const dist = axialDist(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
+      const dist = distance(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
       const routeType = inferRouteType(a, b);
       const metrics = calcMetrics(a, b, dist, routeType);
       const sameProv = a.province_id === b.province_id;
@@ -247,7 +250,8 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════
     for (const [, pNodes] of Object.entries(nodesByProv)) {
       const majors = pNodes.filter(n => n.is_major || n.node_tier === "major");
-      if (majors.length < 2) continue;
+      // A single major still anchors orphan minors/micros below.
+      if (majors.length === 0) continue;
 
       // Nearest-neighbor chain: connect each major to its closest unconnected major
       const connected = new Set<string>([majors[0].id]);
@@ -259,7 +263,7 @@ Deno.serve(async (req) => {
           const cNode = nodeById.get(cid)!;
           for (const rid of remaining) {
             const rNode = nodeById.get(rid)!;
-            const d = axialDist(cNode.hex_q, cNode.hex_r, rNode.hex_q, rNode.hex_r);
+            const d = distance(cNode.hex_q, cNode.hex_r, rNode.hex_q, rNode.hex_r);
             if (d < bestDist) { bestDist = d; bestA = cNode; bestB = rNode; }
           }
         }
@@ -301,7 +305,7 @@ Deno.serve(async (req) => {
       let bestPair: [Node, Node] | null = null, bestDist = Infinity;
       for (const a of majorsA) {
         for (const b of majorsB) {
-          const d = axialDist(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
+          const d = distance(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
           if (d < bestDist) { bestDist = d; bestPair = [a, b]; }
         }
       }
@@ -318,20 +322,20 @@ Deno.serve(async (req) => {
       const others = ports.filter(o => o.id !== p.id && o.province_id !== p.province_id);
       const nearest = findNearest(p, others);
       if (nearest) {
-        const d = axialDist(p.hex_q, p.hex_r, nearest.hex_q, nearest.hex_r);
+        const d = distance(p.hex_q, p.hex_r, nearest.hex_q, nearest.hex_r);
         if (d <= 12) addRoute(p, nearest, { tier_link: "sea_lane" });
       }
     }
 
     // Delete only generated routes; player_built / treaty / event are immutable.
-    await sb.from("province_routes")
+    checkDb(await sb.from("province_routes")
       .delete()
       .eq("session_id", session_id)
-      .eq("route_origin", "generated");
+      .eq("route_origin", "generated"), "publish province_routes");
     const BATCH = 50;
     for (let i = 0; i < routes.length; i += BATCH) {
       const { error } = await sb.from("province_routes").insert(routes.slice(i, i + BATCH));
-      if (error) console.error("Insert batch error:", error);
+      checkDb({ error }, "insert province_routes");
     }
 
     // Persist newly-discovered waypoint nodes onto protected routes' metadata
@@ -344,23 +348,25 @@ Deno.serve(async (req) => {
         const existing: string[] = Array.isArray(meta.waypoint_node_ids) ? meta.waypoint_node_ids : [];
         const merged = Array.from(new Set([...existing, ...nodeIds]));
         if (merged.length === existing.length) continue;
-        await sb.from("province_routes")
+        checkDb(await sb.from("province_routes")
           .update({ metadata: { ...meta, waypoint_node_ids: merged } })
-          .eq("id", routeId);
+          .eq("id", routeId), "publish province_routes");
       }
     }
 
     // ── Auto-discover neutral nodes connected to player-controlled nodes via complete routes ──
     try {
-      const { data: allCompleteRoutes } = await sb
+      const { data: allCompleteRoutes, error: allCompleteRoutesError } = await sb
         .from("province_routes")
         .select("node_a, node_b")
         .eq("session_id", session_id)
         .eq("construction_state", "complete");
-      const { data: nodeRows } = await sb
+      checkDb({ error: allCompleteRoutesError }, "read complete routes");
+      const { data: nodeRows, error: nodeRowsError } = await sb
         .from("province_nodes")
         .select("id, is_neutral, discovered, controlled_by")
         .eq("session_id", session_id);
+      checkDb({ error: nodeRowsError }, "read discovery nodes");
       const nodeMap = new Map<string, any>((nodeRows || []).map((n: any) => [n.id, n]));
       const seen = new Set<string>();
       for (const r of allCompleteRoutes || []) {
@@ -372,13 +378,13 @@ Deno.serve(async (req) => {
         if (b.is_neutral && !b.discovered && a.controlled_by) pairs.push({ id: b.id, discoverer: a.controlled_by });
         for (const u of pairs) {
           if (seen.has(u.id)) continue; seen.add(u.id);
-          await sb.from("province_nodes")
+          checkDb(await sb.from("province_nodes")
             .update({ discovered: true, discovered_by: u.discoverer, discovered_at: new Date().toISOString() })
-            .eq("id", u.id).eq("discovered", false);
+            .eq("id", u.id).eq("discovered", false), "publish province_nodes");
         }
       }
     } catch (e) {
-      console.warn("auto-discovery pass failed:", (e as Error).message);
+      throw new Error(`auto-discovery failed: ${(e as Error).message}`);
     }
 
     // Stats

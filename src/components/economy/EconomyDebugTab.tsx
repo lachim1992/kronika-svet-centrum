@@ -1,3 +1,4 @@
+import { ECONOMY_REFRESH_STEPS } from "../../../supabase/functions/_shared/economy-refresh";
 // ============================================================================
 // EconomyDebugTab — Dev-only forensic observability for the economy engine.
 //
@@ -27,14 +28,7 @@ interface Props {
   realm: any;
 }
 
-const EXPECTED_CHAIN = [
-  "compute-province-routes",
-  "compute-hex-flows",
-  "compute-trade-systems",
-  "compute-trade-flows",
-  "compute-basket-trade-flows",
-  "compute-economy-flow",
-];
+const EXPECTED_CHAIN = ECONOMY_REFRESH_STEPS;
 
 interface Snapshot {
   realm: any | null;

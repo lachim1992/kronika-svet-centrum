@@ -1,7 +1,7 @@
 // ============================================================================
 // BetaSmokeHarness — Dev-only 30-turn observability harness.
 //
-// Purpose: validate the canonical loop (commit-turn → refresh-economy →
+// Purpose: validate the canonical loop (commit-turn (including economy refresh) →
 // re-fetch → adapter view-model) end-to-end without engaging player UI.
 // On the FIRST failure, snapshots enough context to reproduce the bug
 // without replaying the whole sequence.
@@ -11,6 +11,8 @@
 // ============================================================================
 
 import { useState } from "react";
+import { getCommitTurnIssues } from "@/lib/commitTurnResult";
+import { ECONOMY_REFRESH_STEPS } from "../../../supabase/functions/_shared/economy-refresh";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Play, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
@@ -81,39 +83,28 @@ const BetaSmokeHarness = ({ sessionId, currentPlayerName }: Props) => {
     const results: InvariantResult[] = [];
 
     // 1. commit-turn
-    let commitOk = false;
+
     try {
       const { data, error } = await supabase.functions.invoke("commit-turn", {
         body: { sessionId, playerName: currentPlayerName, skipNarrative: true },
       });
       if (error) throw new Error(error.message || "commit-turn failed");
-      commitOk = true;
-      results.push({ name: "commit-turn", ok: true });
+      const issues = getCommitTurnIssues(data);
+      results.push({ name: "commit-turn", ok: issues.length === 0, detail: issues.join("; ") });
+      const refresh = data?.results?.economyRefresh;
+      const steps = refresh?.steps ?? [];
+      const complete = refresh?.ok === true && steps.length === ECONOMY_REFRESH_STEPS.length
+        && steps.every((step: { name: string; ok: boolean }, index: number) =>
+          step.ok && step.name === ECONOMY_REFRESH_STEPS[index]);
+      results.push({
+        name: "server economy refresh", ok: complete,
+        detail: complete ? `${steps.length} steps ok` : "Missing or failed server economy pipeline",
+      });
     } catch (e: any) {
       results.push({ name: "commit-turn", ok: false, detail: e.message });
     }
 
-    // 2. refresh-economy
-    let refreshSteps: any[] = [];
-    if (commitOk) {
-      try {
-        const { data, error } = await supabase.functions.invoke("refresh-economy", {
-          body: { session_id: sessionId },
-        });
-        if (error) throw new Error(error.message || "refresh-economy failed");
-        refreshSteps = (data as any)?.steps ?? [];
-        const failed = refreshSteps.filter((s: any) => !s.ok);
-        results.push({
-          name: "refresh-economy",
-          ok: failed.length === 0,
-          detail: failed.length > 0 ? `${failed.length} step(s) failed` : `${refreshSteps.length} steps ok`,
-        });
-      } catch (e: any) {
-        results.push({ name: "refresh-economy", ok: false, detail: e.message });
-      }
-    } else {
-      results.push({ name: "refresh-economy", ok: false, detail: "skipped (commit failed)" });
-    }
+    // Inspect the server result above; do not repair it by running a second refresh.
 
     // 3. re-fetch snapshot
     const snap = await fetchSnapshot();
@@ -257,7 +248,7 @@ const BetaSmokeHarness = ({ sessionId, currentPlayerName }: Props) => {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Runs commit-turn → refresh-economy → re-fetch → invariants. On first failure,
+        Runs commit-turn (including economy refresh) → re-fetch → invariants. On first failure,
         snapshots context for reproduction. See <code>docs/BETA_SCOPE.md</code>.
       </p>
 

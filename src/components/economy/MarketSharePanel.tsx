@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { readEconomySnapshot } from "@/lib/economySnapshots";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -10,6 +10,7 @@ import { DEMAND_BASKETS } from "@/lib/goodsCatalog";
 interface Props {
   sessionId: string;
   playerName: string;
+  currentTurn: number;
 }
 
 interface MarketShareRow {
@@ -25,33 +26,30 @@ interface MarketShareRow {
   player_name: string;
 }
 
-const MarketSharePanel = ({ sessionId, playerName }: Props) => {
+const MarketSharePanel = ({ sessionId, playerName, currentTurn }: Props) => {
   const [shares, setShares] = useState<MarketShareRow[]>([]);
   const [allShares, setAllShares] = useState<MarketShareRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetch = async () => {
-      setLoading(true);
-      // Get latest turn's market shares for all players
-      const { data } = await supabase
-        .from("market_shares")
-        .select("*")
-        .eq("session_id", sessionId)
-        .order("turn_number", { ascending: false })
-        .limit(200);
-
-      const rows = (data || []) as MarketShareRow[];
-      // Get the latest turn
-      const maxTurn = rows.reduce((m, r) => Math.max(m, r.turn_number), 0);
-      const latest = rows.filter(r => r.turn_number === maxTurn);
-      
-      setAllShares(latest);
-      setShares(latest.filter(r => r.player_name === playerName));
-      setLoading(false);
-    };
-    fetch();
-  }, [sessionId, playerName]);
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    setShares([]);
+    setAllShares([]);
+    readEconomySnapshot("market_shares", sessionId, currentTurn)
+      .then(rows => {
+        if (cancelled) return;
+        setAllShares(rows);
+        setShares(rows.filter(row => row.player_name === playerName));
+      })
+      .catch(error => {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : "Načtení tržních dat selhalo.");
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [sessionId, playerName, currentTurn]);
 
   const basketMeta = useMemo(() => {
     const map = new Map<string, { label: string; icon: string }>();
@@ -83,12 +81,14 @@ const MarketSharePanel = ({ sessionId, playerName }: Props) => {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   }
 
+  if (loadError) return <p role="alert" className="text-sm text-destructive">Tržní data se nepodařilo načíst: {loadError}</p>;
+
   if (shares.length === 0) {
     return (
       <Card>
         <CardContent className="p-6 text-center space-y-2">
           <div className="text-lg">📊</div>
-          <p className="text-sm font-semibold text-foreground">Tržní data nejsou k dispozici</p>
+          <p className="text-sm font-semibold text-foreground">Tržní data pro aktuální tah nejsou k dispozici</p>
           <p className="text-xs text-muted-foreground">Klikněte na „Přepočítat ekonomiku" pro vygenerování dat o tržním podílu.</p>
         </CardContent>
       </Card>

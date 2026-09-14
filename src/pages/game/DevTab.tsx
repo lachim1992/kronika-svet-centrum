@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getCommitTurnIssues } from "@/lib/commitTurnResult";
 import DevModePanel from "@/components/DevModePanel";
 import BetaSmokeHarness from "@/components/dev/BetaSmokeHarness";
 import { Wrench, SkipForward, Loader2, RefreshCw } from "lucide-react";
@@ -45,8 +46,10 @@ const DevTab = ({
         throw new Error(msg);
       }
 
-      toast.success(`Kolo posunuto na ${currentTurn + 1}`);
       onRefetch();
+      const issues = getCommitTurnIssues(data);
+      if (issues.length > 0) throw new Error(issues.join("; "));
+      toast.success(`Kolo posunuto na ${data.newTurn ?? currentTurn + 1}`);
     } catch (err: any) {
       toast.error("Chyba při posunu kola: " + (err.message || "Neznámá chyba"));
     } finally {

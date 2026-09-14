@@ -180,8 +180,8 @@ type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
 type ParcelContent = { id: string; parcel_id: string; entity_type: string; entity_id: string; slots_used: number };
 type TileInfrastructure = { id: string; grid_x: number; grid_y: number; owner_player: string; level: number; target_level: number | null; status: string; progress: number };
-type BuildingTemplate = { id: string; name: string; category: string; description: string; cost_wealth: number; cost_wood: number; cost_stone: number; cost_iron: number; build_turns: number; effects: unknown; max_level: number; level_data: unknown };
-type ConstructionEntity = { id: string; name: string; status: string; build_started_turn: number; build_duration: number; completed_turn: number | null; parcel_id: string | null };
+type BuildingTemplate = { image_url?: string | null; id: string; name: string; category: string; description: string; cost_wealth: number; cost_wood: number; cost_stone: number; cost_iron: number; build_turns: number; effects: unknown; max_level: number; level_data: unknown };
+type ConstructionEntity = { image_url?: string | null; template_id?: string | null; id: string; name: string; status: string; build_started_turn: number; build_duration: number; completed_turn: number | null; parcel_id: string | null };
 /** A city district — either housing or a workshop pointed at one demand basket. */
 type CityDistrict = {
   id: string; city_id: string; name: string; status: string; district_type: string;
@@ -337,8 +337,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
       supabase.from("tile_parcel_contents").select("id, parcel_id, entity_type, entity_id, slots_used").eq("session_id", sessionId),
       supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
-      supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
-      supabase.from("city_buildings").select("id, name, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
+      supabase.from("building_templates").select("*").order("category").order("name"),
+      supabase.from("city_buildings").select("id, name, status, build_started_turn, build_duration, completed_turn, parcel_id, image_url, template_id").eq("session_id", sessionId).not("parcel_id", "is", null),
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
@@ -1019,12 +1019,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       <title>Výstavba · {progress} %</title>
     </g>;
     const built = constructionByParcel.get(parcel.id);
-    const sprite = built?.name ? buildSprite(built.name) : LAND_USE_SPRITE[parcel.land_use || ""];
+    const fallbackSprite = built?.name ? buildSprite(built.name) : LAND_USE_SPRITE[parcel.land_use || ""];
+    const sprite = built?.image_url || buildingTemplates.find(t => t.id === built?.template_id)?.image_url || fallbackSprite;
     if (sprite) {
       const size = width * 3.1;
       return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
         <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".3" />
-        <image href={sprite} x={-size / 2} y={-size + height * .55} width={size} height={size} preserveAspectRatio="xMidYMax meet" />
+        <image href={sprite} onError={event => { if (fallbackSprite && event.currentTarget.getAttribute("href") !== fallbackSprite) event.currentTarget.setAttribute("href", fallbackSprite); }} x={-size / 2} y={-size + height * .55} width={size} height={size} preserveAspectRatio="xMidYMax meet" />
         <title>{built?.name || parcel.land_use || "Zástavba"}</title>
       </g>;
     }
@@ -1565,7 +1566,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                       <span className="flex w-full items-center gap-2">
                         {buildingAction === `building-${template.id}`
                           ? <Loader2 className="h-4 w-4 animate-spin" />
-                          : <img src={buildSprite(template.name, template.category)} alt="" className="h-7 w-7 object-contain" />}
+                          : <img src={template.image_url || buildSprite(template.name, template.category)} onError={event => { const fallback = buildSprite(template.name, template.category); if (event.currentTarget.getAttribute("src") !== fallback) event.currentTarget.src = fallback; }} alt="" className="h-7 w-7 object-contain" />}
                         <span className="flex-1 leading-tight">{template.name}</span>
                       </span>
                       <span className="text-[10px] text-muted-foreground">{template.cost_wealth} zlata · {template.build_turns} t.</span>

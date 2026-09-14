@@ -4,13 +4,12 @@
 // Purpose:
 //   Preserve the legacy DevTab contract `{ ok, totalMs, steps: [{ step, ok,
 //   durationMs, detail }] }` while delegating all real work to the canonical
-//   orchestrator `refresh-economy`. Optionally appends a `process-turn`
-//   (recalcOnly) step when a `playerName` is provided.
+//   orchestrator `refresh-economy`. Legacy playerName is accepted but ignored.
 //
 // Discipline (do not violate):
-//   - Boundary layer only: delegate → adapt response → optional process-turn.
+//   - Boundary layer only: delegate → adapt response.
 //   - NO business logic, NO custom step list, NO recomputation here.
-//   - Top-level `ok` derives ONLY from real steps (refresh + process-turn).
+//   - Top-level `ok` derives ONLY from real refresh steps.
 //     The synthetic "warnings" step MUST NOT mask a failure of a real step.
 //
 // Canonical entrypoint for new callers: `refresh-economy`
@@ -68,7 +67,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName } = await req.json();
+    const { sessionId } = await req.json();
     if (!sessionId) throw new Error("Missing sessionId");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -105,7 +104,8 @@ Deno.serve(async (req) => {
     }
 
     // Track real-step pass/fail BEFORE appending synthetic warnings step
-    const refreshOk = refreshRes.ok && refreshSteps.every((s) => s.ok);
+    const refreshOk = refreshRes.ok && refreshRes.data?.ok === true
+      && refreshSteps.length > 0 && refreshSteps.every((s) => s.ok);
 
     const adaptedSteps: AdaptedStep[] = [...refreshSteps];
 
@@ -120,34 +120,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── 4. Optional process-turn (recalcOnly) — real step ──
-    let processTurnOk: boolean | null = null;
-    if (playerName) {
-      const t0 = Date.now();
-      const ptRes = await invokeFn(
-        supabaseUrl, anonKey, serviceKey,
-        "process-turn",
-        { sessionId, playerName, recalcOnly: true },
-      );
-      const dur = Date.now() - t0;
-      processTurnOk = ptRes.ok;
-      adaptedSteps.push({
-        step: "process-turn (recalcOnly)",
-        ok: ptRes.ok,
-        durationMs: dur,
-        detail: ptRes.ok ? safeStringify(ptRes.data).slice(0, 300) : safeStringify(ptRes.data?.error ?? ptRes.data),
-      });
-    }
-
-    // ── 5. Top-level ok: ONLY real steps. Warnings step is ignored. ──
-    const ok = refreshOk && (processTurnOk ?? true);
+    // Recalculation never applies turn effects, even for a legacy playerName.
+    const ok = refreshOk;
 
     // totalMs: prefer upstream value, fallback to sum of step durations
     const upstreamTotal = refreshRes.data?.totalMs;
     const totalMs = Number.isFinite(upstreamTotal)
-      ? Number(upstreamTotal) + adaptedSteps
-          .filter((s) => s.step === "process-turn (recalcOnly)")
-          .reduce((a, s) => a + s.durationMs, 0)
+      ? Number(upstreamTotal)
       : adaptedSteps.reduce((a, s) => a + s.durationMs, 0);
 
     return new Response(

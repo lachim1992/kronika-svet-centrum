@@ -1,3 +1,4 @@
+import { checkDb } from "../_shared/database-result.ts";
 // compute-trade-systems
 // Node-Trade v1 — Stage 4
 //
@@ -84,13 +85,15 @@ Deno.serve(async (req) => {
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Current turn (best-effort)
-    const { data: sessionRow } = await sb
+    // Resolve the snapshot turn before any mutation.
+    const { data: sessionRow, error: sessionError } = await sb
       .from("game_sessions")
       .select("current_turn")
       .eq("id", session_id)
       .maybeSingle();
-    const currentTurn: number = (sessionRow as any)?.current_turn ?? 0;
+    checkDb({ error: sessionError }, "read game_sessions");
+    const currentTurn = sessionRow?.current_turn;
+    if (!Number.isInteger(currentTurn) || currentTurn < 0) throw new Error("Missing or invalid current turn");
 
     // 1) Load nodes, routes, treaties, neutral_trade_pacts
     const [nodeRes, routeRes, prevSnapRes, treatyRes, pactRes] = await Promise.all([
@@ -100,7 +103,7 @@ Deno.serve(async (req) => {
         .eq("session_id", session_id),
       sb
         .from("province_routes")
-        .select("id, node_a, node_b, construction_state, control_state")
+        .select("id, node_a, node_b, construction_state, control_state, capacity_value")
         .eq("session_id", session_id),
       sb
         .from("trade_system_node_snapshot")
@@ -117,8 +120,7 @@ Deno.serve(async (req) => {
         .eq("session_id", session_id)
         .eq("status", "active"),
     ]);
-    if (nodeRes.error) throw nodeRes.error;
-    if (routeRes.error) throw routeRes.error;
+    for (const [name, result] of Object.entries({ nodes: nodeRes, routes: routeRes, snapshot: prevSnapRes, treaties: treatyRes, pacts: pactRes })) checkDb(result, `read trade system ${name}`);
 
     const nodes = (nodeRes.data || []).filter((n: any) => n.is_active !== false);
     const nodeById = new Map<string, any>(nodes.map((n: any) => [n.id, n]));
@@ -244,20 +246,20 @@ Deno.serve(async (req) => {
 
     if (eventsToInsert.length > 0) {
       const { error: evErr } = await sb.from("world_events").insert(eventsToInsert);
-      if (evErr) console.warn("world_events insert failed:", evErr.message);
+      checkDb({ error: evErr }, "insert world_events");
     }
 
     // 5) Upsert trade_systems and link province_nodes
     // Wipe systems not present any more (cascade clears basket_supply + access)
     const newKeysArr = Array.from(newKeysSet);
     if (newKeysArr.length > 0) {
-      await sb
+      checkDb(await sb
         .from("trade_systems")
         .delete()
         .eq("session_id", session_id)
-        .not("system_key", "in", `(${newKeysArr.map((k) => `"${k}"`).join(",")})`);
+        .not("system_key", "in", `(${newKeysArr.map((k) => `"${k}"`).join(",")})`), "publish trade_systems");
     } else {
-      await sb.from("trade_systems").delete().eq("session_id", session_id);
+      checkDb(await sb.from("trade_systems").delete().eq("session_id", session_id), "publish trade_systems");
     }
 
     const upserts = components.map((c) => ({
@@ -295,23 +297,23 @@ Deno.serve(async (req) => {
         .from("trade_systems")
         .upsert(upserts, { onConflict: "session_id,system_key" })
         .select("id, system_key");
-      if (upErr) throw upErr;
+      checkDb({ error: upErr }, "upsert trade_systems");
       systemIdByKey = new Map((upserted || []).map((s: any) => [s.system_key, s.id]));
     }
 
     // Link province_nodes.trade_system_id (batched updates per system)
     for (const c of components) {
       const sysId = systemIdByKey.get(c.systemKey);
-      if (!sysId) continue;
-      await sb
+      if (!sysId) throw new Error(`Missing persisted trade system ${c.systemKey}`);
+      checkDb(await sb
         .from("province_nodes")
         .update({ trade_system_id: sysId })
         .eq("session_id", session_id)
-        .in("id", c.nodeIds);
+        .in("id", c.nodeIds), "publish province_nodes");
     }
 
     // 6) Refresh snapshot
-    await sb.from("trade_system_node_snapshot").delete().eq("session_id", session_id);
+    checkDb(await sb.from("trade_system_node_snapshot").delete().eq("session_id", session_id), "publish trade_system_node_snapshot");
     const snapRows = components.flatMap((c) => {
       const sysId = systemIdByKey.get(c.systemKey);
       return c.nodeIds.map((nid) => ({
@@ -329,12 +331,12 @@ Deno.serve(async (req) => {
         const { error } = await sb
           .from("trade_system_node_snapshot")
           .insert(snapRows.slice(i, i + CHUNK));
-        if (error) console.warn("snapshot insert failed:", error.message);
+        checkDb({ error }, "insert trade_system_node_snapshot");
       }
     }
 
     // 7) Project player_trade_system_access
-    await sb.from("player_trade_system_access").delete().eq("session_id", session_id);
+    checkDb(await sb.from("player_trade_system_access").delete().eq("session_id", session_id), "publish player_trade_system_access");
 
     type AccessRow = {
       session_id: string;
@@ -421,7 +423,7 @@ Deno.serve(async (req) => {
         const { error } = await sb
           .from("player_trade_system_access")
           .insert(accessRows.slice(i, i + CHUNK));
-        if (error) console.warn("access insert failed:", error.message);
+        checkDb({ error }, "insert player_trade_system_access");
       }
     }
 

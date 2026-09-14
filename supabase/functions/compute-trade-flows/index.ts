@@ -1,3 +1,4 @@
+import { checkDb } from "../_shared/database-result.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
 
@@ -112,32 +113,40 @@ Deno.serve(async (req) => {
     // Reset counters per invocation
     remapCounters.unmapped = 0;
     remapCounters.legacy = 0;
-    // Resolve turn_number from session if not provided (refresh-economy doesn't pass it).
-    let tn = (turn_number as number | undefined);
-    if (!tn) {
-      const { data: sessRow } = await sb
-        .from("game_sessions")
-        .select("current_turn")
-        .eq("id", session_id)
-        .maybeSingle();
-      tn = (sessRow?.current_turn as number) || 1;
+    // This endpoint rebuilds current projections; it cannot replay a historical turn.
+    if (turn_number !== undefined && (!Number.isInteger(turn_number) || turn_number < 0)) {
+      return new Response(JSON.stringify({ ok: false, error: "Invalid turn_number" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const sessionResult = await sb.from("game_sessions").select("current_turn").eq("id", session_id).maybeSingle();
+    checkDb(sessionResult, "read game_sessions");
+    const tn = sessionResult.data?.current_turn;
+    if (!Number.isInteger(tn) || tn < 0) throw new Error("Missing or invalid current turn");
+    if (turn_number !== undefined && turn_number !== tn) {
+      return new Response(JSON.stringify({ ok: false, error: "turn_number must match the current session turn" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // ── LOAD DATA ──
-    const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes, ordersRes] = await Promise.all([
+    const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes, ordersRes, realmsRes] = await Promise.all([
       sb.from("goods").select("key, category, production_stage, market_tier, base_price_numeric, demand_basket, substitution_map, storable"),
       sb.from("production_recipes").select("*"),
-      sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id, route_access_factor, trade_system_id").eq("session_id", session_id),
+      sb.from("province_nodes").select("id, session_id, is_active, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id, route_access_factor, trade_system_id").eq("session_id", session_id),
       sb.from("cities").select("id, name, owner_player, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, settlement_level, temple_level, city_stability, labor_allocation").eq("session_id", session_id),
       sb.from("province_routes").select("id, node_a, node_b, capacity_value, control_state").eq("session_id", session_id),
       sb.from("province_hexes").select("q, r, resource_deposits").eq("session_id", session_id).not("resource_deposits", "is", null),
       // Phase 1B: player production preferences per node
       (sb.from("node_production_orders" as any)
         .select("node_id, target_basket_key, target_good_key, mode")
-        .eq("session_id", session_id) as any)
-        .then((r: any) => r, () => ({ data: [], error: null })),
+        .eq("session_id", session_id) as any),
+      sb.from("realm_resources").select("player_name").eq("session_id", session_id),
     ]);
 
+    for (const [name, result] of Object.entries({ goods: goodsRes, recipes: recipesRes, nodes: nodesRes, cities: citiesRes, routes: routesRes, hexes: hexesRes, orders: ordersRes, realms: realmsRes })) {
+      checkDb(result, `read ${name}`);
+    }
     const goods = goodsRes.data || [];
     const recipes = recipesRes.data || [];
     const nodes = nodesRes.data || [];
@@ -164,18 +173,20 @@ Deno.serve(async (req) => {
       (b: any) => b.template_id && !b.building_templates
     );
     if (bldErr || joinMissing) {
-      const { data: legacy } = await sb
+      const { data: legacy, error: legacyError } = await sb
         .from("city_buildings")
         .select("id, city_id, current_level, effects, template_id, status")
         .eq("session_id", session_id)
         .eq("status", "completed");
+      checkDb({ error: legacyError }, "read city_buildings fallback");
       const tplIds = [...new Set((legacy || []).map((b: any) => b.template_id).filter(Boolean))];
       let tmap = new Map<string, any>();
       if (tplIds.length > 0) {
-        const { data: tpls } = await sb
+        const { data: tpls, error: templatesError } = await sb
           .from("building_templates")
           .select("id, effects")
           .in("id", tplIds);
+        checkDb({ error: templatesError }, "read building_templates");
         tmap = new Map((tpls || []).map((t: any) => [t.id, t]));
       }
       cityBuildings = (legacy || []).map((b: any) => ({
@@ -353,6 +364,7 @@ Deno.serve(async (req) => {
     const statusUpdates: Array<{ node_id: string; last_status: string; last_status_reason: string | null }> = [];
 
     for (const node of nodes) {
+      if (node.is_active === false) continue;
       const role = node.production_role;
       const tags: string[] = node.capability_tags || [];
       if (!role || tags.length === 0) continue;
@@ -455,13 +467,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Write back order statuses (best-effort, batched)
+    // Publish production order status with the projection
     if (statusUpdates.length > 0) {
       for (const s of statusUpdates) {
-        await sb.from("node_production_orders" as any)
+        checkDb(await sb.from("node_production_orders" as any)
           .update({ last_status: s.last_status, last_status_reason: s.last_status_reason })
           .eq("session_id", session_id)
-          .eq("node_id", s.node_id);
+          .eq("node_id", s.node_id), "publish node_production_orders");
       }
     }
 
@@ -480,13 +492,14 @@ Deno.serve(async (req) => {
     }
     const dedupedInventories = [...invAgg.values()].map(({ count, ...rest }) => rest);
 
-    if (dedupedInventories.length > 0) {
-      const nodeIds = [...new Set(dedupedInventories.map(ni => ni.node_id))];
+    // Include nodes with no output: stopped/blocked recipes must lose stale inventory.
+    {
+      const nodeIds = nodes.map(node => node.id);
       for (let i = 0; i < nodeIds.length; i += 50) {
-        await sb.from("node_inventory").delete().in("node_id", nodeIds.slice(i, i + 50));
+        checkDb(await sb.from("node_inventory").delete().in("node_id", nodeIds.slice(i, i + 50)), "publish node_inventory");
       }
       for (let i = 0; i < dedupedInventories.length; i += 50) {
-        await sb.from("node_inventory").insert(dedupedInventories.slice(i, i + 50));
+        checkDb(await sb.from("node_inventory").insert(dedupedInventories.slice(i, i + 50)), "publish node_inventory");
       }
     }
 
@@ -713,10 +726,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (summaryRows.length > 0) {
-      await sb.from("city_market_summary").delete().eq("session_id", session_id).eq("turn_number", tn);
+    {
+      checkDb(await sb.from("city_market_summary").delete().eq("session_id", session_id).eq("turn_number", tn), "publish city_market_summary");
       for (let i = 0; i < summaryRows.length; i += 50) {
-        await sb.from("city_market_summary").insert(summaryRows.slice(i, i + 50));
+        checkDb(await sb.from("city_market_summary").insert(summaryRows.slice(i, i + 50)), "publish city_market_summary");
       }
     }
 
@@ -808,21 +821,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Persist demand_baskets
-    if (demandBasketRows.length > 0) {
-      await sb.from("demand_baskets").delete().eq("session_id", session_id);
+    // demand_baskets still serves legacy readers without a turn filter: keep it
+    // current-only until those consumers are migrated together. Historical
+    // city_market_baskets, city_market_summary and market_shares stay intact.
+    {
+      checkDb(await sb.from("demand_baskets").delete().eq("session_id", session_id), "publish demand_baskets");
       for (let i = 0; i < demandBasketRows.length; i += 50) {
         const { error: dbErr } = await sb.from("demand_baskets").insert(demandBasketRows.slice(i, i + 50));
-        if (dbErr) console.error("demand_baskets insert error:", JSON.stringify(dbErr));
+        checkDb({ error: dbErr }, "insert demand_baskets");
       }
     }
 
     // Persist city_market_baskets
-    if (cityBasketRows.length > 0) {
-      await sb.from("city_market_baskets").delete().eq("session_id", session_id).eq("turn_number", tn);
+    {
+      checkDb(await sb.from("city_market_baskets").delete().eq("session_id", session_id).eq("turn_number", tn), "publish city_market_baskets");
       for (let i = 0; i < cityBasketRows.length; i += 50) {
         const { error } = await sb.from("city_market_baskets").insert(cityBasketRows.slice(i, i + 50));
-        if (error) console.error("city_market_baskets insert error:", JSON.stringify(error));
+        checkDb({ error }, "insert city_market_baskets");
       }
     }
 
@@ -868,7 +883,11 @@ Deno.serve(async (req) => {
     }
 
     const tradeFlows: any[] = [];
-    for (const [cityId, demands] of cityDemands) {
+    // Every good has one export balance across all buyers. Stable ordering makes
+    // this existing greedy allocation reproducible when PostgREST reorders rows.
+    const exportedByCityGood = new Map<string, number>();
+    const byKey = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+    for (const [cityId, demands] of [...cityDemands].sort(([a], [b]) => byKey(a, b))) {
       const citySupply = cityGoodSupply.get(cityId) || new Map();
       const city = cityMap.get(cityId);
       if (!city) continue;
@@ -876,7 +895,8 @@ Deno.serve(async (req) => {
 
       for (const [basketKey, demandQty] of demands) {
         // Match goods whose demand_basket resolves to this basketKey
-        const relevantGoods = goods.filter(g => resolveBasketKey(g.demand_basket || "staple_food", warnings) === basketKey);
+        const relevantGoods = goods.filter(g => resolveBasketKey(g.demand_basket || "staple_food", warnings) === basketKey)
+          .sort((a, b) => byKey(a.key, b.key));
         let domesticSatisfaction = 0;
         for (const g of relevantGoods) {
           const supply = citySupply.get(g.key);
@@ -885,24 +905,32 @@ Deno.serve(async (req) => {
         // Also add auto-supply
         const autoForBasket = cityAutoSupply.get(cityId)?.get(basketKey) || 0;
         domesticSatisfaction += autoForBasket;
+        domesticSatisfaction += cityBuildingBonus.get(cityId)?.get(basketKey)?.qty || 0;
 
         const gap = demandQty - domesticSatisfaction;
         if (gap <= 0) continue;
 
-        for (const neighborId of neighbors) {
+        let remainingGap = gap;
+        for (const neighborId of [...neighbors].sort(byKey)) {
+          if (remainingGap < 0.1 - 1e-9) break;
           const neighborSupply = cityGoodSupply.get(neighborId) || new Map();
           const neighborCity = cityMap.get(neighborId);
           if (!neighborCity) continue;
 
           let availableSurplus = 0;
+          let shipmentCap = 0;
           let bestGoodKey = "";
           for (const g of relevantGoods) {
             const ns = neighborSupply.get(g.key);
             const nd = cityDemands.get(neighborId)?.get(basketKey) || 0;
             if (ns && ns.quantity > nd) {
-              const surplus = ns.quantity - nd;
+              const originalSurplus = ns.quantity - nd;
+              const surplus = originalSurplus - (exportedByCityGood.get(`${neighborId}|${g.key}`) || 0);
               if (surplus > availableSurplus) {
                 availableSurplus = surplus;
+                // Preserve the existing per-shipment 50% limit, while bounding
+                // the sum of every buyer's shipments by the actual surplus.
+                shipmentCap = originalSurplus * 0.5;
                 bestGoodKey = g.key;
               }
             }
@@ -916,7 +944,13 @@ Deno.serve(async (req) => {
           const pressure = PRESSURE_WEIGHTS.need * needPressure + tierPressure * 0.5;
           if (pressure < 0.1) continue;
 
-          const flowVolume = Math.min(gap, availableSurplus * 0.5);
+          // Store and debit the same tenths; rounding up could create goods or
+          // exceed a small remaining deficit.
+          const flowVolume = Math.floor((Math.min(remainingGap, availableSurplus, shipmentCap) + 1e-9) * 10) / 10;
+          if (flowVolume <= 0) continue;
+          remainingGap = Math.max(0, remainingGap - flowVolume);
+          const exportKey = `${neighborId}|${bestGoodKey}`;
+          exportedByCityGood.set(exportKey, (exportedByCityGood.get(exportKey) || 0) + flowVolume);
 
           tradeFlows.push({
             session_id,
@@ -929,7 +963,7 @@ Deno.serve(async (req) => {
             target_player: city.owner_player || "",
             good_key: bestGoodKey,
             flow_type: "demand_pull",
-            volume_per_turn: Math.round(flowVolume * 10) / 10,
+            volume_per_turn: flowVolume,
             quality_band: 0,
             trade_pressure: Math.round(pressure * 100) / 100,
             effective_price: goodsMap.get(bestGoodKey)?.base_price_numeric || 1,
@@ -1034,15 +1068,15 @@ Deno.serve(async (req) => {
           centrality.set(nodeId, Math.max(centrality.get(nodeId) || 0, norm));
         }
       }
-      await sb.from("province_nodes").update({ flow_centrality: 0 }).eq("session_id", session_id);
+      checkDb(await sb.from("province_nodes").update({ flow_centrality: 0 }).eq("session_id", session_id), "publish province_nodes");
       for (const [nodeId, val] of centrality) {
         if (val <= 0.05) continue;
-        await sb.from("province_nodes")
+        checkDb(await sb.from("province_nodes")
           .update({ flow_centrality: Math.round(val * 1000) / 1000 })
-          .eq("id", nodeId);
+          .eq("id", nodeId), "publish province_nodes");
       }
     } catch (e) {
-      console.warn("flow_centrality computation failed:", (e as Error).message);
+      throw new Error(`flow_centrality failed: ${(e as Error).message}`);
     }
 
     // ════════════════════════════════════════════
@@ -1164,6 +1198,7 @@ Deno.serve(async (req) => {
         sb.from("node_trade_links").select("node_id, player_name, link_status, route_safety").eq("session_id", session_id),
         sb.from("province_nodes").select("id, is_neutral, controlled_by, discovered").eq("session_id", session_id),
       ]);
+      for (const [name, result] of Object.entries({ outputs: outputsRes, links: linksRes, nodes: neutralNodesRes })) checkDb(result, `read neutral ${name}`);
       const outputs = outputsRes.data || [];
       const links = linksRes.data || [];
       const nNodes = neutralNodesRes.data || [];
@@ -1216,7 +1251,7 @@ Deno.serve(async (req) => {
         }
       }
     } catch (e) {
-      warnings.push(`Neutral node integration failed: ${(e as Error).message}`);
+      throw new Error(`Neutral node integration failed: ${(e as Error).message}`);
     }
 
     // ════════════════════════════════════════════
@@ -1235,6 +1270,7 @@ Deno.serve(async (req) => {
         sb.from("world_node_outputs").select("node_id, basket_key, quantity, quality, exportable_ratio").eq("session_id", session_id),
         sb.from("province_nodes").select("id, trade_system_id, controlled_by, is_neutral").eq("session_id", session_id),
       ]);
+      for (const [name, result] of Object.entries({ systems: systemsRes, access: accessRes, outputs: outputsRes2, nodes: nodesRes2 })) checkDb(result, `read trade ${name}`);
       const systems = systemsRes.data || [];
       const accesses = accessRes.data || [];
       const outputs2 = outputsRes2.data || [];
@@ -1324,7 +1360,7 @@ Deno.serve(async (req) => {
       }
 
       // Persist trade_system_basket_supply (delete + insert; cascades cleared above by compute-trade-systems too)
-      await sb.from("trade_system_basket_supply").delete().eq("session_id", session_id);
+      checkDb(await sb.from("trade_system_basket_supply").delete().eq("session_id", session_id), "publish trade_system_basket_supply");
       const supplyRows: any[] = [];
       for (const [sysId, byBasket] of sysAgg.entries()) {
         for (const [bk, a] of byBasket.entries()) {
@@ -1351,7 +1387,7 @@ Deno.serve(async (req) => {
         const CHUNK = 200;
         for (let i = 0; i < supplyRows.length; i += CHUNK) {
           const { error } = await sb.from("trade_system_basket_supply").insert(supplyRows.slice(i, i + CHUNK));
-          if (error) console.warn("trade_system_basket_supply insert failed:", error.message);
+          checkDb({ error }, "insert trade_system_basket_supply");
         }
       }
 
@@ -1391,7 +1427,7 @@ Deno.serve(async (req) => {
         }
       }
     } catch (e) {
-      warnings.push(`Trade systems aggregation failed: ${(e as Error).message}`);
+      throw new Error(`Trade systems aggregation failed: ${(e as Error).message}`);
     }
 
     // Compute domestic satisfaction per player per basket (weighted aggregate)
@@ -1476,18 +1512,23 @@ Deno.serve(async (req) => {
     }
 
     // Persist market_shares
-    if (marketShareRows.length > 0) {
-      await sb.from("market_shares").delete().eq("session_id", session_id).eq("turn_number", tn);
+    {
+      checkDb(await sb.from("market_shares").delete().eq("session_id", session_id).eq("turn_number", tn), "publish market_shares");
       for (let i = 0; i < marketShareRows.length; i += 50) {
         const { error } = await sb.from("market_shares").insert(marketShareRows.slice(i, i + 50));
-        if (error) console.error("market_shares insert error:", JSON.stringify(error));
+        checkDb({ error }, "insert market_shares");
       }
     }
 
     // ── Persist fiscal + market share to realm_resources ──
-    for (const [player, agg] of playerAggregates) {
+    const allPlayers = new Set([
+      ...(realmsRes.data || []).map(realm => realm.player_name),
+      ...playerAggregates.keys(),
+    ]);
+    for (const player of allPlayers) {
+      const agg = playerAggregates.get(player);
       const cityCount = cities.filter(c => c.owner_player === player).length;
-      const avgRetention = cityCount > 0 ? agg.commercial_retention / cityCount : 0;
+      const avgRetention = cityCount > 0 ? (agg?.commercial_retention || 0) / cityCount : 0;
 
       let playerGoodsProductionValue = 0;
       let playerGoodsSupplyVolume = 0;
@@ -1509,11 +1550,11 @@ Deno.serve(async (req) => {
       // tax pillars (wealth_*, goods_wealth_fiscal, last_turn_gdp_*).
       // Legacy columns tax_market/transit/extraction/commercial_capture and
       // wealth_domestic_component/market_share are NOT touched here anymore.
-      await sb.from("realm_resources").update({
+      checkDb(await sb.from("realm_resources").update({
         goods_production_value: Math.round(playerGoodsProductionValue * 10) / 10,
         goods_supply_volume: Math.round(playerGoodsSupplyVolume * 10) / 10,
         commercial_retention: Math.round(avgRetention * 1000) / 1000,
-      }).eq("session_id", session_id).eq("player_name", player);
+      }).eq("session_id", session_id).eq("player_name", player), "publish realm_resources");
 
     }
 
@@ -1528,7 +1569,7 @@ Deno.serve(async (req) => {
       city_basket_rows: cityBasketRows.length,
       market_share_rows: marketShareRows.length,
       trade_flows_created: tradeFlows.length,
-      players_updated: playerAggregates.size,
+      players_updated: allPlayers.size,
       sys_supply_injected_count: sysSupplyInjectedCount,
       unmapped_count: remapCounters.unmapped,
       legacy_remap_count: remapCounters.legacy,
@@ -1539,7 +1580,7 @@ Deno.serve(async (req) => {
 
   } catch (e: any) {
     console.error("compute-trade-flows error:", e);
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
+    return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

@@ -50,6 +50,7 @@ const phaseLabels: Record<string, string> = {
   routes: "Trasy",
   preHexFlows: "Hex toky (pre)",
   economyFlow: "Ekonomický tok",
+  economyRefresh: "Přepočet ekonomiky",
   tradeFlows: "Obchodní toky",
   economy: "Ekonomika hráčů (process-turn)",
   hexFlows: "Hex toky",
@@ -59,7 +60,7 @@ const phaseLabels: Record<string, string> = {
 
 function statusOf(r: PhaseResult): "ok" | "warn" | "error" | "skip" {
   if (!r) return "skip";
-  if (r.error) return "error";
+  if (r.error || r.ok === false) return "error";
   if (r.skipped) return "skip";
   if (r.failures && r.failures.length > 0) return "warn";
   if (r.total && r.processed !== undefined && r.processed < r.total) return "warn";
@@ -98,7 +99,7 @@ const TurnExecutionReport = ({ sessionId }: Props) => {
   const errorPhases = phases.filter(([, r]) => statusOf(r) === "error");
   const warnPhases = phases.filter(([, r]) => statusOf(r) === "warn");
   const overallStatus: "ok" | "warn" | "error" =
-    errorPhases.length > 0 ? "error" : warnPhases.length > 0 ? "warn" : "ok";
+    report.topError || !report.ok || errorPhases.length > 0 ? "error" : warnPhases.length > 0 ? "warn" : "ok";
 
   const totalFailures = phases.reduce((sum, [, r]) => sum + (r.failures?.length || 0), 0);
   const ageMin = Math.round((Date.now() - report.ts) / 60000);
@@ -122,7 +123,7 @@ const TurnExecutionReport = ({ sessionId }: Props) => {
               )}
               {overallStatus === "error" && (
                 <Badge className="text-[10px] py-0 bg-red-500/20 text-red-400 border-red-500/40">
-                  {errorPhases.length} fází selhalo
+                  {errorPhases.length > 0 ? `${errorPhases.length} fází selhalo` : "Tah obsahuje chyby"}
                 </Badge>
               )}
               <span className="text-muted-foreground">

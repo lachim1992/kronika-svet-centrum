@@ -1,5 +1,8 @@
 # Legacy Writer Audit — `player_resources`
 
+> Historical inventory: the April 2026 status and tables below disagree in places.
+> Do not treat them as a current writer allowlist. Start with the [September audit](stabilization-audit-2026-09-13.md) and verify call sites before removal.
+
 > **Operative baseline, NOT an append-only log.**
 > This document is the factual evidence of what the repo currently does.
 > The execution plan lives in `DEPRECATION.md`. The architectural model lives

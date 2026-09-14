@@ -9,8 +9,8 @@
 - **Canonical turn loop**:
   1. **Load** session via `useGameSession` (core: `game_sessions`, `game_players`, `cities`, `realm_resources`, `military_stacks`).
   2. **Command** — every player write goes through `command-dispatch` (single write entrypoint).
-  3. **Commit** — turn progression via `commit-turn` (server-owned). Writes canonical state to `realm_resources` and event log.
-  4. **Refresh** — `refresh-economy` (4-step safe recompute, no side effects on game time).
+  3. **Commit** — turn progression via `commit-turn` (server-owned). Runs the shared economy projection pipeline, then applies `process-turn` once per player. The turn counter currently advances before these phases; partial recovery remains a known stabilization issue.
+  4. **Refresh** — explicit `refresh-economy` uses the same six-step pipeline without applying turn effects. The client does not repeat it after a commit.
   5. **UI refresh** — re-fetch via `useGameSession`. Player-facing panels read **only** from canonical state.
   6. **Chronicle** — narrative entries appended (non-blocking).
 
@@ -22,6 +22,11 @@
 - ❌ **Admin/editor surfaces in the player path** (`EmpireManagement`, `AdminMonitorPanel`, `DevModePanel`). Dev-only mounts.
 - ❌ **Multiplayer > 2 humans**.
 - ❌ **Schema migrations** during this window. Gaps are surfaced in adapters and reports, never masked.
+
+Current projection order: routes → hex flows → macro/node outputs → trade systems → goods → basket trade/GDP.
+Fiscal income and reserves belong to `process-turn`. The shared step list is in `supabase/functions/_shared/economy-refresh.ts`.
+
+See [stabilization audit](architecture/stabilization-audit-2026-09-13.md) for unresolved atomicity, authorization and model-boundary issues.
 
 ## Source-of-truth pointers
 

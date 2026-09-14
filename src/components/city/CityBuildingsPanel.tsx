@@ -20,6 +20,7 @@ import {
   Factory, Church, ArrowRight, Clock, CheckCircle2, ImageIcon, ArrowUp, Star, Crown,
 } from "lucide-react";
 import { scaledBasketOutputs, DEMAND_BASKETS } from "@/lib/goodsCatalog";
+import BuildingVisual, { getBuildingImageUrl } from "@/components/city/BuildingVisual";
 
 const BASKET_META: Record<string, { label: string; icon: string }> = Object.fromEntries(
   DEMAND_BASKETS.map(b => [b.key, { label: b.label, icon: b.icon }])
@@ -100,14 +101,22 @@ const CityBuildingsPanel = ({
     const [bRes, tRes, civRes] = await Promise.all([
       supabase
         .from("city_buildings")
-        .select("*, building_templates ( id, effects )")
+        .select("*")
         .eq("city_id", cityId)
         .order("created_at"),
       supabase.from("building_templates").select("*").order("category, name"),
       supabase.from("civ_identity").select("special_buildings, building_tags")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
     ]);
-    setBuildings(bRes.data || []);
+    const templateById = new Map((tRes.data || []).map((template: any) => [template.id, template]));
+    setBuildings((bRes.data || []).map((building: any) => ({
+      ...building,
+      building_templates: building.template_id ? {
+        id: building.template_id,
+        effects: templateById.get(building.template_id)?.effects || {},
+        image_url: templateById.get(building.template_id)?.image_url || null,
+      } : null,
+    })));
     setTemplates(tRes.data || []);
     setCivBuildings((civRes.data?.special_buildings as any[]) || []);
     setCivBuildingTags((civRes.data?.building_tags as string[]) || []);
@@ -240,6 +249,7 @@ const CityBuildingsPanel = ({
           cost_wealth: template.cost_wealth, cost_wood: template.cost_wood,
           cost_stone: template.cost_stone, cost_iron: template.cost_iron,
           build_duration: template.build_turns, effects: template.effects,
+          image_url: template.image_url || null,
           max_level: template.max_level || 3, level_data: template.level_data || [],
         },
         isAiGenerated: false,
@@ -342,6 +352,7 @@ const CityBuildingsPanel = ({
           build_duration: buildDuration, effects: cb.effects || {},
           flavor_text: cb.flavor_text || null, founding_myth: cb.founding_myth || null,
           image_prompt: cb.image_prompt || null,
+          image_url: cb.image_url || null,
           building_tags: [cb.tag], max_level: 5, level_data: cb.level_data || [],
         },
         isAiGenerated: true,
@@ -417,15 +428,16 @@ const CityBuildingsPanel = ({
     const upgradeCosts = upgradeInfo ? getUpgradeCost(b, upgradeInfo) : null;
     const canUpgrade = upgradeCosts ? canAfford(upgradeCosts) : false;
     const isWonderLevel = b.is_wonder;
+    const imageUrl = getBuildingImageUrl(b);
 
     return (
       <div className={`rounded-lg border overflow-hidden ${
         isWonderLevel ? "border-yellow-500/50 bg-gradient-to-br from-yellow-500/5 to-amber-500/10" :
         isConstructing ? "border-muted bg-muted/20" : "border-border"
       }`}>
-        {b.image_url && (
+        {imageUrl && (
           <div className="relative w-full h-32 overflow-hidden">
-            <img src={b.image_url} alt={b.name} className="w-full h-full object-cover" />
+            <BuildingVisual src={imageUrl} alt={b.name} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-card/90 to-transparent" />
             {isWonderLevel && (
               <div className="absolute top-2 right-2">
@@ -860,10 +872,16 @@ const CityBuildingsPanel = ({
                       const built = t.is_unique && alreadyBuilt.has(t.id);
                       const affordable = canAfford(t);
                       const levelData = Array.isArray(t.level_data) ? t.level_data : [];
+                      const imageUrl = getBuildingImageUrl(t);
                       return (
                         <div key={t.id} className={`p-3 rounded-lg border transition-colors ${
                           built ? "border-muted bg-muted/10 opacity-50" : "border-border hover:border-primary/40"
                         }`}>
+                          {imageUrl && (
+                            <div className="mb-2 h-20 overflow-hidden rounded-md border border-border/60 bg-muted/20">
+                              <BuildingVisual src={imageUrl} alt={t.name} className="h-full w-full object-cover" />
+                            </div>
+                          )}
                           <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-display font-semibold">{t.name}</p>

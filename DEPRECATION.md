@@ -1,5 +1,8 @@
 # Deprecation Roadmap: `player_resources` → `realm_resources`
 
+> Historical inventory: the April 2026 status and tables below disagree in places.
+> Do not treat them as a current writer allowlist. Start with the [September audit](docs/architecture/stabilization-audit-2026-09-13.md) and verify call sites before removal.
+
 > **Faktická evidence writerů a readerů žije v `docs/architecture/legacy-writer-audit.md`.**
 > Tento dokument je **exekuční plán** odstranění legacy vrstvy. Nemíchat role.
 

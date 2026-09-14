@@ -164,6 +164,16 @@ Deno.serve(async (req) => {
     const { sessionId, playerName, recalcOnly } = await req.json();
     if (!sessionId || !playerName) throw new Error("Missing sessionId or playerName");
 
+    // A turn changes reserves, construction, morale and prestige. The old flag
+    // bypassed idempotency without disabling those mutations. Reject it before
+    // opening the database; projection-only callers must use refresh-economy.
+    if (recalcOnly) {
+      return new Response(JSON.stringify({
+        ok: false,
+        error: "recalcOnly is not supported by process-turn; use refresh-economy with session_id",
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -184,8 +194,8 @@ Deno.serve(async (req) => {
     const { data: session } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
     const currentTurn = session?.current_turn || 1;
 
-    // Idempotency — skip for recalcOnly (always recompute)
-    if (!recalcOnly && realm.last_processed_turn >= currentTurn) {
+    // Sequential retry protection. Concurrent commits still require a DB lock.
+    if (realm.last_processed_turn >= currentTurn) {
       return new Response(JSON.stringify({
         ok: true, skipped: true,
         message: `Turn ${currentTurn} already processed for ${playerName}`,
@@ -1499,7 +1509,7 @@ Deno.serve(async (req) => {
     // Pop tax derived from goods layer (kept for backward compat in computed_modifiers)
     const goodsPopTax = Math.round(totalPopulation * 0.002 * (1 + myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1));
 
-    await supabase.from("realm_resources").update({
+    const { error: ledgerError } = await supabase.from("realm_resources").update({
       grain_reserve: Math.round(globalGrainReserve),
       granary_capacity: adjustedGranary,
       manpower_pool: manpowerPool,
@@ -1534,6 +1544,8 @@ Deno.serve(async (req) => {
       wealth_domestic_market: pillarDomesticMarket,
       goods_wealth_fiscal: pillarGoodsFiscal,
       wealth_route_commerce: pillarRouteCommerce,
+      // Fiscal total and its components have one writer and one update.
+      total_wealth: Math.round(totalWealthIncome * 100) / 100,
       // ── Lafferian GDP volumes (informational, for UI sliders + transparency) ──
       last_turn_gdp_domestic:   Math.round(gdp_domestic * 10) / 10,
       last_turn_gdp_market:     Math.round(gdp_market * 10) / 10,
@@ -1552,6 +1564,14 @@ Deno.serve(async (req) => {
       technological_prestige: technologicalPrestige,
       // All computed gameplay modifiers for UI display
       computed_modifiers: {
+        // Record the actual applied balance, including bonuses, expenses and caps.
+        // Macro output and gross tax revenue are not reserve deltas.
+        resource_turn: {
+          turn: currentTurn,
+          production: newProductionReserve - Number(realm.production_reserve ?? 0),
+          gold: newGoldReserve - Number(realm.gold_reserve ?? 0),
+          grain: Math.round(globalGrainReserve) - Number(realm.grain_reserve ?? 0),
+        },
         strategic: {
           combat_mult: Math.round(strategicBonuses.combat_mult * 1000) / 1000,
           wealth_mult: Math.round(strategicBonuses.wealth_mult * 1000) / 1000,
@@ -1602,6 +1622,8 @@ Deno.serve(async (req) => {
       },
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
+
+    if (ledgerError) throw new Error(`Failed to persist economy ledger: ${ledgerError.message}`);
 
     // ══════════════════════════════════════════
     // PLAYER_RESOURCES back-compat write REMOVED (Sprint 1, Krok 1)

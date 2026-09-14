@@ -38,7 +38,7 @@
 - **Canonical entrypoint:** `refresh-economy` (snake_case `session_id`).
   Returns `{ ok, session_id, totalMs, refreshed_domains, steps: [{ name, ok, durationMs, detail }], warnings }`.
 - **Chain:** `compute-province-routes` → `compute-hex-flows` → `compute-economy-flow` → `compute-trade-flows`.
-- **Back-compat adapter:** `recompute-all` (camelCase `sessionId`). NOT a canonical entrypoint. Pure boundary layer that delegates to `refresh-economy` and adapts the response shape for legacy `DevTab` consumers. Optionally appends `process-turn (recalcOnly)`.
+- **Back-compat adapter:** `recompute-all` (camelCase `sessionId`). NOT a canonical entrypoint. Pure boundary layer that delegates to `refresh-economy` and adapts the response shape for legacy `DevTab` consumers. Never invokes `process-turn`; its old `recalcOnly` mode is rejected because it applied turn effects.
 
 ---
 

@@ -79,6 +79,7 @@ const MarketsHub = ({
 
       <TabsContent value="demand" className="space-y-4 animate-fade-in">
         <DemandFulfillmentPanel
+          currentTurn={currentTurn}
           sessionId={sessionId}
           playerName={currentPlayerName}
           cities={cities}
@@ -87,7 +88,7 @@ const MarketsHub = ({
       </TabsContent>
 
       <TabsContent value="share" className="space-y-4 animate-fade-in">
-        <MarketSharePanel sessionId={sessionId} playerName={currentPlayerName} />
+        <MarketSharePanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
         <TradePanel
           sessionId={sessionId}
           currentPlayerName={currentPlayerName}

@@ -10,6 +10,7 @@ import {
   type CityForGrowth,
 } from "../_shared/physics.ts";
 import { logAISkip } from "../_shared/ai-context.ts";
+import { refreshEconomy } from "../_shared/economy-refresh.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -665,62 +666,21 @@ Deno.serve(async (req) => {
     // 4b. RECOMPUTE ROUTES + HEX FLOWS + ECONOMY FLOW
     // Ensures new nodes built between turns get connected before economy runs.
     // ═══════════════════════════════════════════
-    const t4b = Date.now();
-    try {
-      // Always recompute routes to pick up any new nodes
-      const { data: routesRes, error: routesErr } = await supabase.functions.invoke("compute-province-routes", {
-        body: { session_id: sessionId },
-      });
-      if (routesErr) console.warn("compute-province-routes warning:", routesErr.message);
-      results.routes = routesRes || { error: routesErr?.message };
-
-      // Recompute hex flows (force_all since routes were rebuilt)
-      const { data: preFlowRes, error: preFlowErr } = await supabase.functions.invoke("compute-hex-flows", {
-        body: { session_id: sessionId, force_all: true },
-      });
-      if (preFlowErr) console.warn("compute-hex-flows pre-economy warning:", preFlowErr.message);
-      results.preHexFlows = preFlowRes || { error: preFlowErr?.message };
-
-      // Now compute economy flow with fresh topology
-      await supabase.functions.invoke("compute-economy-flow", {
-        body: { sessionId },
-      });
-      results.economyFlow = { ok: true };
-
-      // Node-Trade v1: project trade systems & player access from current treaties
-      try {
-        const { data: tsRes, error: tsErr } = await supabase.functions.invoke("compute-trade-systems", {
-          body: { session_id: sessionId },
-        });
-        if (tsErr) console.warn("compute-trade-systems warning:", tsErr.message);
-        results.tradeSystems = tsRes || { error: tsErr?.message };
-      } catch (tsE) {
-        console.warn("compute-trade-systems warning:", (tsE as Error).message);
-        results.tradeSystems = { error: (tsE as Error).message };
-      }
-
-      // Goods economy: compute trade flows (recipes → inventory → market → flows)
-      try {
-        const { data: tfRes, error: tfErr } = await supabase.functions.invoke("compute-trade-flows", {
-          body: { session_id: sessionId, turn_number: turnNumber + 1 },
-        });
-        if (tfErr) console.warn("compute-trade-flows warning:", tfErr.message);
-        results.tradeFlows = tfRes || { error: tfErr?.message };
-      } catch (tfE) {
-        console.warn("compute-trade-flows warning:", (tfE as Error).message);
-        results.tradeFlows = { error: (tfE as Error).message };
-      }
-    } catch (e) {
-      console.warn("Route/flow/economy chain warning:", (e as Error).message);
-      results.economyFlow = { error: (e as Error).message };
-    }
-    console.log(`[commit-turn] phase-4b routes/flows/economy/trade: ${Date.now() - t4b}ms`);
+    const economyRefresh = await refreshEconomy(sessionId, (name, body) =>
+      supabase.functions.invoke(name, { body })
+    );
+    results.economyRefresh = {
+      ...economyRefresh,
+      ...(economyRefresh.ok ? {} : { error: economyRefresh.warnings.join("; ") }),
+    };
+    console.log(`[commit-turn] phase-4b canonical economy refresh: ${economyRefresh.totalMs}ms`);
 
     // ─── Claim processed route_completed events (Increment 3) ──────────
     // World-turn already advanced (phase 4) and economy chain ran. Mark
     // route_completed events as processed so downstream consumers and
     // future ticks don't re-trigger refresh on them.
     try {
+      if (!economyRefresh.ok) throw new Error("Economy refresh failed; route events remain unclaimed");
       const { data: claimed, error: claimErr } = await supabase
         .from("game_events")
         .update({ processed_at: new Date().toISOString() })
@@ -741,6 +701,7 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════
     const t5 = Date.now();
     try {
+      if (!economyRefresh.ok) throw new Error("Economy refresh failed; turn effects were not applied");
       const { data: allPlayers } = await supabase.from("game_players")
         .select("player_name").eq("session_id", sessionId);
 
@@ -754,12 +715,13 @@ Deno.serve(async (req) => {
 
       const settled = await Promise.allSettled(
         Array.from(allEconEntities).map(async (name) => {
-          const { error: ptErr } = await supabase.functions.invoke("process-turn", {
+          const { data: ptData, error: ptErr } = await supabase.functions.invoke("process-turn", {
             body: { sessionId, playerName: name },
           });
-          if (ptErr) {
-            console.warn(`process-turn for ${name}:`, ptErr.message);
-            return { ok: false, name, error: ptErr.message };
+          if (ptErr || ptData?.ok === false || ptData?.error) {
+            const error = ptErr?.message || ptData?.error || "Economy step reported failure";
+            console.warn(`process-turn for ${name}:`, error);
+            return { ok: false, name, error };
           }
           return { ok: true, name };
         }),
@@ -1346,8 +1308,11 @@ Deno.serve(async (req) => {
 
     const totalMs = Date.now() - tCommit;
     console.log(`[commit-turn] DONE turn=${turnNumber} player=${playerName} critical=${totalMs}ms (background scheduled)`);
+    const ok = Object.values(results).every((phase) =>
+      !phase?.error && phase?.ok !== false && !(phase?.failures?.length > 0)
+    );
     return new Response(JSON.stringify({
-      ok: true,
+      ok,
       turnClosed: turnNumber,
       newTurn: turnNumber + 1,
       results,

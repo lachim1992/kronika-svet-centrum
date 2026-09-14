@@ -1,7 +1,8 @@
 // compute-basket-trade-flows: L2 basket-level solver.
 // Pairs export_surplus × unmet_demand inside the same trade_system,
 // gated by player_trade_system_access. Writes basket_trade_flows and
-// folds imports back into city_market_baskets + goods_wealth_fiscal.
+// folds net imports/exports back into city_market_baskets.
+// Fiscal capture on flows is a projection, not a treasury posting.
 //
 // Phase 2 invariants:
 // - source_city_id / target_city_id MUST be cities.id
@@ -54,12 +55,20 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // 1. Load baskets
-    const { data: baskets, error: bErr } = await sb
+    const { data: session, error: sessionError } = await sb.from("game_sessions")
+      .select("current_turn").eq("id", session_id).single();
+    if (sessionError) throw sessionError;
+    if (!session || !Number.isInteger(session.current_turn)) throw new Error("Session turn is missing");
+    const turnNumber = session.current_turn;
+
+    // 1. Only the current snapshot participates. Historical basket rows are
+    // chart data, not additional supply/demand available for today's trade.
+    const { data: basketRows, error: bErr } = await sb
       .from("city_market_baskets")
       .select("city_id, player_name, basket_key, export_surplus, unmet_demand, local_demand, local_supply, auto_supply, bonus_supply, turn_number")
-      .eq("session_id", session_id);
+      .eq("session_id", session_id).eq("turn_number", turnNumber);
     if (bErr) { console.error("baskets load", bErr); throw bErr; }
+    const baskets = basketRows || [];
 
     // 2. Load nodes → city_id → trade_system_id
     const { data: nodes, error: nErr } = await sb
@@ -93,24 +102,22 @@ Deno.serve(async (req) => {
       .delete().eq("session_id", session_id);
     if (dErr) { console.error("cleanup basket_trade_flows", dErr); throw dErr; }
 
-    if (!baskets || baskets.length === 0) {
-      return new Response(JSON.stringify({ ok: true, flows: 0, reason: "no baskets" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
     // 5. Bucket: (system_id, basket_key) → surplus[] / demand[]
     type Side = { city_id: string; player: string; amount: number };
     const surplusBuckets = new Map<string, Side[]>();
     const demandBuckets = new Map<string, Side[]>();
-    const turnByCity = new Map<string, number>();
 
     for (const b of baskets) {
       const systemId = citySystem.get(b.city_id);
       if (!systemId) continue;
-      turnByCity.set(b.city_id, Number(b.turn_number || 0));
       const key = `${systemId}::${b.basket_key}`;
-      const surplus = Number(b.export_surplus || 0);
-      const demand = Number(b.unmet_demand || 0);
+      // Rebuild from the domestic baseline, never the previously traded result.
+      // L1 defines local_supply = auto_supply + bonus_supply. Using its enriched
+      // value here would consume yesterday's import a second time on refresh.
+      const domesticSupply = Number(b.auto_supply || 0) + Number(b.bonus_supply || 0);
+      const localDemand = Number(b.local_demand || 0);
+      const surplus = Math.max(0, domesticSupply - localDemand);
+      const demand = Math.max(0, localDemand - domesticSupply);
       if (surplus > 0) {
         if (!surplusBuckets.has(key)) surplusBuckets.set(key, []);
         surplusBuckets.get(key)!.push({ city_id: b.city_id, player: b.player_name, amount: surplus });
@@ -185,7 +192,7 @@ Deno.serve(async (req) => {
             tariff_factor: tariff,
             fiscal_capture: Math.round(fiscal * 100) / 100,
             access_level: Math.max(1, Math.min(Number(sAccess.level) || 1, Number(dAccess.level) || 1)),
-            turn_number: turnByCity.get(d.city_id) || 0,
+            turn_number: turnNumber,
           });
 
           s.amount -= vol;
@@ -216,42 +223,50 @@ Deno.serve(async (req) => {
     for (const b of baskets) {
       const imp = importsByCityBasket.get(`${b.city_id}::${b.basket_key}`) || 0;
       const exp = exportsByCityBasket.get(`${b.city_id}::${b.basket_key}`) || 0;
-      if (imp === 0 && exp === 0) continue;
-
-      const localSupply = Number(b.local_supply || 0);
       const auto = Number(b.auto_supply || 0);
       const bonus = Number(b.bonus_supply || 0);
       const demand = Number(b.local_demand || 0);
-      const totalSupply = localSupply + auto + bonus + imp;
+      const domesticSupply = auto + bonus;
+      const totalSupply = Math.max(0, domesticSupply + imp - exp);
       const sat = demand > 0 ? Math.min(1, totalSupply / demand) : 1;
 
       const { error: uErr } = await sb.from("city_market_baskets")
         .update({
-          local_supply: Math.round((localSupply + imp) * 1000) / 1000,
-          export_surplus: Math.max(0, Number(b.export_surplus || 0) - exp),
+          local_supply: Math.round(totalSupply * 1000) / 1000,
+          export_surplus: Math.max(0, domesticSupply - demand - exp),
           unmet_demand: Math.max(0, demand - totalSupply),
           domestic_satisfaction: Math.round(sat * 1000) / 1000,
         })
         .eq("session_id", session_id)
         .eq("city_id", b.city_id)
-        .eq("basket_key", b.basket_key);
-      if (uErr) { console.error("update basket", uErr); /* non-fatal per row */ }
+        .eq("basket_key", b.basket_key)
+        .eq("turn_number", turnNumber);
+      if (uErr) { console.error("update basket", uErr); throw uErr; }
       else basketUpdates++;
     }
 
-    // 9. Fold fiscal_capture into goods_wealth_fiscal
-    for (const [player, amount] of fiscalByPlayer) {
-      const { data: rr } = await sb.from("realm_resources")
-        .select("goods_wealth_fiscal")
-        .eq("session_id", session_id)
-        .eq("player_name", player)
-        .maybeSingle();
-      const prev = Number(rr?.goods_wealth_fiscal || 0);
-      const { error: rErr } = await sb.from("realm_resources")
-        .update({ goods_wealth_fiscal: Math.round((prev + amount) * 100) / 100 })
-        .eq("session_id", session_id)
-        .eq("player_name", player);
-      if (rErr) console.error("update goods_wealth_fiscal", player, rErr);
+    // Do not add fiscal_capture to goods_wealth_fiscal on refresh. process-turn
+    // owns that ledger via the v6 tax model. Repeated refreshes used to inflate
+    // income until the next turn overwrote it. The flow projection remains
+    // available for a future, explicitly designed tariff integration.
+
+    // GDP uses the same domestic-production + export-value definition as the
+    // former macro aggregator, but now reads this run's flows rather than the
+    // previous run. Also clear old export value when a route disappears.
+    const { data: realms, error: realmsError } = await sb.from("realm_resources")
+      .select("player_name, total_production").eq("session_id", session_id);
+    if (realmsError) throw realmsError;
+    const exportsByPlayer = new Map<string, number>();
+    for (const flow of flows) {
+      exportsByPlayer.set(flow.source_player,
+        (exportsByPlayer.get(flow.source_player) || 0) + flow.gross_value);
+    }
+    for (const realm of realms || []) {
+      const gdp = Number(realm.total_production || 0) + (exportsByPlayer.get(realm.player_name) || 0);
+      const { error } = await sb.from("realm_resources")
+        .update({ total_gdp: Math.round(gdp * 100) / 100 })
+        .eq("session_id", session_id).eq("player_name", realm.player_name);
+      if (error) throw error;
     }
 
     return new Response(JSON.stringify({

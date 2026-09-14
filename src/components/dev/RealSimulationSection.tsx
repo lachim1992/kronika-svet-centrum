@@ -1,3 +1,4 @@
+import { getCommitTurnIssues } from "@/lib/commitTurnResult";
 import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -85,38 +86,19 @@ const RealSimulationSection = ({ sessionId, currentPlayerName, onRefetch }: Prop
             },
           });
 
-          if (error) {
-            // 409 = already processed, skip gracefully
-            if (/409|already/i.test(error.message || "")) {
-              addLog(`⚠️ Kolo ${currentTurn}: již zpracováno, pokračuji`);
-            } else {
-              addLog(`⚠️ Kolo ${currentTurn}: ${error.message}`);
-              errorCount++;
-            }
-          } else {
-            const info = data || {};
-            const parts: string[] = [`✅ Kolo ${currentTurn + 1}`];
-            if (info.economyResults) {
-              const econ = info.economyResults;
-              const playerCount = Object.keys(econ).length;
-              parts.push(`(${playerCount} hráčů zpracováno)`);
-            }
-            if (info.physicsResults) {
-              parts.push(`fyzika OK`);
-            }
-            addLog(parts.join(" "));
-          }
+          if (error) throw error;
+          const issues = getCommitTurnIssues(data);
+          if (issues.length > 0) throw new Error(issues.join("; "));
+          addLog(`✅ Kolo ${data.newTurn ?? currentTurn + 1}`);
 
           completedTurns++;
         } catch (e: any) {
           addLog(`❌ Kolo ${currentTurn}: ${e.message || "neznámá chyba"}`);
           errorCount++;
 
-          // If too many errors, abort
-          if (errorCount >= 3) {
-            addLog("🛑 Příliš mnoho chyb, zastavuji simulaci");
-            break;
-          }
+          // A partial commit may already have advanced time. Stop immediately.
+          addLog("🛑 Tah selhal; simulace zastavena pro kontrolu stavu");
+          break;
         }
 
         // Small delay to avoid hammering the server
@@ -126,7 +108,8 @@ const RealSimulationSection = ({ sessionId, currentPlayerName, onRefetch }: Prop
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       setSummary({ turns: completedTurns, errors: errorCount, elapsed: parseFloat(elapsed) });
       addLog(`✅ HOTOVO: ${completedTurns} tahů za ${elapsed}s, ${errorCount} chyb`);
-      toast.success(`Simulace dokončena: ${completedTurns} tahů za ${elapsed}s`);
+      if (errorCount > 0) toast.error(`Simulace zastavena: ${completedTurns} úspěšných tahů, ${errorCount} chyb`);
+      else toast.success(`Simulace dokončena: ${completedTurns} tahů za ${elapsed}s`);
       onRefetch?.();
     } catch (e: any) {
       addLog(`❌ Fatální chyba: ${e.message}`);

@@ -171,18 +171,14 @@ const BuildNodeDialog = ({
         toast.success(`${nodeName} postaveno na (${hexQ}, ${hexR})`);
       }
 
-      // Auto-recompute routes → hex flows → economy flow
+      // Use the same projection pipeline as commit-turn.
       const recomputeToast = toast.loading("Propojuji trasy a toky…");
       try {
-        await supabase.functions.invoke("compute-province-routes", {
+        const { data: refresh, error: refreshError } = await supabase.functions.invoke("refresh-economy", {
           body: { session_id: sessionId },
         });
-        await supabase.functions.invoke("compute-hex-flows", {
-          body: { session_id: sessionId, force_all: true },
-        });
-        await supabase.functions.invoke("compute-economy-flow", {
-          body: { session_id: sessionId },
-        });
+        if (refreshError) throw refreshError;
+        if (refresh?.ok !== true) throw new Error(refresh?.warnings?.join("; ") || "Přepočet selhal");
         toast.success("Trasy a toky přepočteny", { id: recomputeToast });
       } catch (recomputeErr) {
         console.error("Recompute chain error:", recomputeErr);

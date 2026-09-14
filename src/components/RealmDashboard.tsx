@@ -2,7 +2,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { migrateLegacyMilitary } from "@/lib/turnEngine";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, Crown, Code } from "lucide-react";
+import { Loader2, RefreshCw, Crown, Code } from "lucide-react";
 import { toast } from "sonner";
 import RealmIndicators from "@/components/realm/RealmIndicators";
 import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";
@@ -27,27 +27,18 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
 
-  const handleProcessTurn = async () => {
+  const handleRefreshEconomy = async () => {
     setProcessing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("process-turn", {
-        body: { sessionId, playerName: currentPlayerName },
+      const { data, error } = await supabase.functions.invoke("refresh-economy", {
+        body: { session_id: sessionId },
       });
       if (error) throw error;
-      if (data?.skipped) {
-        toast.info(`Kolo ${currentTurn} již bylo zpracováno`);
-      } else {
-        const s = data?.summary;
-        const famineNote = s?.famineCities > 0 ? ` | ⚠️ ${s.famineCities} měst hladoví` : "";
-        const tollNote = s?.tollsPaid > 0 ? ` | 🏛️ Mýtné: -${s.tollsPaid}` : "";
-        const evtNote = s?.eventsGenerated > 0 ? ` | 📜 ${s.eventsGenerated} událostí` : "";
-        toast.success(`Kolo ${currentTurn} zpracováno`, {
-          description: `⚒️ ${s?.totalProduction?.toFixed(0) || 0} | 💰 ${s?.totalWealth?.toFixed(0) || 0} | 🏛️ ${s?.totalCapacity?.toFixed(0) || 0} | Rezerva: ${s?.grainReserve || 0}/${s?.granaryCapacity || 0}${famineNote}${tollNote}${evtNote}`,
-        });
-      }
+      if (data?.ok !== true) throw new Error(data?.warnings?.join("; ") || "Přepočet ekonomiky selhal");
+      toast.success("Ekonomika přepočtena");
       onRefetch();
     } catch (e: any) {
-      toast.error("Chyba zpracování kola", { description: e.message });
+      toast.error("Chyba přepočtu ekonomiky", { description: e.message });
     } finally {
       setProcessing(false);
     }
@@ -65,16 +56,16 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
 
   return (
     <div className="space-y-4">
-      {/* Header + Process Turn (admin/moderator only — players use canonical commit-turn flow) */}
+      {/* Projection refresh only — advancing time belongs to commit-turn */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-display font-semibold flex items-center gap-2">
           <Crown className="h-4 w-4 text-illuminated" />
           Přehled říše
         </h3>
         {(myRole === "admin" || myRole === "moderator") && (
-          <Button onClick={handleProcessTurn} disabled={processing} size="sm" variant="outline" className="font-display text-xs">
-            {processing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Play className="h-3 w-3 mr-1" />}
-            Zpracovat kolo (dev)
+          <Button onClick={handleRefreshEconomy} disabled={processing} size="sm" variant="outline" className="font-display text-xs">
+            {processing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+            Přepočítat ekonomiku
           </Button>
         )}
       </div>

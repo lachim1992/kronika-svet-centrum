@@ -1,3 +1,4 @@
+import { checkDb } from "../_shared/database-result.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   hexTraversalCost, computeFlowPath,
@@ -57,11 +58,13 @@ Deno.serve(async (req) => {
     }
 
     // 2. Load nodes (with fortress & control info)
-    const { data: nodes } = await sb
+    const { data: nodes, error: nodesError } = await sb
       .from("province_nodes")
       .select("id, hex_q, hex_r, node_type, controlled_by, fortification_level, cumulative_trade_flow")
       .eq("session_id", session_id)
       .eq("is_active", true);
+
+    checkDb({ error: nodesError }, "read province_nodes");
 
     // Build fortress/control lookup by hex
     const hexControl = new Map<string, { controlled_by: string | null; has_fortress: boolean; trade_density: number }>();
@@ -85,7 +88,8 @@ Deno.serve(async (req) => {
       routeQuery = routeQuery.eq("path_dirty", true);
     }
 
-    const { data: routes } = await routeQuery;
+    const { data: routes, error: routesError } = await routeQuery;
+    checkDb({ error: routesError }, "read province_routes");
 
     if (!routes || routes.length === 0) {
       return new Response(JSON.stringify({ ok: true, paths_computed: 0, reason: "no dirty routes" }), {
@@ -201,19 +205,19 @@ Deno.serve(async (req) => {
       // Clear any stale rows that collide on either unique key (route_id, or node pair)
       const batchRouteIds = batchRows.map(r => r.route_id).filter(Boolean);
       if (batchRouteIds.length > 0) {
-        await sb.from("flow_paths").delete().eq("session_id", session_id).in("route_id", batchRouteIds);
+        checkDb(await sb.from("flow_paths").delete().eq("session_id", session_id).in("route_id", batchRouteIds), "publish flow_paths");
       }
       const { error: upsertErr } = await sb.from("flow_paths").upsert(
         batchRows,
         { onConflict: "session_id,node_a,node_b,flow_type" },
       );
-      if (upsertErr) console.error("flow_paths upsert error:", upsertErr.message);
+      checkDb({ error: upsertErr }, "upsert flow_paths");
     }
 
     // 8. Update route aggregates
     for (const upd of routeUpdates) {
       const { id, ...fields } = upd;
-      await sb.from("province_routes").update(fields).eq("id", id);
+      checkDb(await sb.from("province_routes").update(fields).eq("id", id), "publish province_routes");
     }
 
     return new Response(JSON.stringify({

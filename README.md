@@ -12,6 +12,16 @@ Lovable Cloud (Supabase Postgres + Edge Functions on Deno). Realtime via
 Supabase channels. AI via Lovable AI Gateway (Gemini / GPT models, no
 per-user API keys).
 
+## Stabilization baseline
+
+Start with [the September 2026 audit](docs/architecture/stabilization-audit-2026-09-13.md).
+It records verified engine conflicts, the first corrective batch and remaining
+release blockers. Older deprecation inventories contain historical claims.
+
+Validation: `npm ci`, `npm run typecheck`, `npm test`, `npm run build`.
+The GitHub workflow runs these on pull requests. ESLint debt is tracked in the
+audit and is not yet a clean release gate.
+
 ## Architecture entry points
 
 Read these before changing engine, schema, or orchestration code.

@@ -11,7 +11,10 @@ import {
 } from "lucide-react";
 import { computeWorkforceBreakdown } from "@/lib/economyConstants";
 import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, PRESTIGE_META, PRESTIGE_COMPONENTS, type StrategicResource, type PrestigeComponent, getFiscalIncome } from "@/lib/economyFlow";
+import { dispatchCommand } from "@/lib/commands";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
+import { toast } from "sonner";
+import { getResourceTurnDisplay, formatResource, formatResourceDelta } from "@/lib/resourceTurnDisplay";
 
 interface ResourceHUDProps {
   sessionId: string;
@@ -76,7 +79,6 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
 
   // Macro economy values
   const totalProd = realm.total_production ?? 0;
-  const totalWealth = realm.total_wealth ?? 0;
   const totalCap = realm.total_capacity ?? 0;
   const totalImp = realm.total_importance ?? 0;
 
@@ -88,6 +90,17 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
   const currentMobPct = Math.round((realm.mobilization_rate || 0.1) * 100);
   const targetCap = pendingMobRate !== null ? Math.floor(computedPool * pendingMobRate) : committed;
 
+  const saveMobilizationRate = async (rate: number) => {
+    const result = await dispatchCommand({
+      sessionId,
+      actor: { name: playerName },
+      commandType: "SET_MOBILIZATION",
+      commandPayload: { rate },
+    });
+    if (!result.ok) throw new Error(result.error || "Změna mobilizace selhala");
+    setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: rate }) : r);
+  };
+
   const handleMobilizationChange = async (val: number[]) => {
     const requestedPct = val[0];
     const newCap = Math.floor(computedPool * (requestedPct / 100));
@@ -98,14 +111,21 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
       return;
     }
     const rate = requestedPct / 100;
-    await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
-    setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: rate }) : r);
+    try {
+      await saveMobilizationRate(rate);
+    } catch (error: any) {
+      toast.error(error.message || "Změna mobilizace selhala");
+    }
   };
 
   const handleDemobilizeDone = async () => {
     if (pendingMobRate !== null) {
-      await supabase.from("realm_resources").update({ mobilization_rate: pendingMobRate }).eq("id", realm.id);
-      setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: pendingMobRate }) : r);
+      try {
+        await saveMobilizationRate(pendingMobRate);
+      } catch (error: any) {
+        toast.error(error.message || "Změna mobilizace selhala");
+        return;
+      }
       setPendingMobRate(null);
     }
     fetchData();
@@ -120,36 +140,40 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
   const goodsProd = realm.goods_production_value ?? 0;
   const fi = getFiscalIncome(realm);
 
-  const grainNet = realm.last_turn_grain_net ?? 0;
-  const grainNetStr = grainNet > 0 ? `+${grainNet}` : `${grainNet}`;
+  const resourceTurn = getResourceTurnDisplay(realm);
+  const turnSuffix = (key: "production" | "gold" | "grain") => resourceTurn
+    ? ` (${formatResourceDelta(resourceTurn[key])} v kole ${resourceTurn.turn})`
+    : "";
+  const turnExplanation = resourceTurn
+    ? `Skutečná změna při vyhodnocení kola ${resourceTurn.turn}; zahrnuje bonusy, výdaje a omezení zásob. Nákupy mezi koly mění aktuální stav zvlášť.`
+    : "Změna zásoby zatím není zaznamenána. Zobrazí se po vyhodnocení kola.";
+  const grainCapacity = Math.max(0, Number(realm.granary_capacity ?? 0));
 
   const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean; suffix?: string; derivation?: string }[] = [
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
-      label: "Produkce",
-      value: `${Math.round(prodReserve)} (+${totalProd.toFixed(0)}/kolo)`,
-      derivation: `🏗️ Infra (uzly): ${totalProd.toFixed(1)} | 📦 Goods: ${goodsProd.toFixed(1)} | Workforce: ${(wf.effectiveWorkforceRatio * 100).toFixed(0)}%`,
+      label: "Materiály",
+      value: `${formatResource(prodReserve)}${turnSuffix("production")}`,
+      derivation: `Produkční rezerva dostupná pro stavby. ${turnExplanation}\nVýkon uzlů: ${totalProd.toFixed(1)} | Hodnota zboží: ${goodsProd.toFixed(1)}`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
-      label: "Bohatství",
-      // SSOT: hrubý příjem státu /kolo (sjednoceno s EconomyTab a TreasuryHub).
-      // Tooltip ukazuje rozklad včetně výdajů a čisté změny pokladny.
-      value: `${Math.round(wealthReserve)} (+${fi.totalIncome.toFixed(0)}/kolo)`,
-      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo\n  • Populační daň: ${fi.popTax.toFixed(1)}\n  • Domácí trh: ${fi.domesticMarket.toFixed(1)}\n  • Daně ze zboží: ${fi.goodsFiscal.toFixed(1)}\n  • Koridorové mýto: ${fi.corridorTolls.toFixed(1)}\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistá změna pokladny: ${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(1)}/kolo`,
+      label: "Pokladna",
+      value: `${formatResource(wealthReserve)}${turnSuffix("gold")}`,
+      derivation: `Dostupné zlato. ${turnExplanation}\nHrubý daňový příjem: ${fi.totalIncome.toFixed(1)}\nPopulační daň: ${fi.popTax.toFixed(1)} | Domácí trh: ${fi.domesticMarket.toFixed(1)} | Daně ze zboží: ${fi.goodsFiscal.toFixed(1)}`,
     },
     {
       icon: <span className="text-xs">🌾</span>,
-      label: "Zásoby",
-      value: `${Math.round(grainReserve)} (${grainNetStr}/kolo)`,
+      label: "Obilí",
+      value: `${formatResource(grainReserve)}/${formatResource(grainCapacity)}${turnSuffix("grain")}`,
       warning: grainReserve < 20,
-      derivation: `Kapacita sýpek: ${realm.granary_capacity ?? 0} | Bilance: produkce(${realm.last_turn_grain_prod ?? 0}) − spotřeba(${realm.last_turn_grain_cons ?? 0}) − armáda`,
+      derivation: `Zásoba / kapacita sýpek. ${turnExplanation} Přebytek nad kapacitou se při vyhodnocení kola neuloží.`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.capacity}</span>,
-      label: "Kapacita",
+      label: "Síťová kapacita",
       value: totalCap.toFixed(1),
-      derivation: `Stavební materiály + infrastruktura + guild sophistication + logistická síť`,
+      derivation: `Kapacita obchodní a zásobovací sítě. Nejde o limit sýpek ani o množství materiálů.`,
     },
     {
       icon: <Church className="h-3 w-3" />,
@@ -194,7 +218,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
               {chip.derivation && (
                 <TooltipContent side="bottom" className="max-w-xs text-xs">
                   <p className="font-semibold mb-0.5">{chip.label}</p>
-                  <p className="text-muted-foreground">{chip.derivation}</p>
+                  <p className="text-muted-foreground whitespace-pre-line">{chip.derivation}</p>
                 </TooltipContent>
               )}
             </Tooltip>
@@ -240,8 +264,8 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
                 <span className="font-bold">{totalProd.toFixed(1)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">📊 Ekon. aktivita</span>
-                <span className="font-bold" title="total_wealth: realizovaná tržní aktivita, nikoli příjem státu">{totalWealth.toFixed(1)}</span>
+                <span className="text-muted-foreground">🏛️ Fiskální příjem</span>
+                <span className="font-bold" title="Fiskální příjem státu za kolo">{fi.totalIncome.toFixed(1)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{MACRO_LAYER_ICONS.capacity} Kapacita</span>

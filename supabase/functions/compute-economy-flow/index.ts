@@ -344,6 +344,10 @@ Deno.serve(async (req) => {
         .limit(10000),
     ]);
 
+    for (const result of [nodesRes, routesRes, supplyRes, citiesRes, hexesRes]) {
+      if (result.error) throw new Error(`Economy input failed: ${result.error.message}`);
+    }
+
     const nodes: NodeData[] = (nodesRes.data || []).map((n: any) => ({
       ...n,
       resource_output: n.resource_output || {},
@@ -800,7 +804,7 @@ Deno.serve(async (req) => {
     for (let i = 0; i < nodeResults.length; i += BATCH) {
       const batch = nodeResults.slice(i, i + BATCH);
       for (const nr of batch) {
-        await sb.from("province_nodes").update({
+        const { error } = await sb.from("province_nodes").update({
           production_output: nr.production_output,
           wealth_output: nr.wealth_output,
           food_value: nr.food_value,
@@ -815,6 +819,7 @@ Deno.serve(async (req) => {
           upkeep_wealth: nr.upkeep_wealth,
           net_balance: nr.net_balance,
         }).eq("id", nr.id);
+        if (error) throw new Error(`Node economy write failed: ${error.message}`);
       }
     }
 
@@ -878,68 +883,16 @@ Deno.serve(async (req) => {
       if (stratRes === "incense") pt.incense++;
     }
 
-    // Phase A fix: read existing wealth components & logistic_capacity, fold them
-    // into the canonical totals. Without this, total_wealth and total_capacity
-    // collapse to ~0 even though the per-stream components are large.
-    const playerNames = Array.from(playerTotals.keys());
-    const { data: existingRows } = await sb.from("realm_resources")
-      .select("player_name, wealth_pop_tax, wealth_domestic_market, wealth_route_commerce, goods_wealth_fiscal, logistic_capacity")
-      .eq("session_id", session_id)
-      .in("player_name", playerNames);
-    const existingByPlayer = new Map<string, any>(
-      (existingRows || []).map((r: any) => [r.player_name, r])
-    );
+    // Fiscal income is owned by process-turn; refreshing topology must not
+    // overwrite it from deprecated columns or resurrect zero-tax income.
 
-    // Aggregate logistic_capacity per player from province_nodes (canonical)
-    const playerLogistic = new Map<string, number>();
-    for (const node of nodes) {
-      const player = node.controlled_by;
-      if (!player) continue;
-      const lc = Number((node as any).logistic_capacity || 0);
-      playerLogistic.set(player, (playerLogistic.get(player) || 0) + lc);
-    }
-
-    // Phase 2: GDP = domestic production value + export gross_value (basket_trade_flows)
-    // total_wealth stays fiscal (sum of revenue streams); total_gdp is economic activity.
-    const { data: btfRows } = await sb.from("basket_trade_flows")
-      .select("source_player, gross_value")
-      .eq("session_id", session_id);
-    const gdpByPlayer = new Map<string, number>();
-    for (const [player, totals] of playerTotals) {
-      // Production output is proxy for domestic GDP component (units × implicit price 1.0)
-      gdpByPlayer.set(player, totals.production);
-    }
-    for (const row of btfRows || []) {
-      const p = (row as any).source_player as string;
-      if (!p) continue;
-      gdpByPlayer.set(p, (gdpByPlayer.get(p) || 0) + Number((row as any).gross_value || 0));
-    }
+    // Basket trade publishes GDP after using these fresh node outputs.
 
     for (const [player, totals] of playerTotals) {
-      const ex = existingByPlayer.get(player) || {};
-      const wealthPopTax = Number(ex.wealth_pop_tax || 0);
-      const wealthDomestic = Number(ex.wealth_domestic_market || 0);
-      const wealthRoute = Number(ex.wealth_route_commerce || 0);
-      const goodsFiscal = Number(ex.goods_wealth_fiscal || 0);
-
-      // Canonical wealth = sum of all explicit revenue streams.
-      // Fallback to legacy per-node wealth_output only if all streams are zero
-      // (pre-v3 sessions that haven't been recomputed yet).
-      const streamWealth = wealthPopTax + wealthDomestic + wealthRoute + goodsFiscal;
-      const canonicalWealth = streamWealth > 0 ? streamWealth : totals.wealth;
-
-      // Canonical capacity = sum of node logistic_capacity (real units), not
-      // the 0–0.01 capacity_score fragments. Fall back to summed score only
-      // if logistic_capacity is missing entirely.
-      const summedLogistic = playerLogistic.get(player) || 0;
-      const canonicalCapacity = summedLogistic > 0 ? summedLogistic : totals.capacity;
-
       const update = {
         total_production: Math.round(totals.production * 100) / 100,
-        total_wealth: Math.round(canonicalWealth * 100) / 100,
-        total_gdp: Math.round((gdpByPlayer.get(player) || 0) * 100) / 100,
         total_supplies: Math.round(totals.supplies * 100) / 100,
-        total_capacity: Math.round(canonicalCapacity * 100) / 100,
+        total_capacity: Math.round(totals.capacity * 100) / 100,
         total_importance: Math.round(totals.importance * 100) / 100,
         strategic_iron_tier: computeTier(totals.iron),
         strategic_horses_tier: computeTier(totals.horses),
@@ -953,8 +906,9 @@ Deno.serve(async (req) => {
         strategic_silk_tier: computeTier(totals.silk),
         strategic_incense_tier: computeTier(totals.incense),
       };
-      await sb.from("realm_resources").update(update)
+      const { error } = await sb.from("realm_resources").update(update)
         .eq("session_id", session_id).eq("player_name", player);
+      if (error) throw new Error(`Realm projection write failed: ${error.message}`);
     }
 
     // ── RESPONSE ──────────────────────────────────────────────
