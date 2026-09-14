@@ -81,42 +81,56 @@ const SUBNODE_OPTIONS: SubnodeOption[] = [
 ];
 
 
-/** Painted picture for a building or district — matched by name first, then category. */
-const BUILD_NAME_SPRITE: Array<[RegExp, string]> = [
-  [/arén/i, buildArena],
-  [/bard/i, buildBardsHouse],
-  [/chrám|katedrál|svatyn/i, buildTemple],
-  [/divadl/i, buildTheatre],
-  [/klášter/i, buildMonastery],
-  [/knihovn|univerz|škol|písař/i, buildLibrary],
-  [/soud|radnic|úřad|kancelář/i, buildCourthouse],
-  [/stadion|cirk|závod/i, buildStadium],
-  [/kovárn|hut|slévárn/i, buildSmithy],
-  [/manufaktur|dílna|tkaln|přádeln/i, buildManufactory],
-  [/mincovn|banka|pokladn/i, buildMint],
-  [/pila|dřevo|řezb/i, buildSawmill],
-  [/sklárn|sklo|hrnčí/i, buildGlassworks],
-  [/sýpk|špýchar|sklad|obiln/i, buildGranary],
-  [/tržišt|trh|obchod|celnic|bazar/i, buildMarket],
-  [/akvadukt|vodovod/i, buildAqueduct],
-  [/kanalizac|stok/i, buildSewer],
-  [/lázn|terma|kúpel/i, buildBaths],
-  [/most/i, buildBridge],
-  [/silnic|cest|dlážd/i, buildRoad],
-  [/studn|cistern/i, buildWell],
-  [/hradb|bašt|opevněn|palisád/i, buildWalls],
-  [/jízd|stáj|koň/i, buildRidingSchool],
-  [/kasárn|zbrojnic|výcvik/i, buildBarracks],
-  [/oblék|obléhac|katapult|balist/i, buildSiegeWorkshop],
-  [/věž|strážn/i, buildWatchtower],
-  [/střelnic|lukostřel/i, buildShootingRange],
-  [/velitelstv|generál|štáb/i, buildHeadquarters],
-  [/lom|kamenolom/i, buildQuarry],
-  [/důl|šacht|ruda/i, spriteMine],
-  [/farm|vinice|ryb|statek|dvůr|pole/i, spriteFarmstead],
-  [/přístav|dok|loděnic|molo/i, spritePort],
-  [/čtvrť|obytn|domy|kolonie|předmě|nájem/i, buildResidential],
+/**
+ * Painted picture for a building or district.
+ *
+ * Keywords match only at the START of a word (so "pevnost" no longer reads as
+ * "most" and "Dokonalost" no longer reads as "dok"), and the longest matching
+ * keyword wins, so specific names beat generic ones. Category is the fallback.
+ */
+const BUILD_KEYWORD_SPRITE: Array<[string, string[]]> = [
+  [buildArena, ["arén", "arena", "amfiteát", "kolose", "kolize", "gladiát"]],
+  [buildBardsHouse, ["bard", "pěvec", "pěvc", "hudeb", "loutn"]],
+  [buildTemple, ["chrám", "katedrál", "svatyn", "bazilik", "oltář", "mauzole", "hřbitov", "kaple"]],
+  [buildTheatre, ["divadl", "odeon", "scén"]],
+  [buildMonastery, ["klášter", "opatstv", "poustev", "konvent"]],
+  [buildLibrary, ["knihovn", "univerz", "akademi", "škol", "písař", "archiv", "skript", "observat"]],
+  [buildCourthouse, ["soud", "radnic", "úřad", "kancelář", "palác", "sněm", "kuri"]],
+  [buildStadium, ["stadion", "cirk", "závodišt", "hipodr", "hřišt"]],
+  [buildSmithy, ["kovárn", "kovář", "hut", "slévárn", "výheň", "zbrojíř"]],
+  [buildManufactory, ["manufaktur", "dílna", "dílny", "tkaln", "přádeln", "barvírn", "koželuž", "pivovar", "lihovar", "papírn"]],
+  [buildMint, ["mincovn", "banka", "bankov", "pokladn", "penězom", "směnárn"]],
+  [buildSawmill, ["pila", "pily", "dřevo", "řezb", "truhl", "mlýn", "lesnic"]],
+  [buildGlassworks, ["sklárn", "sklo", "hrnčí", "keramik", "cihel", "vápenk"]],
+  [buildGranary, ["sýpk", "špýchar", "sklad", "obiln", "silo", "pekárn"]],
+  [buildMarket, ["tržišt", "trh", "trhy", "obchod", "celnic", "bazar", "krám", "hostinec", "hospod", "krčm", "tavern"]],
+  [buildAqueduct, ["akvadukt", "vodovod", "vodní věž"]],
+  [buildSewer, ["kanalizac", "stok", "latrín"]],
+  [buildBaths, ["lázn", "lázeň", "terma", "kúpel", "špitál", "nemocnic", "lékárn", "hospic"]],
+  [buildBridge, ["most", "mostek", "lávka", "brod"]],
+  [buildRoad, ["silnic", "cesta", "cesty", "dlážd", "dlážd", "stezk"]],
+  [buildWell, ["studn", "cistern", "vodojem", "fontán", "kašna"]],
+  [buildWalls, ["hradb", "bašt", "opevněn", "palisád", "brána", "válec"]],
+  [buildRidingSchool, ["jízd", "stáj", "koň", "kon", "maneg"]],
+  [buildBarracks, ["kasárn", "zbrojnic", "výcvik", "arzenál", "posádk"]],
+  [buildSiegeWorkshop, ["obléhac", "obléh", "katapult", "balist", "beran"]],
+  [buildWatchtower, ["věž", "strážn", "hláska", "maják", "rozhledn"]],
+  [buildShootingRange, ["střelnic", "lukostřel", "kušen"]],
+  [buildHeadquarters, ["velitelstv", "generál", "štáb", "citadel", "pevnost", "tvrz", "donjon"]],
+  [buildQuarry, ["lom", "kamenolom", "pískovn"]],
+  [spriteMine, ["důl", "dolu", "šacht", "ruda", "rudn", "těžb", "sůl", "solivar"]],
+  [spriteFarmstead, ["farm", "vinice", "vinohrad", "vinař", "ryb", "statek", "dvůr", "pole", "polnost", "sad", "pastvin", "chmeln", "ovčín", "kravín"]],
+  [spritePort, ["přístav", "dok", "loděnic", "molo", "kotvišt", "překlad"]],
+  [buildResidential, ["čtvrť", "obytn", "domy", "kolonie", "předmě", "nájem", "sirotč", "ubytov", "insul"]],
 ];
+/** Flattened, longest-keyword-first so specific names win over short generic ones. */
+const BUILD_NAME_SPRITE: Array<[RegExp, string]> = BUILD_KEYWORD_SPRITE
+  .flatMap(([sprite, keywords]) => keywords.map(keyword => ({ sprite, keyword })))
+  .sort((a, b) => b.keyword.length - a.keyword.length)
+  .map(({ sprite, keyword }) => [
+    new RegExp(`(^|[^\\p{L}])${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu"),
+    sprite,
+  ] as [RegExp, string]);
 /** Terrain a new settlement may be founded on — mirrors the server rule in FOUND_CITY. */
 const CITY_ALLOWED_BIOMES = ["plains", "hills", "forest", "swamp"];
 
