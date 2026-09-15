@@ -338,7 +338,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("tile_parcel_contents").select("id, parcel_id, entity_type, entity_id, slots_used").eq("session_id", sessionId),
       supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
       supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
-      supabase.from("city_buildings").select("id, name, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
+      supabase.from("city_buildings").select("id, name, category, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
