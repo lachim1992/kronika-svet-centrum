@@ -351,7 +351,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setDistricts((districtRes.data || []) as unknown as CityDistrict[]);
     setConstructionEntities([
       ...((buildingRes.data || []) as ConstructionEntity[]),
-      ...((districtRes.data || []).filter((item: any) => item.parcel_id).map((item: any) => ({ ...item, build_duration: item.build_turns })) as ConstructionEntity[]),
+      ...((districtRes.data || []).filter((item: any) => item.parcel_id).map((item: any) => ({ ...item, build_duration: item.build_turns, category: item.district_type === "residential" ? "residential" : "economic" })) as ConstructionEntity[]),
     ]);
 
     setTreasury({ gold: Number(realmRes.data?.gold_reserve || 0), production: Number(realmRes.data?.production_reserve || 0) });
