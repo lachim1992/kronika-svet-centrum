@@ -181,7 +181,7 @@ type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path:
 type ParcelContent = { id: string; parcel_id: string; entity_type: string; entity_id: string; slots_used: number };
 type TileInfrastructure = { id: string; grid_x: number; grid_y: number; owner_player: string; level: number; target_level: number | null; status: string; progress: number };
 type BuildingTemplate = { id: string; name: string; category: string; description: string; cost_wealth: number; cost_wood: number; cost_stone: number; cost_iron: number; build_turns: number; effects: unknown; max_level: number; level_data: unknown };
-type ConstructionEntity = { id: string; name: string; status: string; build_started_turn: number; build_duration: number; completed_turn: number | null; parcel_id: string | null };
+type ConstructionEntity = { id: string; name: string; category?: string | null; status: string; build_started_turn: number; build_duration: number; completed_turn: number | null; parcel_id: string | null };
 /** A city district — either housing or a workshop pointed at one demand basket. */
 type CityDistrict = {
   id: string; city_id: string; name: string; status: string; district_type: string;
@@ -338,7 +338,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("tile_parcel_contents").select("id, parcel_id, entity_type, entity_id, slots_used").eq("session_id", sessionId),
       supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
       supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
-      supabase.from("city_buildings").select("id, name, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
+      supabase.from("city_buildings").select("id, name, category, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
@@ -351,7 +351,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setDistricts((districtRes.data || []) as unknown as CityDistrict[]);
     setConstructionEntities([
       ...((buildingRes.data || []) as ConstructionEntity[]),
-      ...((districtRes.data || []).filter((item: any) => item.parcel_id).map((item: any) => ({ ...item, build_duration: item.build_turns })) as ConstructionEntity[]),
+      ...((districtRes.data || []).filter((item: any) => item.parcel_id).map((item: any) => ({ ...item, build_duration: item.build_turns, category: item.district_type === "residential" ? "residential" : "economic" })) as ConstructionEntity[]),
     ]);
 
     setTreasury({ gold: Number(realmRes.data?.gold_reserve || 0), production: Number(realmRes.data?.production_reserve || 0) });
