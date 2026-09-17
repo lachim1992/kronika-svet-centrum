@@ -562,17 +562,37 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     to: projectCell("square4", { a: segment.to_x, b: segment.to_y }, TILE_SIZE),
   })), [roadSegments]);
 
-  /** Every cell crossed by a road inherits its strongest tier for the map-wide surface tint. */
-  const roadLevelByCell = useMemo(() => {
-    const levels = new Map<string, number>();
+  /** Roads live on the sub-parcel grid: per cell we keep the traced sub-parcels and their tier. */
+  const roadSurfaceByCell = useMemo(() => {
+    const surface = new Map<string, { level: number; steps: RoadStep[]; draft: boolean }>();
+    const push = (x: number, y: number, level: number, step: RoadStep | null, draft: boolean) => {
+      const key = cellKey(x, y);
+      const entry = surface.get(key) || { level: 0, steps: [] as RoadStep[], draft: false };
+      entry.level = Math.max(entry.level, level);
+      entry.draft = entry.draft || draft;
+      if (step && !entry.steps.some(item => item.dx === step.dx && item.dy === step.dy)) entry.steps.push(step);
+      surface.set(key, entry);
+    };
     roadSegments.filter(segment => segment.status !== "blocked").forEach(segment => {
-      [cellKey(segment.from_x, segment.from_y), cellKey(segment.to_x, segment.to_y)].forEach(key => {
-        levels.set(key, Math.max(levels.get(key) || 0, segment.level));
+      const dx = Math.sign(segment.to_x - segment.from_x); const dy = Math.sign(segment.to_y - segment.from_y);
+      push(segment.from_x, segment.from_y, segment.level, { dx, dy }, false);
+      push(segment.to_x, segment.to_y, segment.level, { dx: -dx, dy: -dy }, false);
+    });
+    roadDraft.forEach((cell, index) => {
+      const previous = roadDraft[index - 1]; const next = roadDraft[index + 1];
+      push(cell.x, cell.y, roadDraftLevel, null, true);
+      [previous, next].forEach(other => {
+        if (!other) return;
+        push(cell.x, cell.y, roadDraftLevel, { dx: Math.sign(other.x - cell.x), dy: Math.sign(other.y - cell.y) }, true);
       });
     });
-    return levels;
-  }, [roadSegments]);
-  const roadDraftCells = useMemo(() => new Set(roadDraft.map(cell => cellKey(cell.x, cell.y))), [roadDraft]);
+    return new Map([...surface.entries()].map(([key, entry]) => {
+      const [x, y] = key.split(",").map(Number);
+      const steps = entry.steps.length ? entry.steps : CARDINAL_STEPS.slice(0, 2);
+      return [key, { level: entry.level, draft: entry.draft, cells: tileRoadCells(sessionId, x, y, steps) }];
+    }));
+  }, [roadSegments, roadDraft, roadDraftLevel, sessionId]);
+
 
   const roadDraftSummary = useMemo(() => {
     if (roadDraft.length < 2) return { bridges: 0, gold: 0, production: 0, turns: 0 };
