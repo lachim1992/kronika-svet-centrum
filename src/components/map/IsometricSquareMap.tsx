@@ -1237,6 +1237,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
       style={{ touchAction: "none" }}
       onPointerDown={(event) => {
+        if (roadDraft.length > 0) { event.currentTarget.setPointerCapture?.(event.pointerId); return; }
         pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
@@ -1247,6 +1248,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
       }}
       onPointerMove={(event) => {
+        if (roadDraft.length > 0) return;
         if (pinchRef.current.has(event.pointerId)) pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         const start = pinchStartRef.current;
         if (start && pinchRef.current.size === 2) {
@@ -1287,7 +1289,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const holderCity = holderCityId ? cityById.get(holderCityId) : undefined;
             const holderOwn = holderCity ? holderCity.owner_player === playerName : true;
             const holderColor = holderCity ? (holderOwn ? "var(--map-city-own)" : "var(--map-city-rival)") : colors[1];
-            return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }} className="cursor-pointer">
+            return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }}
+              onPointerEnter={event => { if (roadDraft.length > 0 && event.buttons === 1) focusTile(tile); }}
+              className={roadDraft.length > 0 ? "cursor-crosshair" : "cursor-pointer"}>
               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
@@ -1351,6 +1355,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <line x1={point.x - 5} y1={point.y - 2.6} x2={point.x + 5} y2={point.y - 2.6} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity=".8" />
             </g>;
           })}
+          {showRoutes && explicitRoadNetwork.map(segment => {
+            const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
+            const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
+            const width = segment.level === 3 ? 5.4 : segment.level === 2 ? 4 : 2.5;
+            return <g key={`explicit-${segment.id}`} pointerEvents="none">
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 2} strokeLinecap="round" opacity=".55" />
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-route)" strokeWidth={width} strokeLinecap="round"
+                strokeDasharray={segment.status === "building" ? "5 3" : segment.level === 1 ? "2 3" : undefined} opacity={segment.status === "blocked" ? .35 : .95} />
+              {segment.level === 3 && <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-label)" strokeWidth=".65" strokeDasharray="2 3" opacity=".5" />}
+            </g>;
+          })}
+          {roadDraft.length > 0 && <g pointerEvents="none">
+            <polyline points={roadDraft.map(cell => { const point = at(cell.x, cell.y); return `${point.x},${point.y}`; }).join(" ")}
+              fill="none" stroke="var(--map-focus)" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6 3" opacity=".95" />
+            {roadDraft.map((cell, index) => { const point = at(cell.x, cell.y); const tile = tileByCell.get(cellKey(cell.x, cell.y)); return <g key={`draft-${cell.x}-${cell.y}`}>
+              <circle cx={point.x} cy={point.y} r={index === 0 ? 5 : 3.2} fill="var(--map-focus)" stroke="var(--map-marker-edge)" strokeWidth="1" />
+              {tile?.has_river && <rect x={point.x - 6} y={point.y - 2.5} width="12" height="5" fill="var(--map-route)" stroke="var(--map-focus)" strokeWidth="1" />}
+            </g>; })}
+          </g>}
           {!cityLayerCityId && showRoutes && routePolylines.map(route => (
             <polyline key={route.id} points={route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ")}
               fill="none" stroke="var(--map-route)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
@@ -1461,6 +1484,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <Button size="icon" variant={showSubBiomes ? "secondary" : "ghost"} aria-label={showSubBiomes ? "Skrýt subbiomy" : "Zobrazit subbiomy"} aria-pressed={showSubBiomes} onClick={() => setShowSubBiomes(value => !value)}><Grid3x3 className={`h-4 w-4 ${showSubBiomes ? "" : "opacity-40"}`} /></Button>
       </div>
       <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>Čtvercová síť · izometrické zobrazení</span></div>
+      {roadDraft.length > 0 && <div className="map-floating-control absolute left-1/2 top-4 z-50 w-[min(92vw,560px)] -translate-x-1/2 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <RouteIcon className="h-4 w-4 text-primary" />
+          <strong className="mr-auto text-sm">Kreslení cesty · {roadDraft.length - 1} úseků</strong>
+          <Button size="icon" variant="ghost" aria-label="Vrátit poslední úsek" disabled={roadDraft.length <= 1} onClick={() => setRoadDraft(current => current.slice(0, -1))}><Undo2 className="h-4 w-4" /></Button>
+          <Button size="icon" variant="ghost" aria-label="Zrušit kreslení" onClick={() => setRoadDraft([])}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <select value={roadDraftLevel} onChange={event => setRoadDraftLevel(Number(event.target.value))} className="h-8 rounded border border-input bg-background px-2">
+            {[1, 2, 3].map(level => <option key={level} value={level}>{tileInfrastructureLevel(level)?.label}</option>)}
+          </select>
+          <span className="text-muted-foreground">{roadDraftSummary.gold} zlata · {roadDraftSummary.production} produkce · {roadDraftSummary.turns} kol{roadDraftSummary.bridges ? ` · ${roadDraftSummary.bridges} mostů` : ""}</span>
+          <Button size="sm" className="ml-auto" disabled={roadDraft.length < 2 || !!buildingAction || treasury.gold < roadDraftSummary.gold || treasury.production < roadDraftSummary.production} onClick={() => void confirmRoadDraft()}>
+            {buildingAction === "road-path" ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Check className="mr-1 h-3 w-3" />}Potvrdit
+          </Button>
+        </div>
+      </div>}
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
 
       {selected && <aside className={`map-tile-detail absolute z-40 overflow-y-auto border-primary/20 bg-background/95 shadow-2xl backdrop-blur-xl ${isMobile ? "inset-x-0 bottom-0 max-h-[64vh] rounded-t-2xl border-t p-4" : "bottom-0 right-0 top-0 w-[380px] border-l p-5"}`}>
@@ -1678,6 +1718,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 {selectedRoadPlan.bridges.length ? ` · ${selectedRoadPlan.bridges.length}× most přes řeku` : ""}
               </p>}
               <p className="mt-1 text-[10px] text-muted-foreground">Cesta jen prochází podčtverci — nezabírá stavební slot, parcely pod ní zůstávají volné.</p>
+              <Button size="sm" variant="outline" className="mt-2 w-full" disabled={!!buildingAction} onClick={startRoadDraft}><RouteIcon className="mr-1 h-3.5 w-3.5" />Nakreslit trasu na mapě</Button>
             </div>}
 
           </>
