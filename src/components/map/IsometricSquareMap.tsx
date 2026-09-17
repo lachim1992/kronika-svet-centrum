@@ -718,6 +718,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return [point(a0, b0), point(a1, b0), point(a1, b1), point(a0, b1)].join(" ");
   };
 
+  /** SVG has no depth buffer: paint rear parcels first, then let nearer buildings occlude them. */
+  const parcelsBackToFront = (parcels: TileParcel[]) => [...parcels].sort((left, right) => {
+    const leftDepth = left.parcel_x + left.parcel_y;
+    const rightDepth = right.parcel_x + right.parcel_y;
+    return leftDepth - rightDepth || left.parcel_x - right.parcel_x || left.parcel_index - right.parcel_index;
+  });
+
   /** Full 32-parcel survey of the cell the player is inspecting. */
   const renderTileParcels = (centerPoint: { x: number; y: number }) => {
     const cityOwned = tileParcels.filter(parcel => parcel.city_id);
@@ -785,7 +792,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".6" pointerEvents="none" />;
       })}
 
-      {tileParcels.filter(parcel => parcel.status === "occupied").map((parcel, index) => {
+      {parcelsBackToFront(tileParcels.filter(parcel => parcel.status === "occupied")).map((parcel, index) => {
         const entity = constructionByParcel.get(parcel.id);
         const progress = entity?.status === "building"
           ? Math.max(8, Math.min(92, Math.round(((currentTurn - entity.build_started_turn) / Math.max(1, entity.build_duration)) * 100)))
@@ -1019,7 +1026,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       <title>Výstavba · {progress} %</title>
     </g>;
     const built = constructionByParcel.get(parcel.id);
-    const sprite = built?.name ? buildSprite(built.name) : LAND_USE_SPRITE[parcel.land_use || ""];
+    const sprite = built?.name ? buildSprite(built.name, built.category || undefined) : LAND_USE_SPRITE[parcel.land_use || ""];
     if (sprite) {
       const size = width * 3.1;
       return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
@@ -1048,7 +1055,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           stroke="var(--map-marker-edge)" strokeWidth=".35" opacity={parcel.status === "occupied" ? .95 : .72} />
       ))}
       {renderWallRun(edges, wallColor, 2.2, "wall")}
-      {occupied.map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
+      {parcelsBackToFront(occupied).map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
     </g>;
   };
 
