@@ -1553,6 +1553,31 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </>}
         </section>
 
+        <section className="mt-4 border border-primary/25 bg-primary/5 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium">Cesty a infrastruktura</h3>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {selectedInfrastructure?.status === "building"
+                  ? `${tileInfrastructureLevel(selectedInfrastructure.level)?.label || "Cesta"} ve výstavbě · ${selectedInfrastructure.progress} %`
+                  : selectedInfrastructure?.level
+                    ? `${tileInfrastructureLevel(selectedInfrastructure.level)?.label || "Cesta"} na tomto poli`
+                    : "Z tohoto pole může začít nová trasa."}
+              </p>
+            </div>
+            {selectedRoadPlan?.bridges.length ? <span className="text-[10px] text-muted-foreground">Řeka · bude potřeba most</span> : null}
+          </div>
+          <Button className="mt-3 w-full" disabled={!!buildingAction || !canBuildRoadHere} onClick={startRoadDraft}>
+            <RouteIcon className="mr-1.5 h-4 w-4" />Postavit cestu
+          </Button>
+          {!canBuildRoadHere && <p className="mt-2 text-[11px] text-muted-foreground">
+            Začni na vlastním městě, subuzlu, vlastněném poli nebo na již dokončené cestě.
+          </p>}
+          {canBuildRoadHere && <p className="mt-2 text-[11px] text-muted-foreground">
+            Po stisknutí vyznač sousední pole, zvol jednu ze tří úrovní a potvrď cenu.
+          </p>}
+        </section>
+
         {selectedCity && <section className="mt-4 space-y-2 border border-border/70 p-3">
           <div className="flex items-baseline justify-between">
             <h3 className="text-sm">Výroba a pracovní síla · {selectedCity.name}</h3>
@@ -1721,7 +1746,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 {selectedRoadPlan.bridges.length ? ` · ${selectedRoadPlan.bridges.length}× most přes řeku` : ""}
               </p>}
               <p className="mt-1 text-[10px] text-muted-foreground">Cesta jen prochází podčtverci — nezabírá stavební slot, parcely pod ní zůstávají volné.</p>
-              <Button size="sm" variant="outline" className="mt-2 w-full" disabled={!!buildingAction} onClick={startRoadDraft}><RouteIcon className="mr-1 h-3.5 w-3.5" />Nakreslit trasu na mapě</Button>
             </div>}
 
           </>
