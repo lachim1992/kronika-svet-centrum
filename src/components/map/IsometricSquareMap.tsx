@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, ArrowUpRight, Castle, Factory, Flag, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Castle, Check, Factory, Flag, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -180,6 +180,8 @@ type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
 type ParcelContent = { id: string; parcel_id: string; entity_type: string; entity_id: string; slots_used: number };
 type TileInfrastructure = { id: string; grid_x: number; grid_y: number; owner_player: string; level: number; target_level: number | null; status: string; progress: number };
+type RoadSegment = { id: string; project_id: string | null; owner_player: string; from_x: number; from_y: number; to_x: number; to_y: number; level: number; status: string; progress: number; capacity: number; utilization: number; maintenance: number; bridge_count: number };
+type RoadProject = { id: string; owner_player: string; level: number; status: string; progress: number; path_cells: Array<{ x: number; y: number }>; bridge_count: number; cost_gold: number; cost_production: number };
 type BuildingTemplate = { id: string; name: string; category: string; description: string; cost_wealth: number; cost_wood: number; cost_stone: number; cost_iron: number; build_turns: number; effects: unknown; max_level: number; level_data: unknown };
 type ConstructionEntity = { id: string; name: string; category?: string | null; status: string; build_started_turn: number; build_duration: number; completed_turn: number | null; parcel_id: string | null };
 /** A city district — either housing or a workshop pointed at one demand basket. */
@@ -305,6 +307,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
   const [infrastructure, setInfrastructure] = useState<TileInfrastructure[]>([]);
+  const [roadSegments, setRoadSegments] = useState<RoadSegment[]>([]);
+  const [roadProjects, setRoadProjects] = useState<RoadProject[]>([]);
+  const [roadDraft, setRoadDraft] = useState<Array<{ x: number; y: number }>>([]);
+  const [roadDraftLevel, setRoadDraftLevel] = useState(1);
   const [buildingTemplates, setBuildingTemplates] = useState<BuildingTemplate[]>([]);
   const [constructionEntities, setConstructionEntities] = useState<ConstructionEntity[]>([]);
   const [recentlyBuiltParcelId, setRecentlyBuiltParcelId] = useState<string | null>(null);
@@ -326,7 +332,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }), []);
 
   const load = useCallback(async () => {
-    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, templateRes, buildingRes, districtRes] = await Promise.all([
+    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, roadSegmentRes, roadProjectRes, templateRes, buildingRes, districtRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction, coastal").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, city_id, controlled_by, production_output, wealth_output, food_value, parcel_index").eq("session_id", sessionId).eq("is_active", true),
@@ -337,6 +343,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
       supabase.from("tile_parcel_contents").select("id, parcel_id, entity_type, entity_id, slots_used").eq("session_id", sessionId),
       supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
+      supabase.from("road_segments").select("id, project_id, owner_player, from_x, from_y, to_x, to_y, level, status, progress, capacity, utilization, maintenance, bridge_count").eq("session_id", sessionId),
+      supabase.from("road_projects").select("id, owner_player, level, status, progress, path_cells, bridge_count, cost_gold, cost_production").eq("session_id", sessionId),
       supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
       supabase.from("city_buildings").select("id, name, category, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
@@ -347,6 +355,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setStoredSubBiomes((subBiomeRes.data || []) as StoredSubBiome[]);
     setParcelContents((contentRes.data || []) as ParcelContent[]);
     setInfrastructure((infrastructureRes.data || []) as TileInfrastructure[]);
+    setRoadSegments((roadSegmentRes.data || []) as RoadSegment[]);
+    setRoadProjects((roadProjectRes.data || []) as unknown as RoadProject[]);
     setBuildingTemplates((templateRes.data || []) as unknown as BuildingTemplate[]);
     setDistricts((districtRes.data || []) as unknown as CityDistrict[]);
     setConstructionEntities([
