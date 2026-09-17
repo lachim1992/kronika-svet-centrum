@@ -2,8 +2,7 @@
 // Node-Trade v1 — Stage 4
 //
 // Pipeline:
-//  1) Load province_nodes (active) and province_routes (construction_state='complete'
-//     AND control_state IN ('open') — contested propagates only with penalty in flow solver, not here).
+//  1) Load active nodes, completed road segments and cardinal river cells.
 //  2) Union-Find over routes → connected components (trade systems).
 //  3) Deterministic system_key = sha256(sorted(node_ids).join(',')).slice(0,16).
 //  4) Diff against trade_system_node_snapshot → emit world_events: trade_system_formed/dissolved/merged/split.
@@ -93,15 +92,16 @@ Deno.serve(async (req) => {
     const currentTurn: number = (sessionRow as any)?.current_turn ?? 0;
 
     // 1) Load nodes, routes, treaties, neutral_trade_pacts
-    const [nodeRes, routeRes, prevSnapRes, treatyRes, pactRes] = await Promise.all([
+    const [nodeRes, routeRes, riverRes, prevSnapRes, treatyRes, pactRes] = await Promise.all([
       sb
         .from("province_nodes")
-        .select("id, controlled_by, is_neutral, discovered, discovered_by, is_active")
+        .select("id, controlled_by, is_neutral, discovered, discovered_by, is_active, grid_x, grid_y, hex_q, hex_r")
         .eq("session_id", session_id),
       sb
-        .from("province_routes")
-        .select("id, node_a, node_b, construction_state, control_state")
-        .eq("session_id", session_id),
+        .from("road_segments")
+        .select("id, from_x, from_y, to_x, to_y, status, capacity")
+        .eq("session_id", session_id).eq("status", "completed"),
+      sb.from("province_hexes").select("grid_x, grid_y").eq("session_id", session_id).eq("has_river", true).eq("is_passable", true),
       sb
         .from("trade_system_node_snapshot")
         .select("node_id, system_key")
@@ -129,18 +129,27 @@ Deno.serve(async (req) => {
       (prevSnapRes.data || []).map((s: any) => [s.node_id, s.system_key as string])
     );
 
-    // 2) Union-Find — only complete + open routes
+    // 2) Union-Find over transport cells. Roads connect their explicit endpoints;
+    // cardinally adjacent river cells form the automatic river network.
     const uf = ufMake();
     for (const n of nodes) ufFind(uf, n.id); // ensure singletons exist
+    const cellId = (x: number, y: number) => `cell:${x},${y}`;
+    const riverKeys = new Set((riverRes.data || []).map((cell: any) => `${cell.grid_x},${cell.grid_y}`));
     let usedRoutes = 0;
     for (const r of routes) {
-      const cs = String((r as any).construction_state ?? "complete");
-      const ctrl = String((r as any).control_state ?? "open");
-      if (cs !== "complete") continue;
-      if (ctrl !== "open") continue; // contested handled in flow solver with penalty
-      if (!nodeById.has((r as any).node_a) || !nodeById.has((r as any).node_b)) continue;
-      ufUnion(uf, (r as any).node_a, (r as any).node_b);
+      ufUnion(uf, cellId(Number((r as any).from_x), Number((r as any).from_y)), cellId(Number((r as any).to_x), Number((r as any).to_y)));
       usedRoutes++;
+    }
+    for (const key of riverKeys) {
+      const [x, y] = key.split(",").map(Number);
+      for (const [dx, dy] of [[1, 0], [0, 1]]) if (riverKeys.has(`${x + dx},${y + dy}`)) ufUnion(uf, cellId(x, y), cellId(x + dx, y + dy));
+    }
+    // A node joins transport automatically when its field contains a completed road or river.
+    const transportCells = new Set<string>(riverKeys);
+    for (const r of routes) { transportCells.add(`${(r as any).from_x},${(r as any).from_y}`); transportCells.add(`${(r as any).to_x},${(r as any).to_y}`); }
+    for (const node of nodes) {
+      const x = Number((node as any).grid_x ?? (node as any).hex_q); const y = Number((node as any).grid_y ?? (node as any).hex_r);
+      if (transportCells.has(`${x},${y}`)) ufUnion(uf, node.id, cellId(x, y));
     }
 
     // 3) Group nodes by component root
@@ -271,18 +280,16 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
     }));
 
-    // Count routes + sum capacity per system
+    // Count explicit road segments + sum their capacity per system.
     const routeCount = new Map<string, number>();
     const capacitySum = new Map<string, number>();
     for (const r of routes) {
-      const cs = String((r as any).construction_state ?? "complete");
-      const ctrl = String((r as any).control_state ?? "open");
-      if (cs !== "complete" || ctrl !== "open") continue;
-      const nk = newKeyByNode.get((r as any).node_a);
-      if (nk && nk === newKeyByNode.get((r as any).node_b)) {
-        routeCount.set(nk, (routeCount.get(nk) ?? 0) + 1);
-        capacitySum.set(nk, (capacitySum.get(nk) ?? 0) + Number((r as any).capacity_value ?? 0));
-      }
+      const segmentRoot = ufFind(uf, cellId(Number((r as any).from_x), Number((r as any).from_y)));
+      const member = nodes.find((node: any) => ufFind(uf, node.id) === segmentRoot);
+      const nk = member ? newKeyByNode.get(member.id) : undefined;
+      if (!nk) continue;
+      routeCount.set(nk, (routeCount.get(nk) ?? 0) + 1);
+      capacitySum.set(nk, (capacitySum.get(nk) ?? 0) + Number((r as any).capacity ?? 0));
     }
     for (const u of upserts) {
       u.route_count = routeCount.get(u.system_key) ?? 0;
