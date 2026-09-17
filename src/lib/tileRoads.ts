@@ -9,6 +9,7 @@ import {
 
 export type RoadCell = { x: number; y: number };
 export type RoadStep = { dx: number; dy: number };
+export type SubRoadCell = { gridX: number; gridY: number; parcelX: number; parcelY: number };
 
 export const CARDINAL_STEPS: RoadStep[] = [
   { dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
@@ -16,6 +17,26 @@ export const CARDINAL_STEPS: RoadStep[] = [
 
 /** Extra cost of carrying a road over one water sub-parcel (a bridge). */
 export const BRIDGE_COST = { gold: 45, production: 30 };
+
+export const subRoadGlobal = (cell: SubRoadCell): RoadCell => ({
+  x: cell.gridX * TILE_PARCEL_COLS + cell.parcelX,
+  y: cell.gridY * TILE_PARCEL_ROWS + cell.parcelY,
+});
+
+export const areSubRoadNeighbours = (left: SubRoadCell, right: SubRoadCell) => {
+  const a = subRoadGlobal(left); const b = subRoadGlobal(right);
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
+};
+
+/** Macro transport path derived from a precise sub-parcel trace. */
+export function macroPathFromSubRoad(path: SubRoadCell[]): RoadCell[] {
+  const result: RoadCell[] = [];
+  path.forEach(cell => {
+    const previous = result[result.length - 1];
+    if (!previous || previous.x !== cell.gridX || previous.y !== cell.gridY) result.push({ x: cell.gridX, y: cell.gridY });
+  });
+  return result;
+}
 
 const parcelIndexOf = (x: number, y: number) => y * TILE_PARCEL_COLS + x;
 
