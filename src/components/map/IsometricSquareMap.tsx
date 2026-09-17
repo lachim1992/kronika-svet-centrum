@@ -10,7 +10,7 @@ import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
-import { CARDINAL_STEPS, tileBridgeCells, tileRoadBranches, tileRoadCost } from "@/lib/tileRoads";
+import { CARDINAL_STEPS, tileBridgeCells, tileRoadBranches, tileRoadCells, tileRoadCost, type RoadStep } from "@/lib/tileRoads";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
@@ -562,17 +562,37 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     to: projectCell("square4", { a: segment.to_x, b: segment.to_y }, TILE_SIZE),
   })), [roadSegments]);
 
-  /** Every cell crossed by a road inherits its strongest tier for the map-wide surface tint. */
-  const roadLevelByCell = useMemo(() => {
-    const levels = new Map<string, number>();
+  /** Roads live on the sub-parcel grid: per cell we keep the traced sub-parcels and their tier. */
+  const roadSurfaceByCell = useMemo(() => {
+    const surface = new Map<string, { level: number; steps: RoadStep[]; draft: boolean }>();
+    const push = (x: number, y: number, level: number, step: RoadStep | null, draft: boolean) => {
+      const key = cellKey(x, y);
+      const entry = surface.get(key) || { level: 0, steps: [] as RoadStep[], draft: false };
+      entry.level = Math.max(entry.level, level);
+      entry.draft = entry.draft || draft;
+      if (step && !entry.steps.some(item => item.dx === step.dx && item.dy === step.dy)) entry.steps.push(step);
+      surface.set(key, entry);
+    };
     roadSegments.filter(segment => segment.status !== "blocked").forEach(segment => {
-      [cellKey(segment.from_x, segment.from_y), cellKey(segment.to_x, segment.to_y)].forEach(key => {
-        levels.set(key, Math.max(levels.get(key) || 0, segment.level));
+      const dx = Math.sign(segment.to_x - segment.from_x); const dy = Math.sign(segment.to_y - segment.from_y);
+      push(segment.from_x, segment.from_y, segment.level, { dx, dy }, false);
+      push(segment.to_x, segment.to_y, segment.level, { dx: -dx, dy: -dy }, false);
+    });
+    roadDraft.forEach((cell, index) => {
+      const previous = roadDraft[index - 1]; const next = roadDraft[index + 1];
+      push(cell.x, cell.y, roadDraftLevel, null, true);
+      [previous, next].forEach(other => {
+        if (!other) return;
+        push(cell.x, cell.y, roadDraftLevel, { dx: Math.sign(other.x - cell.x), dy: Math.sign(other.y - cell.y) }, true);
       });
     });
-    return levels;
-  }, [roadSegments]);
-  const roadDraftCells = useMemo(() => new Set(roadDraft.map(cell => cellKey(cell.x, cell.y))), [roadDraft]);
+    return new Map([...surface.entries()].map(([key, entry]) => {
+      const [x, y] = key.split(",").map(Number);
+      const steps = entry.steps.length ? entry.steps : CARDINAL_STEPS.slice(0, 2);
+      return [key, { level: entry.level, draft: entry.draft, cells: tileRoadCells(sessionId, x, y, steps) }];
+    }));
+  }, [roadSegments, roadDraft, roadDraftLevel, sessionId]);
+
 
   const roadDraftSummary = useMemo(() => {
     if (roadDraft.length < 2) return { bridges: 0, gold: 0, production: 0, turns: 0 };
@@ -1307,9 +1327,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <g transform={`scale(${zoom})`}>
           {sortedTiles.map(tile => {
             const cell = tileCell(tile); const point = at(cell.a, cell.b); const colors = BIOMES[tile.biome_family] || BIOMES.plains;
-            const builtRoadLevel = roadLevelByCell.get(cellKey(cell.a, cell.b)) || 0;
-            const visibleRoadLevel = roadDraftCells.has(cellKey(cell.a, cell.b)) ? roadDraftLevel : builtRoadLevel;
-            const roadFill = visibleRoadLevel === 3 ? "var(--map-road-paved)" : visibleRoadLevel === 2 ? "var(--map-road-built)" : visibleRoadLevel === 1 ? "var(--map-road-trail)" : colors[0];
+            const roadSurface = roadSurfaceByCell.get(cellKey(cell.a, cell.b));
+            const visibleRoadLevel = roadSurface?.level || 0;
+            const roadFill = visibleRoadLevel === 3 ? "var(--map-road-paved)" : visibleRoadLevel === 2 ? "var(--map-road-built)" : "var(--map-road-trail)";
             const active = selected?.id === tile.id;
             const holderCityId = cityByCell.get(cellKey(cell.a, cell.b));
             const inActiveCity = cityLayerCityId && holderCityId === cityLayerCityId;
@@ -1320,12 +1340,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }}
               onPointerEnter={event => { if (roadDraft.length > 0 && event.buttons === 1) focusTile(tile); }}
               className={roadDraft.length > 0 ? "cursor-crosshair" : "cursor-pointer"}>
-              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={roadFill}
-                stroke={visibleRoadLevel ? "var(--map-road-edge)" : active || inActiveCity ? "var(--map-focus)" : holderColor}
-                strokeWidth={visibleRoadLevel ? 2.4 : active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
+              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]}
+                stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
+                strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
                 opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
+              {/* the road itself only paints the sub-parcels it runs through */}
+              {roadSurface && <g pointerEvents="none">
+                {roadSurface.cells.map(sub => (
+                  <polygon key={`road-sub-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
+                    fill={roadFill} stroke="var(--map-road-edge)" strokeWidth=".5"
+                    opacity={roadSurface.draft ? .7 : .95} />
+                ))}
+              </g>}
+
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
               {!active && showSubBiomes && zoom >= 1.2 && <g pointerEvents="none">
                 <g opacity=".5">
