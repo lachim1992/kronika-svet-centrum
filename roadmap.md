@@ -39,7 +39,7 @@
   - [x] Add map route drawing with tier, cost, bridge preview, undo, and confirmation
   - [x] Advance road projects during committed turns
   - [x] Route trade systems and goods/basket flows through completed roads and rivers with capacity limits
-  - [ ] Migrate player-built legacy roads and exclude generated shortcuts
+  - [x] Migrate player-built legacy roads and exclude generated shortcuts
   - [ ] Verify drawing, construction, routing, interruption, and three visual tiers end to end
 - [x] Resolve six confirmed production monitoring findings
   - [x] Align turn processing with current basket and military fields
