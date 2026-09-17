@@ -413,7 +413,7 @@ Deno.serve(async (req) => {
     // Over-mobilization: ×1.5 upkeep when soft trigger crossed (>10% pop mobilized)
     // ══════════════════════════════════════════
     const { data: stacks } = await supabase.from("military_stacks")
-      .select("id, unit_count, soldiers, maintenance_cost, morale, combat_power, assignment, assigned_route_id, construction_progress")
+      .select("id, unit_count, soldiers, upkeep_food, upkeep_gold, morale, power, assignment, assigned_route_id, construction_progress")
       .eq("session_id", sessionId).eq("owner_player", playerName);
 
     // Soft over-mobilization trigger (10% pop). Hard 20% cap is enforced on MOBILIZE command.
@@ -1372,9 +1372,13 @@ Deno.serve(async (req) => {
 
     // ── Demand basket feedback → city stability & population ──
     // Load demand baskets computed by compute-trade-flows
-    const { data: demandBaskets } = await supabase.from("demand_baskets")
-      .select("city_id, basket_type, satisfaction, deficit_volume")
+    const { data: demandBaskets, error: demandBasketsError } = await supabase.from("demand_baskets")
+      .select("city_id, basket_key, satisfaction_score, quantity_needed, quantity_fulfilled")
       .eq("session_id", sessionId);
+
+    if (demandBasketsError) {
+      console.error("[process-turn] demand basket feedback unavailable:", demandBasketsError.message);
+    }
 
     if (demandBaskets && demandBaskets.length > 0) {
       // Group by city
@@ -1386,15 +1390,20 @@ Deno.serve(async (req) => {
       }
 
       for (const city of myCities) {
-        const baskets = basketsByCity.get(city.id) || [];
+        // demand_baskets.city_id is the market node id; resolve it from the actual city.
+        const marketNodeId = cityNodeMap.get(city.id)?.id;
+        const baskets = marketNodeId ? basketsByCity.get(marketNodeId) || [] : [];
         if (baskets.length === 0) continue;
 
-        // Avg satisfaction across all baskets
-        const avgSat = baskets.reduce((s: number, b: any) => s + (b.satisfaction || 0), 0) / baskets.length;
+        // Demand-weighted satisfaction prevents tiny luxury baskets from outweighing staples.
+        const totalDemand = baskets.reduce((sum: number, b: any) => sum + Math.max(0, Number(b.quantity_needed || 0)), 0);
+        const avgSat = totalDemand > 0
+          ? baskets.reduce((sum: number, b: any) => sum + Number(b.satisfaction_score || 0) * Math.max(0, Number(b.quantity_needed || 0)), 0) / totalDemand
+          : baskets.reduce((sum: number, b: any) => sum + Number(b.satisfaction_score || 0), 0) / baskets.length;
         // Staple food satisfaction drives population
-        const stapleSat = baskets.find((b: any) => b.basket_type === "staple_food")?.satisfaction || 0;
-        // Ritual satisfaction drives faith
-        const ritualSat = baskets.find((b: any) => b.basket_type === "ritual")?.satisfaction || 0;
+        const stapleSat = Number(baskets.find((b: any) => b.basket_key === "staple_food")?.satisfaction_score || 0);
+        // Feast is the canonical ritual/ceremonial basket in Goods 4.3.
+        const ritualSat = Number(baskets.find((b: any) => b.basket_key === "feast")?.satisfaction_score || 0);
 
         // Stability drift from demand fulfillment
         let stabilityDrift = 0;

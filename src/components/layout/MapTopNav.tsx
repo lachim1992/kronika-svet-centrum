@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BarChart3, BookOpen, Brain, Crown, FlaskConical, Globe, Home, Map, Newspaper, Shield, Swords, Timer, Trophy, Wrench, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -27,12 +28,16 @@ const baseItems: Array<{ id: TabId; label: string; icon: React.ElementType }> = 
 ];
 
 export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPersistentTab }: Props) {
-  const { sandbox, toggleSandbox } = useSandboxMode();
+  const { sandbox, toggleSandbox, setSandbox } = useSandboxMode();
   const items = [
     ...baseItems,
     ...(showPersistentTab ? [{ id: "persistent" as TabId, label: "Persistent", icon: Timer }] : []),
     ...(showDevTab ? [{ id: "dev" as TabId, label: "Dev", icon: Wrench }, { id: "ailab" as TabId, label: "AI Lab", icon: Brain }] : []),
   ];
+
+  useEffect(() => {
+    if (!showDevTab && sandbox) setSandbox(false);
+  }, [sandbox, setSandbox, showDevTab]);
 
   return (
     <nav className="map-command-nav" aria-label="Herní moduly">
@@ -60,7 +65,7 @@ export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPers
             </Button>
           );
         })}
-        <div className="ml-auto flex shrink-0 items-center pl-2">
+        {showDevTab && <div className="ml-auto flex shrink-0 items-center pl-2">
           <Button
             type="button"
             variant="ghost"
@@ -80,7 +85,7 @@ export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPers
             <FlaskConical className="h-3.5 w-3.5" strokeWidth={sandbox ? 2.2 : 1.5} />
             <span className="hidden lg:inline">{sandbox ? "Test: zapnuto" : "Test režim"}</span>
           </Button>
-        </div>
+        </div>}
       </div>
     </nav>
   );

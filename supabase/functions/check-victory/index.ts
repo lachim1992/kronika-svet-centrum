@@ -191,9 +191,9 @@ async function checkDomination(sb: any, sessionId: string, humanPlayers: string[
 async function checkSurvival(sb: any, sessionId: string, humanPlayers: string[]) {
   const { data: crises } = await sb
     .from("world_crises")
-    .select("id, status, title")
+    .select("id, resolved, title")
     .eq("session_id", sessionId)
-    .eq("status", "resolved");
+    .eq("resolved", true);
 
   const resolvedCount = crises?.length || 0;
 
@@ -336,11 +336,11 @@ async function computeProgress(sb: any, sessionId: string, victoryStyle: string,
     case "survival": {
       const { data: crises } = await sb
         .from("world_crises")
-        .select("id, title, status")
+        .select("id, title, resolved")
         .eq("session_id", sessionId);
 
-      const resolved = (crises || []).filter((c: any) => c.status === "resolved");
-      const active = (crises || []).filter((c: any) => c.status === "active");
+      const resolved = (crises || []).filter((c: any) => c.resolved === true);
+      const active = (crises || []).filter((c: any) => c.resolved !== true);
 
       return {
         type: "survival",

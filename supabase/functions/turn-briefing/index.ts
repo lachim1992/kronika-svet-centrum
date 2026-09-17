@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId).eq("completed_turn", lastTurn).limit(20),
       sb.from("city_uprisings").select("city_id, escalation_level, status, demands")
         .eq("session_id", sessionId).eq("turn_triggered", lastTurn).limit(10),
-      sb.from("world_crises").select("title, status, severity")
+      sb.from("world_crises").select("title, crisis_type, description, resolved")
         .eq("session_id", sessionId).limit(10),
       sb.from("declarations").select("title, declaration_type, player_name, tone")
         .eq("session_id", sessionId).eq("turn_number", lastTurn).limit(10),
@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
       events: (events || []).length,
       buildings_completed: (buildings || []).length,
       uprisings: (uprisings || []).length,
-      active_crises: (crises || []).filter((c: any) => c.status === "active").length,
+      active_crises: (crises || []).filter((c: any) => c.resolved !== true).length,
       declarations: (declarations || []).length,
       watched_cities: watchedReports.length,
       my_cities: (myCities || []).length,
@@ -140,9 +140,10 @@ Deno.serve(async (req) => {
         level: u.escalation_level,
         status: u.status,
       })),
-      crises: (crises || []).filter((c: any) => c.status === "active").map((c: any) => ({
+      crises: (crises || []).filter((c: any) => c.resolved !== true).map((c: any) => ({
         title: c.title,
-        severity: c.severity,
+        type: c.crisis_type,
+        description: c.description,
       })),
       declarations: (declarations || []).map((d: any) => ({
         title: d.title,

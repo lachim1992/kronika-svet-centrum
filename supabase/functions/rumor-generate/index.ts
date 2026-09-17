@@ -58,15 +58,15 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId).gte("turn_number", recentWindow).eq("status", "published").limit(10),
       supabase.from("civ_tensions").select("player_a, player_b, total_tension, crisis_triggered, war_roll_triggered, turn_number")
         .eq("session_id", sessionId).eq("turn_number", turnNumber).limit(10),
-      supabase.from("world_memories").select("id, text, category, location_name")
+      supabase.from("world_memories").select("id, text, category, city_id, province_id")
         .eq("session_id", sessionId).eq("approved", true).limit(20),
       supabase.from("wiki_entries").select("id, entity_type, entity_name, entity_id, owner_player")
         .eq("session_id", sessionId).limit(30),
       supabase.from("cities").select("id, name, owner_player, population_total, city_stability, famine_turn, famine_consecutive_turns, status")
         .eq("session_id", sessionId),
-      supabase.from("great_persons").select("id, name, role, player_name, status")
-        .eq("session_id", sessionId).eq("status", "alive").limit(10),
-      supabase.from("wonders").select("id, name, status, city_id, owner_player")
+      supabase.from("great_persons").select("id, name, person_type, player_name, is_alive, city_id")
+        .eq("session_id", sessionId).eq("is_alive", true).limit(10),
+      supabase.from("wonders").select("id, name, status, city_name, owner_player")
         .eq("session_id", sessionId).limit(10),
       supabase.from("city_uprisings").select("id, city_id, status, escalation_level, turn_triggered")
         .eq("session_id", sessionId).in("status", ["pending", "escalated"]).limit(5),
@@ -173,13 +173,13 @@ WIKI ENTITY:
 ${JSON.stringify(wikiSummary, null, 1)}
 
 VÝZNAMNÉ OSOBNOSTI:
-${JSON.stringify((greatPersons || []).map(p => ({ id: p.id, name: p.name, role: p.role, player: p.player_name })), null, 1)}
+${JSON.stringify((greatPersons || []).map(p => ({ id: p.id, name: p.name, role: p.person_type, player: p.player_name, city_id: p.city_id })), null, 1)}
 
 DIVY:
-${JSON.stringify((wonders || []).map(w => ({ id: w.id, name: w.name, status: w.status })), null, 1)}
+${JSON.stringify((wonders || []).map(w => ({ id: w.id, name: w.name, status: w.status, city: w.city_name, owner: w.owner_player })), null, 1)}
 
 PAMĚŤ SVĚTA:
-${JSON.stringify((worldMemories || []).slice(0, 10).map(m => ({ text: m.text, category: m.category, location: m.location_name })), null, 1)}
+${JSON.stringify((worldMemories || []).slice(0, 10).map(m => ({ text: m.text, category: m.category, city_id: m.city_id, province_id: m.province_id })), null, 1)}
 
 STARŠÍ VÝZNAMNÉ UDÁLOSTI (pro připomínky):
 ${JSON.stringify(olderEventsSummary, null, 1)}

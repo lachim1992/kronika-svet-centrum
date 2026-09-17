@@ -34,3 +34,7 @@
 - [x] Keep camera, city layer, and parcel selection stable after map actions
 - [x] Animate building and local-road construction in the city parcel style
 - [ ] Verify parcel management and local roads end to end
+- [x] Resolve six confirmed production monitoring findings
+  - [x] Align turn processing with current basket and military fields
+  - [x] Restore rumor, annotation, crisis, victory, and briefing queries
+  - [x] Restrict persistent test-mode effects to administrators
