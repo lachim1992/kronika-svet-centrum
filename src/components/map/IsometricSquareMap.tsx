@@ -1214,9 +1214,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const startRoadDraft = () => {
     if (!selectedCell) return;
+    const start = { x: selectedCell.a, y: selectedCell.b };
     setRoadDraftLevel(1);
-    setRoadDraft([{ x: selectedCell.a, y: selectedCell.b }]);
+    setRoadDraft([start]);
     setCityLayerCityId(null);
+    setSelectedParcelId(null);
+    setSelectedNodeId(null);
+    setSelected(null);
+    onDetailOpenChange?.(false);
     toast.info("Klikáním nebo tažením vyznač trasu přes sousední pole");
   };
 
@@ -1571,7 +1576,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </div>
             {selectedRoadPlan?.bridges.length ? <span className="text-[10px] text-muted-foreground">Řeka · bude potřeba most</span> : null}
           </div>
-          <Button className="mt-3 w-full" disabled={!!buildingAction || !canBuildRoadHere} onClick={startRoadDraft}>
+          <Button className="mt-3 w-full" disabled={!!buildingAction || !canBuildRoadHere}
+            onPointerDown={event => event.stopPropagation()}
+            onClick={event => { event.stopPropagation(); startRoadDraft(); }}>
             <RouteIcon className="mr-1.5 h-4 w-4" />Postavit cestu
           </Button>
           {!canBuildRoadHere && <p className="mt-2 text-[11px] text-muted-foreground">
