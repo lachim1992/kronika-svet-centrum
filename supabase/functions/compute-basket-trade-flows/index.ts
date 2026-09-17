@@ -83,9 +83,10 @@ Deno.serve(async (req) => {
     if (aErr) { console.error("access load", aErr); throw aErr; }
 
     const accessMap = new Map<string, { level: number; tariff: number }>();
+    const accessRank: Record<string, number> = { visible: 0, treaty: 1, open: 2, direct: 3 };
     for (const a of access || []) {
       accessMap.set(`${a.player_name}::${a.trade_system_id}`,
-        { level: Number(a.access_level || 0), tariff: Number(a.tariff_factor || 1.0) });
+        { level: accessRank[String(a.access_level || "visible")] ?? 0, tariff: Number(a.tariff_factor || 1.0) });
     }
 
     // Physical transport graph. Land edges exist only where a completed road segment exists;

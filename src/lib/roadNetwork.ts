@@ -12,7 +12,7 @@
 // ROAD TIERS
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type RoadTierKey = "trail" | "road" | "paved" | "highway";
+export type RoadTierKey = "trail" | "road" | "paved";
 
 export interface RoadTierDefinition {
   key: RoadTierKey;
@@ -66,17 +66,6 @@ export const ROAD_TIERS: readonly RoadTierDefinition[] = [
     capacity: 20,
     speed: 2.0,
     friction: 0.4,
-  },
-  {
-    key: "highway",
-    level: 4,
-    label: "Highway",
-    cost: { gold: 220, production: 150 },
-    buildTurns: 5,
-    maintenance: { gold: 12, production: 6 },
-    capacity: 40,
-    speed: 2.75,
-    friction: 0.25,
   },
 ] as const;
 

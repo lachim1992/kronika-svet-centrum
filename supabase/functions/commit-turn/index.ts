@@ -717,12 +717,6 @@ Deno.serve(async (req) => {
       if (preFlowErr) console.warn("compute-hex-flows pre-economy warning:", preFlowErr.message);
       results.preHexFlows = preFlowRes || { error: preFlowErr?.message };
 
-      // Now compute economy flow with fresh topology
-      await supabase.functions.invoke("compute-economy-flow", {
-        body: { sessionId },
-      });
-      results.economyFlow = { ok: true };
-
       // Node-Trade v1: project trade systems & player access from current treaties
       try {
         const { data: tsRes, error: tsErr } = await supabase.functions.invoke("compute-trade-systems", {
@@ -746,6 +740,25 @@ Deno.serve(async (req) => {
         console.warn("compute-trade-flows warning:", (tfE as Error).message);
         results.tradeFlows = { error: (tfE as Error).message };
       }
+
+      // Basket imports share physical road/river capacity and must run after goods supply.
+      try {
+        const { data: basketRes, error: basketErr } = await supabase.functions.invoke("compute-basket-trade-flows", {
+          body: { session_id: sessionId },
+        });
+        if (basketErr) console.warn("compute-basket-trade-flows warning:", basketErr.message);
+        results.basketTradeFlows = basketRes || { error: basketErr?.message };
+      } catch (basketE) {
+        console.warn("compute-basket-trade-flows warning:", (basketE as Error).message);
+        results.basketTradeFlows = { error: (basketE as Error).message };
+      }
+
+      // Final aggregation must see newly routed goods and basket fiscal capture.
+      const { data: economyRes, error: economyErr } = await supabase.functions.invoke("compute-economy-flow", {
+        body: { sessionId },
+      });
+      if (economyErr) console.warn("compute-economy-flow warning:", economyErr.message);
+      results.economyFlow = economyRes || { error: economyErr?.message };
     } catch (e) {
       console.warn("Route/flow/economy chain warning:", (e as Error).message);
       results.economyFlow = { error: (e as Error).message };

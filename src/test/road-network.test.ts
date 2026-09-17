@@ -41,7 +41,7 @@ describe("road tiers", () => {
 
   it("returns the next tier or null at the top", () => {
     expect(nextRoadTier("trail")?.key).toBe("road");
-    expect(nextRoadTier("highway")).toBeNull();
+    expect(nextRoadTier("paved")).toBeNull();
   });
 
   it("throws on unknown tier lookups", () => {
