@@ -60,7 +60,7 @@ export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPers
             </Button>
           );
         })}
-        <div className="ml-auto flex shrink-0 items-center pl-2">
+        {showDevTab && <div className="ml-auto flex shrink-0 items-center pl-2">
           <Button
             type="button"
             variant="ghost"
@@ -80,7 +80,7 @@ export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPers
             <FlaskConical className="h-3.5 w-3.5" strokeWidth={sandbox ? 2.2 : 1.5} />
             <span className="hidden lg:inline">{sandbox ? "Test: zapnuto" : "Test režim"}</span>
           </Button>
-        </div>
+        </div>}
       </div>
     </nav>
   );

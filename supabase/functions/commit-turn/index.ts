@@ -852,7 +852,8 @@ Deno.serve(async (req) => {
           supabase.from("game_events").select("*").eq("session_id", sessionId)
             .eq("turn_number", closedTurn).eq("confirmed", true),
           supabase.from("world_memories").select("*").eq("session_id", sessionId).eq("approved", true),
-          supabase.from("event_annotations").select("*").eq("session_id", sessionId),
+          supabase.from("event_annotations").select("*, game_events!inner(session_id, turn_number)")
+            .eq("game_events.session_id", sessionId).eq("game_events.turn_number", closedTurn),
           supabase.from("battles").select("*").eq("session_id", sessionId).eq("turn_number", closedTurn),
           supabase.from("declarations").select("*").eq("session_id", sessionId)
             .eq("turn_number", closedTurn).eq("status", "published"),
