@@ -34,6 +34,7 @@
 - [x] Keep camera, city layer, and parcel selection stable after map actions
 - [x] Animate building and local-road construction in the city parcel style
 - [ ] Verify parcel management and local roads end to end
+- [ ] Repair sub-parcel road drawing, confirmation, and infrastructure integration
 - [ ] Unify roads, rivers, and economic flows
   - [x] Add authoritative road projects and cardinal road segments
   - [x] Add map route drawing with tier, cost, bridge preview, undo, and confirmation

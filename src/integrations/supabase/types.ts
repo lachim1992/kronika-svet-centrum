@@ -8879,7 +8879,9 @@ export type Database = {
           session_id: string
           started_turn: number
           status: string
+          sub_path_cells: Json
           total_work: number
+          updated_at: string
           work_done: number
         }
         Insert: {
@@ -8896,7 +8898,9 @@ export type Database = {
           session_id: string
           started_turn: number
           status?: string
+          sub_path_cells?: Json
           total_work?: number
+          updated_at?: string
           work_done?: number
         }
         Update: {
@@ -8913,7 +8917,9 @@ export type Database = {
           session_id?: string
           started_turn?: number
           status?: string
+          sub_path_cells?: Json
           total_work?: number
+          updated_at?: string
           work_done?: number
         }
         Relationships: [
@@ -8944,6 +8950,7 @@ export type Database = {
           session_id: string
           speed: number
           status: string
+          sub_path_cells: Json
           to_x: number
           to_y: number
           updated_at: string
@@ -8966,6 +8973,7 @@ export type Database = {
           session_id: string
           speed?: number
           status?: string
+          sub_path_cells?: Json
           to_x: number
           to_y: number
           updated_at?: string
@@ -8988,6 +8996,7 @@ export type Database = {
           session_id?: string
           speed?: number
           status?: string
+          sub_path_cells?: Json
           to_x?: number
           to_y?: number
           updated_at?: string

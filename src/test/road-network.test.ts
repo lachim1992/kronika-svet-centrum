@@ -18,6 +18,7 @@ import {
   roadTierByLevel,
   validateCardinalPath,
 } from "@/lib/roadNetwork";
+import { areSubRoadNeighbours, macroPathFromSubRoad } from "@/lib/tileRoads";
 
 describe("road tiers", () => {
   it("defines an ascending tier ladder with increasing capacity and speed, decreasing friction", () => {
@@ -114,6 +115,31 @@ describe("path validation", () => {
   it("converts a path into ordered canonical edge keys", () => {
     const path = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }];
     expect(pathToEdgeKeys(path)).toEqual([edgeKey(path[0], path[1]), edgeKey(path[1], path[2])]);
+  });
+});
+
+describe("sub-parcel road traces", () => {
+  it("keeps adjacency across a macro-cell border", () => {
+    expect(areSubRoadNeighbours(
+      { gridX: 2, gridY: 4, parcelX: 5, parcelY: 3 },
+      { gridX: 3, gridY: 4, parcelX: 0, parcelY: 3 },
+    )).toBe(true);
+  });
+
+  it("derives the transport path without duplicating cells", () => {
+    expect(macroPathFromSubRoad([
+      { gridX: 2, gridY: 4, parcelX: 4, parcelY: 3 },
+      { gridX: 2, gridY: 4, parcelX: 5, parcelY: 3 },
+      { gridX: 3, gridY: 4, parcelX: 0, parcelY: 3 },
+      { gridX: 3, gridY: 4, parcelX: 1, parcelY: 3 },
+    ])).toEqual([{ x: 2, y: 4 }, { x: 3, y: 4 }]);
+  });
+
+  it("rejects diagonal sub-parcels", () => {
+    expect(areSubRoadNeighbours(
+      { gridX: 0, gridY: 0, parcelX: 1, parcelY: 1 },
+      { gridX: 0, gridY: 0, parcelX: 2, parcelY: 2 },
+    )).toBe(false);
   });
 });
 
