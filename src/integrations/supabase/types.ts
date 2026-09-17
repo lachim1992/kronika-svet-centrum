@@ -603,6 +603,7 @@ export type Database = {
           fiscal_capture: number
           gross_value: number
           id: string
+          path_cells: Json | null
           session_id: string
           source_city_id: string
           source_player: string
@@ -610,6 +611,7 @@ export type Database = {
           target_player: string
           tariff_factor: number
           trade_system_id: string | null
+          transport_modes: string[]
           turn_number: number
           unit_price: number
           volume: number
@@ -621,6 +623,7 @@ export type Database = {
           fiscal_capture?: number
           gross_value?: number
           id?: string
+          path_cells?: Json | null
           session_id: string
           source_city_id: string
           source_player: string
@@ -628,6 +631,7 @@ export type Database = {
           target_player: string
           tariff_factor?: number
           trade_system_id?: string | null
+          transport_modes?: string[]
           turn_number?: number
           unit_price?: number
           volume?: number
@@ -639,6 +643,7 @@ export type Database = {
           fiscal_capture?: number
           gross_value?: number
           id?: string
+          path_cells?: Json | null
           session_id?: string
           source_city_id?: string
           source_player?: string
@@ -646,6 +651,7 @@ export type Database = {
           target_player?: string
           tariff_factor?: number
           trade_system_id?: string | null
+          transport_modes?: string[]
           turn_number?: number
           unit_price?: number
           volume?: number
@@ -8858,6 +8864,152 @@ export type Database = {
         }
         Relationships: []
       }
+      road_projects: {
+        Row: {
+          bridge_count: number
+          completed_turn: number | null
+          cost_gold: number
+          cost_production: number
+          created_at: string
+          id: string
+          level: number
+          owner_player: string
+          path_cells: Json
+          progress: number
+          session_id: string
+          started_turn: number
+          status: string
+          total_work: number
+          work_done: number
+        }
+        Insert: {
+          bridge_count?: number
+          completed_turn?: number | null
+          cost_gold?: number
+          cost_production?: number
+          created_at?: string
+          id?: string
+          level: number
+          owner_player: string
+          path_cells?: Json
+          progress?: number
+          session_id: string
+          started_turn: number
+          status?: string
+          total_work?: number
+          work_done?: number
+        }
+        Update: {
+          bridge_count?: number
+          completed_turn?: number | null
+          cost_gold?: number
+          cost_production?: number
+          created_at?: string
+          id?: string
+          level?: number
+          owner_player?: string
+          path_cells?: Json
+          progress?: number
+          session_id?: string
+          started_turn?: number
+          status?: string
+          total_work?: number
+          work_done?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "road_projects_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      road_segments: {
+        Row: {
+          bridge_count: number
+          capacity: number
+          created_at: string
+          friction: number
+          from_x: number
+          from_y: number
+          id: string
+          level: number
+          maintenance: number
+          owner_player: string
+          path_cells: Json
+          progress: number
+          project_id: string | null
+          session_id: string
+          speed: number
+          status: string
+          to_x: number
+          to_y: number
+          updated_at: string
+          utilization: number
+        }
+        Insert: {
+          bridge_count?: number
+          capacity?: number
+          created_at?: string
+          friction?: number
+          from_x: number
+          from_y: number
+          id?: string
+          level: number
+          maintenance?: number
+          owner_player: string
+          path_cells?: Json
+          progress?: number
+          project_id?: string | null
+          session_id: string
+          speed?: number
+          status?: string
+          to_x: number
+          to_y: number
+          updated_at?: string
+          utilization?: number
+        }
+        Update: {
+          bridge_count?: number
+          capacity?: number
+          created_at?: string
+          friction?: number
+          from_x?: number
+          from_y?: number
+          id?: string
+          level?: number
+          maintenance?: number
+          owner_player?: string
+          path_cells?: Json
+          progress?: number
+          project_id?: string | null
+          session_id?: string
+          speed?: number
+          status?: string
+          to_x?: number
+          to_y?: number
+          updated_at?: string
+          utilization?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "road_segments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "road_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "road_segments_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       route_state: {
         Row: {
           last_maintained_turn: number
@@ -9782,6 +9934,7 @@ export type Database = {
           good_key: string
           id: string
           maturity: number
+          path_cells: Json | null
           price_band: number
           quality_band: number
           route_path_id: string | null
@@ -9794,6 +9947,7 @@ export type Database = {
           target_node_id: string | null
           target_player: string | null
           trade_pressure: number
+          transport_modes: string[]
           turn_created: number
           volume_per_turn: number
         }
@@ -9805,6 +9959,7 @@ export type Database = {
           good_key: string
           id?: string
           maturity?: number
+          path_cells?: Json | null
           price_band?: number
           quality_band?: number
           route_path_id?: string | null
@@ -9817,6 +9972,7 @@ export type Database = {
           target_node_id?: string | null
           target_player?: string | null
           trade_pressure?: number
+          transport_modes?: string[]
           turn_created?: number
           volume_per_turn?: number
         }
@@ -9828,6 +9984,7 @@ export type Database = {
           good_key?: string
           id?: string
           maturity?: number
+          path_cells?: Json | null
           price_band?: number
           quality_band?: number
           route_path_id?: string | null
@@ -9840,6 +9997,7 @@ export type Database = {
           target_node_id?: string | null
           target_player?: string | null
           trade_pressure?: number
+          transport_modes?: string[]
           turn_created?: number
           volume_per_turn?: number
         }

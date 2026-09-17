@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, ArrowUpRight, Castle, Factory, Flag, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Castle, Check, Factory, Flag, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -180,6 +180,8 @@ type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
 type ParcelContent = { id: string; parcel_id: string; entity_type: string; entity_id: string; slots_used: number };
 type TileInfrastructure = { id: string; grid_x: number; grid_y: number; owner_player: string; level: number; target_level: number | null; status: string; progress: number };
+type RoadSegment = { id: string; project_id: string | null; owner_player: string; from_x: number; from_y: number; to_x: number; to_y: number; level: number; status: string; progress: number; capacity: number; utilization: number; maintenance: number; bridge_count: number };
+type RoadProject = { id: string; owner_player: string; level: number; status: string; progress: number; path_cells: Array<{ x: number; y: number }>; bridge_count: number; cost_gold: number; cost_production: number };
 type BuildingTemplate = { id: string; name: string; category: string; description: string; cost_wealth: number; cost_wood: number; cost_stone: number; cost_iron: number; build_turns: number; effects: unknown; max_level: number; level_data: unknown };
 type ConstructionEntity = { id: string; name: string; category?: string | null; status: string; build_started_turn: number; build_duration: number; completed_turn: number | null; parcel_id: string | null };
 /** A city district — either housing or a workshop pointed at one demand basket. */
@@ -305,6 +307,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
   const [infrastructure, setInfrastructure] = useState<TileInfrastructure[]>([]);
+  const [roadSegments, setRoadSegments] = useState<RoadSegment[]>([]);
+  const [roadProjects, setRoadProjects] = useState<RoadProject[]>([]);
+  const [roadDraft, setRoadDraft] = useState<Array<{ x: number; y: number }>>([]);
+  const [roadDraftLevel, setRoadDraftLevel] = useState(1);
   const [buildingTemplates, setBuildingTemplates] = useState<BuildingTemplate[]>([]);
   const [constructionEntities, setConstructionEntities] = useState<ConstructionEntity[]>([]);
   const [recentlyBuiltParcelId, setRecentlyBuiltParcelId] = useState<string | null>(null);
@@ -326,7 +332,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }), []);
 
   const load = useCallback(async () => {
-    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, templateRes, buildingRes, districtRes] = await Promise.all([
+    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, roadSegmentRes, roadProjectRes, templateRes, buildingRes, districtRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction, coastal").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, city_id, controlled_by, production_output, wealth_output, food_value, parcel_index").eq("session_id", sessionId).eq("is_active", true),
@@ -337,6 +343,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
       supabase.from("tile_parcel_contents").select("id, parcel_id, entity_type, entity_id, slots_used").eq("session_id", sessionId),
       supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
+      supabase.from("road_segments").select("id, project_id, owner_player, from_x, from_y, to_x, to_y, level, status, progress, capacity, utilization, maintenance, bridge_count").eq("session_id", sessionId),
+      supabase.from("road_projects").select("id, owner_player, level, status, progress, path_cells, bridge_count, cost_gold, cost_production").eq("session_id", sessionId),
       supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
       supabase.from("city_buildings").select("id, name, category, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
@@ -347,6 +355,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setStoredSubBiomes((subBiomeRes.data || []) as StoredSubBiome[]);
     setParcelContents((contentRes.data || []) as ParcelContent[]);
     setInfrastructure((infrastructureRes.data || []) as TileInfrastructure[]);
+    setRoadSegments((roadSegmentRes.data || []) as RoadSegment[]);
+    setRoadProjects((roadProjectRes.data || []) as unknown as RoadProject[]);
     setBuildingTemplates((templateRes.data || []) as unknown as BuildingTemplate[]);
     setDistricts((districtRes.data || []) as unknown as CityDistrict[]);
     setConstructionEntities([
@@ -541,6 +551,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     });
     return { segments, bridges };
   }, [infrastructure, tileByCell, roadStepsOf, sessionId, subPoint, terrainOf]);
+
+  /** Authoritative inter-cell road segments, including projects still under construction. */
+  const explicitRoadNetwork = useMemo(() => roadSegments.map(segment => ({
+    ...segment,
+    from: projectCell("square4", { a: segment.from_x, b: segment.from_y }, TILE_SIZE),
+    to: projectCell("square4", { a: segment.to_x, b: segment.to_y }, TILE_SIZE),
+  })), [roadSegments]);
+
+  const roadDraftSummary = useMemo(() => {
+    if (roadDraft.length < 2) return { bridges: 0, gold: 0, production: 0, turns: 0 };
+    const tier = tileInfrastructureLevel(roadDraftLevel);
+    if (!tier) return { bridges: 0, gold: 0, production: 0, turns: 0 };
+    const draftTiles = roadDraft.map(cell => tileByCell.get(cellKey(cell.x, cell.y))).filter((tile): tile is Tile => !!tile);
+    const terrainFactor = draftTiles.length ? draftTiles.reduce((sum, tile) => sum + (["mountain", "mountains"].includes(tile.biome_family) ? 1.8 : tile.biome_family === "swamp" ? 1.5 : tile.biome_family === "hills" ? 1.25 : 1), 0) / draftTiles.length : 1;
+    const bridges = draftTiles.filter(tile => tile.has_river).length;
+    const length = roadDraft.length - 1;
+    return { bridges, gold: Math.ceil(tier.gold * length * terrainFactor + bridges * 45), production: Math.ceil(tier.production * length * terrainFactor + bridges * 30), turns: tier.turns };
+  }, [roadDraft, roadDraftLevel, tileByCell]);
 
   /** Trade flows ride the road trace instead of cutting straight across cell centres. */
   const routePolylines = useMemo(() => routes.flatMap(route => {
@@ -1156,6 +1184,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return () => element.removeEventListener("wheel", onWheel);
   }, []);
   const focusTile = (tile: Tile, requestedCityId?: string) => {
+    if (roadDraft.length > 0) {
+      const cell = tileCell(tile); const last = roadDraft[roadDraft.length - 1];
+      if (cell.a === last.x && cell.b === last.y) return;
+      const existingIndex = roadDraft.findIndex(item => item.x === cell.a && item.y === cell.b);
+      if (existingIndex >= 0) { setRoadDraft(current => current.slice(0, existingIndex + 1)); return; }
+      if (Math.abs(cell.a - last.x) + Math.abs(cell.b - last.y) !== 1) { toast.error("Pokračuj přes sousední pole"); return; }
+      if (tile.is_passable === false || tile.biome_family === "sea") { toast.error("Tímto polem cesta vést nemůže"); return; }
+      setRoadDraft(current => [...current, { x: cell.a, y: cell.b }]);
+      return;
+    }
     const element = viewportRef.current; if (!element) return;
     const cell = tileCell(tile); const projected = projectCell("square4", cell, TILE_SIZE);
     const cityId = requestedCityId || cityByCell.get(cellKey(cell.a, cell.b));
@@ -1165,6 +1203,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setCityLayerCityId(city?.id || null);
     onDetailOpenChange?.(true);
     setPan({ x: element.clientWidth * (city ? .47 : .38) / targetZoom - projected.x, y: element.clientHeight * .46 / targetZoom - projected.y });
+  };
+
+  const startRoadDraft = () => {
+    if (!selectedCell) return;
+    setRoadDraftLevel(1);
+    setRoadDraft([{ x: selectedCell.a, y: selectedCell.b }]);
+    setCityLayerCityId(null);
+    toast.info("Klikáním nebo tažením vyznač trasu přes sousední pole");
+  };
+
+  const confirmRoadDraft = async () => {
+    if (roadDraft.length < 2) return;
+    setBuildingAction("road-path");
+    const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_ROAD_PATH", commandPayload: { pathCells: roadDraft, level: roadDraftLevel } });
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Cestu nelze postavit"); return; }
+    toast.success(`${tileInfrastructureLevel(roadDraftLevel)?.label || "Cesta"}: projekt zahájen`);
+    setRoadDraft([]);
+    await load();
   };
   const leaveCityLayer = () => {
     setCityLayerCityId(null);
@@ -1180,6 +1237,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
       style={{ touchAction: "none" }}
       onPointerDown={(event) => {
+        if (roadDraft.length > 0) { event.currentTarget.setPointerCapture?.(event.pointerId); return; }
         pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
@@ -1190,6 +1248,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
       }}
       onPointerMove={(event) => {
+        if (roadDraft.length > 0) return;
         if (pinchRef.current.has(event.pointerId)) pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         const start = pinchStartRef.current;
         if (start && pinchRef.current.size === 2) {
@@ -1230,7 +1289,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const holderCity = holderCityId ? cityById.get(holderCityId) : undefined;
             const holderOwn = holderCity ? holderCity.owner_player === playerName : true;
             const holderColor = holderCity ? (holderOwn ? "var(--map-city-own)" : "var(--map-city-rival)") : colors[1];
-            return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }} className="cursor-pointer">
+            return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }}
+              onPointerEnter={event => { if (roadDraft.length > 0 && event.buttons === 1) focusTile(tile); }}
+              className={roadDraft.length > 0 ? "cursor-crosshair" : "cursor-pointer"}>
               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
@@ -1294,6 +1355,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <line x1={point.x - 5} y1={point.y - 2.6} x2={point.x + 5} y2={point.y - 2.6} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity=".8" />
             </g>;
           })}
+          {showRoutes && explicitRoadNetwork.map(segment => {
+            const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
+            const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
+            const width = segment.level === 3 ? 5.4 : segment.level === 2 ? 4 : 2.5;
+            return <g key={`explicit-${segment.id}`} pointerEvents="none">
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 2} strokeLinecap="round" opacity=".55" />
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-route)" strokeWidth={width} strokeLinecap="round"
+                strokeDasharray={segment.status === "building" ? "5 3" : segment.level === 1 ? "2 3" : undefined} opacity={segment.status === "blocked" ? .35 : .95} />
+              {segment.level === 3 && <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-label)" strokeWidth=".65" strokeDasharray="2 3" opacity=".5" />}
+            </g>;
+          })}
+          {roadDraft.length > 0 && <g pointerEvents="none">
+            <polyline points={roadDraft.map(cell => { const point = at(cell.x, cell.y); return `${point.x},${point.y}`; }).join(" ")}
+              fill="none" stroke="var(--map-focus)" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6 3" opacity=".95" />
+            {roadDraft.map((cell, index) => { const point = at(cell.x, cell.y); const tile = tileByCell.get(cellKey(cell.x, cell.y)); return <g key={`draft-${cell.x}-${cell.y}`}>
+              <circle cx={point.x} cy={point.y} r={index === 0 ? 5 : 3.2} fill="var(--map-focus)" stroke="var(--map-marker-edge)" strokeWidth="1" />
+              {tile?.has_river && <rect x={point.x - 6} y={point.y - 2.5} width="12" height="5" fill="var(--map-route)" stroke="var(--map-focus)" strokeWidth="1" />}
+            </g>; })}
+          </g>}
           {!cityLayerCityId && showRoutes && routePolylines.map(route => (
             <polyline key={route.id} points={route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ")}
               fill="none" stroke="var(--map-route)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
@@ -1404,6 +1484,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <Button size="icon" variant={showSubBiomes ? "secondary" : "ghost"} aria-label={showSubBiomes ? "Skrýt subbiomy" : "Zobrazit subbiomy"} aria-pressed={showSubBiomes} onClick={() => setShowSubBiomes(value => !value)}><Grid3x3 className={`h-4 w-4 ${showSubBiomes ? "" : "opacity-40"}`} /></Button>
       </div>
       <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>Čtvercová síť · izometrické zobrazení</span></div>
+      {roadDraft.length > 0 && <div className="map-floating-control absolute left-1/2 top-4 z-50 w-[min(92vw,560px)] -translate-x-1/2 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <RouteIcon className="h-4 w-4 text-primary" />
+          <strong className="mr-auto text-sm">Kreslení cesty · {roadDraft.length - 1} úseků</strong>
+          <Button size="icon" variant="ghost" aria-label="Vrátit poslední úsek" disabled={roadDraft.length <= 1} onClick={() => setRoadDraft(current => current.slice(0, -1))}><Undo2 className="h-4 w-4" /></Button>
+          <Button size="icon" variant="ghost" aria-label="Zrušit kreslení" onClick={() => setRoadDraft([])}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <select value={roadDraftLevel} onChange={event => setRoadDraftLevel(Number(event.target.value))} className="h-8 rounded border border-input bg-background px-2">
+            {[1, 2, 3].map(level => <option key={level} value={level}>{tileInfrastructureLevel(level)?.label}</option>)}
+          </select>
+          <span className="text-muted-foreground">{roadDraftSummary.gold} zlata · {roadDraftSummary.production} produkce · {roadDraftSummary.turns} kol{roadDraftSummary.bridges ? ` · ${roadDraftSummary.bridges} mostů` : ""}</span>
+          <Button size="sm" className="ml-auto" disabled={roadDraft.length < 2 || !!buildingAction || treasury.gold < roadDraftSummary.gold || treasury.production < roadDraftSummary.production} onClick={() => void confirmRoadDraft()}>
+            {buildingAction === "road-path" ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Check className="mr-1 h-3 w-3" />}Potvrdit
+          </Button>
+        </div>
+      </div>}
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
 
       {selected && <aside className={`map-tile-detail absolute z-40 overflow-y-auto border-primary/20 bg-background/95 shadow-2xl backdrop-blur-xl ${isMobile ? "inset-x-0 bottom-0 max-h-[64vh] rounded-t-2xl border-t p-4" : "bottom-0 right-0 top-0 w-[380px] border-l p-5"}`}>
@@ -1621,6 +1718,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 {selectedRoadPlan.bridges.length ? ` · ${selectedRoadPlan.bridges.length}× most přes řeku` : ""}
               </p>}
               <p className="mt-1 text-[10px] text-muted-foreground">Cesta jen prochází podčtverci — nezabírá stavební slot, parcely pod ní zůstávají volné.</p>
+              <Button size="sm" variant="outline" className="mt-2 w-full" disabled={!!buildingAction} onClick={startRoadDraft}><RouteIcon className="mr-1 h-3.5 w-3.5" />Nakreslit trasu na mapě</Button>
             </div>}
 
           </>

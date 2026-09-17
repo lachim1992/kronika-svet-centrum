@@ -34,6 +34,13 @@
 - [x] Keep camera, city layer, and parcel selection stable after map actions
 - [x] Animate building and local-road construction in the city parcel style
 - [ ] Verify parcel management and local roads end to end
+- [ ] Unify roads, rivers, and economic flows
+  - [x] Add authoritative road projects and cardinal road segments
+  - [x] Add map route drawing with tier, cost, bridge preview, undo, and confirmation
+  - [x] Advance road projects during committed turns
+  - [ ] Route trade systems and basket flows through completed roads and rivers with shared capacity
+  - [ ] Migrate player-built legacy roads and exclude generated shortcuts
+  - [ ] Verify drawing, construction, routing, interruption, and three visual tiers end to end
 - [x] Resolve six confirmed production monitoring findings
   - [x] Align turn processing with current basket and military fields
   - [x] Restore rumor, annotation, crisis, victory, and briefing queries

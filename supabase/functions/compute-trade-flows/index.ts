@@ -124,11 +124,11 @@ Deno.serve(async (req) => {
     }
 
     // ── LOAD DATA ──
-    const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes, ordersRes] = await Promise.all([
+    const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes, ordersRes, roadRes, riverRes] = await Promise.all([
       sb.from("goods").select("key, category, production_stage, market_tier, base_price_numeric, demand_basket, substitution_map, storable"),
       sb.from("production_recipes").select("*"),
       sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id, route_access_factor, trade_system_id").eq("session_id", session_id),
-      sb.from("cities").select("id, name, owner_player, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, settlement_level, temple_level, city_stability, labor_allocation").eq("session_id", session_id),
+      sb.from("cities").select("id, name, owner_player, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, settlement_level, temple_level, city_stability, labor_allocation, grid_x, grid_y, province_q, province_r").eq("session_id", session_id),
       sb.from("province_routes").select("id, node_a, node_b, capacity_value, control_state").eq("session_id", session_id),
       sb.from("province_hexes").select("q, r, resource_deposits").eq("session_id", session_id).not("resource_deposits", "is", null),
       // Phase 1B: player production preferences per node
@@ -136,6 +136,8 @@ Deno.serve(async (req) => {
         .select("node_id, target_basket_key, target_good_key, mode")
         .eq("session_id", session_id) as any)
         .then((r: any) => r, () => ({ data: [], error: null })),
+      sb.from("road_segments").select("id, from_x, from_y, to_x, to_y, capacity, friction").eq("session_id", session_id).eq("status", "completed"),
+      sb.from("province_hexes").select("grid_x, grid_y").eq("session_id", session_id).eq("has_river", true).eq("is_passable", true),
     ]);
 
     const goods = goodsRes.data || [];
@@ -143,6 +145,8 @@ Deno.serve(async (req) => {
     const nodes = nodesRes.data || [];
     const cities = citiesRes.data || [];
     const routes = routesRes.data || [];
+    if (roadRes.error) throw roadRes.error;
+    if (riverRes.error) throw riverRes.error;
     const hexDeposits = hexesRes.data || [];
 
     // ── Load completed buildings + their templates (Phase 1: Goods integration) ──
@@ -827,52 +831,53 @@ Deno.serve(async (req) => {
     }
 
     // ════════════════════════════════════════════
-    // PHASE 3: Trade pressure & trade_flows
-    // FIX (May 2026): Build adjacency via shared trade_system_id, not direct
-    // route endpoints. Routes pass through resource_node/trade_hub/fortress
-    // intermediates, so node_a/node_b filtering dropped 95%+ of pairs.
-    // Cities sharing a trade_system_id are reachable through the union-find
-    // graph already computed by compute-trade-systems.
+    // PHASE 3: Trade pressure & physically-routed trade_flows.
+    // Generated province routes are deliberately not economic edges: every flow
+    // must traverse completed roads or contiguous river cells.
     // ════════════════════════════════════════════
-    const cityAdjacency = new Map<string, Set<string>>();
-    const systemToCities = new Map<string, string[]>();
-    for (const city of cities) {
-      const nodeId = cityToNodeId.get(city.id);
-      if (!nodeId) continue;
-      const node = nodeById.get(nodeId);
-      const sysId = (node as any)?.trade_system_id;
-      if (!sysId) continue;
-      if (!systemToCities.has(sysId)) systemToCities.set(sysId, []);
-      systemToCities.get(sysId)!.push(city.id);
+    type TransportEdge = { id: string; to: string; cost: number; capacity: number; mode: "road" | "river" };
+    const transportGraph = new Map<string, TransportEdge[]>();
+    const addTransportEdge = (from: string, edge: TransportEdge) => transportGraph.set(from, [...(transportGraph.get(from) || []), edge]);
+    for (const road of roadRes.data || []) {
+      const a = `${road.from_x},${road.from_y}`; const b = `${road.to_x},${road.to_y}`;
+      const edge = { id: `road:${road.id}`, cost: Math.max(.05, Number(road.friction || 1)), capacity: Math.max(0, Number(road.capacity || 0)), mode: "road" as const };
+      addTransportEdge(a, { ...edge, to: b }); addTransportEdge(b, { ...edge, to: a });
     }
-    for (const [, members] of systemToCities) {
-      for (const a of members) {
-        for (const b of members) {
-          if (a === b) continue;
-          if (!cityAdjacency.has(a)) cityAdjacency.set(a, new Set());
-          cityAdjacency.get(a)!.add(b);
-        }
+    const riverCells = new Set((riverRes.data || []).map(cell => `${cell.grid_x},${cell.grid_y}`));
+    for (const key of riverCells) {
+      const [x, y] = key.split(",").map(Number);
+      for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const next = `${x + dx},${y + dy}`; if (!riverCells.has(next)) continue;
+        const id = key < next ? `river:${key}>${next}` : `river:${next}>${key}`;
+        addTransportEdge(key, { id, to: next, cost: .8, capacity: 70, mode: "river" });
+        addTransportEdge(next, { id, to: key, cost: .8, capacity: 70, mode: "river" });
       }
     }
-    // Fallback: keep direct-route adjacency for cities not in any trade system
-    for (const route of routes) {
-      if (route.control_state === "blocked") continue;
-      const nodeA = nodeById.get(route.node_a);
-      const nodeB = nodeById.get(route.node_b);
-      if (!nodeA?.city_id || !nodeB?.city_id) continue;
-      if (nodeA.city_id === nodeB.city_id) continue;
-      if (!cityAdjacency.has(nodeA.city_id)) cityAdjacency.set(nodeA.city_id, new Set());
-      if (!cityAdjacency.has(nodeB.city_id)) cityAdjacency.set(nodeB.city_id, new Set());
-      cityAdjacency.get(nodeA.city_id)!.add(nodeB.city_id);
-      cityAdjacency.get(nodeB.city_id)!.add(nodeA.city_id);
-    }
+    const cityTransportCell = new Map(cities.map(city => [city.id, `${city.grid_x ?? city.province_q},${city.grid_y ?? city.province_r}`]));
+    const reservedTransport = new Map<string, number>();
+    const findTransportRoute = (from: string, target: string) => {
+      const dist = new Map<string, number>([[from, 0]]); const previous = new Map<string, { cell: string; edge: TransportEdge }>(); const pending = new Set<string>([from]);
+      while (pending.size) {
+        let current = ""; let best = Infinity;
+        for (const cell of pending) { const value = dist.get(cell) ?? Infinity; if (value < best) { current = cell; best = value; } }
+        pending.delete(current); if (current === target) break;
+        for (const edge of transportGraph.get(current) || []) {
+          if (edge.capacity - (reservedTransport.get(edge.id) || 0) <= 0) continue;
+          const nextCost = best + edge.cost; if (nextCost >= (dist.get(edge.to) ?? Infinity)) continue;
+          dist.set(edge.to, nextCost); previous.set(edge.to, { cell: current, edge }); pending.add(edge.to);
+        }
+      }
+      if (!previous.has(target) && from !== target) return null;
+      const cells = [target]; const edges: TransportEdge[] = []; let cursor = target;
+      while (cursor !== from) { const step = previous.get(cursor); if (!step) return null; edges.unshift(step.edge); cursor = step.cell; cells.unshift(cursor); }
+      return { cells, edges, cost: dist.get(target) || 0, capacity: edges.length ? Math.min(...edges.map(edge => edge.capacity - (reservedTransport.get(edge.id) || 0))) : 0 };
+    };
 
     const tradeFlows: any[] = [];
     for (const [cityId, demands] of cityDemands) {
       const citySupply = cityGoodSupply.get(cityId) || new Map();
       const city = cityMap.get(cityId);
       if (!city) continue;
-      const neighbors = cityAdjacency.get(cityId) || new Set();
 
       for (const [basketKey, demandQty] of demands) {
         // Match goods whose demand_basket resolves to this basketKey
@@ -889,7 +894,8 @@ Deno.serve(async (req) => {
         const gap = demandQty - domesticSatisfaction;
         if (gap <= 0) continue;
 
-        for (const neighborId of neighbors) {
+        for (const neighborId of cities.map(candidate => candidate.id)) {
+          if (neighborId === cityId) continue;
           const neighborSupply = cityGoodSupply.get(neighborId) || new Map();
           const neighborCity = cityMap.get(neighborId);
           if (!neighborCity) continue;
@@ -916,7 +922,12 @@ Deno.serve(async (req) => {
           const pressure = PRESSURE_WEIGHTS.need * needPressure + tierPressure * 0.5;
           if (pressure < 0.1) continue;
 
-          const flowVolume = Math.min(gap, availableSurplus * 0.5);
+          const sourceCell = cityTransportCell.get(neighborId); const targetCell = cityTransportCell.get(cityId);
+          if (!sourceCell || !targetCell) continue;
+          const physicalRoute = findTransportRoute(sourceCell, targetCell);
+          if (!physicalRoute) continue;
+          const flowVolume = Math.min(gap, availableSurplus * 0.5, physicalRoute.capacity);
+          if (flowVolume <= 0) continue;
 
           tradeFlows.push({
             session_id,
@@ -934,11 +945,14 @@ Deno.serve(async (req) => {
             trade_pressure: Math.round(pressure * 100) / 100,
             effective_price: goodsMap.get(bestGoodKey)?.base_price_numeric || 1,
             price_band: (goodsMap.get(bestGoodKey)?.base_price_numeric || 0) > 5 ? 1 : 0,
-            friction_score: 0,
+            friction_score: Math.round(physicalRoute.cost * 1000) / 1000,
             maturity: 0,
             status: pressure > 0.5 ? "active" : "trial",
             turn_created: tn,
+            path_cells: physicalRoute.cells.map(cell => { const [x, y] = cell.split(",").map(Number); return { x, y }; }),
+            transport_modes: [...new Set(physicalRoute.edges.map(edge => edge.mode))],
           });
+          physicalRoute.edges.forEach(edge => reservedTransport.set(edge.id, (reservedTransport.get(edge.id) || 0) + flowVolume));
         }
       }
     }
