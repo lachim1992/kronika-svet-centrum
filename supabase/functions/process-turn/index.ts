@@ -1395,8 +1395,11 @@ Deno.serve(async (req) => {
         const baskets = marketNodeId ? basketsByCity.get(marketNodeId) || [] : [];
         if (baskets.length === 0) continue;
 
-        // Avg satisfaction across all baskets
-        const avgSat = baskets.reduce((s: number, b: any) => s + Number(b.satisfaction_score || 0), 0) / baskets.length;
+        // Demand-weighted satisfaction prevents tiny luxury baskets from outweighing staples.
+        const totalDemand = baskets.reduce((sum: number, b: any) => sum + Math.max(0, Number(b.quantity_needed || 0)), 0);
+        const avgSat = totalDemand > 0
+          ? baskets.reduce((sum: number, b: any) => sum + Number(b.satisfaction_score || 0) * Math.max(0, Number(b.quantity_needed || 0)), 0) / totalDemand
+          : baskets.reduce((sum: number, b: any) => sum + Number(b.satisfaction_score || 0), 0) / baskets.length;
         // Staple food satisfaction drives population
         const stapleSat = Number(baskets.find((b: any) => b.basket_key === "staple_food")?.satisfaction_score || 0);
         // Feast is the canonical ritual/ceremonial basket in Goods 4.3.
