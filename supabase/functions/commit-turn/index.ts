@@ -678,7 +678,7 @@ Deno.serve(async (req) => {
       await supabase.from("road_projects").update(projectUpdate).eq("id", project.id);
       if (complete) {
         await supabase.from("road_segments")
-          .update({ status: "completed", progress: 100, updated_at: new Date().toISOString() })
+          .update({ status: "completed", progress: 100 })
           .eq("project_id", project.id);
         await safeInsert(supabase.from("game_events").insert({
           session_id: sessionId, turn_number: turnNumber, player: project.owner_player,
