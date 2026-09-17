@@ -562,6 +562,18 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     to: projectCell("square4", { a: segment.to_x, b: segment.to_y }, TILE_SIZE),
   })), [roadSegments]);
 
+  /** Every cell crossed by a road inherits its strongest tier for the map-wide surface tint. */
+  const roadLevelByCell = useMemo(() => {
+    const levels = new Map<string, number>();
+    roadSegments.filter(segment => segment.status !== "blocked").forEach(segment => {
+      [cellKey(segment.from_x, segment.from_y), cellKey(segment.to_x, segment.to_y)].forEach(key => {
+        levels.set(key, Math.max(levels.get(key) || 0, segment.level));
+      });
+    });
+    return levels;
+  }, [roadSegments]);
+  const roadDraftCells = useMemo(() => new Set(roadDraft.map(cell => cellKey(cell.x, cell.y))), [roadDraft]);
+
   const roadDraftSummary = useMemo(() => {
     if (roadDraft.length < 2) return { bridges: 0, gold: 0, production: 0, turns: 0 };
     const tier = tileInfrastructureLevel(roadDraftLevel);
@@ -1249,7 +1261,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
       style={{ touchAction: "none" }}
       onPointerDown={(event) => {
-        if (roadDraft.length > 0) { event.currentTarget.setPointerCapture?.(event.pointerId); return; }
+        // Never capture the pointer while drawing: tile groups must receive the click/drag.
+        if (roadDraft.length > 0) return;
         pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
@@ -1294,6 +1307,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <g transform={`scale(${zoom})`}>
           {sortedTiles.map(tile => {
             const cell = tileCell(tile); const point = at(cell.a, cell.b); const colors = BIOMES[tile.biome_family] || BIOMES.plains;
+            const builtRoadLevel = roadLevelByCell.get(cellKey(cell.a, cell.b)) || 0;
+            const visibleRoadLevel = roadDraftCells.has(cellKey(cell.a, cell.b)) ? roadDraftLevel : builtRoadLevel;
+            const roadFill = visibleRoadLevel === 3 ? "var(--map-road-paved)" : visibleRoadLevel === 2 ? "var(--map-road-built)" : visibleRoadLevel === 1 ? "var(--map-road-trail)" : colors[0];
             const active = selected?.id === tile.id;
             const holderCityId = cityByCell.get(cellKey(cell.a, cell.b));
             const inActiveCity = cityLayerCityId && holderCityId === cityLayerCityId;
@@ -1304,9 +1320,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }}
               onPointerEnter={event => { if (roadDraft.length > 0 && event.buttons === 1) focusTile(tile); }}
               className={roadDraft.length > 0 ? "cursor-crosshair" : "cursor-pointer"}>
-              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]}
-                stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
-                strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
+              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={roadFill}
+                stroke={visibleRoadLevel ? "var(--map-road-edge)" : active || inActiveCity ? "var(--map-focus)" : holderColor}
+                strokeWidth={visibleRoadLevel ? 2.4 : active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
                 opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
@@ -1378,14 +1394,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {segment.level === 3 && <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-label)" strokeWidth=".65" strokeDasharray="2 3" opacity=".5" />}
             </g>;
           })}
-          {roadDraft.length > 0 && <g pointerEvents="none">
-            <polyline points={roadDraft.map(cell => { const point = at(cell.x, cell.y); return `${point.x},${point.y}`; }).join(" ")}
-              fill="none" stroke="var(--map-focus)" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6 3" opacity=".95" />
-            {roadDraft.map((cell, index) => { const point = at(cell.x, cell.y); const tile = tileByCell.get(cellKey(cell.x, cell.y)); return <g key={`draft-${cell.x}-${cell.y}`}>
-              <circle cx={point.x} cy={point.y} r={index === 0 ? 5 : 3.2} fill="var(--map-focus)" stroke="var(--map-marker-edge)" strokeWidth="1" />
-              {tile?.has_river && <rect x={point.x - 6} y={point.y - 2.5} width="12" height="5" fill="var(--map-route)" stroke="var(--map-focus)" strokeWidth="1" />}
-            </g>; })}
-          </g>}
           {!cityLayerCityId && showRoutes && routePolylines.map(route => (
             <polyline key={route.id} points={route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ")}
               fill="none" stroke="var(--map-route)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
@@ -1407,7 +1415,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 if (parcel) setSelectedParcelId(parcel.id);
               }
             };
-            return <g key={node.id} role="button" tabIndex={0} aria-label={`Otevřít uzel ${node.name}`} className="cursor-pointer"
+            return <g key={node.id} role="button" tabIndex={0} aria-label={`Otevřít uzel ${node.name}`} className="cursor-pointer" pointerEvents={roadDraft.length > 0 ? "none" : "auto"}
               onClick={event => { event.stopPropagation(); openNode(); }}
               onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openNode(); } }}>
               {renderNodeCompound(node, at(cell.a, cell.b))}
@@ -1433,7 +1441,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               }, undefined);
               if (fallbackTile) focusTile(fallbackTile, city.id);
             };
-            return <g key={city.id} data-map-city={city.id} role="button" aria-label={`Vstoupit do města ${city.name}`} tabIndex={0} transform={`translate(${point.x + seatOffset.x},${point.y + seatOffset.y - 16})`} className="cursor-pointer" onClick={(event) => { event.stopPropagation(); openCityLayer(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCityLayer(); } }}>
+            return <g key={city.id} data-map-city={city.id} role="button" aria-label={`Vstoupit do města ${city.name}`} tabIndex={0} transform={`translate(${point.x + seatOffset.x},${point.y + seatOffset.y - 16})`} className="cursor-pointer" pointerEvents={roadDraft.length > 0 ? "none" : "auto"} onClick={(event) => { event.stopPropagation(); openCityLayer(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCityLayer(); } }}>
               <title>{city.name}</title>
               {showLabels && (zoom >= LABEL_ZOOM || own || cityLayerCityId === city.id) && (() => {
                 const labelScale = Math.max(.5, Math.min(1.25, 1 / zoom));
@@ -1464,6 +1472,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const seat = camp.reduce((sum, index) => { const c = centreOf(index); return { x: sum.x + c.x / camp.length, y: sum.y + c.y / camp.length }; }, { x: 0, y: 0 });
             const openArmy = () => { setSelectedArmyId(lead.id); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(true); };
             return <g key={group.key} data-map-army={lead.id} role="button" tabIndex={0} aria-label={`Armáda ${lead.name}`}
+              pointerEvents={roadDraft.length > 0 ? "none" : "auto"}
               className="cursor-pointer"
               onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
