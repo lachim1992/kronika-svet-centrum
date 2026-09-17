@@ -192,15 +192,9 @@ interface NodeData {
   hex_r: number;
 }
 
-interface RouteData {
-  id: string;
-  node_a: string;
-  node_b: string;
-  capacity_value: number;
-  control_state: string;
-  damage_level: number;
-  speed_value: number;
-  safety_value: number;
+interface TransportAccess {
+  capacityByCell: Map<string, number>;
+  neighboursByCell: Map<string, Set<string>>;
 }
 
 interface MacroRegionData {
@@ -285,24 +279,18 @@ function computeRegionModifier(node: NodeData, region: MacroRegionData | null): 
   };
 }
 
-// ── ROUTE ACCESS ───────────────────────────────────────────────
-function computeRouteAccess(nodeId: string, routes: RouteData[]): number {
-  const connected = routes.filter(
-    r => (r.node_a === nodeId || r.node_b === nodeId) && r.control_state !== "blocked",
-  );
-  if (connected.length === 0) return 0.3;
-  let totalCap = 0;
-  for (const r of connected) {
-    const damageMult = 1 - (r.damage_level || 0) * 0.1;
-    totalCap += (r.capacity_value || 5) * Math.max(0.1, damageMult);
-  }
-  return Math.min(1.5, 0.3 + totalCap / 15);
+// ── PHYSICAL TRANSPORT ACCESS ─────────────────────────────────
+function nodeCell(node: NodeData): string {
+  return `${node.hex_q},${node.hex_r}`;
 }
 
-function computeConnectivity(nodeId: string, routes: RouteData[], totalNodes: number): number {
-  const degree = routes.filter(
-    r => (r.node_a === nodeId || r.node_b === nodeId) && r.control_state !== "blocked",
-  ).length;
+function computeRouteAccess(node: NodeData, transport: TransportAccess): number {
+  const capacity = transport.capacityByCell.get(nodeCell(node)) || 0;
+  return capacity <= 0 ? 0.3 : Math.min(1.5, 0.3 + capacity / 15);
+}
+
+function computeConnectivity(node: NodeData, transport: TransportAccess, totalNodes: number): number {
+  const degree = transport.neighboursByCell.get(nodeCell(node))?.size || 0;
   return Math.min(2.0, degree / Math.max(1, Math.sqrt(totalNodes)));
 }
 
@@ -324,13 +312,19 @@ Deno.serve(async (req) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // ── FETCH DATA ────────────────────────────────────────────
-    const [nodesRes, routesRes, supplyRes, citiesRes, hexesRes] = await Promise.all([
+    const [nodesRes, roadRes, localRoadRes, riverRes, supplyRes, citiesRes, hexesRes] = await Promise.all([
       sb.from("province_nodes")
         .select("id, session_id, province_id, node_type, node_tier, node_subtype, upgrade_level, biome_at_build, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor, strategic_resource_type, strategic_resource_tier, faith_output, food_value, hex_q, hex_r")
         .eq("session_id", session_id),
-      sb.from("province_routes")
-        .select("id, node_a, node_b, capacity_value, control_state, damage_level, speed_value, safety_value")
-        .eq("session_id", session_id),
+      sb.from("road_segments")
+        .select("id, from_x, from_y, to_x, to_y, capacity")
+        .eq("session_id", session_id).eq("status", "completed"),
+      sb.from("road_projects")
+        .select("id, level, path_cells")
+        .eq("session_id", session_id).eq("status", "completed"),
+      sb.from("province_hexes")
+        .select("grid_x, grid_y")
+        .eq("session_id", session_id).eq("has_river", true).eq("is_passable", true),
       sb.from("supply_chain_state")
         .select("node_id, connected_to_capital, hop_distance, isolation_turns, supply_level, route_quality")
         .eq("session_id", session_id),
@@ -359,7 +353,35 @@ Deno.serve(async (req) => {
       hex_q: n.hex_q || 0,
       hex_r: n.hex_r || 0,
     }));
-    const routes: RouteData[] = routesRes.data || [];
+    if (roadRes.error) throw roadRes.error;
+    if (localRoadRes.error) throw localRoadRes.error;
+    if (riverRes.error) throw riverRes.error;
+    const capacityByCell = new Map<string, number>();
+    const neighboursByCell = new Map<string, Set<string>>();
+    const addTransport = (a: string, b: string, capacity: number) => {
+      capacityByCell.set(a, (capacityByCell.get(a) || 0) + capacity);
+      capacityByCell.set(b, (capacityByCell.get(b) || 0) + capacity);
+      if (!neighboursByCell.has(a)) neighboursByCell.set(a, new Set());
+      if (!neighboursByCell.has(b)) neighboursByCell.set(b, new Set());
+      neighboursByCell.get(a)?.add(b); neighboursByCell.get(b)?.add(a);
+    };
+    for (const road of roadRes.data || []) addTransport(`${road.from_x},${road.from_y}`, `${road.to_x},${road.to_y}`, Math.max(0, Number(road.capacity || 0)));
+    const riverCells = new Set((riverRes.data || []).map((cell: any) => `${cell.grid_x},${cell.grid_y}`));
+    for (const key of riverCells) {
+      const [x, y] = key.split(",").map(Number);
+      for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const next = `${x + dx},${y + dy}`;
+        if (riverCells.has(next)) addTransport(key, next, 70);
+      }
+    }
+    const localCapacity = [0, 4, 10, 20];
+    for (const project of localRoadRes.data || []) {
+      const cells = Array.isArray(project.path_cells) ? project.path_cells : [];
+      if (cells.length !== 1) continue;
+      const key = `${cells[0].x},${cells[0].y}`;
+      capacityByCell.set(key, (capacityByCell.get(key) || 0) + (localCapacity[Number(project.level)] || 0));
+    }
+    const transportAccess: TransportAccess = { capacityByCell, neighboursByCell };
 
     const supplyMap = new Map<string, any>();
     for (const s of (supplyRes.data || [])) supplyMap.set(s.node_id, s);
@@ -417,7 +439,7 @@ Deno.serve(async (req) => {
     const regionMods = new Map<string, { production: number; supplies: number; wealth: number }>();
 
     for (const node of nodes) {
-      const routeAccess = computeRouteAccess(node.id, routes);
+      const routeAccess = computeRouteAccess(node, transportAccess);
       const region = hexRegionMap.get(`${node.hex_q},${node.hex_r}`) || null;
       const regMod = computeRegionModifier(node, region);
       regionMods.set(node.id, regMod);
@@ -713,8 +735,8 @@ Deno.serve(async (req) => {
     }> = [];
 
     for (const node of nodes) {
-      const routeAccess = computeRouteAccess(node.id, routes);
-      const connectivity = computeConnectivity(node.id, routes, nodes.length);
+      const routeAccess = computeRouteAccess(node, transportAccess);
+      const connectivity = computeConnectivity(node, transportAccess, nodes.length);
       const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
 
       const own = rawDual.get(node.id) || { production: 0, supplies: 0 };
