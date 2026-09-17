@@ -739,7 +739,7 @@ async function executeBuildRoadPath(
   }));
   const level = Number(payload.level || 1);
   const tier = tileInfrastructureLevel(level);
-  if (!tier || path.length < 2 || path.length > 120) return { events: [], error: "Trasa musí mít 2 až 120 polí a úroveň 1–3" };
+  if (!tier || path.length < 1 || path.length > 120) return { events: [], error: "Trasa musí mít 1 až 120 polí a úroveň 1–3" };
   if (path.some((cell: any) => !Number.isInteger(cell.x) || !Number.isInteger(cell.y))) return { events: [], error: "Trasa obsahuje neplatné pole" };
   const unique = new Set(path.map((cell: any) => `${cell.x},${cell.y}`));
   if (unique.size !== path.length) return { events: [], error: "Trasa se nesmí vracet přes stejné pole" };
@@ -780,13 +780,22 @@ async function executeBuildRoadPath(
   if (pathTiles.some((tile: any) => !tile || tile.is_passable === false || tile.biome_family === "sea")) return { events: [], error: "Trasa vede přes neprůchodné nebo mořské pole" };
 
   const start = path[0];
-  const [{ data: held }, { data: city }, { data: node }, { data: linkedRoad }] = await Promise.all([
-    supabase.from("tile_parcels").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("owner_player", actor.name).limit(1),
-    supabase.from("cities").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("owner_player", actor.name).limit(1),
-    supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("controlled_by", actor.name).limit(1),
-    supabase.from("road_segments").select("id").eq("session_id", sessionId).eq("status", "completed").or(`and(from_x.eq.${start.x},from_y.eq.${start.y}),and(to_x.eq.${start.x},to_y.eq.${start.y})`).limit(1),
+  const startSub = subPath[0];
+  const startParcelIndex = startSub.parcelY * TILE_PARCEL_COLS + startSub.parcelX;
+  const [{ data: held }, { data: city }, { data: node }, { data: linkedRoad }, { data: linkedProject }] = await Promise.all([
+    supabase.from("tile_parcels").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("parcel_index", startParcelIndex).eq("owner_player", actor.name).limit(1),
+    supabase.from("cities").select("id, founded_parcel_index").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("owner_player", actor.name).eq("founded_parcel_index", startParcelIndex).limit(1),
+    supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("parcel_index", startParcelIndex).eq("controlled_by", actor.name).limit(1),
+    supabase.from("road_segments").select("id, sub_path_cells").eq("session_id", sessionId).eq("status", "completed").or(`and(from_x.eq.${start.x},from_y.eq.${start.y}),and(to_x.eq.${start.x},to_y.eq.${start.y})`),
+    supabase.from("road_projects").select("id, sub_path_cells").eq("session_id", sessionId).eq("status", "completed"),
   ]);
-  if (!held?.length && !city?.length && !node?.length && !linkedRoad?.length) return { events: [], error: "Trasa musí začínat u tvého města, subuzlu, parcely nebo hotové cesty" };
+  const exactSegmentAnchor = (linkedRoad || []).some((segment: any) => {
+    const trace = Array.isArray(segment.sub_path_cells) ? segment.sub_path_cells : [];
+    return trace.length === 0 || trace.some((cell: any) => Number(cell.gridX) === startSub.gridX && Number(cell.gridY) === startSub.gridY && Number(cell.parcelX) === startSub.parcelX && Number(cell.parcelY) === startSub.parcelY);
+  });
+  const exactRoadAnchor = (linkedProject || []).some((project: any) => Array.isArray(project.sub_path_cells) && project.sub_path_cells.some((cell: any) =>
+    Number(cell.gridX) === startSub.gridX && Number(cell.gridY) === startSub.gridY && Number(cell.parcelX) === startSub.parcelX && Number(cell.parcelY) === startSub.parcelY));
+  if (!held?.length && !city?.length && !node?.length && !exactSegmentAnchor && !exactRoadAnchor) return { events: [], error: "Trasa musí začínat na tvé parcele, městském sídle, subuzlu nebo hotové cestě" };
 
   const edges = path.slice(1).map((to: any, index: number) => {
     const from = path[index];
@@ -817,9 +826,11 @@ async function executeBuildRoadPath(
   const bridgeCount = subPath.filter((cell: any) => riverSubCells.has(`${cell.gridX},${cell.gridY},${cell.parcelX},${cell.parcelY}`)).length;
   const terrainFactor = pathTiles.reduce((sum: number, tile: any) => sum + (["mountain", "mountains"].includes(tile.biome_family) ? 1.8 : tile.biome_family === "swamp" ? 1.5 : tile.biome_family === "hills" ? 1.25 : 1), 0) / pathTiles.length;
   const length = edges.length;
+  const subLength = subPath.length - 1;
+  const edgeEquivalent = subLength / TILE_PARCEL_COLS;
   const cost = {
-    gold: Math.ceil(tier.gold * length * terrainFactor + bridgeCount * 45),
-    production: Math.ceil(tier.production * length * terrainFactor + bridgeCount * 30),
+    gold: Math.ceil(tier.gold * edgeEquivalent * terrainFactor + bridgeCount * 45),
+    production: Math.ceil(tier.production * edgeEquivalent * terrainFactor + bridgeCount * 30),
   };
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
@@ -845,7 +856,9 @@ async function executeBuildRoadPath(
     sub_path_cells: subPath.filter((cell: any) => (cell.gridX === path[index].x && cell.gridY === path[index].y) || (cell.gridX === path[index + 1].x && cell.gridY === path[index + 1].y)),
     utilization: 0,
   }));
-  const { error: segmentError } = await supabase.from("road_segments").upsert(segmentRows, { onConflict: "session_id,from_x,from_y,to_x,to_y" });
+  const segmentError = segmentRows.length
+    ? (await supabase.from("road_segments").upsert(segmentRows, { onConflict: "session_id,from_x,from_y,to_x,to_y" })).error
+    : null;
   if (segmentError) { await supabase.from("road_projects").delete().eq("id", project.id); return { events: [], error: segmentError.message }; }
   const { error: resourceError } = await supabase.from("realm_resources").update({ gold_reserve: Number(realm.gold_reserve || 0) - cost.gold, production_reserve: Number(realm.production_reserve || 0) - cost.production }).eq("id", realm.id);
   if (resourceError) {
