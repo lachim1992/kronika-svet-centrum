@@ -599,22 +599,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const roadDraftSummary = useMemo(() => {
     const macroPath = macroPathFromSubRoad(roadDraft);
-    if (roadDraft.length < 2 || macroPath.length < 2) return { bridges: 0, gold: 0, production: 0, turns: 0, macroLength: Math.max(0, macroPath.length - 1) };
+    if (roadDraft.length < 2) return { bridges: 0, gold: 0, production: 0, turns: 0, macroLength: Math.max(0, macroPath.length - 1), subLength: 0 };
     const tier = tileInfrastructureLevel(roadDraftLevel);
-    if (!tier) return { bridges: 0, gold: 0, production: 0, turns: 0, macroLength: 0 };
-    const draftTiles = macroPath.map(cell => tileByCell.get(cellKey(cell.x, cell.y))).filter((tile): tile is Tile => !!tile);
+    if (!tier) return { bridges: 0, gold: 0, production: 0, turns: 0, macroLength: 0, subLength: 0 };
+    const draftTiles = roadDraft.map(cell => tileByCell.get(cellKey(cell.gridX, cell.gridY))).filter((tile): tile is Tile => !!tile);
     const terrainFactor = draftTiles.length ? draftTiles.reduce((sum, tile) => sum + (["mountain", "mountains"].includes(tile.biome_family) ? 1.8 : tile.biome_family === "swamp" ? 1.5 : tile.biome_family === "hills" ? 1.25 : 1), 0) / draftTiles.length : 1;
     const bridges = roadDraft.filter(sub => {
       const tile = tileByCell.get(cellKey(sub.gridX, sub.gridY));
       return tile ? subBiomesOf(tile, sub.gridX, sub.gridY).some(spec => spec.parcelX === sub.parcelX && spec.parcelY === sub.parcelY && spec.subBiome === "river_channel") : false;
     }).length;
-    const length = macroPath.length - 1;
-    return { bridges, gold: Math.ceil(tier.gold * length * terrainFactor + bridges * 45), production: Math.ceil(tier.production * length * terrainFactor + bridges * 30), turns: tier.turns, macroLength: length };
+    const subLength = roadDraft.length - 1;
+    const macroLength = macroPath.length - 1;
+    const edgeEquivalent = subLength / TILE_PARCEL_COLS;
+    return { bridges, gold: Math.ceil(tier.gold * edgeEquivalent * terrainFactor + bridges * 45), production: Math.ceil(tier.production * edgeEquivalent * terrainFactor + bridges * 30), turns: tier.turns, macroLength, subLength };
   }, [roadDraft, roadDraftLevel, tileByCell, subBiomesOf]);
 
   const roadDraftBlock = useMemo(() => {
     if (roadDraft.length < 2) return "Nakresli alespoň dva sousední podčtverce.";
-    if (roadDraftSummary.macroLength < 1) return "Cesta musí dojít do sousedního velkého pole.";
     if (treasury.gold < roadDraftSummary.gold || treasury.production < roadDraftSummary.production) return `Chybí zdroje: potřeba ${roadDraftSummary.gold} zlata a ${roadDraftSummary.production} produkce.`;
     return null;
   }, [roadDraft.length, roadDraftSummary, treasury]);
@@ -1645,7 +1646,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             Začni na vlastním městě, subuzlu, vlastněném poli nebo na již dokončené cestě.
           </p>}
           {canBuildRoadHere && <p className="mt-2 text-[11px] text-muted-foreground">
-             Po stisknutí kresli přes sousední podčtverce, zvol jednu ze tří úrovní a potvrď cenu.
+             Po stisknutí kresli přes sousední podčtverce, zvol jednu ze tří úrovní a potvrď cenu. Trasa může zůstat i uvnitř tohoto pole.
           </p>}
         </section>
 
