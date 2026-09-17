@@ -786,12 +786,16 @@ async function executeBuildRoadPath(
     supabase.from("tile_parcels").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("parcel_index", startParcelIndex).eq("owner_player", actor.name).limit(1),
     supabase.from("cities").select("id, founded_parcel_index").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("owner_player", actor.name).eq("founded_parcel_index", startParcelIndex).limit(1),
     supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("parcel_index", startParcelIndex).eq("controlled_by", actor.name).limit(1),
-    supabase.from("road_segments").select("id").eq("session_id", sessionId).eq("status", "completed").or(`and(from_x.eq.${start.x},from_y.eq.${start.y}),and(to_x.eq.${start.x},to_y.eq.${start.y})`).limit(1),
+    supabase.from("road_segments").select("id, sub_path_cells").eq("session_id", sessionId).eq("status", "completed").or(`and(from_x.eq.${start.x},from_y.eq.${start.y}),and(to_x.eq.${start.x},to_y.eq.${start.y})`),
     supabase.from("road_projects").select("id, sub_path_cells").eq("session_id", sessionId).eq("status", "completed"),
   ]);
+  const exactSegmentAnchor = (linkedRoad || []).some((segment: any) => {
+    const trace = Array.isArray(segment.sub_path_cells) ? segment.sub_path_cells : [];
+    return trace.length === 0 || trace.some((cell: any) => Number(cell.gridX) === startSub.gridX && Number(cell.gridY) === startSub.gridY && Number(cell.parcelX) === startSub.parcelX && Number(cell.parcelY) === startSub.parcelY);
+  });
   const exactRoadAnchor = (linkedProject || []).some((project: any) => Array.isArray(project.sub_path_cells) && project.sub_path_cells.some((cell: any) =>
     Number(cell.gridX) === startSub.gridX && Number(cell.gridY) === startSub.gridY && Number(cell.parcelX) === startSub.parcelX && Number(cell.parcelY) === startSub.parcelY));
-  if (!held?.length && !city?.length && !node?.length && !linkedRoad?.length && !exactRoadAnchor) return { events: [], error: "Trasa musí začínat na tvé parcele, městském sídle, subuzlu nebo hotové cestě" };
+  if (!held?.length && !city?.length && !node?.length && !exactSegmentAnchor && !exactRoadAnchor) return { events: [], error: "Trasa musí začínat na tvé parcele, městském sídle, subuzlu nebo hotové cestě" };
 
   const edges = path.slice(1).map((to: any, index: number) => {
     const from = path[index];
