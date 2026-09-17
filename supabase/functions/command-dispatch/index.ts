@@ -84,6 +84,8 @@ Deno.serve(async (req) => {
     }
 
     // ── Resolve actor.name to canonical realm player_name ──
+    // Keep the authenticated caller separate from client-supplied actor data.
+    let authenticatedUserId: string | null = null;
     if (actor?.type !== "system" && actor?.type !== "ai_faction") {
       try {
         const authHeader = req.headers.get("authorization") || "";
@@ -91,7 +93,10 @@ Deno.serve(async (req) => {
         if (jwt) {
           const { data: userData } = await supabase.auth.getUser(jwt);
           const userId = userData?.user?.id;
-          if (userId && !actor.id) actor.id = userId;
+          if (userId) {
+            authenticatedUserId = userId;
+            actor.id = userId;
+          }
         }
 
         const canonicalName = await resolveCanonicalPlayerName(supabase, sessionId, actor);
@@ -114,7 +119,17 @@ Deno.serve(async (req) => {
     // Removes the economic gate only: resources are topped up before the command
     // and every queued construction is finished immediately, so the real game
     // effects of each change are visible right away. All other rules still apply.
-    const sandbox = body.sandbox === true && actor?.type !== "ai_faction";
+    let sandbox = false;
+    if (body.sandbox === true && actor?.type !== "ai_faction" && authenticatedUserId) {
+      const { data: adminRole, error: adminRoleError } = await supabase
+        .from("user_roles")
+        .select("id")
+        .eq("user_id", authenticatedUserId)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (adminRoleError) console.error("[command-dispatch] sandbox authorization failed:", adminRoleError.message);
+      sandbox = Boolean(adminRole);
+    }
     if (sandbox) await sandboxTopUp(supabase, sessionId, actor);
 
     // ── Execute command ──

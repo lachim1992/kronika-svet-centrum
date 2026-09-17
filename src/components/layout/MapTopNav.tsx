@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BarChart3, BookOpen, Brain, Crown, FlaskConical, Globe, Home, Map, Newspaper, Shield, Swords, Timer, Trophy, Wrench, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -27,12 +28,16 @@ const baseItems: Array<{ id: TabId; label: string; icon: React.ElementType }> = 
 ];
 
 export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPersistentTab }: Props) {
-  const { sandbox, toggleSandbox } = useSandboxMode();
+  const { sandbox, toggleSandbox, setSandbox } = useSandboxMode();
   const items = [
     ...baseItems,
     ...(showPersistentTab ? [{ id: "persistent" as TabId, label: "Persistent", icon: Timer }] : []),
     ...(showDevTab ? [{ id: "dev" as TabId, label: "Dev", icon: Wrench }, { id: "ailab" as TabId, label: "AI Lab", icon: Brain }] : []),
   ];
+
+  useEffect(() => {
+    if (!showDevTab && sandbox) setSandbox(false);
+  }, [sandbox, setSandbox, showDevTab]);
 
   return (
     <nav className="map-command-nav" aria-label="Herní moduly">
