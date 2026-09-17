@@ -552,6 +552,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return { segments, bridges };
   }, [infrastructure, tileByCell, roadStepsOf, sessionId, subPoint, terrainOf]);
 
+  /** Authoritative inter-cell road segments, including projects still under construction. */
+  const explicitRoadNetwork = useMemo(() => roadSegments.map(segment => ({
+    ...segment,
+    from: projectCell("square4", { a: segment.from_x, b: segment.from_y }, TILE_SIZE),
+    to: projectCell("square4", { a: segment.to_x, b: segment.to_y }, TILE_SIZE),
+  })), [roadSegments]);
+
+  const roadDraftSummary = useMemo(() => {
+    if (roadDraft.length < 2) return { bridges: 0, gold: 0, production: 0, turns: 0 };
+    const tier = tileInfrastructureLevel(roadDraftLevel);
+    if (!tier) return { bridges: 0, gold: 0, production: 0, turns: 0 };
+    const draftTiles = roadDraft.map(cell => tileByCell.get(cellKey(cell.x, cell.y))).filter((tile): tile is Tile => !!tile);
+    const terrainFactor = draftTiles.length ? draftTiles.reduce((sum, tile) => sum + (["mountain", "mountains"].includes(tile.biome_family) ? 1.8 : tile.biome_family === "swamp" ? 1.5 : tile.biome_family === "hills" ? 1.25 : 1), 0) / draftTiles.length : 1;
+    const bridges = draftTiles.filter(tile => tile.has_river).length;
+    const length = roadDraft.length - 1;
+    return { bridges, gold: Math.ceil(tier.gold * length * terrainFactor + bridges * 45), production: Math.ceil(tier.production * length * terrainFactor + bridges * 30), turns: tier.turns };
+  }, [roadDraft, roadDraftLevel, tileByCell]);
+
   /** Trade flows ride the road trace instead of cutting straight across cell centres. */
   const routePolylines = useMemo(() => routes.flatMap(route => {
     const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path;
@@ -1166,6 +1184,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return () => element.removeEventListener("wheel", onWheel);
   }, []);
   const focusTile = (tile: Tile, requestedCityId?: string) => {
+    if (roadDraft.length > 0) {
+      const cell = tileCell(tile); const last = roadDraft[roadDraft.length - 1];
+      if (cell.a === last.x && cell.b === last.y) return;
+      const existingIndex = roadDraft.findIndex(item => item.x === cell.a && item.y === cell.b);
+      if (existingIndex >= 0) { setRoadDraft(current => current.slice(0, existingIndex + 1)); return; }
+      if (Math.abs(cell.a - last.x) + Math.abs(cell.b - last.y) !== 1) { toast.error("Pokračuj přes sousední pole"); return; }
+      if (tile.is_passable === false || tile.biome_family === "sea") { toast.error("Tímto polem cesta vést nemůže"); return; }
+      setRoadDraft(current => [...current, { x: cell.a, y: cell.b }]);
+      return;
+    }
     const element = viewportRef.current; if (!element) return;
     const cell = tileCell(tile); const projected = projectCell("square4", cell, TILE_SIZE);
     const cityId = requestedCityId || cityByCell.get(cellKey(cell.a, cell.b));
@@ -1175,6 +1203,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setCityLayerCityId(city?.id || null);
     onDetailOpenChange?.(true);
     setPan({ x: element.clientWidth * (city ? .47 : .38) / targetZoom - projected.x, y: element.clientHeight * .46 / targetZoom - projected.y });
+  };
+
+  const startRoadDraft = () => {
+    if (!selectedCell) return;
+    setRoadDraftLevel(1);
+    setRoadDraft([{ x: selectedCell.a, y: selectedCell.b }]);
+    setCityLayerCityId(null);
+    toast.info("Klikáním nebo tažením vyznač trasu přes sousední pole");
+  };
+
+  const confirmRoadDraft = async () => {
+    if (roadDraft.length < 2) return;
+    setBuildingAction("road-path");
+    const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_ROAD_PATH", commandPayload: { pathCells: roadDraft, level: roadDraftLevel } });
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Cestu nelze postavit"); return; }
+    toast.success(`${tileInfrastructureLevel(roadDraftLevel)?.label || "Cesta"}: projekt zahájen`);
+    setRoadDraft([]);
+    await load();
   };
   const leaveCityLayer = () => {
     setCityLayerCityId(null);
