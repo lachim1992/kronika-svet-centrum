@@ -88,6 +88,57 @@ Deno.serve(async (req) => {
         { level: Number(a.access_level || 0), tariff: Number(a.tariff_factor || 1.0) });
     }
 
+    // Physical transport graph. Land edges exist only where a completed road segment exists;
+    // cardinally adjacent river cells create automatic river edges. Capacity is shared by all baskets.
+    const [cityRes, roadRes, riverRes] = await Promise.all([
+      sb.from("cities").select("id, grid_x, grid_y, province_q, province_r").eq("session_id", session_id),
+      sb.from("road_segments").select("id, from_x, from_y, to_x, to_y, capacity, friction, status").eq("session_id", session_id).eq("status", "completed"),
+      sb.from("province_hexes").select("grid_x, grid_y").eq("session_id", session_id).eq("has_river", true).eq("is_passable", true),
+    ]);
+    if (cityRes.error) throw cityRes.error;
+    if (roadRes.error) throw roadRes.error;
+    if (riverRes.error) throw riverRes.error;
+    type Edge = { id: string; to: string; cost: number; capacity: number; mode: "road" | "river" };
+    const graph = new Map<string, Edge[]>();
+    const addEdge = (from: string, edge: Edge) => graph.set(from, [...(graph.get(from) || []), edge]);
+    const edgeCapacity = new Map<string, number>();
+    for (const road of roadRes.data || []) {
+      const a = `${road.from_x},${road.from_y}`; const b = `${road.to_x},${road.to_y}`;
+      const capacity = Math.max(0, Number(road.capacity || 0)); const id = `road:${road.id}`;
+      addEdge(a, { id, to: b, cost: Math.max(.05, Number(road.friction || 1)), capacity, mode: "road" });
+      addEdge(b, { id, to: a, cost: Math.max(.05, Number(road.friction || 1)), capacity, mode: "road" });
+      edgeCapacity.set(id, capacity);
+    }
+    const rivers = new Set((riverRes.data || []).map(cell => `${cell.grid_x},${cell.grid_y}`));
+    for (const key of rivers) {
+      const [x, y] = key.split(",").map(Number);
+      for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const next = `${x + dx},${y + dy}`; if (!rivers.has(next)) continue;
+        const id = key < next ? `river:${key}>${next}` : `river:${next}>${key}`;
+        addEdge(key, { id, to: next, cost: .8, capacity: 70, mode: "river" });
+        addEdge(next, { id, to: key, cost: .8, capacity: 70, mode: "river" }); edgeCapacity.set(id, 70);
+      }
+    }
+    const cityCell = new Map((cityRes.data || []).map(city => [city.id, `${city.grid_x ?? city.province_q},${city.grid_y ?? city.province_r}`]));
+    const reserved = new Map<string, number>();
+    const route = (from: string, target: string) => {
+      const dist = new Map<string, number>([[from, 0]]); const previous = new Map<string, { cell: string; edge: Edge }>(); const pending = new Set<string>([from]);
+      while (pending.size) {
+        let current = ""; let best = Infinity;
+        for (const cell of pending) { const value = dist.get(cell) ?? Infinity; if (value < best) { current = cell; best = value; } }
+        pending.delete(current); if (current === target) break;
+        for (const edge of graph.get(current) || []) {
+          if (edge.capacity - (reserved.get(edge.id) || 0) <= 0) continue;
+          const next = best + edge.cost; if (next >= (dist.get(edge.to) ?? Infinity)) continue;
+          dist.set(edge.to, next); previous.set(edge.to, { cell: current, edge }); pending.add(edge.to);
+        }
+      }
+      if (!previous.has(target) && from !== target) return null;
+      const cells = [target]; const edges: Edge[] = []; let cursor = target;
+      while (cursor !== from) { const step = previous.get(cursor); if (!step) return null; edges.unshift(step.edge); cursor = step.cell; cells.unshift(cursor); }
+      return { cells, edges, capacity: edges.length ? Math.min(...edges.map(edge => edge.capacity - (reserved.get(edge.id) || 0))) : 0 };
+    };
+
     // 4. Unconditional cleanup
     const { error: dErr } = await sb.from("basket_trade_flows")
       .delete().eq("session_id", session_id);
@@ -137,6 +188,8 @@ Deno.serve(async (req) => {
       fiscal_capture: number;
       access_level: number;
       turn_number: number;
+      path_cells: Array<{ x: number; y: number }>;
+      transport_modes: string[];
     };
     const flows: Flow[] = [];
     const importsByCityBasket = new Map<string, number>();
@@ -164,7 +217,11 @@ Deno.serve(async (req) => {
           const sAccess = accessMap.get(`${s.player}::${systemId}`);
           if (!sAccess || sAccess.level < 1) continue;
 
-          const vol = Math.min(s.amount, d.amount);
+          const sourceCell = cityCell.get(s.city_id); const targetCell = cityCell.get(d.city_id);
+          if (!sourceCell || !targetCell) continue;
+          const physicalRoute = route(sourceCell, targetCell);
+          if (!physicalRoute) continue;
+          const vol = Math.min(s.amount, d.amount, physicalRoute.capacity);
           if (vol <= 0) continue;
 
           const tariff = Math.max(sAccess.tariff, dAccess.tariff);
@@ -186,7 +243,11 @@ Deno.serve(async (req) => {
             fiscal_capture: Math.round(fiscal * 100) / 100,
             access_level: Math.max(1, Math.min(Number(sAccess.level) || 1, Number(dAccess.level) || 1)),
             turn_number: turnByCity.get(d.city_id) || 0,
+            path_cells: physicalRoute.cells.map(cell => { const [x, y] = cell.split(",").map(Number); return { x, y }; }),
+            transport_modes: [...new Set(physicalRoute.edges.map(edge => edge.mode))],
           });
+
+          physicalRoute.edges.forEach(edge => reserved.set(edge.id, (reserved.get(edge.id) || 0) + vol));
 
           s.amount -= vol;
           d.amount -= vol;
@@ -199,6 +260,12 @@ Deno.serve(async (req) => {
           if (d.amount <= 0) break;
         }
       }
+    }
+
+    // Persist utilization for the map and maintenance decisions.
+    for (const road of roadRes.data || []) {
+      const used = reserved.get(`road:${road.id}`) || 0; const capacity = edgeCapacity.get(`road:${road.id}`) || 0;
+      await sb.from("road_segments").update({ utilization: capacity > 0 ? Math.round((used / capacity) * 1000) / 1000 : 0 }).eq("id", road.id);
     }
 
     // 7. Insert flows in batches

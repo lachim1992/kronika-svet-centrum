@@ -193,11 +193,6 @@ describe("RoadGraph", () => {
 
   it("prefers a faster paved detour over a slower direct trail", () => {
     const graph = new RoadGraph();
-    // Direct trail edge — high friction.
-    graph.addEdge({ a: { x: 0, y: 0 }, b: { x: 2, y: 0 }, tier: "trail", terrain: "mountains" });
-    // this direct edge is actually not cardinal-adjacent; replace with a fair comparison instead.
-    graph.removeEdge({ x: 0, y: 0 }, { x: 2, y: 0 });
-
     graph.addEdge({ a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, tier: "trail", terrain: "swamp" });
     graph.addEdge({ a: { x: 1, y: 0 }, b: { x: 2, y: 0 }, tier: "trail", terrain: "swamp" });
 
