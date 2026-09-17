@@ -4,14 +4,11 @@ const corsHeaders = {
 };
 
 /**
- * refresh-economy: Safe 4-step economy recalculation without process-turn.
+ * refresh-economy: Safe economy recalculation without process-turn.
  *
  * Pipeline:
- * 1. compute-province-routes  (rebuild routes; player_built protected)
- * 2. compute-hex-flows         (force_all: true)
- * 3. compute-trade-systems     (BFS components + access projection from treaties)
- * 4. compute-trade-flows       (goods pipeline; consumes trade systems & access)
- * 5. compute-economy-flow      (final realm_resources aggregation)
+ * Legacy province routes are refreshed only for military/older overlays. Economic
+ * connectivity and goods movement are derived solely from roads and rivers.
  *
  * No side effects on turn state. Best-effort in-memory per-session guard.
  */
@@ -128,7 +125,7 @@ Deno.serve(async (req) => {
         ok: allOk,
         session_id,
         totalMs,
-        refreshed_domains: ["routes", "flows", "economy", "trade"],
+        refreshed_domains: ["roads", "rivers", "flows", "economy", "trade"],
         steps: results,
         warnings,
       }),
