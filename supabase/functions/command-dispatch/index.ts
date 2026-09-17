@@ -504,6 +504,9 @@ async function executeCommand(
     case "UPGRADE_TILE_INFRASTRUCTURE":
       return await executeUpgradeTileInfrastructure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "BUILD_ROAD_PATH":
+      return await executeBuildRoadPath(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "UPGRADE_INFRASTRUCTURE":
       return await executeUpgradeInfrastructure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
@@ -717,6 +720,92 @@ async function executeCommand(
         reference: payload || {},
       }]);
   }
+}
+
+/** BUILD_ROAD_PATH — create or upgrade one explicitly drawn, cardinal road path. */
+async function executeBuildRoadPath(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const rawPath = Array.isArray(payload.pathCells) ? payload.pathCells : [];
+  const path = rawPath.map((cell: any) => ({ x: Number(cell?.x), y: Number(cell?.y) }));
+  const level = Number(payload.level || 1);
+  const tier = tileInfrastructureLevel(level);
+  if (!tier || path.length < 2 || path.length > 120) return { events: [], error: "Trasa musí mít 2 až 120 polí a úroveň 1–3" };
+  if (path.some((cell: any) => !Number.isInteger(cell.x) || !Number.isInteger(cell.y))) return { events: [], error: "Trasa obsahuje neplatné pole" };
+  const unique = new Set(path.map((cell: any) => `${cell.x},${cell.y}`));
+  if (unique.size !== path.length) return { events: [], error: "Trasa se nesmí vracet přes stejné pole" };
+  for (let i = 1; i < path.length; i += 1) {
+    if (Math.abs(path[i].x - path[i - 1].x) + Math.abs(path[i].y - path[i - 1].y) !== 1) return { events: [], error: "Cesta musí vést přes sousední pole" };
+  }
+
+  const xs = path.map((cell: any) => cell.x); const ys = path.map((cell: any) => cell.y);
+  const { data: tiles, error: tileError } = await supabase.from("province_hexes")
+    .select("grid_x, grid_y, biome_family, mean_height, has_river, river_direction, is_passable, owner_player")
+    .eq("session_id", sessionId).gte("grid_x", Math.min(...xs)).lte("grid_x", Math.max(...xs))
+    .gte("grid_y", Math.min(...ys)).lte("grid_y", Math.max(...ys));
+  if (tileError) return { events: [], error: tileError.message };
+  const tileByKey = new Map((tiles || []).map((tile: any) => [`${tile.grid_x},${tile.grid_y}`, tile]));
+  const pathTiles = path.map((cell: any) => tileByKey.get(`${cell.x},${cell.y}`));
+  if (pathTiles.some((tile: any) => !tile || tile.is_passable === false || tile.biome_family === "sea")) return { events: [], error: "Trasa vede přes neprůchodné nebo mořské pole" };
+
+  const start = path[0];
+  const [{ data: held }, { data: city }, { data: node }, { data: linkedRoad }] = await Promise.all([
+    supabase.from("tile_parcels").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("owner_player", actor.name).limit(1),
+    supabase.from("cities").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("owner_player", actor.name).limit(1),
+    supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("controlled_by", actor.name).limit(1),
+    supabase.from("road_segments").select("id").eq("session_id", sessionId).eq("status", "completed").or(`and(from_x.eq.${start.x},from_y.eq.${start.y}),and(to_x.eq.${start.x},to_y.eq.${start.y})`).limit(1),
+  ]);
+  if (!held?.length && !city?.length && !node?.length && !linkedRoad?.length) return { events: [], error: "Trasa musí začínat u tvého města, subuzlu, parcely nebo hotové cesty" };
+
+  const edges = path.slice(1).map((to: any, index: number) => {
+    const from = path[index];
+    return from.x < to.x || (from.x === to.x && from.y < to.y)
+      ? { from_x: from.x, from_y: from.y, to_x: to.x, to_y: to.y }
+      : { from_x: to.x, from_y: to.y, to_x: from.x, to_y: from.y };
+  });
+  const { data: existingSegments } = await supabase.from("road_segments").select("id, from_x, from_y, to_x, to_y, level, status")
+    .eq("session_id", sessionId);
+  const existingByEdge = new Map((existingSegments || []).map((edge: any) => [`${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`, edge]));
+  for (const edge of edges) {
+    const existing = existingByEdge.get(`${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`);
+    if (existing && Number(existing.level) >= level) return { events: [], error: "Část trasy už má stejnou nebo vyšší úroveň" };
+    if (level > 1 && (!existing || Number(existing.level) !== level - 1 || existing.status !== "completed")) return { events: [], error: "Vyšší úroveň lze postavit jen na dokončené souvislé cestě" };
+  }
+
+  const bridgeCount = pathTiles.filter((tile: any) => tile.has_river).length;
+  const terrainFactor = pathTiles.reduce((sum: number, tile: any) => sum + (["mountain", "mountains"].includes(tile.biome_family) ? 1.8 : tile.biome_family === "swamp" ? 1.5 : tile.biome_family === "hills" ? 1.25 : 1), 0) / pathTiles.length;
+  const length = edges.length;
+  const cost = {
+    gold: Math.ceil(tier.gold * length * terrainFactor + bridgeCount * 45),
+    production: Math.ceil(tier.production * length * terrainFactor + bridgeCount * 30),
+  };
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+  if (Number(realm.gold_reserve || 0) < cost.gold || Number(realm.production_reserve || 0) < cost.production) return { events: [], error: `Potřeba ${cost.gold} zlata a ${cost.production} produkce` };
+
+  const totalWork = Math.max(1, tier.turns * 100);
+  const { data: project, error: projectError } = await supabase.from("road_projects").insert({
+    session_id: sessionId, owner_player: actor.name, level, path_cells: path, status: "building", progress: 0,
+    total_work: totalWork, work_done: 0, cost_gold: cost.gold, cost_production: cost.production,
+    bridge_count: bridgeCount, started_turn: turnNumber,
+  }).select("id").single();
+  if (projectError || !project) return { events: [], error: projectError?.message || "Projekt cesty se nepodařilo založit" };
+
+  const segmentRows = edges.map((edge: any, index: number) => ({
+    session_id: sessionId, project_id: project.id, owner_player: actor.name, ...edge, level,
+    status: "building", progress: 0, capacity: level === 1 ? 30 : level === 2 ? 90 : 180,
+    speed: level === 1 ? 0.8 : level === 2 ? 1.15 : 1.5,
+    friction: Number((terrainFactor / (level === 1 ? 1 : level === 2 ? 1.45 : 2)).toFixed(3)),
+    maintenance: Number((length * (level === 1 ? .25 : level === 2 ? .75 : 1.5)).toFixed(2)),
+    bridge_count: pathTiles[index]?.has_river || pathTiles[index + 1]?.has_river ? 1 : 0,
+    path_cells: [path[index], path[index + 1]], utilization: 0,
+  }));
+  const { error: segmentError } = await supabase.from("road_segments").upsert(segmentRows, { onConflict: "session_id,from_x,from_y,to_x,to_y" });
+  if (segmentError) { await supabase.from("road_projects").delete().eq("id", project.id); return { events: [], error: segmentError.message }; }
+  await supabase.from("realm_resources").update({ gold_reserve: Number(realm.gold_reserve || 0) - cost.gold, production_reserve: Number(realm.production_reserve || 0) - cost.production }).eq("id", realm.id);
+
+  return insertEvents(supabase, commandId, [{ ...base, event_type: "construction", note: `${actor.name} zahájil stavbu ${tier.label.toLowerCase()} o délce ${length} polí.`, importance: "normal", reference: { projectId: project.id, pathCells: path, level, bridges: bridgeCount, costGold: cost.gold, costProduction: cost.production } }], { projectId: project.id, length, level, bridgeCount, cost });
 }
 
 // ═══════════════════════════════════════════

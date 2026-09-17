@@ -653,6 +653,42 @@ Deno.serve(async (req) => {
       }));
     }
 
+    // Advance inter-tile road construction projects. Mirrors the local infrastructure
+    // pattern above: each closed turn contributes one step, with target level (1-3)
+    // determining how many turns the project takes. On completion, all segments
+    // belonging to the project become usable and one game event is emitted.
+    // Note: ongoing maintenance/degradation is not applied here since road_segments
+    // does not yet carry an upkeep-funding link to realm treasuries; only
+    // construction progression and completion are handled conservatively.
+    const { data: roadProjects } = await supabase.from("road_projects")
+      .select("id, owner_player, level, path_cells, progress, total_work, work_done")
+      .eq("session_id", sessionId).eq("status", "building");
+    for (const project of roadProjects || []) {
+      const level = Number(project.level || 1);
+      const nextProgress = Math.min(100, Number(project.progress || 0) + Math.ceil(100 / level));
+      const complete = nextProgress >= 100;
+      const totalWork = Number(project.total_work || 1);
+      const nextWorkDone = complete ? totalWork : Math.min(totalWork, Math.ceil((totalWork * nextProgress) / 100));
+      const projectUpdate: Record<string, unknown> = {
+        progress: nextProgress,
+        work_done: nextWorkDone,
+        status: complete ? "completed" : "building",
+        completed_turn: complete ? turnNumber : null,
+      };
+      await supabase.from("road_projects").update(projectUpdate).eq("id", project.id);
+      if (complete) {
+        await supabase.from("road_segments")
+          .update({ status: "completed", progress: 100, updated_at: new Date().toISOString() })
+          .eq("project_id", project.id);
+        await safeInsert(supabase.from("game_events").insert({
+          session_id: sessionId, turn_number: turnNumber, player: project.owner_player,
+          actor_type: "system", event_type: "construction", confirmed: true, truth_state: "canon",
+          note: `Silniční projekt hráče ${project.owner_player} byl dokončen (úroveň ${level}).`,
+          importance: "minor", reference: { roadProjectId: project.id, roadLevel: level, pathCells: project.path_cells },
+        }));
+      }
+    }
+
     await safeInsert(supabase.from("world_action_log").insert({
       session_id: sessionId,
       player_name: playerName,
