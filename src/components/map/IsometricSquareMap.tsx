@@ -656,6 +656,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     selected.owner_player === playerName
     || tileParcels.some(parcel => parcel.owner_player === playerName)
     || selectedCity?.owner_player === playerName
+    || (selectedCell ? roadSegments.some(segment => segment.status === "completed" && (
+      (segment.from_x === selectedCell.a && segment.from_y === selectedCell.b)
+      || (segment.to_x === selectedCell.a && segment.to_y === selectedCell.b)
+    )) : false)
     || (selectedCell ? nodes.some(node => { const cell = entityCell(node); return cell.a === selectedCell.a && cell.b === selectedCell.b && node.controlled_by === playerName; }) : false));
   const expansionCity = useMemo(() => {
     if (!selectedCell || selectedCity || foreignOwner) return undefined;
