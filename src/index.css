@@ -104,6 +104,10 @@
     --map-tundra-edge: hsl(181 11% 43%);
     --map-focus: hsl(43 78% 65%);
     --map-route: hsl(39 54% 60%);
+    --map-road-trail: hsl(28 46% 34%);
+    --map-road-built: hsl(31 52% 43%);
+    --map-road-paved: hsl(210 9% 68%);
+    --map-road-edge: hsl(28 35% 20%);
     --map-marker: hsl(194 35% 12%);
     --map-marker-edge: hsl(195 25% 8%);
     --map-city-own: hsl(42 66% 63%);
