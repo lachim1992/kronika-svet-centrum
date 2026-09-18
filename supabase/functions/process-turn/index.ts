@@ -1565,7 +1565,7 @@ Deno.serve(async (req) => {
       manpower_pool: manpowerPool,
       logistic_capacity: logisticCapacity,
       last_processed_turn: currentTurn,
-      last_turn_grain_prod: Math.round(totalCityProduction),
+      last_turn_grain_prod: Math.round(totalFoodSupply), // staple_food supply (post-trade)
       last_turn_grain_cons: totalDemand,
       last_turn_grain_net: Math.round(netProduction),
       last_turn_wood_prod: 0,
