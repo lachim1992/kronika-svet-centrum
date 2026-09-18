@@ -8464,8 +8464,11 @@ export type Database = {
           famine_city_count: number
           geopolitical_prestige: number
           gold_reserve: number
+          goods_domestic_consumption_value: number
+          goods_extraction_value: number
           goods_production_value: number | null
           goods_supply_volume: number | null
+          goods_value_detail: Json
           goods_wealth_fiscal: number | null
           grain_reserve: number
           granary_capacity: number
@@ -8540,6 +8543,7 @@ export type Database = {
           total_importance: number
           total_nodes: number | null
           total_production: number
+          total_production_capacity: number
           total_supplies: number | null
           total_wealth: number
           trade_ideology: string | null
@@ -8570,8 +8574,11 @@ export type Database = {
           famine_city_count?: number
           geopolitical_prestige?: number
           gold_reserve?: number
+          goods_domestic_consumption_value?: number
+          goods_extraction_value?: number
           goods_production_value?: number | null
           goods_supply_volume?: number | null
+          goods_value_detail?: Json
           goods_wealth_fiscal?: number | null
           grain_reserve?: number
           granary_capacity?: number
@@ -8646,6 +8653,7 @@ export type Database = {
           total_importance?: number
           total_nodes?: number | null
           total_production?: number
+          total_production_capacity?: number
           total_supplies?: number | null
           total_wealth?: number
           trade_ideology?: string | null
@@ -8676,8 +8684,11 @@ export type Database = {
           famine_city_count?: number
           geopolitical_prestige?: number
           gold_reserve?: number
+          goods_domestic_consumption_value?: number
+          goods_extraction_value?: number
           goods_production_value?: number | null
           goods_supply_volume?: number | null
+          goods_value_detail?: Json
           goods_wealth_fiscal?: number | null
           grain_reserve?: number
           granary_capacity?: number
@@ -8752,6 +8763,7 @@ export type Database = {
           total_importance?: number
           total_nodes?: number | null
           total_production?: number
+          total_production_capacity?: number
           total_supplies?: number | null
           total_wealth?: number
           trade_ideology?: string | null
