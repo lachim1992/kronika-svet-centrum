@@ -123,3 +123,33 @@ export function tileRoadCost(base: { gold: number; production: number }, bridges
     bridges,
   };
 }
+
+/** Global sub-parcel coordinates back to the macro cell + parcel pair. */
+export function globalToSubRoad(x: number, y: number): SubRoadCell {
+  const floorDiv = (value: number, span: number) => Math.floor(value / span);
+  const mod = (value: number, span: number) => ((value % span) + span) % span;
+  return {
+    gridX: floorDiv(x, TILE_PARCEL_COLS), gridY: floorDiv(y, TILE_PARCEL_ROWS),
+    parcelX: mod(x, TILE_PARCEL_COLS), parcelY: mod(y, TILE_PARCEL_ROWS),
+  };
+}
+
+/**
+ * Straight-ish sub-parcel walk between two cells (exclusive of `from`, inclusive of `to`).
+ * Lets the player click or drag over gaps — the trace stays cardinal and continuous.
+ */
+export function subRoadPathBetween(from: SubRoadCell, to: SubRoadCell): SubRoadCell[] {
+  const start = subRoadGlobal(from); const end = subRoadGlobal(to);
+  const path: SubRoadCell[] = [];
+  let { x, y } = start;
+  let axis = Math.abs(end.x - x) >= Math.abs(end.y - y);
+  let guard = 0;
+  while ((x !== end.x || y !== end.y) && guard++ < 512) {
+    const canX = x !== end.x; const canY = y !== end.y;
+    if ((axis && canX) || !canY) x += x < end.x ? 1 : -1;
+    else y += y < end.y ? 1 : -1;
+    path.push(globalToSubRoad(x, y));
+    axis = !axis;
+  }
+  return path;
+}

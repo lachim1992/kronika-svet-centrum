@@ -10,7 +10,8 @@ import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
-import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, tileBridgeCells, tileRoadBranches, tileRoadCells, tileRoadCost, type RoadStep, type SubRoadCell } from "@/lib/tileRoads";
+import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadPathBetween, tileBridgeCells, tileRoadBranches, tileRoadCells, tileRoadCost, type RoadStep, type SubRoadCell } from "@/lib/tileRoads";
+import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
@@ -174,7 +175,7 @@ interface Props {
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; province_id: string | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null; coastal: boolean | null };
 type StoredSubBiome = { grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number; sub_biome: string };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
-type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; city_id: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null };
+type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; city_id: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null; upgrade_level: number | null; infrastructure_level: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
 type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null; transport_modes?: string[] | null };
@@ -335,7 +336,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const [tileRes, cityRes, nodeRes, routeRes, tradeFlowRes, basketFlowRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, roadSegmentRes, roadProjectRes, templateRes, buildingRes, districtRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction, coastal").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
-      supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, city_id, controlled_by, production_output, wealth_output, food_value, parcel_index").eq("session_id", sessionId).eq("is_active", true),
+      supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, city_id, controlled_by, production_output, wealth_output, food_value, parcel_index, upgrade_level, infrastructure_level").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("trade_flows").select("id, path_cells, transport_modes").eq("session_id", sessionId).not("path_cells", "is", null),
       supabase.from("basket_trade_flows").select("id, path_cells, transport_modes").eq("session_id", sessionId).not("path_cells", "is", null),
@@ -620,6 +621,33 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return null;
   }, [roadDraft.length, roadDraftSummary, treasury]);
 
+  /**
+   * While drawing: how far from each of my settlements and nodes a finished road still
+   * hooks them into the transport system. Shown so the player knows how far to build.
+   */
+  const roadCatchmentOverlay = useMemo(() => {
+    if (roadDraft.length === 0) return [];
+    const reach = new Map<string, { a: number; b: number; edge: boolean }>();
+    const paint = (origin: { a: number; b: number }, radius: number) => {
+      for (let da = -radius; da <= radius; da++) {
+        for (let db = -radius; db <= radius; db++) {
+          const distance = Math.max(Math.abs(da), Math.abs(db));
+          if (distance > radius) continue;
+          const key = cellKey(origin.a + da, origin.b + db);
+          const existing = reach.get(key);
+          const edge = distance === radius;
+          if (!existing) reach.set(key, { a: origin.a + da, b: origin.b + db, edge });
+          else if (!edge) existing.edge = false;
+        }
+      }
+    };
+    cities.filter(city => city.owner_player === playerName)
+      .forEach(city => paint(cityCellOf(city), cityCatchmentRadius(city)));
+    nodes.filter(node => node.controlled_by === playerName)
+      .forEach(node => paint(entityCell(node), nodeCatchmentRadius(node)));
+    return [...reach.values()];
+  }, [roadDraft.length, cities, nodes, playerName, cityCellOf, entityCell]);
+
   /** Trade flows ride the road trace instead of cutting straight across cell centres. */
   const routePolylines = useMemo(() => routes.flatMap(route => {
     const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path;
@@ -791,6 +819,27 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     toast.success(`${claimHost.name} zabralo parcelu ${parcel.parcel_index + 1}`);
     await loadTileParcels(selectedCell.a, selectedCell.b);
     await load();
+  };
+
+  /** Pointer position → sub-parcel under the cursor (inverse of the isometric projection). */
+  const subRoadFromPointer = (event: { clientX: number; clientY: number; currentTarget: EventTarget & SVGGraphicsElement }): SubRoadCell | null => {
+    const element = event.currentTarget;
+    const matrix = element.getScreenCTM();
+    const svg = element.ownerSVGElement;
+    if (!matrix || !svg) return null;
+    const pointer = svg.createSVGPoint();
+    pointer.x = event.clientX; pointer.y = event.clientY;
+    const local = pointer.matrixTransform(matrix.inverse());
+    const u = (local.x - pan.x) / TILE_SIZE;
+    const v = ((local.y - pan.y) * 2) / TILE_SIZE + 1;
+    const continuousX = (u + v) / 2; const continuousY = (v - u) / 2;
+    const gridX = Math.floor(continuousX); const gridY = Math.floor(continuousY);
+    const clamp = (value: number, span: number) => Math.min(span - 1, Math.max(0, Math.floor(value * span)));
+    return {
+      gridX, gridY,
+      parcelX: clamp(continuousX - gridX, TILE_PARCEL_COLS),
+      parcelY: clamp(continuousY - gridY, TILE_PARCEL_ROWS),
+    };
   };
 
   const parcelQuad = (centerPoint: { x: number; y: number }, px: number, py: number) => {
@@ -1258,12 +1307,26 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setRoadDraft(current => {
       const last = current[current.length - 1];
       if (!last) return [next];
-      const existingIndex = current.findIndex(item => item.gridX === next.gridX && item.gridY === next.gridY && item.parcelX === next.parcelX && item.parcelY === next.parcelY);
+      const sameCell = (a: SubRoadCell, b: SubRoadCell) =>
+        a.gridX === b.gridX && a.gridY === b.gridY && a.parcelX === b.parcelX && a.parcelY === b.parcelY;
+      const existingIndex = current.findIndex(item => sameCell(item, next));
       if (existingIndex >= 0) return current.slice(0, existingIndex + 1);
-      if (!areSubRoadNeighbours(last, next)) { toast.error("Pokračuj přes sousední podčtverec"); return current; }
-      const tile = tileByCell.get(cellKey(next.gridX, next.gridY));
-      if (!tile || tile.is_passable === false || tile.biome_family === "sea") { toast.error("Tímto podčtvercem cesta vést nemůže"); return current; }
-      return [...current, next];
+
+      // Clicking or dragging over a gap fills the trace in between, so the player
+      // never has to hit every single sub-parcel by hand.
+      const filled = areSubRoadNeighbours(last, next) ? [next] : subRoadPathBetween(last, next);
+      if (!filled.length) return current;
+
+      const passable = (cell: SubRoadCell) => {
+        const tile = tileByCell.get(cellKey(cell.gridX, cell.gridY));
+        return !!tile && tile.is_passable !== false && tile.biome_family !== "sea";
+      };
+      const blocked = filled.find(cell => !passable(cell));
+      if (blocked) { toast.error("Tímto podčtvercem cesta vést nemůže"); return current; }
+
+      const result = [...current];
+      filled.forEach(cell => { if (!result.some(item => sameCell(item, cell))) result.push(cell); });
+      return result;
     });
   };
 
@@ -1366,17 +1429,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                     opacity={roadSurface.draft ? .7 : .95} />
                 ))}
               </g>}
-              {roadDraft.length > 0 && <g>
-                {Array.from({ length: TILE_PARCEL_COLS * TILE_PARCEL_ROWS }, (_, parcelIndex) => {
-                  const parcelX = parcelIndex % TILE_PARCEL_COLS; const parcelY = Math.floor(parcelIndex / TILE_PARCEL_COLS);
-                  const next = { gridX: cell.a, gridY: cell.b, parcelX, parcelY };
-                  return <polygon key={`road-hit-${parcelIndex}`} points={parcelQuad(point, parcelX, parcelY)} fill="transparent" stroke="transparent"
-                    className="cursor-crosshair" role="button" aria-label={`Vést cestu přes podčtverec ${parcelIndex + 1}`}
-                    onPointerDown={event => { event.stopPropagation(); extendRoadDraft(next); }}
-                    onPointerEnter={event => { if (event.buttons === 1) extendRoadDraft(next); }}
-                    onClick={event => event.stopPropagation()} />;
-                })}
-              </g>}
 
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
               {!active && showSubBiomes && zoom >= 1.2 && <g pointerEvents="none">
@@ -1409,6 +1461,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 : footprint.length > 0 && renderCityFootprint(footprint, point, holderOwn)}
             </g>;
           })}
+          {roadCatchmentOverlay.length > 0 && <g pointerEvents="none">
+            {roadCatchmentOverlay.map(cell => {
+              const point = at(cell.a, cell.b);
+              return <polygon key={`catch-${cell.a}-${cell.b}`} points={squareDiamondPoints(point, TILE_SIZE - 2)}
+                fill="var(--map-focus)" fillOpacity={cell.edge ? .05 : .12}
+                stroke="var(--map-focus)" strokeWidth={cell.edge ? 1.6 : .7} strokeDasharray="4 3" opacity=".85" />;
+            })}
+          </g>}
           {selected && tileParcels.length > 0 && renderSelectedCellSubnodes(at(selectedCell?.a ?? 0, selectedCell?.b ?? 0))}
           {!cityLayerCityId && riverSegments.map(segment => {
             const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
@@ -1543,7 +1603,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </g>
             </g>;
           })}
+          {/* top-most drawing surface: every click or drag lands on a sub-parcel */}
+          {roadDraft.length > 0 && <rect x={-200000} y={-200000} width={400000} height={400000} fill="transparent"
+            className="cursor-crosshair" role="button" aria-label="Kreslicí plocha cesty"
+            onPointerDown={event => {
+              if (event.button !== 0) return;
+              event.stopPropagation();
+              const next = subRoadFromPointer(event); if (next) extendRoadDraft(next);
+            }}
+            onPointerMove={event => {
+              if (event.buttons !== 1) return;
+              const next = subRoadFromPointer(event); if (next) extendRoadDraft(next);
+            }}
+            onClick={event => event.stopPropagation()} />}
         </g>
+
       </svg>
 
       <div className={`map-floating-control absolute right-3 z-50 flex items-center gap-1 p-1 ${isMobile ? (selected ? "bottom-[66vh]" : "bottom-20") : "bottom-4"}`}>
@@ -1557,7 +1631,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <Button size="icon" variant={showSubBiomes ? "secondary" : "ghost"} aria-label={showSubBiomes ? "Skrýt subbiomy" : "Zobrazit subbiomy"} aria-pressed={showSubBiomes} onClick={() => setShowSubBiomes(value => !value)}><Grid3x3 className={`h-4 w-4 ${showSubBiomes ? "" : "opacity-40"}`} /></Button>
       </div>
       <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>Čtvercová síť · izometrické zobrazení</span></div>
-      {roadDraft.length > 0 && <div className="map-floating-control absolute left-1/2 top-4 z-50 w-[min(92vw,560px)] -translate-x-1/2 p-3">
+      {/* sits at the bottom: the top bar (resources, tabs) would otherwise swallow the clicks */}
+      {roadDraft.length > 0 && <div className={`map-floating-control absolute left-1/2 z-[60] w-[min(92vw,560px)] -translate-x-1/2 p-3 ${isMobile ? "bottom-24" : "bottom-16"}`}>
         <div className="flex flex-wrap items-center gap-2">
           <RouteIcon className="h-4 w-4 text-primary" />
           <strong className="mr-auto text-sm">Kreslení cesty · {Math.max(0, roadDraft.length - 1)} podúseků</strong>
@@ -1574,6 +1649,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </Button>
         </div>
         {roadDraftBlock && <p className="mt-2 text-[11px] text-muted-foreground">{roadDraftBlock}</p>}
+        <p className="mt-1 text-[11px] text-muted-foreground">Vyznačená pole jsou dosah napojení tvých měst a uzlů — cesta v nich je připojí k síti. Klikat můžeš i přes mezeru, trasa se doplní sama.</p>
       </div>}
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
 
