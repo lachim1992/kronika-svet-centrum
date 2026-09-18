@@ -183,6 +183,9 @@ const BuildNodeDialog = ({
         await supabase.functions.invoke("compute-economy-flow", {
           body: { session_id: sessionId },
         });
+        await supabase.functions.invoke("aggregate-realm-totals", {
+          body: { session_id: sessionId },
+        });
         toast.success("Trasy a toky přepočteny", { id: recomputeToast });
       } catch (recomputeErr) {
         console.error("Recompute chain error:", recomputeErr);
