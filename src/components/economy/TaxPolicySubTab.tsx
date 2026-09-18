@@ -70,7 +70,7 @@ const TaxPolicySubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => 
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             ⚖️ Daňová politika
-            <InfoTip>Lafferův princip: vysoká sazba sníží zdaněný objem (úniky, šedá ekonomika). Optimální výnos je obvykle kolem 30–40 % maxima sazby.</InfoTip>
+            <InfoTip>Lafferův princip: vysoká sazba sníží zdaněný objem (úniky, šedá ekonomika). Engine používá L(r) = 1 − (r/r_max)², takže výnos je nejvyšší kolem 58 % maxima sazby a nad tím klesá. Vysoké sazby navíc snižují legitimitu, což dál sráží výběr.</InfoTip>
             <span className="ml-auto text-xs text-muted-foreground">
               Ztráta minulého kola: <span className="font-mono">{((Number(realm?.last_turn_laffer_loss ?? 0)) * 100).toFixed(0)} %</span>
             </span>
