@@ -658,8 +658,20 @@ Deno.serve(async (req) => {
     }> = [];
 
     for (const city of myCities) {
-      const cityDemand = Math.max(1, Math.round(computeCityDemand(city) * grainRationMult));
+      // FOOD = staple_food basket (Layer B, post-trade). Legacy computeCityDemand is
+      // only a fallback for cities the goods layer has not scored yet.
+      const staple = stapleByCity.get(city.id);
+      const cityDemand = Math.max(1, Math.round(
+        (staple ? Number(staple.local_demand || 0) : computeCityDemand(city)) * grainRationMult,
+      ));
+      const cityFoodSupply = staple ? Number(staple.local_supply || 0) : 0;
+      const cityFoodDeficit = staple
+        ? Number(staple.unmet_demand || 0)
+        : Math.max(0, cityDemand - cityFoodSupply);
       totalDemand += cityDemand;
+      totalFoodSupply += cityFoodSupply;
+      totalFoodDeficit += cityFoodDeficit;
+
 
       // ── Population layer economy ──
       const bldgEff = cityBuildingEffects[city.id] || {};
