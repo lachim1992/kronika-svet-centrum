@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     );
 
     const { data: nodes, error: nodesErr } = await sb.from("province_nodes")
-      .select("controlled_by, production_output, wealth_output, food_value, capacity_score, importance_score, logistic_capacity, strategic_resource_type, metadata")
+      .select("controlled_by, production_output, wealth_output, food_value, capacity_score, importance_score, strategic_resource_type, metadata")
       .eq("session_id", session_id);
     if (nodesErr) throw nodesErr;
 
@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
       t.supplies += Number((node as any).food_value || 0);
       t.capacity += Number((node as any).capacity_score || 0);
       t.importance += Number((node as any).importance_score || 0);
-      t.logistic += Number((node as any).logistic_capacity || 0);
+      // province_nodes has no logistic_capacity column; capacity_score is the SSOT.
 
       const res = (node as any).strategic_resource_type || (node as any).metadata?.strategic_resource;
       if (res === "iron" || res === "mineral") t.iron++;
