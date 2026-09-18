@@ -1598,16 +1598,35 @@ Deno.serve(async (req) => {
           overloaded: capacityOverload,
         },
         // v6: legacy `goods_economy` block removed — use `wealth_breakdown` + `last_turn_gdp_*` instead.
+        // Economy Integrity Pass, Krok 4: five separate tax bases, one writer, one formula each.
+        tax_bases: {
+          domestic_tax_base: Math.round(gdp_domestic * 10) / 10,
+          market_tax_base: Math.round(gdp_market * 10) / 10,
+          transit_tax_base: Math.round(gdp_transit * 10) / 10,
+          extraction_tax_base: Math.round(gdp_extraction * 10) / 10,
+          poll_tax_base: totalPopulation,
+        },
         wealth_breakdown: {
           pop_tax: pillarPopTax,
           domestic_market: pillarDomesticMarket,
           goods_fiscal: pillarGoodsFiscal,
+          // goods_fiscal detail (real breakdown, not placeholder zeros)
+          goods_fiscal_detail: {
+            market_tariff: pillarMarketTariff,
+            transit_toll: pillarTransitToll,
+            extraction_tax: pillarExtractionTax,
+          },
           route_commerce: pillarRouteCommerce,
+          // fiscal_revenue = income components only (expenses listed separately)
+          fiscal_revenue: Math.round(totalWealthIncome * 10) / 10,
           total_income: Math.round(totalWealthIncome * 10) / 10,
+          recurring_expenses: Math.round((armyWealthUpkeep + sportFundingExpense) * 10) / 10,
+          turn_fiscal_delta: Math.round((totalWealthIncome - armyWealthUpkeep - sportFundingExpense - totalTollsPaid) * 10) / 10,
           army_upkeep: armyWealthUpkeep,
           tolls: totalTollsPaid,
           sport_funding: sportFundingExpense,
         },
+
       },
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
