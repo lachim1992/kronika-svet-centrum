@@ -140,14 +140,18 @@ Deno.serve(async (req) => {
       const cell = cityCell.get(city.id); if (!cell) continue;
       if (graph.has(cell)) continue;
       const [x, y] = cell.split(",").map(Number);
-      const hit = nearestTransportCell(x, y, cityCatchmentRadius(city), transportCells);
+      // The spur is a real land haul: one edge per walked tile, so the flow line
+      // follows the terrain instead of jumping over water.
+      const hit = spurWalk(x, y, cityCatchmentRadius(city), transportCells, landCells);
       if (!hit || hit.dist <= 0) continue;
-      const id = `spur:${city.id}`;
       const capacity = spurCapacity(hit.dist);
-      const cost = SPUR_COST_PER_TILE * hit.dist;
-      addEdge(cell, { id, to: hit.cell, cost, capacity, mode: "road" });
-      addEdge(hit.cell, { id, to: cell, cost, capacity, mode: "road" });
-      edgeCapacity.set(id, capacity);
+      for (let step = 0; step < hit.cells.length - 1; step++) {
+        const from = hit.cells[step]; const to = hit.cells[step + 1];
+        const id = `spur:${city.id}:${step}`;
+        addEdge(from, { id, to, cost: SPUR_COST_PER_TILE, capacity, mode: "spur" });
+        addEdge(to, { id, to: from, cost: SPUR_COST_PER_TILE, capacity, mode: "spur" });
+        edgeCapacity.set(id, capacity);
+      }
     }
     // Trade system membership: the city's own link wins, node link is the fallback.
     for (const city of cityRes.data || []) {
