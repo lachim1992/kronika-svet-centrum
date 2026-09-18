@@ -1251,7 +1251,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setSelectedNodeId(null);
     setSelected(null);
     onDetailOpenChange?.(false);
-    toast.info("Klikáním nebo tažením vyznač trasu přes sousední podčtverce");
+    toast.info("Klikáním nebo tažením vyznač trasu přes sousední podčtverce. Mapu posuneš pravým nebo prostředním tlačítkem, přiblížíš kolečkem.");
   };
 
   const extendRoadDraft = (next: SubRoadCell) => {
@@ -1291,9 +1291,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   return (
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
       style={{ touchAction: "none" }}
+      onContextMenu={(event) => { if (roadDraft.length > 0) event.preventDefault(); }}
       onPointerDown={(event) => {
-        // Never capture the pointer while drawing: tile groups must receive the click/drag.
-        if (roadDraft.length > 0) return;
         pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
@@ -1301,10 +1300,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           dragRef.current = null;
           return;
         }
+        // While drawing a road the primary button belongs to the route; pan with middle/right button or two fingers.
+        if (roadDraft.length > 0 && event.button === 0) { dragRef.current = null; return; }
         dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
       }}
       onPointerMove={(event) => {
-        if (roadDraft.length > 0) return;
+
         if (pinchRef.current.has(event.pointerId)) pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         const start = pinchStartRef.current;
         if (start && pinchRef.current.size === 2) {
@@ -1348,9 +1349,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const holderCity = holderCityId ? cityById.get(holderCityId) : undefined;
             const holderOwn = holderCity ? holderCity.owner_player === playerName : true;
             const holderColor = holderCity ? (holderOwn ? "var(--map-city-own)" : "var(--map-city-rival)") : colors[1];
-            return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }}
-              onPointerEnter={event => { if (roadDraft.length > 0 && event.buttons === 1) focusTile(tile); }}
+            return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (roadDraft.length > 0) return; if (!dragRef.current?.moved) focusTile(tile); }}
               className={roadDraft.length > 0 ? "cursor-crosshair" : "cursor-pointer"}>
+
               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
