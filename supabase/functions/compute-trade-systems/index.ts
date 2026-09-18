@@ -74,6 +74,10 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const session_id: string | undefined = body.session_id;
+    // INVARIANT 1/3: event-log appends are turn-resolution only.
+    // Pure derived recompute (refresh-economy, UI calls) must NOT append to
+    // world_events — repeated refreshes would spam formed/dissolved/split rows.
+    const emitEvents: boolean = body.emit_events === true;
     if (!session_id) {
       return new Response(JSON.stringify({ error: "session_id required" }), {
         status: 400,
