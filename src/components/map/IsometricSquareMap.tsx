@@ -1349,9 +1349,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const holderCity = holderCityId ? cityById.get(holderCityId) : undefined;
             const holderOwn = holderCity ? holderCity.owner_player === playerName : true;
             const holderColor = holderCity ? (holderOwn ? "var(--map-city-own)" : "var(--map-city-rival)") : colors[1];
-            return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }}
-              onPointerEnter={event => { if (roadDraft.length > 0 && event.buttons === 1) focusTile(tile); }}
+            return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (roadDraft.length > 0) return; if (!dragRef.current?.moved) focusTile(tile); }}
               className={roadDraft.length > 0 ? "cursor-crosshair" : "cursor-pointer"}>
+
               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
