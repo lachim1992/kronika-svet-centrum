@@ -149,13 +149,22 @@ Deno.serve(async (req) => {
       const [x, y] = key.split(",").map(Number);
       for (const [dx, dy] of [[1, 0], [0, 1]]) if (riverKeys.has(`${x + dx},${y + dy}`)) ufUnion(uf, cellId(x, y), cellId(x + dx, y + dy));
     }
-    // A node joins transport automatically when its field contains a completed road or river.
+    // A node joins transport when a completed road or river cell lies within its
+    // CATCHMENT RADIUS (see _shared/roadCatchment.ts) — not only on its own tile.
     const transportCells = new Set<string>(riverKeys);
     for (const r of routes) { transportCells.add(`${(r as any).from_x},${(r as any).from_y}`); transportCells.add(`${(r as any).to_x},${(r as any).to_y}`); }
+    let spurConnected = 0;
+    const nodeAttachDist = new Map<string, number>();
     for (const node of nodes) {
       const x = Number((node as any).grid_x ?? (node as any).hex_q); const y = Number((node as any).grid_y ?? (node as any).hex_r);
-      if (transportCells.has(`${x},${y}`)) ufUnion(uf, node.id, cellId(x, y));
+      const radius = nodeCatchmentRadius(node);
+      const hit = nearestTransportCell(x, y, radius, transportCells);
+      if (!hit) continue;
+      ufUnion(uf, node.id, cellId(...(hit.cell.split(",").map(Number) as [number, number])));
+      nodeAttachDist.set(node.id, hit.dist);
+      if (hit.dist > 0) spurConnected++;
     }
+
 
     // 3) Group nodes by component root
     const compNodes = new Map<string, string[]>();
