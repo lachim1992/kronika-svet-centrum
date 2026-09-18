@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
       .eq("session_id", session_id);
     if (bErr) { console.error("baskets load", bErr); throw bErr; }
 
-    // 2. Load nodes → city_id → trade_system_id
+    // 2. Load nodes → city_id → trade_system_id (fallback for cities without direct link)
     const { data: nodes, error: nErr } = await sb
       .from("province_nodes")
       .select("city_id, trade_system_id")
