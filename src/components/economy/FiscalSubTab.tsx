@@ -95,7 +95,7 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             🏛️ Příjmy státu
-            <InfoTip>Skutečné příjmy pokladny — pouze daně, cla a capture z ekonomické aktivity.</InfoTip>
+            <InfoTip>Skutečné příjmy pokladny z posledního vyhodnocení tahu — daně a cla. Přepočet ekonomiky je nemění.</InfoTip>
             <span className="ml-auto font-mono font-bold text-xl text-primary">+{fi.totalIncome.toFixed(1)} /kolo</span>
           </CardTitle>
         </CardHeader>
@@ -113,12 +113,12 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
             </div>
           ))}
 
-          {/* Goods Fiscal breakdown — informational only, already counted in pillar 3 */}
-          {fi.goodsFiscal > 0 && (
+          {/* Goods Fiscal breakdown — informational only, already counted in the goods pillar */}
+          {goodsBreakdown.length > 0 && (
             <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 Rozklad pilíře „Daně ze zboží"
-                <InfoTip side="right">Tyto čtyři položky jsou již zahrnuty v pilíři Daně ze zboží — nesčítají se znovu.</InfoTip>
+                <InfoTip side="right">Tyto položky jsou již zahrnuty v pilíři Daně ze zboží — nesčítají se znovu.</InfoTip>
               </div>
               {goodsBreakdown.map(g => (
                 <div key={g.label} className="flex justify-between text-[11px] text-muted-foreground pl-3">
@@ -144,24 +144,22 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
             </div>
           </div>
 
-          {/* Pillar 2 transparency */}
+          {/* Tax bases — five separate bases (canonical from last turn resolution) */}
           <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-              Rozklad pilíře „Domácí trh"
-              <InfoTip side="right">Vstupy z trade-flow solveru. Domácí složka × 0,4 + tržní podíl × 0,6.</InfoTip>
+              Daňové základy z posledního kola
+              <InfoTip side="right">Každá daň má vlastní základ. Příjem = základ × sazba × Lafferova křivka × správa (legitimita).</InfoTip>
             </div>
-            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
-              <span>🏠 Domácí složka × 0,4</span>
-              <span className="font-mono">{wealthDomesticComponent.toFixed(1)} → {(wealthDomesticComponent * PILLAR2_DOMESTIC_WEIGHT).toFixed(1)}</span>
-            </div>
-            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
-              <span>🌍 Tržní podíl × 0,6</span>
-              <span className="font-mono">{wealthMarketShare.toFixed(1)} → {(wealthMarketShare * PILLAR2_MARKET_WEIGHT).toFixed(1)}</span>
-            </div>
+            {taxBases.map(b => (
+              <div key={b.label} className="flex justify-between text-[11px] text-muted-foreground pl-3">
+                <span>{b.icon} {b.label}</span>
+                <span className="font-mono">{b.value.toFixed(1)}</span>
+              </div>
+            ))}
           </div>
 
           {/* Pillar summary footer */}
-          <div className="pt-2 border-t border-border/30 grid grid-cols-4 gap-2 text-[10px] text-muted-foreground">
+          <div className="pt-2 border-t border-border/30 grid grid-cols-3 gap-2 text-[10px] text-muted-foreground">
             <div className="text-center">
               <div className="font-semibold text-foreground">{fi.popTax.toFixed(1)}</div>
               <div>Populace</div>
@@ -172,13 +170,10 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
             </div>
             <div className="text-center">
               <div className="font-semibold text-foreground">{fi.goodsFiscal.toFixed(1)}</div>
-              <div>Goods fiscal</div>
-            </div>
-            <div className="text-center">
-              <div className="font-semibold text-foreground">{fi.corridorTolls.toFixed(1)}</div>
-              <div>Trasy</div>
+              <div>Daně ze zboží</div>
             </div>
           </div>
+
         </CardContent>
       </Card>
 
