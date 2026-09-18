@@ -698,6 +698,75 @@ Deno.serve(async (req) => {
     }));
 
     // ═══════════════════════════════════════════
+    // 4a2. BUILDING & DISTRICT COMPLETION — SOLE WRITER
+    // Runs AFTER the world turn advanced (so effectiveTurn = turnNumber + 1, no off-by-one)
+    // and BEFORE the economy pipeline, so a finished specialized yard contributes its
+    // basket_outputs in the very same turn. process-turn must not complete them again.
+    // ═══════════════════════════════════════════
+    const effectiveTurn = turnNumber + 1;
+    try {
+      const [{ data: allCities }, { data: allRealms }] = await Promise.all([
+        supabase.from("cities").select("id, name, owner_player").eq("session_id", sessionId),
+        supabase.from("realm_resources").select("player_name, total_capacity").eq("session_id", sessionId),
+      ]);
+      const ownerOf = new Map<string, string>();
+      const cityName = new Map<string, string>();
+      for (const c of allCities || []) { ownerOf.set(c.id, c.owner_player || ""); cityName.set(c.id, c.name); }
+      const capacityOf = new Map<string, number>();
+      for (const r of allRealms || []) capacityOf.set(r.player_name, Number(r.total_capacity || 0));
+
+      const { data: pendingBuildings } = await supabase.from("city_buildings")
+        .select("id, name, city_id, build_duration, build_started_turn")
+        .eq("session_id", sessionId).eq("status", "building");
+
+      // Same capacity-overload rule as before, evaluated per owner.
+      const activeByOwner = new Map<string, number>();
+      for (const b of pendingBuildings || []) {
+        const owner = ownerOf.get(b.city_id) || "";
+        activeByOwner.set(owner, (activeByOwner.get(owner) || 0) + 1);
+      }
+      let buildingsCompleted = 0;
+      for (const b of pendingBuildings || []) {
+        const owner = ownerOf.get(b.city_id) || "";
+        const limit = Math.max(2, Math.floor((capacityOf.get(owner) || 0) / 5 + 2));
+        const overloaded = (activeByOwner.get(owner) || 0) > limit;
+        const duration = Math.max(1, Math.round((b.build_duration || 1) * (overloaded ? 1.5 : 1.0)));
+        if (effectiveTurn >= (b.build_started_turn || 0) + duration) {
+          await supabase.from("city_buildings")
+            .update({ status: "completed", completed_turn: effectiveTurn }).eq("id", b.id);
+          buildingsCompleted++;
+          await safeInsert(supabase.from("chronicle_entries").insert({
+            session_id: sessionId, turn_from: effectiveTurn, turn_to: effectiveTurn,
+            text: `🏗️ Stavba "${b.name}" v ${cityName.get(b.city_id) || "?"} byla dokončena.`,
+            source_type: "event_fragment",
+          }));
+        }
+      }
+
+      const { data: pendingDistricts } = await supabase.from("city_districts")
+        .select("id, name, city_id, build_turns, build_started_turn")
+        .eq("session_id", sessionId).eq("status", "building");
+      let districtsCompleted = 0;
+      for (const d of pendingDistricts || []) {
+        if (effectiveTurn >= (d.build_started_turn || 0) + (d.build_turns || 1)) {
+          await supabase.from("city_districts")
+            .update({ status: "completed", completed_turn: effectiveTurn }).eq("id", d.id);
+          districtsCompleted++;
+          await safeInsert(supabase.from("chronicle_entries").insert({
+            session_id: sessionId, turn_from: effectiveTurn, turn_to: effectiveTurn,
+            text: `🏘️ Čtvrť "${d.name}" v ${cityName.get(d.city_id) || "?"} byla dokončena.`,
+            source_type: "event_fragment",
+          }));
+        }
+      }
+      results.constructionCompletion = { buildingsCompleted, districtsCompleted, effectiveTurn };
+    } catch (e) {
+      console.error("[commit-turn] construction completion error:", (e as Error).message);
+      results.constructionCompletion = { error: (e as Error).message };
+    }
+
+
+    // ═══════════════════════════════════════════
     // 4b. RECOMPUTE ROUTES + HEX FLOWS + ECONOMY FLOW
     // Ensures new nodes built between turns get connected before economy runs.
     // ═══════════════════════════════════════════
