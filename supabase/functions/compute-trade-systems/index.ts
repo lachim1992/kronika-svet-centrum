@@ -167,6 +167,23 @@ Deno.serve(async (req) => {
       if (hit.dist > 0) spurConnected++;
     }
 
+    // Cities are first-class members of a trade system: a road inside the city
+    // catchment radius attaches the whole market (its baskets) to the network.
+    const { data: cityRows } = await sb
+      .from("cities")
+      .select("id, owner_player, grid_x, grid_y, province_q, province_r, settlement_level, development_level")
+      .eq("session_id", session_id);
+    const cities = cityRows || [];
+    let citiesConnected = 0;
+    for (const city of cities) {
+      const x = Number((city as any).grid_x ?? (city as any).province_q);
+      const y = Number((city as any).grid_y ?? (city as any).province_r);
+      const hit = nearestTransportCell(x, y, cityCatchmentRadius(city), transportCells);
+      if (!hit) continue;
+      ufUnion(uf, `city:${city.id}`, cellId(...(hit.cell.split(",").map(Number) as [number, number])));
+      citiesConnected++;
+    }
+
 
     // 3) Group nodes by component root
     const compNodes = new Map<string, string[]>();
