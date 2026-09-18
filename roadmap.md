@@ -46,3 +46,10 @@
   - [x] Align turn processing with current basket and military fields
   - [x] Restore rumor, annotation, crisis, victory, and briefing queries
   - [x] Restrict persistent test-mode effects to administrators
+
+## Layer A/B/C pass (otevřeno)
+- [ ] total_gdp = realized_goods_value (bez exportu), export jako samostatná obchodní metrika
+- [ ] jednotná basketová valuace auto/recipe/buildings + goods_value_detail
+- [ ] nodeProductionFactor pryč z recipe quantity, jen throughput budget
+- [ ] wealth_output deprecated + allowlist guard
+- [ ] ProductionOverviewCard jako řetězec, obchod vedle
