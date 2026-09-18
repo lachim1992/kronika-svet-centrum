@@ -303,33 +303,13 @@ Deno.serve(async (req) => {
       .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
 
     // ══════════════════════════════════════════
-    // BUILDING COMPLETION
+    // BUILDING COMPLETION — NOT HERE.
+    // commit-turn (phase 4a2) is the sole writer of building/district completion, so a
+    // finished yard feeds the same turn's goods pipeline. process-turn only reads the
+    // effects of already completed structures.
     // ══════════════════════════════════════════
-    const { data: allBuildings } = await supabase.from("city_buildings").select("*")
-      .eq("session_id", sessionId).eq("status", "building")
-      .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    const completedCount = 0;
 
-    let completedCount = 0;
-    // Capacity-based building speed: if too many active projects, some may be delayed
-    const activeBuildingCount = (allBuildings || []).length;
-    const capacityBuildLimit = Math.max(2, Math.floor(totalCapacity / 5 + 2)); // Minimum 2 projects at full speed
-    const capacityOverload = activeBuildingCount > capacityBuildLimit;
-    if (capacityOverload) {
-      logEntries.push(`🏛️ Kapacita přetížena: ${activeBuildingCount} staveb vs limit ${capacityBuildLimit} — stavby zpomaleny`);
-    }
-
-    for (const b of (allBuildings || [])) {
-      // Marble reduces build duration, capacity overload increases it
-      const baseDuration = b.build_duration || 1;
-      const adjustedDuration = Math.max(1, Math.round(baseDuration * (capacityOverload ? 1.5 : 1.0)));
-      const finishTurn = (b.build_started_turn || 0) + adjustedDuration;
-      if (currentTurn >= finishTurn) {
-        await supabase.from("city_buildings").update({ status: "completed", completed_turn: currentTurn }).eq("id", b.id);
-        completedCount++;
-        const cityName = myCities.find(c => c.id === b.city_id)?.name || "?";
-        logEntries.push(`🏗️ Stavba "${b.name}" v ${cityName} dokončena!`);
-      }
-    }
 
     // ══════════════════════════════════════════
     // BUILDING EFFECTS (per-city aggregate)
