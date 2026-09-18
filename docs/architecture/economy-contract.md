@@ -137,3 +137,21 @@ Graf v `HistoryChartsPanel` je „Objem nabídky", nikoli HDP.
 **5. Export je měřená veličina.** `realm_resources.export_gross_value` zapisuje jen
 `aggregate-realm-totals` ze součtu `basket_trade_flows.gross_value`.
 `getMarketPosition()` čte tento sloupec — nikdy `total_gdp − goods_production_value`.
+
+## Layer A/B/C pass — Krok 4b + 4c (process-turn)
+
+- `totalCityProduction` je ODSTRANĚN. process-turn už nepočítá žádnou vlastní produkci;
+  Layer A (`province_nodes.production_output`, `capacity_score`) je jen potenciál, Layer B
+  (Goods v4.3) je jediná realizovaná produkce.
+- **Potraviny**: SSOT je `city_market_baskets` s `basket_key = 'staple_food'` (post-trade).
+  `food_available = local_supply` (import už je zahrnut), `food_demand = local_demand`,
+  `food_deficit = unmet_demand`. Bonus `goods_supply_volume → grain_reserve` je odstraněn.
+- `last_turn_grain_prod` = Σ staple_food `local_supply`, `last_turn_grain_cons` = Σ `local_demand`.
+- **Daňové základy**: `domestic = goods_domestic_consumption_value`,
+  `market = goods_production_value`, `extraction = goods_extraction_value × wealth_mult`,
+  `transit` = route capacity, `poll` = populace. Layer A se daňovým základem nikdy nestává.
+- **production_reserve**: akumulace je DEPRECATED (`productionIncome = 0`). Existující zásoba
+  se dál spotřebovává v `command-dispatch` na stavby a silnice — dočasný nebezpečný stav.
+  CAPEX musí před release přejít na construction goods (samostatný pass).
+- `laborGrainMult` / `laborWealthMult` nesmí vytvářet paralelní produkci; zůstávají jen
+  jako modifikátory kapacity/bohatství a v diagnostice.
