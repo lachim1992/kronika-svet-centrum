@@ -161,7 +161,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, recalcOnly } = await req.json();
+    // `allowCapexAccrual` is passed as true by commit-turn ONLY when the whole Layer B
+    // pipeline succeeded. Stale goods data must never fund construction stock.
+    const { sessionId, playerName, recalcOnly, allowCapexAccrual } = await req.json();
+
     if (!sessionId || !playerName) throw new Error("Missing sessionId or playerName");
 
     const supabase = createClient(
