@@ -221,3 +221,42 @@ describe("UI data contract", () => {
     expect(src).not.toMatch(/realm\?\.wealth_market_share/);
   });
 });
+
+// ── Layer A → B → C (krok 4b/4c) ──────────────────────────────────────────
+describe("Layer A/B/C separation", () => {
+  it("process-turn has no parallel production macro", () => {
+    const src = readFileSync("supabase/functions/process-turn/index.ts", "utf8");
+    expect(src).not.toMatch(/totalCityProduction\s*[+\-]?=/);
+    expect(src).not.toMatch(/const cityProduction\s*=/);
+  });
+
+  it("process-turn sources tax bases from the goods layer", () => {
+    const src = readFileSync("supabase/functions/process-turn/index.ts", "utf8");
+    expect(src).toContain("goodsDomesticConsumptionValue");
+    expect(src).toContain("goodsExtractionValue");
+    expect(src).toMatch(/gdp_market\s*=\s*goodsProductionValue/);
+  });
+
+  it("food comes from the staple_food basket only", () => {
+    const src = readFileSync("supabase/functions/process-turn/index.ts", "utf8");
+    expect(src).toContain("stapleByCity");
+    expect(src).toMatch(/last_turn_grain_prod:\s*Math\.round\(totalFoodSupply\)/);
+    // goods_supply_volume must not top up the grain reserve any more
+    expect(src).not.toMatch(/globalGrainReserve \+= goodsSupplyBonus/);
+  });
+
+  it("production_reserve accumulation is explicitly deprecated", () => {
+    const src = readFileSync("supabase/functions/process-turn/index.ts", "utf8");
+    expect(src).toMatch(/DEPRECATED \/ UNRESOLVED: production_reserve/);
+    expect(src).toMatch(/const productionIncome\s*=\s*0/);
+  });
+
+  it("ProductionOverviewCard shows the chain and never reads total_wealth", () => {
+    const src = readFileSync("src/components/economy/ProductionOverviewCard.tsx", "utf8");
+    expect(src).not.toMatch(/realm\.total_wealth/);
+    expect(src).not.toMatch(/wealth_output/);
+    expect(src).toContain("total_production_capacity");
+    expect(src).toContain("goods_value_detail");
+    expect(src).toContain("export_gross_value");
+  });
+});
