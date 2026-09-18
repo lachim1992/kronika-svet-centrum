@@ -37,16 +37,25 @@ Zapsat do `docs/architecture/economy-contract.md` a dodržet v kódu i UI:
 FYZICKÁ EKONOMIKA   goods_production_value, goods_supply_volume,
                     trade_turnover, commercial_retention
 GDP                 total_gdp = hodnota finální produkce za tah
+                    total_gdp ≠ trade turnover, ≠ tax revenue, ≠ treasury,
+                    ≠ domácí produkce + export, ≠ součet node outputu
+                    total_gdp NESMÍ dvojitě započítat intermediate goods
+                    (obilí → mouka → chléb se počítá jednou: final output
+                     nebo value added)
 DAŇOVÉ ZÁKLADY      domestic_tax_base, market_tax_base, transit_tax_base,
                     extraction_tax_base, poll_tax_base   (pět samostatných základů)
 FISKÁLNÍ PŘÍJEM     fiscal_revenue = wealth_pop_tax + wealth_domestic_market
                                      + goods_wealth_fiscal
-VÝDAJE              army_upkeep, sport_funding, tolls, ...
-TREASURY            net_treasury_change = fiscal_revenue − expenses ± transfers
-                    gold_reserve_new = gold_reserve_old + net_treasury_change
+VÝDAJE              recurring_expenses = army_upkeep + sport_funding + ...
+TURN RESOLUTION     turn_fiscal_delta = fiscal_revenue − recurring_expenses
+                                        ± turn transfers
+                    gold_after_turn = gold_before_turn + turn_fiscal_delta
+TRANSAKCE HRÁČE     transaction_delta = road / building / purchase / ...
+                    gold_reserve += transaction_delta   (command-dispatch)
 ```
 
-Žádný univerzální `tax_base`. `total_wealth` se přestává používat jako ekonomický koncept — v DB zůstává jen jako dočasný alias `fiscal_revenue` do doby, než se přepíšou čtenáři, a v UI se popisuje výhradně jako fiskální příjem.
+Žádný univerzální `tax_base`. Žádný obecný `net_treasury_change` — turnový fiskální delta a účetnictví hráčových akcí jsou oddělené koncepty. `total_wealth` se přestává používat jako ekonomický koncept; v DB zůstává jen jako dočasný alias `fiscal_revenue`, dokud se nepřepíšou čtenáři, a v UI se popisuje výhradně jako fiskální příjem.
+
 
 ## Krok 1 — P0: jediný vlastník fiskálu
 
