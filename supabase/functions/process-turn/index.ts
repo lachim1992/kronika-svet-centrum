@@ -249,7 +249,7 @@ Deno.serve(async (req) => {
     // ── Load network layer: nodes linked to cities + routes + supply state ──
     const [nodesRes, routesRes, supplyRes] = await Promise.all([
       supabase.from("province_nodes")
-        .select("id, city_id, node_type, flow_role, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, isolation_penalty, controlled_by, toll_rate, throughput_military, province_id")
+        .select("id, city_id, node_type, flow_role, production_output, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, isolation_penalty, controlled_by, toll_rate, throughput_military, province_id")
         .eq("session_id", sessionId),
       supabase.from("province_routes")
         .select("id, node_a, node_b, control_state, capacity_value, damage_level")
