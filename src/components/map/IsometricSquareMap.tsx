@@ -354,7 +354,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
-    const economicRoutes = [...(tradeFlowRes.data || []), ...(basketFlowRes.data || [])].map((flow: any) => ({ route_id: flow.id, path_cells: flow.path_cells, hex_path: null, transport_modes: flow.transport_modes }));
+    // One animated line per physical corridor. Goods flows are per basket, so many
+    // rows share the same path — drawing each would stack identical lines on top of
+    // one another. Baskets (Layer 2) win over the legacy trade_flows rows.
+    const flowRows: any[] = (basketFlowRes.data || []).length ? (basketFlowRes.data || []) : (tradeFlowRes.data || []);
+    const corridors = new Map<string, any>();
+    flowRows.forEach((flow: any) => {
+      if (!Array.isArray(flow.path_cells) || flow.path_cells.length < 2) return;
+      const key = flow.path_cells.map((cell: any) => `${cell.x},${cell.y}`).join(">");
+      if (!corridors.has(key)) corridors.set(key, { route_id: key, path_cells: flow.path_cells, hex_path: null, transport_modes: flow.transport_modes });
+    });
+    const economicRoutes = [...corridors.values()];
     setRoutes((economicRoutes.length ? economicRoutes : (routeRes.data || [])) as unknown as Route[]); setArmies((armyRes.data || []) as Army[]);
     setCityParcels((parcelRes.data || []) as TileParcel[]);
     setStoredSubBiomes((subBiomeRes.data || []) as StoredSubBiome[]);
