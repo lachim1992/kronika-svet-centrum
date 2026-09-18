@@ -61,7 +61,7 @@ TRANSAKCE HRÁČE     transaction_delta = road / building / purchase / ...
 
 - Nejprve **zjistit**, zda lze `fiscal_capture` deterministicky dopočítat z existujících řádků `basket_trade_flows` (quantity, value, tarif, access). Pokud ano, žádná migrace — `process-turn` si ho spočítá při čtení flow řádků. Migraci přidávat jen pokud se ukáže, že vstup pro dopočet v řádcích chybí.
 - `compute-basket-trade-flows`: odstranit blok 9 (fold do `goods_wealth_fiscal`) a vůbec nezapisovat do `realm_resources` fiskální pole. Vrací pouze flows.
-- `process-turn` zůstává jediným writerem `wealth_*`, `goods_wealth_fiscal`, `wealth_breakdown`, `gold_reserve`, legitimity.
+- `process-turn` zůstává jediným writerem `wealth_*`, `goods_wealth_fiscal`, `wealth_breakdown`, daňových základů, periodických výdajů a ekonomické legitimity; `gold_reserve` mění jen o `turn_fiscal_delta`. Jednorázové transakce hráče (stavba, silnice, nákup) zůstávají v `command-dispatch` — nepřesouvat je.
 - Do hlaviček obou funkcí přidat writer/reader kontrakt.
 
 ## Krok 2 — P0: pořadí pipeline
