@@ -525,6 +525,8 @@ Deno.serve(async (req) => {
         nodes: nodes.length,
         routes_used: usedRoutes,
         spur_connected_nodes: spurConnected,
+        cities_connected: citiesConnected,
+        cities_total: cities.length,
 
         events: eventsToInsert.length,
         access_rows: accessRows.length,
