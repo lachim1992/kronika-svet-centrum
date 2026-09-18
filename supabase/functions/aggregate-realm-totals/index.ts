@@ -95,22 +95,26 @@ Deno.serve(async (req) => {
       if (res === "incense") t.incense++;
     }
 
-    const playerNames = Array.from(byPlayer.keys());
-    if (playerNames.length === 0) {
+    // Fiscal pillars are READ ONLY here — written by process-turn.
+    // goods_production_value is READ ONLY here — written by compute-trade-flows (Layer B).
+    // Read EVERY realm of the session (not just node owners): a player who lost or never
+    // owned nodes must be written as an explicit 0, never left with a stale capacity.
+    const { data: realmRows } = await sb.from("realm_resources")
+      .select("player_name, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal, goods_production_value")
+      .eq("session_id", session_id);
+    for (const r of realmRows || []) {
+      const p = (r as any).player_name as string;
+      if (p && !byPlayer.has(p)) byPlayer.set(p, emptyTotals());
+    }
+    if (byPlayer.size === 0) {
       return new Response(JSON.stringify({ ok: true, players: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    // Fiscal pillars are READ ONLY here — written by process-turn.
-    // goods_production_value is READ ONLY here — written by compute-trade-flows (Layer B).
-    const { data: realmRows } = await sb.from("realm_resources")
-      .select("player_name, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal, goods_production_value")
-      .eq("session_id", session_id)
-      .in("player_name", playerNames);
     const pillarsByPlayer = new Map<string, any>(
       (realmRows || []).map((r: any) => [r.player_name, r]),
     );
+
 
     // Export magnitude — a separate TRADE metric. It must NOT be added to GDP:
     // exported goods are already inside realized production value (double counting).
