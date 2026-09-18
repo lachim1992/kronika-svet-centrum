@@ -1406,9 +1406,16 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // UPDATE REALM RESOURCES (with faith + prestige + supply strain + mobilization penalties)
     // ══════════════════════════════════════════
-    // Production reserve accumulation: totalCityProduction (net of army upkeep) added each turn
-    const productionIncome = Math.max(0, Math.round(totalCityProduction - armyProductionUpkeep));
+    // ⚠️ DEPRECATED / UNRESOLVED: production_reserve accumulation.
+    // It used to accrue from the removed parallel macro `totalCityProduction`. Layer A
+    // capacity must NOT be converted into CAPEX stock, and no replacement conversion is
+    // invented in this pass. Existing stock is preserved and still spent by
+    // command-dispatch (buildings, roads) — this is a temporary, deliberately unsafe
+    // compatibility state. TODO(construction-goods pass): CAPEX must come from realized
+    // construction goods (Layer B) before gameplay release.
+    const productionIncome = 0;
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
+
 
     // ── Goods economy: fiscal data now handled by 4-pillar model (pillar 3) ──
     // No longer adding goodsFiscalBonus separately — it's already in wealthIncome.
