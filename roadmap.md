@@ -48,10 +48,10 @@
   - [x] Restrict persistent test-mode effects to administrators
 
 ## Layer A/B/C pass (otevřeno)
-- [ ] total_gdp = realized_goods_value (bez exportu), export jako samostatná obchodní metrika
-- [ ] jednotná basketová valuace auto/recipe/buildings + goods_value_detail
-- [ ] nodeProductionFactor pryč z recipe quantity, jen throughput budget
-- [ ] wealth_output deprecated + allowlist guard
+- [x] total_gdp = realized_goods_value (bez exportu), export jako samostatná obchodní metrika
+- [x] jednotná basketová valuace auto/recipe/buildings + goods_value_detail
+- [x] nodeProductionFactor pryč z recipe quantity, jen throughput budget
+- [x] wealth_output deprecated + allowlist guard
 - [x] ProductionOverviewCard jako řetězec, obchod vedle
 - [x] Krok 4b: zrušit paralelní produkci v process-turn (totalCityProduction odstraněn)
 - [x] hlad/obilí ze staple_food, ne z goods_supply_volume
