@@ -213,9 +213,13 @@ Deno.serve(async (req) => {
     // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.3) ──
     const goodsProductionValue = realm.goods_production_value || 0;
     const goodsSupplyVolume = realm.goods_supply_volume || 0;
-    // v6 fiscal: legacy wealth_domestic_component / wealth_market_share NO LONGER read.
-    // gdp_domestic is now computed from city production × consumption pressure (below).
-    // gdp_market = goods_production_value (Goods v4.3 is the canonical market volume).
+    // LAYER B published values (compute-trade-flows / compute-basket-trade-flows):
+    //   goods_domestic_consumption_value = Σ satisfied consumption × basketValue (post-trade)
+    //   goods_extraction_value           = realized recipe output on production_role=source nodes
+    // These are the ONLY sources of the domestic and extraction tax bases.
+    const goodsDomesticConsumptionValue = Number((realm as any).goods_domestic_consumption_value || 0);
+    const goodsExtractionValue = Number((realm as any).goods_extraction_value || 0);
+
 
     logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Fyzický výnos: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
     if (goodsProductionValue > 0) {
