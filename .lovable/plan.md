@@ -6,7 +6,11 @@ Dva invarianty, které platí nad všemi kroky:
 
 **INVARIANT 1** — `process-turn` je jediným vlastníkem **turn-resolution** fiskálu: daňové základy, daňový příjem, periodické výdaje, `wealth_*` komponenty, fiskální breakdown a legitimita vznikající z ekonomického vyhodnocení. `command-dispatch` smí měnit `gold_reserve` **pouze** kvůli explicitní jednorázové transakci hráče (stavba, silnice, nákup, transfer) — cena stavby ani silnice se do `process-turn` nepřesouvá.
 
-**INVARIANT 2** — `refresh-economy` = PURE DERIVED RECOMPUTE. Smí přepočítat routes, produkci, poptávku, markets, trade flows a derived agregáty. Nesmí vybírat daně, platit upkeep, měnit `gold_reserve` ani legitimitu, aplikovat transfery, spouštět transakci hráče ani appendovat historii.
+**INVARIANT 2** — `refresh-economy` = PURE DERIVED RECOMPUTE. Smí přepočítat routes, produkci, poptávku, markets, trade flows a derived agregáty. Nesmí vybírat daně, platit upkeep, měnit `gold_reserve` ani legitimitu, aplikovat transfery ani spouštět transakci hráče. A nesmí zapisovat do žádné `*_history`, `*_snapshot` ani event/action log tabulky — včetně `node_economy_history`, kam dnes `compute-economy-flow` zapisuje. Historický záznam vzniká pouze při úspěšném `commit-turn`, nejvýše jednou pro session + turn.
+
+**INVARIANT 3** — snapshot vznikne jen po úspěšném dokončení celé pipeline: derived physical state → fiscal resolution → final aggregation → validace → snapshot → DONE. Když selže `process-turn` nebo agregace, tah se neoznačí jako ekonomicky dokončený, finální snapshot se nevytvoří a stav se označí `stale`/`error`.
+
+Ownership dat: `compute-*` = physical/derived state · `process-turn` = turn fiscal state · `command-dispatch` = jednorázové transakce hráče · `aggregate-realm-totals` = read + sum only · snapshot = immutable history.
 
 ```text
                      GOLD RESERVE
