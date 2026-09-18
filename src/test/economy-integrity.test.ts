@@ -32,6 +32,22 @@ describe("INVARIANT 1 — process-turn is the sole turn-fiscal writer", () => {
   });
 });
 
+describe("HISTORY GUARD — derived recompute never appends event logs", () => {
+  it("compute-trade-systems gates world_events behind emit_events", () => {
+    const src = fn("compute-trade-systems");
+    expect(src).toMatch(/emit_events\s*===\s*true/);
+    expect(src).toMatch(/if\s*\(emitEvents\s*&&\s*eventsToInsert\.length/);
+  });
+
+  it("refresh-economy does not enable event emission", () => {
+    expect(fn("refresh-economy")).not.toContain("emit_events");
+  });
+
+  it("commit-turn enables event emission for trade systems", () => {
+    expect(fn("commit-turn")).toMatch(/compute-trade-systems[\s\S]{0,200}emit_events:\s*true/);
+  });
+});
+
 describe("INVARIANT 2 — refresh-economy is a pure derived recompute", () => {
   const src = fn("refresh-economy");
 
