@@ -287,16 +287,35 @@ Deno.serve(async (req) => {
       await sb.from("trade_systems").delete().eq("session_id", session_id);
     }
 
-    const upserts = components.map((c) => ({
-      session_id,
-      system_key: c.systemKey,
-      node_count: c.nodeIds.length,
-      route_count: 0, // filled below
-      total_capacity: 0, // filled below
-      member_players: c.members,
-      computed_turn: currentTurn,
-      updated_at: new Date().toISOString(),
-    }));
+    // Every node that joins a system adds its Layer A production potential and its
+    // significance to that system — a new mine two tiles from the road makes the
+    // whole road system more productive and more important.
+    const upserts = components.map((c) => {
+      let prodSum = 0;
+      let impSum = 0;
+      let spurs = 0;
+      for (const id of c.nodeIds) {
+        const n = nodeById.get(id);
+        if (!n) continue;
+        prodSum += Number(n.production_output ?? 0);
+        impSum += Number(n.importance_score ?? 0);
+        if ((nodeAttachDist.get(id) ?? 0) > 0) spurs++;
+      }
+      return {
+        session_id,
+        system_key: c.systemKey,
+        node_count: c.nodeIds.length,
+        route_count: 0, // filled below
+        total_capacity: 0, // filled below
+        total_production_capacity: Math.round(prodSum * 100) / 100,
+        total_importance: Math.round(impSum * 100) / 100,
+        spur_connected_nodes: spurs,
+        member_players: c.members,
+        computed_turn: currentTurn,
+        updated_at: new Date().toISOString(),
+      };
+    });
+
 
     // Count explicit road segments + sum their capacity per system.
     const routeCount = new Map<string, number>();
