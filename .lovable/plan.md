@@ -1,6 +1,11 @@
 # Economy Integrity Pass (bez nových feature)
 
-Cíl: jedna konzistentní ekonomika. Žádný nový subsystém, žádné ladění čísel. Po tomto průchodu musí platit: dvakrát přepočítat ekonomiku = stejný výsledek, a každé číslo v UI má jediný kanonický zdroj.
+Cíl: jedna konzistentní ekonomika. Žádný nový subsystém, žádné ladění čísel.
+
+Dvě architektonická pravidla, která platí nad všemi kroky:
+
+1. `process-turn` je **jediný** writer daní, příjmů, výdajů, treasury a legitimity.
+2. `refresh-economy` = RECOMPUTE DERIVED STATE, nikdy RESOLVE ECONOMIC TURN. Je to čistá funkce nad stavem.
 
 ## Ověřený stav (přečteno v kódu)
 
@@ -11,62 +16,80 @@ Cíl: jedna konzistentní ekonomika. Žádný nový subsystém, žádné laděn�
 - `compute-trade-flows/index.ts:1480`: `wealth_domestic_component` / `wealth_market_share` se už nezapisují, ale `src/lib/economyFlow.ts:431–439, 514–515` a navazující panely je stále čtou.
 - `trade_ideology` se zapisuje (`command-dispatch/index.ts:3693`) a zobrazuje (`FiscalSubTab.tsx:24`), ale žádný solver ji nečte.
 
-## Krok 1 — P0: jediný vlastník fiskálního ledgeru
+## Krok 0 — kanonický slovník veličin
 
-- `compute-basket-trade-flows`: odstranit blok 9 (fold do `goods_wealth_fiscal`). Místo zápisu do realmu uložit `fiscal_capture` per hráč do výstupu funkce a do `basket_trade_flows` (řádkový sloupec `fiscal_capture`, pokud chybí → migrace), odkud si to `process-turn` přečte jako bázi.
-- `process-turn` zůstává jediným writerem `wealth_*`, `goods_wealth_fiscal`, `wealth_breakdown`.
-- Doplnit do obou funkcí hlavičkový kontrakt „writer/reader“ ať to nikdo nevrátí.
-
-## Krok 2 — P0: pořadí pipeline a finální agregace
-
-- Vyčlenit finální agregaci (`total_wealth`, `total_capacity`, `total_gdp`) z `compute-economy-flow` do samostatného kroku „aggregate-realm-totals“ (nová funkce nebo jasně oddělená fáze volaná s `phase: "aggregate"`).
-- `commit-turn`: fyzická ekonomika → markets → trade → `process-turn` (fiskál) → agregace → snapshot.
-- `refresh-economy`: stejný řetěz, ale bez `process-turn` — agregace čte existující pilíře, nikdy je nemění.
-
-## Krok 3 — P0: idempotentní přepočet
-
-- Všechny kroky přepočtu přepsat na „delete/replace pro danou session+turn“, žádné `+=`.
-- `node_inventory`: mazat podle všech nodů session (nebo podle `session_id`), ne jen podle nodů s novou produkcí.
-- Zámek přesunout z in-memory do DB (`economy_recompute_locks` s `session_id` PK a TTL), aby dvě instance nepočítaly totéž.
-- Každý krok loguje `{step, rows_written, duration}`; při chybě kroku vrátit stav „stale“ do UI, ne částečný úspěch.
-- Test: dva po sobě jdoucí `refresh-economy` na stejném tahu → diff relevantních polí `realm_resources` je prázdný.
-
-## Krok 4 — P1: jedna definice HDP
-
-Kanonické pojmy, každý s jedním zdrojem:
+Zapsat do `docs/architecture/economy-contract.md` a dodržet v kódu i UI:
 
 ```text
-total_gdp        = hodnota finální domácí produkce realizované v kole
-trade_turnover   = objem obchodu (domácí + import/export)
-tax_base         = zdanitelná část GDP a obratu
-fiscal_revenue   = skutečný příjem koruny (wealth_breakdown.total_income)
-node_output      = fyzický výstup nodů (nezdaňuje se přímo)
+FYZICKÁ EKONOMIKA   goods_production_value, goods_supply_volume,
+                    trade_turnover, commercial_retention
+GDP                 total_gdp = hodnota finální produkce za tah
+DAŇOVÉ ZÁKLADY      domestic_tax_base, market_tax_base, transit_tax_base,
+                    extraction_tax_base, poll_tax_base   (pět samostatných základů)
+FISKÁLNÍ PŘÍJEM     fiscal_revenue = wealth_pop_tax + wealth_domestic_market
+                                     + goods_wealth_fiscal
+VÝDAJE              army_upkeep, sport_funding, tolls, ...
+TREASURY            net_treasury_change = fiscal_revenue − expenses ± transfers
+                    gold_reserve_new = gold_reserve_old + net_treasury_change
 ```
 
-- `total_wealth` přejmenovat v UI popiscích jednoznačně na „fiskální příjem“, ať HUD a Economy neslibují HDP.
+Žádný univerzální `tax_base`. `total_wealth` se přestává používat jako ekonomický koncept — v DB zůstává jen jako dočasný alias `fiscal_revenue` do doby, než se přepíšou čtenáři, a v UI se popisuje výhradně jako fiskální příjem.
+
+## Krok 1 — P0: jediný vlastník fiskálu
+
+- Nejprve **zjistit**, zda lze `fiscal_capture` deterministicky dopočítat z existujících řádků `basket_trade_flows` (quantity, value, tarif, access). Pokud ano, žádná migrace — `process-turn` si ho spočítá při čtení flow řádků. Migraci přidávat jen pokud se ukáže, že vstup pro dopočet v řádcích chybí.
+- `compute-basket-trade-flows`: odstranit blok 9 (fold do `goods_wealth_fiscal`) a vůbec nezapisovat do `realm_resources` fiskální pole. Vrací pouze flows.
+- `process-turn` zůstává jediným writerem `wealth_*`, `goods_wealth_fiscal`, `wealth_breakdown`, `gold_reserve`, legitimity.
+- Do hlaviček obou funkcí přidat writer/reader kontrakt.
+
+## Krok 2 — P0: pořadí pipeline
+
+- Vyčlenit finální agregaci (`total_gdp`, `fiscal_revenue`, kapacita, produkce) z `compute-economy-flow` do samostatné fáze „aggregate-realm-totals“, která **nic fiskálního nepočítá**, jen sčítá.
+- `commit-turn`: world state → routes/hex → trade systems → produkce/poptávka → basket flows → `process-turn` (daňové základy × sazby × Laffer × governance → příjem, výdaje, treasury) → agregace → snapshot.
+- `refresh-economy`: routes → produkce → markets → trade → agregace derived metrik. Bez `process-turn`, bez daní, příjmů, výdajů, treasury a legitimity. Fiskální pilíře pouze čte.
+- UI: ve fiskálních panelech a treasury označit hodnoty jako „z posledního vyhodnocení tahu“, aby refresh nepředstíral přepočet pokladny.
+
+## Krok 3 — P0: idempotence jako acceptance criterion
+
+- Replace/delete platí **jen pro derived current-turn state** (node_inventory, city_market_baskets, trade flows, basket flows, derived realm agregáty). Historické tabulky a snapshoty (`*_snapshots`, `*_history`, `world_action_log`, event log) se nikdy nemažou ani znovu neappendují při refreshi.
+- Nikde v refresh cestě žádné `+=` nad perzistentním polem.
+- `node_inventory`: mazat podle celé session (všech relevantních nodů), ne jen podle nodů s novou produkcí.
+- Zámek z in-memory Setu do DB (`economy_recompute_locks`, PK `session_id`, TTL).
+- Každý krok loguje `{step, rows_written, duration}`; při chybě kroku hlásit UI „stale“, ne částečný úspěch.
+
+Acceptance testy:
+
+```text
+S0 --refresh--> S1 --refresh--> S2      S1 === S2 pro všechny derived current-turn hodnoty
+S0 --commit--> A                        ===  S0 --commit--> refresh --> refresh
+                                        (stejné treasury, daně, legitimita)
+```
+
+## Krok 4 — P1: přesné metriky
+
+- Pět oddělených daňových základů podle Kroku 0; každý má jeden writer a jeden vzorec v `process-turn`.
+- Test konzistence: `fiscal_revenue === wealth_pop_tax + wealth_domestic_market + goods_wealth_fiscal` (jen income komponenty, výdaje se do součtu nepočítají).
 - Historické grafy „HDP“ přepnout na `total_gdp` ze snapshotů; proxy vzorec (`local_supply × quality_weight`) přeznačit na „objem nabídky“.
 
 ## Krok 5 — P1: panely čtou jen živá data
 
 - `MarketPerformancePanel` + `src/lib/economyFlow.ts`: odstranit `wealth_domestic_component` a `wealth_market_share`; panel postavit na `commercial_retention`, `goods_production_value`, `goods_supply_volume` a basket market share.
-- `FiscalSubTab`: přepsat vysvětlení na dnešní model (`gdp_domestic × laffer(r) × r × governance`), zrušit rozpad `goodsFiscal` na čtyři nuly (tržní/tranzitní/extrakční/export) a nahradit jej skutečným rozpadem z `wealth_breakdown`.
-- Tax UI: opravit tooltip optima na `r_max / √3 ≈ 57.7 %` a preview označit jako odhad bez governance modifikátorů.
-- Treasury UI: u přetížení nechat jen legitimitu (to engine dělá); nepokoje, migraci a šedou ekonomiku označit jako „plánované“ nebo odstranit.
+- `FiscalSubTab`: přepsat na dnešní model (základ × Laffer × sazba × governance), zrušit rozpad `goodsFiscal` na čtyři nuly a nahradit jej skutečným rozpadem z `wealth_breakdown`.
+- Tax UI: opravit tooltip optima na `r_max / √3 ≈ 57.7 %`; preview označit jako odhad bez governance modifikátorů.
+- Treasury UI: u přetížení nechat jen legitimitu (to engine dělá); nepokoje, migraci a šedou ekonomiku označit jako plánované nebo odstranit.
 
 ## Krok 6 — P1: capacity i bez production order
 
-- `compute-trade-flows:378`: `!order` = implicitní `auto` → stejný production budget a stejný cap 1–6 slotů jako u explicitního auto orderu.
-- Doplnit test, že node s 8 recepty bez orderu nevyrobí víc než se svým budgetem.
+- `compute-trade-flows:378`: `!order` znamená implicitní `auto` → stejný production budget a cap 1–6 slotů jako u explicitního auto orderu.
+- Test: node s 8 recepty bez orderu nepřekročí svůj budget.
 
 ## Následně (mimo tento pass)
 
-- P2: production orders do hráčského UI (backend hotový).
-- P2: `trade_ideology` zapojit do solveru, nebo dočasně skrýt z UI.
-- P2: OPEX silnic (maintenance, degradace, repair budget).
+- P2: production orders do hráčského UI; `trade_ideology` do solveru nebo skrýt z UI; OPEX silnic (maintenance, degradace, repair).
 - P3: greedy basket routing → min-cost-flow.
 
-Balancování čísel až po dokončení kroků 1–6.
+Balancování čísel až po dokončení kroků 0–6.
 
 ## Verifikace
 
-`tsgo --noEmit`, `bunx vitest run`, build, nové testy: idempotence přepočtu, ghost inventory, node capacity bez orderu, konzistence `total_wealth = Σ wealth_breakdown` po commit-turn.
+`tsgo --noEmit`, `bunx vitest run`, build, nové testy: idempotence refreshe, commit+refresh×2 nemění treasury, ghost inventory, node capacity bez orderu, součet income komponent.
