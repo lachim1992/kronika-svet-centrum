@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
     const goodsExtractionValue = Number((realm as any).goods_extraction_value || 0);
 
 
-    logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Fyzický výnos: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
+    logEntries.push(`🏗️ Produkční potenciál: ${totalProduction.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
     if (goodsProductionValue > 0) {
       logEntries.push(`📦 Goods v4.3: produkce=${goodsProductionValue.toFixed(1)} zásoby=${goodsSupplyVolume.toFixed(1)}`);
     }
