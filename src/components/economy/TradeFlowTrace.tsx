@@ -86,7 +86,7 @@ const TradeFlowTrace = ({ sessionId, playerName, basketKey }: Props) => {
       </span>
       <span className="shrink-0 text-right">
         v={r.volume.toFixed(2)} · ${r.gross_value.toFixed(2)}
-        {dir === "out" && <span className="text-primary"> · fisk={r.fiscal_capture.toFixed(2)}</span>}
+        {dir === "out" && <span className="text-primary"> · tarif(odhad)={r.fiscal_capture.toFixed(2)}</span>}
         <span className="text-muted-foreground"> · t={r.tariff_factor.toFixed(2)}</span>
       </span>
     </div>

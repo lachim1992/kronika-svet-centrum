@@ -438,13 +438,13 @@ export function getEconomicActivity(realm: any) {
 /** POSITION — trade competitiveness, NOT state income. Derived from trade turnover. */
 export function getMarketPosition(realm: any) {
   const gdp = Number(realm?.total_gdp ?? 0);
-  const production = Number(realm?.goods_production_value ?? 0);
-  // total_gdp = production + export gross value (provisional proxy),
-  // so the export leg is the residual above domestic production.
-  const exportPosition = Math.max(0, gdp - production);
+  // Canonical export magnitude, written by aggregate-realm-totals from
+  // basket_trade_flows.gross_value. NEVER a residual of two different metrics
+  // (total_gdp − goods_production_value is not an export figure).
+  const exportPosition = Math.max(0, Number(realm?.export_gross_value ?? 0));
   return {
     exportPosition,
-    exportSharePct: gdp > 0 ? exportPosition / gdp : 0,
+    exportSharePct: gdp > 0 ? Math.min(1, exportPosition / gdp) : 0,
   };
 }
 

@@ -8458,6 +8458,7 @@ export type Database = {
           cultural_prestige: number
           economic_prestige: number
           economy_version: number | null
+          export_gross_value: number
           faith: number | null
           faith_growth: number | null
           famine_city_count: number
@@ -8563,6 +8564,7 @@ export type Database = {
           cultural_prestige?: number
           economic_prestige?: number
           economy_version?: number | null
+          export_gross_value?: number
           faith?: number | null
           faith_growth?: number | null
           famine_city_count?: number
@@ -8668,6 +8670,7 @@ export type Database = {
           cultural_prestige?: number
           economic_prestige?: number
           economy_version?: number | null
+          export_gross_value?: number
           faith?: number | null
           faith_growth?: number | null
           famine_city_count?: number

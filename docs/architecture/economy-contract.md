@@ -102,3 +102,38 @@ při `commit-turn` (resp. při world-tick resolution v časovém režimu).
 `compute-trade-systems` emituje `world_events` (trade_system_formed/merged/dissolved/split) pouze pokud dostane `emit_events: true`.
 To posílá výhradně `commit-turn` (turn resolution). `refresh-economy`, `world-tick` recompute a klientská volání nechávají flag vypnutý,
 protože opakovaný derived recompute by jinak duplikoval historii. Viz INVARIANT 1 a 3.
+
+## Closure pass (dodatky po auditu)
+
+**1. Fresh physical aggregates před fiskálem.** `process-turn` nesmí číst `realm.total_production`,
+`realm.total_capacity`, `realm.total_importance` ani `realm.total_wealth` z minulé agregace.
+Čte je přímo z `province_nodes` (production_output, wealth_output, capacity_score,
+importance_score, logistic_capacity) pro daného hráče. `commit-turn` navíc spouští
+`aggregate-realm-totals { phase: "physical" }` PŘED `process-turn` (fyzické agregáty bez
+`total_wealth`) a `{ phase: "final" }` po něm (doplní `total_wealth` = fiscal_revenue).
+
+Kanonické pořadí:
+```text
+PHYSICAL RECOMPUTE → PHYSICAL AGGREGATES → PROCESS-TURN (fiskál)
+  → FINAL AGGREGATES → VALIDATION → SNAPSHOT
+```
+
+**2. Pipeline success guard.** Snapshot/historie vznikne jen pokud uspěly VŠECHNY povinné
+derived kroky (compute-province-routes, compute-hex-flows, compute-trade-systems,
+compute-trade-flows, compute-basket-trade-flows, compute-economy-flow, physical aggregate),
+`process-turn` i finální agregace. Jinak `economySnapshot = { skipped: true, status: "stale",
+reason, failed_steps }`.
+
+**3. `fiscal_capture` = TELEMETRIE.** Hodnota na řádku `basket_trade_flows.fiscal_capture` je
+odhad tarifního záchytu pro diagnostiku a UI. NENÍ příjmem koruny, žádný konzument ji nesmí
+přičítat do pokladny. Skutečné fiskální pilíře počítá `process-turn` nezávisle.
+Response klíč: `fiscal_capture_total_telemetry`.
+
+**4. Jedna definice HDP.** Kanonické HDP je pouze `realm_resources.total_gdp`
+(provisional proxy: production_output + export gross value, TODO value-added).
+`TreasuryPanel` čte `total_gdp` a příjmy výhradně přes `getFiscalIncome()`.
+Graf v `HistoryChartsPanel` je „Objem nabídky", nikoli HDP.
+
+**5. Export je měřená veličina.** `realm_resources.export_gross_value` zapisuje jen
+`aggregate-realm-totals` ze součtu `basket_trade_flows.gross_value`.
+`getMarketPosition()` čte tento sloupec — nikdy `total_gdp − goods_production_value`.

@@ -2,7 +2,7 @@
  * HistoryChartsPanel — volitelný panel s grafy vývoje ekonomiky v čase.
  *
  * Read-only nad city_market_baskets (všechny turny, scope = session).
- *  - Domácí vs světové HDP (proxy = sum(local_supply * quality_weight) per turn)
+ *  - Objem nabídky domácí vs světový (Σ local_supply × quality_weight) — NENÍ HDP
  *  - Vývoj poptávky a nabídky per košík (s volbou košíku)
  *
  * Pozn.: city_market_baskets nemá per-good rozpad — pracujeme na úrovni
@@ -84,7 +84,9 @@ const HistoryChartsPanel = ({ sessionId, currentPlayerName }: Props) => {
     return () => { canceled = true; };
   }, [open, sessionId, rows.length]);
 
-  // GDP series — proxy: sum(local_supply * quality_weight) per turn
+  // Supply volume series (Σ local_supply × quality_weight) — NOT GDP.
+  // The canonical GDP figure is realm_resources.total_gdp; this chart is a
+  // market-supply volume series only.
   const gdpSeries = useMemo(() => {
     const byTurn = new Map<number, { world: number; domestic: number }>();
     for (const r of rows) {
@@ -191,12 +193,12 @@ const HistoryChartsPanel = ({ sessionId, currentPlayerName }: Props) => {
               </p>
             ) : (
               <>
-                {/* GDP chart */}
+                {/* Supply volume chart (NOT GDP) */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-semibold">HDP (domácí vs světové)</h4>
+                    <h4 className="text-xs font-semibold">Objem nabídky (domácí vs světový)</h4>
                     <span className="text-[10px] text-muted-foreground">
-                      proxy: Σ local_supply × quality
+                      Σ local_supply × quality — není HDP
                     </span>
                   </div>
                   <ResponsiveContainer width="100%" height={220}>

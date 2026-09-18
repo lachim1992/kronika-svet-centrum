@@ -313,9 +313,10 @@ Deno.serve(async (req) => {
     }
 
     // 9. NO FISCAL WRITES (Economy Integrity Pass, INVARIANT 1).
-    // `fiscal_capture` is persisted per flow row; `process-turn` is the sole
-    // writer of realm fiscal state. This solver must never touch
-    // realm_resources — folding it here made repeated recomputes cumulative.
+    // `fiscal_capture` on each flow row is TELEMETRY ONLY — an estimated tariff
+    // capture used for trade diagnostics/UI. It is NOT crown income and no
+    // consumer may add it to the treasury. `process-turn` computes the real
+    // fiscal pillars independently and is the sole writer of realm fiscal state.
     let fiscalCaptureTotal = 0;
     for (const amount of fiscalByPlayer.values()) fiscalCaptureTotal += amount;
 
@@ -324,7 +325,7 @@ Deno.serve(async (req) => {
       flows: flows.length,
       basket_updates: basketUpdates,
       fiscal_recipients: fiscalByPlayer.size,
-      fiscal_capture_total: Math.round(fiscalCaptureTotal * 100) / 100,
+      fiscal_capture_total_telemetry: Math.round(fiscalCaptureTotal * 100) / 100,
       fiscal_writes: 0,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
