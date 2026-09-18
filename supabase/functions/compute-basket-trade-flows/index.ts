@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
     const landCells = new Set<string>((hexRes.data || [])
       .filter((cell: any) => cell.is_passable !== false)
       .map((cell: any) => `${cell.grid_x},${cell.grid_y}`));
-    type Edge = { id: string; to: string; cost: number; capacity: number; mode: "road" | "river" };
+    type Edge = { id: string; to: string; cost: number; capacity: number; mode: "road" | "river" | "spur" };
     const graph = new Map<string, Edge[]>();
     const addEdge = (from: string, edge: Edge) => graph.set(from, [...(graph.get(from) || []), edge]);
     const edgeCapacity = new Map<string, number>();
