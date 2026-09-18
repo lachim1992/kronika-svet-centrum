@@ -3112,6 +3112,13 @@ async function executeBuildSubnode(
     }
   }
 
+  // A production node without a market anchor would produce goods nobody can consume.
+  // Require a valid own city within reach instead of creating an orphaned node.
+  if (!parcelCityId && def.nodeType === "production") {
+    return { events: [], error: "Produkční dvůr musí patřit k vlastnímu městu do vzdálenosti 6 polí" };
+  }
+
+
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
   if (Number(realm.gold_reserve || 0) < def.gold || Number(realm.production_reserve || 0) < def.production) {
