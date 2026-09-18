@@ -1291,17 +1291,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       const existingIndex = current.findIndex(item => sameCell(item, next));
       if (existingIndex >= 0) return current.slice(0, existingIndex + 1);
 
-      // Clicking or dragging over a gap fills the trace in between, so the player
-      // never has to hit every single sub-parcel by hand.
-      const filled = areSubRoadNeighbours(last, next) ? [next] : subRoadPathBetween(last, next);
-      if (!filled.length) return current;
-
       const passable = (cell: SubRoadCell) => {
         const tile = tileByCell.get(cellKey(cell.gridX, cell.gridY));
         return !!tile && tile.is_passable !== false && tile.biome_family !== "sea";
       };
-      const blocked = filled.find(cell => !passable(cell));
-      if (blocked) { toast.error("Tímto podčtvercem cesta vést nemůže"); return current; }
+      if (!passable(next)) { toast.error("Tímto podčtvercem cesta vést nemůže"); return current; }
+
+      // Clicking or dragging over a gap fills the trace in between — around water and
+      // impassable ground — so the player never has to hit every sub-parcel by hand.
+      let filled: SubRoadCell[] = [];
+      if (areSubRoadNeighbours(last, next)) filled = [next];
+      else {
+        const straight = subRoadPathBetween(last, next);
+        filled = straight.every(passable) ? straight : (subRoadDetour(last, next, passable) ?? []);
+        if (!filled.length) { toast.error("Mezi těmito podčtverci nevede průchodná trasa"); return current; }
+      }
+
 
       const result = [...current];
       filled.forEach(cell => { if (!result.some(item => sameCell(item, cell))) result.push(cell); });
