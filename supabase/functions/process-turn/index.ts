@@ -199,16 +199,17 @@ Deno.serve(async (req) => {
     // Integrity Pass closure (P0): never read stale realm.total_* here. The
     // physical layer (compute-economy-flow) persists province_nodes; we sum them
     // live so this turn is resolved against the current physical state.
+    // wealth_output is a LEGACY abstract wealth-flow (Layer A) and MUST NOT be read here.
     const { data: physNodes } = await supabase.from("province_nodes")
-      .select("production_output, wealth_output, capacity_score, importance_score")
+      .select("production_output, capacity_score, importance_score")
       .eq("session_id", sessionId).eq("controlled_by", playerName);
-    let totalProduction = 0, totalWealth = 0, totalImportance = 0, totalCapacity = 0;
+    let totalProduction = 0, totalImportance = 0, totalCapacity = 0;
     for (const n of physNodes || []) {
       totalProduction += Number((n as any).production_output || 0);
-      totalWealth += Number((n as any).wealth_output || 0);
       totalImportance += Number((n as any).importance_score || 0);
       totalCapacity += Number((n as any).capacity_score || 0);
     }
+
 
     // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.3) ──
     const goodsProductionValue = realm.goods_production_value || 0;
