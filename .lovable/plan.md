@@ -2,10 +2,23 @@
 
 Cíl: jedna konzistentní ekonomika. Žádný nový subsystém, žádné ladění čísel.
 
-Dvě architektonická pravidla, která platí nad všemi kroky:
+Dva invarianty, které platí nad všemi kroky:
 
-1. `process-turn` je **jediný** writer daní, příjmů, výdajů, treasury a legitimity.
-2. `refresh-economy` = RECOMPUTE DERIVED STATE, nikdy RESOLVE ECONOMIC TURN. Je to čistá funkce nad stavem.
+**INVARIANT 1** — `process-turn` je jediným vlastníkem **turn-resolution** fiskálu: daňové základy, daňový příjem, periodické výdaje, `wealth_*` komponenty, fiskální breakdown a legitimita vznikající z ekonomického vyhodnocení. `command-dispatch` smí měnit `gold_reserve` **pouze** kvůli explicitní jednorázové transakci hráče (stavba, silnice, nákup, transfer) — cena stavby ani silnice se do `process-turn` nepřesouvá.
+
+**INVARIANT 2** — `refresh-economy` = PURE DERIVED RECOMPUTE. Smí přepočítat routes, produkci, poptávku, markets, trade flows a derived agregáty. Nesmí vybírat daně, platit upkeep, měnit `gold_reserve` ani legitimitu, aplikovat transfery, spouštět transakci hráče ani appendovat historii.
+
+```text
+                     GOLD RESERVE
+              ┌───────────┴───────────┐
+     explicit player action      turn resolution
+       command-dispatch           process-turn
+       −road/building/purchase   +taxes −upkeep −recurring
+              └───────────┬───────────┘
+                     realm state
+refresh-economy ───────── READ ONLY
+```
+
 
 ## Ověřený stav (přečteno v kódu)
 
