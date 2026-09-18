@@ -840,24 +840,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── SAVE HISTORY ──────────────────────────────────────────
-    if (save_history && turn_number) {
-      const histRows = nodeResults.map(nr => ({
-        session_id,
-        node_id: nr.id,
-        turn_number,
-        production_output: nr.production_output,
-        wealth_output: nr.wealth_output,
-        capacity_score: nr.capacity_score,
-        importance_score: nr.importance_score,
-        incoming_production: nr.incoming_production,
-        connectivity_score: nr.connectivity_score,
-        isolation_penalty: nr.isolation_penalty,
-      }));
-      for (let i = 0; i < histRows.length; i += BATCH) {
-        await sb.from("node_economy_history").insert(histRows.slice(i, i + BATCH));
-      }
-    }
+    // ── HISTORY: never written here ───────────────────────────
+    // Economy Integrity Pass, INVARIANT 2: derived recompute must not append
+    // history. `node_economy_history` is written exclusively by commit-turn in
+    // its snapshot phase (idempotent per session + turn).
+
+
 
     // ── AGGREGATE PER PLAYER → realm_resources ────────────────
     const playerTotals = new Map<string, {
