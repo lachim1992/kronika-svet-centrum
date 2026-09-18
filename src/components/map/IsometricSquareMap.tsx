@@ -258,6 +258,13 @@ const LAND_USE_COLOR: Record<string, string> = {
 };
 
 const cellKey = (a: number, b: number) => `${a},${b}`;
+const ROAD_TRACE_CENTER = { x: Math.floor(TILE_PARCEL_COLS / 2), y: Math.floor(TILE_PARCEL_ROWS / 2) };
+const roadEdgeKey = (from: { a: number; b: number }, to: { a: number; b: number }) => (
+  from.a < to.a || (from.a === to.a && from.b <= to.b)
+    ? `${from.a},${from.b}>${to.a},${to.b}`
+    : `${to.a},${to.b}>${from.a},${from.b}`
+);
+const sameMacroCell = (sub: SubRoadCell, cell: { a: number; b: number }) => sub.gridX === cell.a && sub.gridY === cell.b;
 
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 8;
