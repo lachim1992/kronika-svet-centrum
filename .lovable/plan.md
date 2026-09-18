@@ -6,7 +6,11 @@ Dva invarianty, které platí nad všemi kroky:
 
 **INVARIANT 1** — `process-turn` je jediným vlastníkem **turn-resolution** fiskálu: daňové základy, daňový příjem, periodické výdaje, `wealth_*` komponenty, fiskální breakdown a legitimita vznikající z ekonomického vyhodnocení. `command-dispatch` smí měnit `gold_reserve` **pouze** kvůli explicitní jednorázové transakci hráče (stavba, silnice, nákup, transfer) — cena stavby ani silnice se do `process-turn` nepřesouvá.
 
-**INVARIANT 2** — `refresh-economy` = PURE DERIVED RECOMPUTE. Smí přepočítat routes, produkci, poptávku, markets, trade flows a derived agregáty. Nesmí vybírat daně, platit upkeep, měnit `gold_reserve` ani legitimitu, aplikovat transfery, spouštět transakci hráče ani appendovat historii.
+**INVARIANT 2** — `refresh-economy` = PURE DERIVED RECOMPUTE. Smí přepočítat routes, produkci, poptávku, markets, trade flows a derived agregáty. Nesmí vybírat daně, platit upkeep, měnit `gold_reserve` ani legitimitu, aplikovat transfery ani spouštět transakci hráče. A nesmí zapisovat do žádné `*_history`, `*_snapshot` ani event/action log tabulky — včetně `node_economy_history`, kam dnes `compute-economy-flow` zapisuje. Historický záznam vzniká pouze při úspěšném `commit-turn`, nejvýše jednou pro session + turn.
+
+**INVARIANT 3** — snapshot vznikne jen po úspěšném dokončení celé pipeline: derived physical state → fiscal resolution → final aggregation → validace → snapshot → DONE. Když selže `process-turn` nebo agregace, tah se neoznačí jako ekonomicky dokončený, finální snapshot se nevytvoří a stav se označí `stale`/`error`.
+
+Ownership dat: `compute-*` = physical/derived state · `process-turn` = turn fiscal state · `command-dispatch` = jednorázové transakce hráče · `aggregate-realm-totals` = read + sum only · snapshot = immutable history.
 
 ```text
                      GOLD RESERVE
@@ -42,6 +46,12 @@ GDP                 total_gdp = hodnota finální produkce za tah
                     total_gdp NESMÍ dvojitě započítat intermediate goods
                     (obilí → mouka → chléb se počítá jednou: final output
                      nebo value added)
+                    ROZSAH PASSU: pokud současný datový model neumí bez změny
+                    ekonomické mechaniky spolehlivě oddělit intermediate goods,
+                    nevymýšlet nový GDP algoritmus — zachovat existující výpočet
+                    jako provisional GDP proxy s TODO v kódu a v tomto passu
+                    pouze odstranit konkurenční definice GDP.
+                    Value-added reforma = samostatný pass.
 DAŇOVÉ ZÁKLADY      domestic_tax_base, market_tax_base, transit_tax_base,
                     extraction_tax_base, poll_tax_base   (pět samostatných základů)
 FISKÁLNÍ PŘÍJEM     fiscal_revenue = wealth_pop_tax + wealth_domestic_market
@@ -67,7 +77,8 @@ TRANSAKCE HRÁČE     transaction_delta = road / building / purchase / ...
 ## Krok 2 — P0: pořadí pipeline
 
 - Vyčlenit finální agregaci (`total_gdp`, `fiscal_revenue`, kapacita, produkce) z `compute-economy-flow` do samostatné fáze „aggregate-realm-totals“, která **nic fiskálního nepočítá**, jen sčítá.
-- `commit-turn`: world state → routes/hex → trade systems → produkce/poptávka → basket flows → `process-turn` (daňové základy × sazby × Laffer × governance → příjem, výdaje, treasury) → agregace → snapshot.
+- `commit-turn`: world state → routes/hex → trade systems → produkce/poptávka → basket flows → `process-turn` (daňové základy × sazby × Laffer × governance → příjem, výdaje, treasury) → agregace → validace → snapshot → DONE. Snapshot a příznak „ekonomicky dokončený tah“ se zapisují až po úspěchu všech předchozích fází (INVARIANT 3); při selhání se stav označí `stale`/`error` bez snapshotu.
+- Historický zápis (`node_economy_history` a ostatní `*_history`) přesunout z `compute-*` do fáze snapshotu v `commit-turn`, s idempotentním upsertem na (session, turn).
 - `refresh-economy`: routes → produkce → markets → trade → agregace derived metrik. Bez `process-turn`, bez daní, příjmů, výdajů, treasury a legitimity. Fiskální pilíře pouze čte.
 - UI: ve fiskálních panelech a treasury označit hodnoty jako „z posledního vyhodnocení tahu“, aby refresh nepředstíral přepočet pokladny.
 
@@ -92,6 +103,9 @@ GUARD TEST: before = { gold_reserve, legitimacy, wealth_pop_tax,
             after === before
             (agregovaný alias fiscal_revenue se smí přepočítat na tutéž
              hodnotu, jeho fiskální pilíře se měnit nesmí)
+
+HISTORY GUARD: count(history) = N → refresh ×2 → count(history) = N
+COMMIT HISTORY: commit-turn() → count(snapshot for session+turn) = 1
 ```
 
 
@@ -117,8 +131,9 @@ GUARD TEST: before = { gold_reserve, legitimacy, wealth_pop_tax,
 
 - P2: production orders do hráčského UI; `trade_ideology` do solveru nebo skrýt z UI; OPEX silnic (maintenance, degradace, repair).
 - P3: greedy basket routing → min-cost-flow.
-- Během Integrity Passu se nic z toho ani balancing neřeší — rozsah zůstává Kroky 0–6.
+- P3: value-added / final-output reforma GDP.
+- Během Integrity Passu se nic z toho ani balancing neřeší — rozsah zůstává Kroky 0–6. Po dokončení znovu audit skutečného diffu a testů, hlavně zda `refresh-economy` nemá skrytou side-effect cestu.
 
 ## Verifikace
 
-`tsgo --noEmit`, `bunx vitest run`, build, nové testy: guard test read-only refreshe, idempotence refreshe, commit+refresh×2 nemění treasury, ghost inventory, node capacity bez orderu, součet income komponent.
+`tsgo --noEmit`, `bunx vitest run`, build, nové testy: guard test read-only refreshe, history guard, commit history = 1 snapshot, idempotence refreshe, commit+refresh×2 nemění fiskální stav, ghost inventory, node capacity bez orderu, součet income komponent.
