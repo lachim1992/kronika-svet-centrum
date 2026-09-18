@@ -96,3 +96,9 @@ INCOME SUM: fiscal_revenue === wealth_pop_tax + wealth_domestic_market
 kterou refresh přepisuje celou (delete + insert) a je proto idempotentní.
 Historií se rozumí append-only řady jako `node_economy_history`; ty vznikají jen
 při `commit-turn` (resp. při world-tick resolution v časovém režimu).
+
+## Event-log emission (dodatek, Economy Integrity Pass)
+
+`compute-trade-systems` emituje `world_events` (trade_system_formed/merged/dissolved/split) pouze pokud dostane `emit_events: true`.
+To posílá výhradně `commit-turn` (turn resolution). `refresh-economy`, `world-tick` recompute a klientská volání nechávají flag vypnutý,
+protože opakovaný derived recompute by jinak duplikoval historii. Viz INVARIANT 1 a 3.
