@@ -202,17 +202,13 @@ Deno.serve(async (req) => {
     const { data: physNodes } = await supabase.from("province_nodes")
       .select("production_output, wealth_output, capacity_score, importance_score")
       .eq("session_id", sessionId).eq("controlled_by", playerName);
-    let totalProduction = 0, totalWealth = 0, totalImportance = 0;
-    let capacityScoreSum = 0, logisticSum = 0;
+    let totalProduction = 0, totalWealth = 0, totalImportance = 0, totalCapacity = 0;
     for (const n of physNodes || []) {
       totalProduction += Number((n as any).production_output || 0);
       totalWealth += Number((n as any).wealth_output || 0);
       totalImportance += Number((n as any).importance_score || 0);
-      capacityScoreSum += Number((n as any).capacity_score || 0);
-      // no logistic_capacity column on province_nodes — capacity_score is the SSOT
+      totalCapacity += Number((n as any).capacity_score || 0);
     }
-    // Mirrors aggregate-realm-totals: logistic capacity wins when present.
-    const totalCapacity = logisticSum > 0 ? logisticSum : capacityScoreSum;
 
     // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.3) ──
     const goodsProductionValue = realm.goods_production_value || 0;
