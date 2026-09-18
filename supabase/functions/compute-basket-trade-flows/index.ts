@@ -99,14 +99,18 @@ Deno.serve(async (req) => {
 
     // Physical transport graph. Land edges exist only where a completed road segment exists;
     // cardinally adjacent river cells create automatic river edges. Capacity is shared by all baskets.
-    const [cityRes, roadRes, riverRes] = await Promise.all([
+    const [cityRes, roadRes, hexRes] = await Promise.all([
       sb.from("cities").select("id, grid_x, grid_y, province_q, province_r, settlement_level, development_level, trade_system_id").eq("session_id", session_id),
       sb.from("road_segments").select("id, from_x, from_y, to_x, to_y, capacity, friction, status").eq("session_id", session_id).eq("status", "completed"),
-      sb.from("province_hexes").select("grid_x, grid_y").eq("session_id", session_id).eq("has_river", true).eq("is_passable", true),
+      sb.from("province_hexes").select("grid_x, grid_y, has_river, is_passable").eq("session_id", session_id).limit(8000),
     ]);
     if (cityRes.error) throw cityRes.error;
     if (roadRes.error) throw roadRes.error;
-    if (riverRes.error) throw riverRes.error;
+    if (hexRes.error) throw hexRes.error;
+    const riverRes = { data: (hexRes.data || []).filter((cell: any) => cell.has_river && cell.is_passable !== false) };
+    const landCells = new Set<string>((hexRes.data || [])
+      .filter((cell: any) => cell.is_passable !== false)
+      .map((cell: any) => `${cell.grid_x},${cell.grid_y}`));
     type Edge = { id: string; to: string; cost: number; capacity: number; mode: "road" | "river" };
     const graph = new Map<string, Edge[]>();
     const addEdge = (from: string, edge: Edge) => graph.set(from, [...(graph.get(from) || []), edge]);
