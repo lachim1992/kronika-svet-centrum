@@ -171,9 +171,48 @@ describe("UI data contract", () => {
   it("activity and position read canonical columns, not dead v5 ones", () => {
     expect(getEconomicActivity(realm).domesticActivity).toBe(100);
     expect(getEconomicActivity(realm).supplyVolume).toBe(240);
-    expect(getMarketPosition(realm).exportPosition).toBe(30);
+    // Export is a measured column, never total_gdp − goods_production_value.
+    expect(getMarketPosition({ ...realm, export_gross_value: 42 }).exportPosition).toBe(42);
+    expect(getMarketPosition(realm).exportPosition).toBe(0);
     expect(getEconomicActivity({}).domesticActivity).toBe(0);
     expect(getMarketPosition({}).exportPosition).toBe(0);
+  });
+
+  it("TreasuryPanel has no parallel fiscal model and uses canonical GDP", () => {
+    const src = readFileSync("src/components/economy/TreasuryPanel.tsx", "utf8");
+    expect(src).toContain("getFiscalIncome");
+    expect(src).toContain("realm.total_gdp");
+    // No local Laffer recomputation, no fake unrest/migration effects
+    expect(src).not.toMatch(/Math\.pow\(rate/);
+    expect(src).not.toContain("Nepokoje +");
+    expect(src).not.toContain("Migrace pryč");
+  });
+
+  it("history chart no longer calls a supply proxy 'HDP'", () => {
+    const src = readFileSync("src/components/economy/goods-production/HistoryChartsPanel.tsx", "utf8");
+    expect(src).toContain("Objem nabídky");
+    expect(src).not.toMatch(/HDP \(domácí vs světové\)/);
+  });
+
+  it("fiscal_capture is documented as telemetry only", () => {
+    const src = readFileSync("supabase/functions/compute-basket-trade-flows/index.ts", "utf8");
+    expect(src).toContain("TELEMETRY ONLY");
+    expect(src).toContain("fiscal_capture_total_telemetry");
+  });
+
+  it("commit-turn snapshot guard covers the whole derived pipeline", () => {
+    const src = readFileSync("supabase/functions/commit-turn/index.ts", "utf8");
+    expect(src).toContain("economyStepFailures");
+    expect(src).toContain("pipelineFailed");
+    expect(src).toMatch(/phase:\s*"physical"/);
+    expect(src).toMatch(/phase:\s*"final"/);
+  });
+
+  it("process-turn uses fresh physical aggregates, not stale realm totals", () => {
+    const src = readFileSync("supabase/functions/process-turn/index.ts", "utf8");
+    expect(src).not.toMatch(/realm\.total_production\s*\|\|/);
+    expect(src).not.toMatch(/realm\.total_capacity\s*\|\|/);
+    expect(src).toContain("FRESH PHYSICAL AGGREGATES");
   });
 
   it("economyFlow no longer reads the dead wealth columns", () => {
