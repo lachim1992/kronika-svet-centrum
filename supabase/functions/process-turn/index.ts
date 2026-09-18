@@ -228,6 +228,19 @@ Deno.serve(async (req) => {
     const myCities = cities || [];
     const cityIds = myCities.map(c => c.id);
 
+    // ── LAYER B: FOOD & CONSUMPTION (post-trade city_market_baskets) ──
+    // staple_food is the SSOT for food. local_supply ALREADY contains imports folded
+    // in by compute-basket-trade-flows — imports must NOT be added a second time.
+    const { data: myBasketRows } = await supabase.from("city_market_baskets")
+      .select("city_id, basket_key, local_demand, local_supply, unmet_demand, domestic_satisfaction")
+      .eq("session_id", sessionId)
+      .in("city_id", cityIds.length ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    const stapleByCity = new Map<string, any>();
+    for (const b of (myBasketRows as any[]) || []) {
+      if (b.basket_key === "staple_food") stapleByCity.set(b.city_id, b);
+    }
+
+
     // ── Load network layer: nodes linked to cities + routes + supply state ──
     const [nodesRes, routesRes, supplyRes] = await Promise.all([
       supabase.from("province_nodes")
