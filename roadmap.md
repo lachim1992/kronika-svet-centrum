@@ -60,4 +60,9 @@
 - [x] domestic consumption = Σ (local_demand - unmet_demand) × basketValue (publikuje compute-basket-trade-flows)
 - [x] extraction provenience počítat při recipe produkci (production_role=source)
 - [ ] BLOCKER: production_reserve — akumulace zrušena, existující zásoba se spotřebovává; construction-goods → CAPEX pass MUSÍ přijít před release
+- [ ] Opravit nulovou Layer A kapacitu, která dnes přes fallback stále vyrábí recepty
+- [ ] Dokončit budovy a produkční čtvrti před ekonomickým přepočtem stejného tahu
+- [ ] Zajistit, že hráčské produkční subuzly mají městský/rodičovský tržní kotvící bod
+- [ ] Napojit obnovu production_reserve výhradně na post-trade koš construction
+- [ ] Ověřit živý svět: specializovaný dvůr změní structures/recipe a opakovaný refresh je idempotentní
 
