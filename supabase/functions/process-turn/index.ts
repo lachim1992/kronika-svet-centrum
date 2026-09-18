@@ -713,10 +713,9 @@ Deno.serve(async (req) => {
         nodeProduction = totalProduction * cityShare;
       }
 
-      // v4.2: No more legacy/goods blend — production uses node layers + goods production directly
-      const cityPopShare = totalPopulation > 0 ? (city.population_total || 0) / totalPopulation : 1 / Math.max(1, myCities.length);
-      const goodsCityProduction = goodsProductionValue * cityPopShare;
-      const cityProduction = (nodeProduction + layers.production) * laborGrainMult + goodsCityProduction;
+      // LAYER SEPARATION: no macro "cityProduction" here. Node capacity (Layer A) and
+      // city population layers feed capacity/wealth/faith and upstream auto production,
+      // never a second production number. Realized production lives in the Goods layer.
 
       // v4.2: City wealth comes from Pillar 2 (domestic + market share), distributed by market level
       const totalMarketLevelAll = myCities.reduce((s, c) => s + (c.market_level || 1), 0) || 1;
@@ -735,14 +734,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      totalCityProduction += cityProduction;
       totalCityWealth += cityWealth;
       totalCityCapacity += cityCapacity;
       totalFaith += cityFaith;
 
-      // Per-city food balance
-      const cityBalance = cityProduction - cityDemand;
-      const cityFamine = cityBalance < 0 && globalGrainReserve <= 0;
+      // Per-city food balance — staple_food only (post-trade, imports already included)
+      const cityBalance = cityFoodSupply - cityDemand;
+      const cityFamine = cityFoodDeficit > 0 && globalGrainReserve <= 0;
 
       if (cityBalance >= 0) {
         globalGrainReserve += cityBalance * 0.5;
@@ -767,11 +765,12 @@ Deno.serve(async (req) => {
         logEntries.push(`⚠️ Hladomor v ${city.name}! Ztráta ${deathToll} obyvatel.`);
         newEvents.push({
           event_type: "famine",
-          note: `Hladomor zachvátil ${city.name}. Produkce (${cityProduction.toFixed(1)}) nestačí na pokrytí poptávky (${cityDemand}). Zemřelo ${deathToll} obyvatel.`,
+          note: `Hladomor zachvátil ${city.name}. Zásoby potravin (${cityFoodSupply.toFixed(1)}) nestačí na poptávku (${cityDemand}), chybí ${cityFoodDeficit.toFixed(1)}. Zemřelo ${deathToll} obyvatel.`,
           importance: "critical",
           city_id: city.id,
-          reference: { production: cityProduction, demand: cityDemand, death_toll: deathToll, isolation: isolationPenalty },
+          reference: { food_supply: cityFoodSupply, demand: cityDemand, deficit: cityFoodDeficit, death_toll: deathToll, isolation: isolationPenalty },
         });
+
       } else {
         if (city.famine_turn) {
           await supabase.from("cities").update({ famine_turn: false, famine_consecutive_turns: 0 }).eq("id", city.id);
