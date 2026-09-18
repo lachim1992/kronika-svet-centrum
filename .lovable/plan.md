@@ -77,7 +77,8 @@ TRANSAKCE HRÁČE     transaction_delta = road / building / purchase / ...
 ## Krok 2 — P0: pořadí pipeline
 
 - Vyčlenit finální agregaci (`total_gdp`, `fiscal_revenue`, kapacita, produkce) z `compute-economy-flow` do samostatné fáze „aggregate-realm-totals“, která **nic fiskálního nepočítá**, jen sčítá.
-- `commit-turn`: world state → routes/hex → trade systems → produkce/poptávka → basket flows → `process-turn` (daňové základy × sazby × Laffer × governance → příjem, výdaje, treasury) → agregace → snapshot.
+- `commit-turn`: world state → routes/hex → trade systems → produkce/poptávka → basket flows → `process-turn` (daňové základy × sazby × Laffer × governance → příjem, výdaje, treasury) → agregace → validace → snapshot → DONE. Snapshot a příznak „ekonomicky dokončený tah“ se zapisují až po úspěchu všech předchozích fází (INVARIANT 3); při selhání se stav označí `stale`/`error` bez snapshotu.
+- Historický zápis (`node_economy_history` a ostatní `*_history`) přesunout z `compute-*` do fáze snapshotu v `commit-turn`, s idempotentním upsertem na (session, turn).
 - `refresh-economy`: routes → produkce → markets → trade → agregace derived metrik. Bez `process-turn`, bez daní, příjmů, výdajů, treasury a legitimity. Fiskální pilíře pouze čte.
 - UI: ve fiskálních panelech a treasury označit hodnoty jako „z posledního vyhodnocení tahu“, aby refresh nepředstíral přepočet pokladny.
 
