@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
 
       const exportGross = exportValue.get(player) || 0;
       const totalGdp = t.production + exportGross;
-      const capacity = t.logistic > 0 ? t.logistic : t.capacity;
+      const capacity = t.capacity;
 
       const update: Record<string, any> = {
         total_production: Math.round(t.production * 100) / 100,
