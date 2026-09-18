@@ -74,6 +74,10 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const session_id: string | undefined = body.session_id;
+    // INVARIANT 1/3: event-log appends are turn-resolution only.
+    // Pure derived recompute (refresh-economy, UI calls) must NOT append to
+    // world_events — repeated refreshes would spam formed/dissolved/split rows.
+    const emitEvents: boolean = body.emit_events === true;
     if (!session_id) {
       return new Response(JSON.stringify({ error: "session_id required" }), {
         status: 400,
@@ -251,9 +255,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (eventsToInsert.length > 0) {
+    if (emitEvents && eventsToInsert.length > 0) {
       const { error: evErr } = await sb.from("world_events").insert(eventsToInsert);
       if (evErr) console.warn("world_events insert failed:", evErr.message);
+    } else if (!emitEvents && eventsToInsert.length > 0) {
+      console.log(`[derived-only] suppressed ${eventsToInsert.length} world_events (emit_events=false)`);
     }
 
     // 5) Upsert trade_systems and link province_nodes
