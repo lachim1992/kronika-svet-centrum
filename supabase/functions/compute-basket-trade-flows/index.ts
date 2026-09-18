@@ -15,7 +15,7 @@
 // - access_level 0 = no flow; tariff_factor 1.0 = no tariff applied
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { basketValueFor } from "../_shared/basketValues.ts";
-import { cityCatchmentRadius, nearestTransportCell, spurCapacity, SPUR_COST_PER_TILE } from "../_shared/roadCatchment.ts";
+import { cityCatchmentRadius, spurWalk, spurCapacity, SPUR_COST_PER_TILE } from "../_shared/roadCatchment.ts";
 
 
 const corsHeaders = {
@@ -99,15 +99,19 @@ Deno.serve(async (req) => {
 
     // Physical transport graph. Land edges exist only where a completed road segment exists;
     // cardinally adjacent river cells create automatic river edges. Capacity is shared by all baskets.
-    const [cityRes, roadRes, riverRes] = await Promise.all([
+    const [cityRes, roadRes, hexRes] = await Promise.all([
       sb.from("cities").select("id, grid_x, grid_y, province_q, province_r, settlement_level, development_level, trade_system_id").eq("session_id", session_id),
       sb.from("road_segments").select("id, from_x, from_y, to_x, to_y, capacity, friction, status").eq("session_id", session_id).eq("status", "completed"),
-      sb.from("province_hexes").select("grid_x, grid_y").eq("session_id", session_id).eq("has_river", true).eq("is_passable", true),
+      sb.from("province_hexes").select("grid_x, grid_y, has_river, is_passable").eq("session_id", session_id).limit(8000),
     ]);
     if (cityRes.error) throw cityRes.error;
     if (roadRes.error) throw roadRes.error;
-    if (riverRes.error) throw riverRes.error;
-    type Edge = { id: string; to: string; cost: number; capacity: number; mode: "road" | "river" };
+    if (hexRes.error) throw hexRes.error;
+    const riverRes = { data: (hexRes.data || []).filter((cell: any) => cell.has_river && cell.is_passable !== false) };
+    const landCells = new Set<string>((hexRes.data || [])
+      .filter((cell: any) => cell.is_passable !== false)
+      .map((cell: any) => `${cell.grid_x},${cell.grid_y}`));
+    type Edge = { id: string; to: string; cost: number; capacity: number; mode: "road" | "river" | "spur" };
     const graph = new Map<string, Edge[]>();
     const addEdge = (from: string, edge: Edge) => graph.set(from, [...(graph.get(from) || []), edge]);
     const edgeCapacity = new Map<string, number>();
@@ -136,14 +140,18 @@ Deno.serve(async (req) => {
       const cell = cityCell.get(city.id); if (!cell) continue;
       if (graph.has(cell)) continue;
       const [x, y] = cell.split(",").map(Number);
-      const hit = nearestTransportCell(x, y, cityCatchmentRadius(city), transportCells);
+      // The spur is a real land haul: one edge per walked tile, so the flow line
+      // follows the terrain instead of jumping over water.
+      const hit = spurWalk(x, y, cityCatchmentRadius(city), transportCells, landCells);
       if (!hit || hit.dist <= 0) continue;
-      const id = `spur:${city.id}`;
       const capacity = spurCapacity(hit.dist);
-      const cost = SPUR_COST_PER_TILE * hit.dist;
-      addEdge(cell, { id, to: hit.cell, cost, capacity, mode: "road" });
-      addEdge(hit.cell, { id, to: cell, cost, capacity, mode: "road" });
-      edgeCapacity.set(id, capacity);
+      for (let step = 0; step < hit.cells.length - 1; step++) {
+        const from = hit.cells[step]; const to = hit.cells[step + 1];
+        const id = `spur:${city.id}:${step}`;
+        addEdge(from, { id, to, cost: SPUR_COST_PER_TILE, capacity, mode: "spur" });
+        addEdge(to, { id, to: from, cost: SPUR_COST_PER_TILE, capacity, mode: "spur" });
+        edgeCapacity.set(id, capacity);
+      }
     }
     // Trade system membership: the city's own link wins, node link is the fallback.
     for (const city of cityRes.data || []) {

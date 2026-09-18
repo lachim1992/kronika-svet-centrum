@@ -75,3 +75,50 @@ export function nearestTransportCell(
 export function spurCapacity(dist: number): number {
   return Math.max(6, Math.round((60 / (1 + Math.max(0, dist))) * 10) / 10);
 }
+
+/**
+ * Walkable feeder spur: the shortest cardinal walk over PASSABLE LAND cells from
+ * (x, y) to the nearest transport cell, at most `radius` steps. A spur can never
+ * jump over water or impassable terrain — goods are hauled over land.
+ *
+ * Returns the full cell path (including the origin and the transport cell), so
+ * callers can add per-step edges and render a continuous line on the map.
+ */
+export function spurWalk(
+  x: number,
+  y: number,
+  radius: number,
+  transportCells: Set<string>,
+  passable: Set<string>,
+): { cells: string[]; dist: number } | null {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const start = `${x},${y}`;
+  if (transportCells.has(start)) return { cells: [start], dist: 0 };
+
+  const previous = new Map<string, string | null>([[start, null]]);
+  let frontier = [start];
+  for (let step = 1; step <= radius; step++) {
+    const next: string[] = [];
+    for (const cell of frontier) {
+      const [cx, cy] = cell.split(",").map(Number);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = `${cx + dx},${cy + dy}`;
+        if (previous.has(key)) continue;
+        const isTransport = transportCells.has(key);
+        if (!isTransport && !passable.has(key)) continue; // never cross water / impassable
+        previous.set(key, cell);
+        if (isTransport) {
+          const cells: string[] = [];
+          let cursor: string | null = key;
+          while (cursor) { cells.push(cursor); cursor = previous.get(cursor) ?? null; }
+          cells.reverse();
+          return { cells, dist: step };
+        }
+        next.push(key);
+      }
+    }
+    frontier = next;
+    if (!frontier.length) break;
+  }
+  return null;
+}

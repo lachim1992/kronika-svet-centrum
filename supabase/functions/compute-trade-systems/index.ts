@@ -16,7 +16,7 @@
 // Architecture: Diplomacy writes treaties → THIS function projects access → compute-trade-flows consumes.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { nodeCatchmentRadius, cityCatchmentRadius, nearestTransportCell } from "../_shared/roadCatchment.ts";
+import { nodeCatchmentRadius, cityCatchmentRadius, spurWalk } from "../_shared/roadCatchment.ts";
 
 
 const corsHeaders = {
@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
         .from("road_segments")
         .select("id, from_x, from_y, to_x, to_y, status, capacity")
         .eq("session_id", session_id).eq("status", "completed"),
-      sb.from("province_hexes").select("grid_x, grid_y").eq("session_id", session_id).eq("has_river", true).eq("is_passable", true),
+      sb.from("province_hexes").select("grid_x, grid_y, has_river, is_passable").eq("session_id", session_id).limit(8000),
       sb
         .from("trade_system_node_snapshot")
         .select("node_id, system_key")
@@ -141,7 +141,13 @@ Deno.serve(async (req) => {
     const uf = ufMake();
     for (const n of nodes) ufFind(uf, n.id); // ensure singletons exist
     const cellId = (x: number, y: number) => `cell:${x},${y}`;
-    const riverKeys = new Set((riverRes.data || []).map((cell: any) => `${cell.grid_x},${cell.grid_y}`));
+    const riverKeys = new Set((riverRes.data || [])
+      .filter((cell: any) => cell.has_river && cell.is_passable !== false)
+      .map((cell: any) => `${cell.grid_x},${cell.grid_y}`));
+    // Feeder spurs are land hauls — they may never cross water or impassable terrain.
+    const landCells = new Set<string>((riverRes.data || [])
+      .filter((cell: any) => cell.is_passable !== false)
+      .map((cell: any) => `${cell.grid_x},${cell.grid_y}`));
     let usedRoutes = 0;
     for (const r of routes) {
       ufUnion(uf, cellId(Number((r as any).from_x), Number((r as any).from_y)), cellId(Number((r as any).to_x), Number((r as any).to_y)));
@@ -160,9 +166,9 @@ Deno.serve(async (req) => {
     for (const node of nodes) {
       const x = Number((node as any).grid_x ?? (node as any).hex_q); const y = Number((node as any).grid_y ?? (node as any).hex_r);
       const radius = nodeCatchmentRadius(node);
-      const hit = nearestTransportCell(x, y, radius, transportCells);
+      const hit = spurWalk(x, y, radius, transportCells, landCells);
       if (!hit) continue;
-      ufUnion(uf, node.id, cellId(...(hit.cell.split(",").map(Number) as [number, number])));
+      ufUnion(uf, node.id, cellId(...(hit.cells[hit.cells.length - 1].split(",").map(Number) as [number, number])));
       nodeAttachDist.set(node.id, hit.dist);
       if (hit.dist > 0) spurConnected++;
     }
@@ -178,9 +184,9 @@ Deno.serve(async (req) => {
     for (const city of cities) {
       const x = Number((city as any).grid_x ?? (city as any).province_q);
       const y = Number((city as any).grid_y ?? (city as any).province_r);
-      const hit = nearestTransportCell(x, y, cityCatchmentRadius(city), transportCells);
+      const hit = spurWalk(x, y, cityCatchmentRadius(city), transportCells, landCells);
       if (!hit) continue;
-      ufUnion(uf, `city:${city.id}`, cellId(...(hit.cell.split(",").map(Number) as [number, number])));
+      ufUnion(uf, `city:${city.id}`, cellId(...(hit.cells[hit.cells.length - 1].split(",").map(Number) as [number, number])));
       citiesConnected++;
     }
 
