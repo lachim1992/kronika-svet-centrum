@@ -436,16 +436,20 @@ Deno.serve(async (req) => {
         statusUpdates.push({ node_id: node.id, last_status: orderStatus, last_status_reason: orderReason });
       }
 
+      capacityDiag.budget += capacityFor(node);
+      capacityDiag.nodes += 1;
+
       for (let i = 0; i < N; i++) {
         const share = shares[i];
         if (share <= 0) continue;
         const recipe = eligibleRecipes[i];
-
+        capacityDiag.allocated += share;
 
         const baseOutput = recipe.output_quantity || 1;
         const guildBonus = 1 + (node.guild_level || 0) * 0.15;
         const upgradeMult = 1 + ((node.upgrade_level || 1) - 1) * 0.2;
-        const nodeProductionFactor = Math.max(0.1, (node.production_output || 1) / 5);
+        // NOTE: no nodeProductionFactor here — production_output already acted once
+        // through the throughput budget (capacityFor → share).
 
         let resourceYield = 1.0;
         if (role === "source") {
@@ -460,7 +464,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        const quantity = Math.round(baseOutput * guildBonus * upgradeMult * nodeProductionFactor * resourceYield * share * 10) / 10;
+        const quantity = Math.round(baseOutput * guildBonus * upgradeMult * resourceYield * share * 10) / 10;
         const qualityBand = Math.min(3, Math.max(0, Math.floor((node.guild_level || 0) / 2) + (recipe.quality_output_bonus || 1) - 1));
 
         if (quantity > 0) {
@@ -470,9 +474,15 @@ Deno.serve(async (req) => {
             quantity,
             quality_band: Math.min(qualityBand, recipe.quality_output_bonus || 2),
           });
+          if (role === "source") {
+            const bk = goodToBasket.get(recipe.output_good_key) || "staple_food";
+            const bv = (BASKET_CONFIG as any)[bk]?.basketValue ?? 1;
+            extractionValueByNode.set(node.id, (extractionValueByNode.get(node.id) || 0) + quantity * bv);
+          }
         }
       }
     }
+
 
     // Write back order statuses (best-effort, batched)
     if (statusUpdates.length > 0) {
