@@ -56,3 +56,4 @@
 - [ ] Krok 4b: zrušit paralelní produkci v process-turn (cityProduction, layers.production/wealth)
 - [ ] hlad/obilí ze staple_food, ne z goods_supply_volume
 - [ ] goods_value_detail.structures (budovy + čtvrti), nikdy z post-trade local_supply
+- [ ] Krok 4c: nové zdroje domestic/extraction tax base, famine ze staple_food (import už v local_supply), grain metriky, faction satisfaction, production_reserve rozhodnutí, labor multiplikátory
