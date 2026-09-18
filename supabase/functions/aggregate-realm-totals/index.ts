@@ -103,18 +103,17 @@ Deno.serve(async (req) => {
     }
 
     // Fiscal pillars are READ ONLY here — written by process-turn.
+    // goods_production_value is READ ONLY here — written by compute-trade-flows (Layer B).
     const { data: realmRows } = await sb.from("realm_resources")
-      .select("player_name, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal")
+      .select("player_name, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal, goods_production_value")
       .eq("session_id", session_id)
       .in("player_name", playerNames);
     const pillarsByPlayer = new Map<string, any>(
       (realmRows || []).map((r: any) => [r.player_name, r]),
     );
 
-    // GDP proxy (provisional — see economy-contract.md):
-    // TODO(value-added pass): total_gdp must not double-count intermediate
-    // goods. Until recipes expose intermediate/final classification, this stays
-    // the single canonical GDP number: domestic production output + export value.
+    // Export magnitude — a separate TRADE metric. It must NOT be added to GDP:
+    // exported goods are already inside realized production value (double counting).
     const { data: btfRows } = await sb.from("basket_trade_flows")
       .select("source_player, gross_value")
       .eq("session_id", session_id);
@@ -135,10 +134,16 @@ Deno.serve(async (req) => {
         Number(pillars.goods_wealth_fiscal || 0);
 
       const exportGross = exportValue.get(player) || 0;
-      const totalGdp = t.production + exportGross;
+      // GDP proxy (provisional — see economy-contract.md):
+      // total_gdp == goods_production_value (Layer B realized output). Node capacity
+      // (Layer A) and export value are NOT part of it.
+      // TODO(value-added pass): eliminate intermediate goods double counting.
+      const totalGdp = Number(pillars.goods_production_value || 0);
       const capacity = t.capacity;
 
       const update: Record<string, any> = {
+        // Layer A capacity. total_production is kept as a DEPRECATED alias.
+        total_production_capacity: Math.round(t.production * 100) / 100,
         total_production: Math.round(t.production * 100) / 100,
         total_gdp: Math.round(totalGdp * 100) / 100,
         // Canonical export magnitude — never derive export as total_gdp − goods_production_value.
@@ -146,6 +151,7 @@ Deno.serve(async (req) => {
         total_supplies: Math.round(t.supplies * 100) / 100,
         total_capacity: Math.round(capacity * 100) / 100,
         total_importance: Math.round(t.importance * 100) / 100,
+
         strategic_iron_tier: computeTier(t.iron),
         strategic_horses_tier: computeTier(t.horses),
         strategic_salt_tier: computeTier(t.salt),
