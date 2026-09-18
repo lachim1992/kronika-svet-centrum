@@ -1,5 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
+import { basketValueFor } from "../_shared/basketValues.ts";
+
 
 
 const corsHeaders = {
