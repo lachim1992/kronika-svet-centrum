@@ -89,3 +89,10 @@ COMMIT HISTORY: commit-turn() → count(history for session+turn) = 1
 INCOME SUM: fiscal_revenue === wealth_pop_tax + wealth_domestic_market
                              + goods_wealth_fiscal   (jen income komponenty)
 ```
+
+## Poznámka k „snapshot" tabulkám
+
+`trade_system_node_snapshot` není historie — je to derived current-turn projekce,
+kterou refresh přepisuje celou (delete + insert) a je proto idempotentní.
+Historií se rozumí append-only řady jako `node_economy_history`; ty vznikají jen
+při `commit-turn` (resp. při world-tick resolution v časovém režimu).
