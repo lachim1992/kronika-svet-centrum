@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
       };
     }
 
-    return new Response(JSON.stringify({ ok: true, phase, players: playerNames.length, totals: summary }), {
+    return new Response(JSON.stringify({ ok: true, phase, players: byPlayer.size, totals: summary }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
