@@ -336,21 +336,8 @@ Deno.serve(async (req) => {
     const buildingGranaryBonus = globalBuildingEffects["granary_capacity"] || 0;
     const granaryCapacity = infraGranary + buildingGranaryBonus;
 
-    // ══════════════════════════════════════════
-    // DISTRICT COMPLETION
-    // ══════════════════════════════════════════
-    const { data: buildingDistricts } = await supabase.from("city_districts").select("*")
-      .eq("session_id", sessionId).eq("status", "building")
-      .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    // DISTRICT COMPLETION — NOT HERE (see commit-turn phase 4a2, sole writer).
 
-    for (const d of (buildingDistricts || [])) {
-      const finishTurn = (d.build_started_turn || 0) + (d.build_turns || 1);
-      if (currentTurn >= finishTurn) {
-        await supabase.from("city_districts").update({ status: "completed", completed_turn: currentTurn }).eq("id", d.id);
-        const cityName = myCities.find(c => c.id === d.city_id)?.name || "?";
-        logEntries.push(`🏘️ Čtvrť "${d.name}" v ${cityName} dokončena!`);
-      }
-    }
 
     // ══════════════════════════════════════════
     // DISTRICT EFFECTS
