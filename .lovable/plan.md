@@ -1,22 +1,45 @@
-# Oprava produkčního řetězce a stavební zásoby
+# Detailní ekonomická analytika v záložce Ekonomika
 
 ## Cíl
 
-Sjednotit zobrazený potenciál se skutečnými uzly, zajistit okamžitý účinek dokončených specializovaných dvorů a obnovovat stavební zásobu pouze ze skutečně dostupných stavebních materiálů.
+Záložka Ekonomika má hráči ukázat celý řetězec: co města potřebují, co opravdu vyrábí, odkud to pochází, co se vyváží/dováží a podle čeho se má rozhodnout, co stavět.
 
-## Postup
+## Rozsah první implementace
 
-1. Opravit kapacitní pravidlo receptů: uzel s nulovým `production_output` dostane nulový throughput; žádný fallback z nuly na implicitní kapacitu.
-2. Přesunout dokončení budov a čtvrtí před ekonomickou pipeline uzávěrky tahu, aby jejich `basket_outputs` vstoupily do stejného tahu.
-3. Opravit kotvení hráčských subuzlů: produkční uzel musí mít `city_id` nebo platného rodiče; jinak se stavba odmítne místo vzniku osiřelé produkce.
-4. Obnovovat `production_reserve` v `process-turn` 1:1 z nové derived veličiny `construction_available_for_capex` = post-trade materiál koše `construction` po domácí poptávce, importech a exportu. Kapacita uzlů se na zásobu nepřevádí, přírůstek jen při plně úspěšné ekonomické pipeline a nejvýš jednou za tah.
-5. Upravit panel produkce, aby nesrovnával peněžní hodnotu produkce s throughput sloty procentem, a zpřesnit popisky GDP bez exportu.
-6. Přidat kontraktové testy a ověřit na živém světě: přepočet dvakrát, stejné výsledky; nově dokončený dvůr zvýší správnou složku výroby; historie ani fiskál se při refreshi nezmění.
+1. **Vyčistit zastaralé metriky**
+   - Přejmenovat hlavní „GDP“ na aktuální ekonomickou hodnotu tak, aby neslibovala export ani starý node wealth model.
+   - Odstranit nebo přepsat texty, které mluví o `wealth` jako o paralelní produkci.
+   - Sloučit duplicitní „výkon/tržní podíl/supply chain“ pohledy pod jeden srozumitelný analytický tok.
 
-## Technické pojistky
+2. **Přidat městský produkční rozbor**
+   - Tabulka po městech: poptávka, lokální nabídka, uspokojení, deficit, exportní přebytek.
+   - Rozpad nabídky na domácnosti / receptury / budovy a čtvrti.
+   - Detail města: které koše vyrábí, co mu chybí, co má navíc.
+   - Napojit existující budovy a čtvrti u města, aby bylo vidět, které stavby přidávají výrobu.
 
-- `goods_production_value = auto + recipe + structures` zůstává invariant.
-- Post-trade zásoba je `local_supply + import` (auto a bonus jsou už v `local_supply`, nesmí se počítat podruhé).
-- `refresh-economy` zůstává čistý derived přepočet a stavební zásobu nemění.
-- Přírůstek stavební zásoby proběhne nejvýše jednou za úspěšně zpracovaný tah.
-- Žádné nové sazby, balancing ani alternativní převod z Layer A kapacity.
+3. **Přidat vysvětlení poptávky**
+   - U každého koše ukázat, kde je problém: chybí místní výroba, chybí dovoz, je malá dopravní/tržní dostupnost, nebo není vhodná budova.
+   - Ke košům ukázat akční doporučení: co postavit / kde posílit produkci / kde je potřeba cesta nebo import.
+
+4. **Přidat obchodní toky mezi městy**
+   - Samostatný přehled toků z `basket_trade_flows`: zdrojové město → cílové město, koš, objem, hodnota, úroveň přístupu, módy dopravy.
+   - Deduplikovat stejný koridor do jedné rozkliknutelné řádky, aby bylo jasné, co proudí například mezi Lachimgradem a Ravensburgem.
+   - Filtrovat na aktuální tah a hráčova města, aby se nemíchala stará historie.
+
+5. **Správa výroby bez nové backend mechaniky**
+   - Pokud hra už má pro budovy/čtvrti nastavitelné výstupy, zobrazit jejich současný výstup a přivést hráče na správu města.
+   - Pokud backend zatím nepodporuje přepínání výstupu budovy, UI nebude předstírat funkci; ukáže dostupné výrobní zdroje a doporučenou stavbu.
+
+## Technické poznámky
+
+- Zdroje dat: `city_market_baskets`, `city_buildings`, `city_districts`, `building_templates`, `basket_trade_flows`, `cities`, případně `node_inventory` pro specializované receptury.
+- Žádné nové fiskální výpočty: fiskál zůstává v `realm_resources` a pokladnici.
+- Žádné nové GDP algoritmy: produkční hodnota zůstává `goods_production_value`; export je samostatná obchodní veličina.
+- Player UI nesmí číst ani interpretovat `wealth_output` jako produkci.
+- Dev panely zůstanou za Dev režimem; hráčská záložka dostane čistou analytiku.
+
+## Ověření
+
+- Zkontrolovat, že záložka Ekonomika načítá data aktuálního tahu.
+- V náhledu ověřit, že hráč vidí městskou produkci, deficity a obchodní toky.
+- Zkontrolovat build log a opravit případné chyby.
