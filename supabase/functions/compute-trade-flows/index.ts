@@ -1,6 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
 import { basketValueFor } from "../_shared/basketValues.ts";
+import { nodeCatchmentRadius, cityCatchmentRadius, nearestTransportCell, spurCapacity, SPUR_COST_PER_TILE } from "../_shared/roadCatchment.ts";
+
 
 
 
@@ -129,7 +131,7 @@ Deno.serve(async (req) => {
     const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes, ordersRes, roadRes, riverRes] = await Promise.all([
       sb.from("goods").select("key, category, production_stage, market_tier, base_price_numeric, demand_basket, substitution_map, storable"),
       sb.from("production_recipes").select("*"),
-      sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id, route_access_factor, trade_system_id").eq("session_id", session_id),
+      sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, grid_x, grid_y, infrastructure_level, upgrade_level, specialization_scores, parent_node_id, route_access_factor, trade_system_id").eq("session_id", session_id),
       sb.from("cities").select("id, name, owner_player, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, settlement_level, temple_level, city_stability, labor_allocation, grid_x, grid_y, province_q, province_r").eq("session_id", session_id),
       sb.from("province_routes").select("id, node_a, node_b, capacity_value, control_state").eq("session_id", session_id),
       sb.from("province_hexes").select("q, r, resource_deposits").eq("session_id", session_id).not("resource_deposits", "is", null),
@@ -870,7 +872,7 @@ Deno.serve(async (req) => {
     // Generated province routes are deliberately not economic edges: every flow
     // must traverse completed roads or contiguous river cells.
     // ════════════════════════════════════════════
-    type TransportEdge = { id: string; to: string; cost: number; capacity: number; mode: "road" | "river" };
+    type TransportEdge = { id: string; to: string; cost: number; capacity: number; mode: "road" | "river" | "spur" };
     const transportGraph = new Map<string, TransportEdge[]>();
     const addTransportEdge = (from: string, edge: TransportEdge) => transportGraph.set(from, [...(transportGraph.get(from) || []), edge]);
     for (const road of roadRes.data || []) {
@@ -889,6 +891,32 @@ Deno.serve(async (req) => {
       }
     }
     const cityTransportCell = new Map(cities.map(city => [city.id, `${city.grid_x ?? city.province_q},${city.grid_y ?? city.province_r}`]));
+
+    // CATCHMENT: a city/node without a road on its own tile still joins the network
+    // when a transport cell lies within its catchment radius. The link is a virtual
+    // feeder spur — extra friction, limited throughput.
+    const transportCells = new Set<string>([...transportGraph.keys()]);
+    const attachSpur = (ownCell: string, radius: number, label: string) => {
+      if (transportCells.has(ownCell)) return;
+      const [x, y] = ownCell.split(",").map(Number);
+      const hit = nearestTransportCell(x, y, radius, transportCells);
+      if (!hit) return;
+      const id = `spur:${label}:${ownCell}>${hit.cell}`;
+      const cost = SPUR_COST_PER_TILE * Math.max(1, hit.dist);
+      const capacity = spurCapacity(hit.dist);
+      addTransportEdge(ownCell, { id, to: hit.cell, cost, capacity, mode: "spur" });
+      addTransportEdge(hit.cell, { id, to: ownCell, cost, capacity, mode: "spur" });
+    };
+    for (const city of cities) {
+      const cell = cityTransportCell.get(city.id);
+      if (cell) attachSpur(cell, cityCatchmentRadius(city), `city:${city.id}`);
+    }
+    for (const node of nodes) {
+      const x = Number(node.grid_x ?? node.hex_q); const y = Number(node.grid_y ?? node.hex_r);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      attachSpur(`${x},${y}`, nodeCatchmentRadius(node), `node:${node.id}`);
+    }
+
     const reservedTransport = new Map<string, number>();
     const findTransportRoute = (from: string, target: string) => {
       const dist = new Map<string, number>([[from, 0]]); const previous = new Map<string, { cell: string; edge: TransportEdge }>(); const pending = new Set<string>([from]);

@@ -16,6 +16,8 @@
 // Architecture: Diplomacy writes treaties → THIS function projects access → compute-trade-flows consumes.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { nodeCatchmentRadius, nearestTransportCell } from "../_shared/roadCatchment.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -99,8 +101,9 @@ Deno.serve(async (req) => {
     const [nodeRes, routeRes, riverRes, prevSnapRes, treatyRes, pactRes] = await Promise.all([
       sb
         .from("province_nodes")
-        .select("id, controlled_by, is_neutral, discovered, discovered_by, is_active, grid_x, grid_y, hex_q, hex_r")
+        .select("id, controlled_by, is_neutral, discovered, discovered_by, is_active, grid_x, grid_y, hex_q, hex_r, node_tier, upgrade_level, infrastructure_level, production_output, importance_score")
         .eq("session_id", session_id),
+
       sb
         .from("road_segments")
         .select("id, from_x, from_y, to_x, to_y, status, capacity")
@@ -148,13 +151,22 @@ Deno.serve(async (req) => {
       const [x, y] = key.split(",").map(Number);
       for (const [dx, dy] of [[1, 0], [0, 1]]) if (riverKeys.has(`${x + dx},${y + dy}`)) ufUnion(uf, cellId(x, y), cellId(x + dx, y + dy));
     }
-    // A node joins transport automatically when its field contains a completed road or river.
+    // A node joins transport when a completed road or river cell lies within its
+    // CATCHMENT RADIUS (see _shared/roadCatchment.ts) — not only on its own tile.
     const transportCells = new Set<string>(riverKeys);
     for (const r of routes) { transportCells.add(`${(r as any).from_x},${(r as any).from_y}`); transportCells.add(`${(r as any).to_x},${(r as any).to_y}`); }
+    let spurConnected = 0;
+    const nodeAttachDist = new Map<string, number>();
     for (const node of nodes) {
       const x = Number((node as any).grid_x ?? (node as any).hex_q); const y = Number((node as any).grid_y ?? (node as any).hex_r);
-      if (transportCells.has(`${x},${y}`)) ufUnion(uf, node.id, cellId(x, y));
+      const radius = nodeCatchmentRadius(node);
+      const hit = nearestTransportCell(x, y, radius, transportCells);
+      if (!hit) continue;
+      ufUnion(uf, node.id, cellId(...(hit.cell.split(",").map(Number) as [number, number])));
+      nodeAttachDist.set(node.id, hit.dist);
+      if (hit.dist > 0) spurConnected++;
     }
+
 
     // 3) Group nodes by component root
     const compNodes = new Map<string, string[]>();
@@ -275,16 +287,35 @@ Deno.serve(async (req) => {
       await sb.from("trade_systems").delete().eq("session_id", session_id);
     }
 
-    const upserts = components.map((c) => ({
-      session_id,
-      system_key: c.systemKey,
-      node_count: c.nodeIds.length,
-      route_count: 0, // filled below
-      total_capacity: 0, // filled below
-      member_players: c.members,
-      computed_turn: currentTurn,
-      updated_at: new Date().toISOString(),
-    }));
+    // Every node that joins a system adds its Layer A production potential and its
+    // significance to that system — a new mine two tiles from the road makes the
+    // whole road system more productive and more important.
+    const upserts = components.map((c) => {
+      let prodSum = 0;
+      let impSum = 0;
+      let spurs = 0;
+      for (const id of c.nodeIds) {
+        const n = nodeById.get(id);
+        if (!n) continue;
+        prodSum += Number(n.production_output ?? 0);
+        impSum += Number(n.importance_score ?? 0);
+        if ((nodeAttachDist.get(id) ?? 0) > 0) spurs++;
+      }
+      return {
+        session_id,
+        system_key: c.systemKey,
+        node_count: c.nodeIds.length,
+        route_count: 0, // filled below
+        total_capacity: 0, // filled below
+        total_production_capacity: Math.round(prodSum * 100) / 100,
+        total_importance: Math.round(impSum * 100) / 100,
+        spur_connected_nodes: spurs,
+        member_players: c.members,
+        computed_turn: currentTurn,
+        updated_at: new Date().toISOString(),
+      };
+    });
+
 
     // Count explicit road segments + sum their capacity per system.
     const routeCount = new Map<string, number>();
@@ -444,6 +475,8 @@ Deno.serve(async (req) => {
         systems: components.length,
         nodes: nodes.length,
         routes_used: usedRoutes,
+        spur_connected_nodes: spurConnected,
+
         events: eventsToInsert.length,
         access_rows: accessRows.length,
         turn: currentTurn,
