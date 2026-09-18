@@ -129,8 +129,11 @@ access, využití cest). Σ node wealth z hráčského UI zmizí — karta dnes 
 - `production_output` se aplikuje jen jednou (bez `nodeProductionFactor`) a nevede na
   `grain_reserve`, `production_reserve`, `domestic_tax_base`, `extraction_tax_base`
 - `process-turn` nepočítá `cityProduction` z node + layers + goods
-- hlad/obilí čte `staple_food`, ne `goods_supply_volume`
+- hlad/obilí čte `staple_food`, ne `goods_supply_volume`; import se nepřičítá podruhé
+- `domestic_tax_base` / `extraction_tax_base` nevycházejí z `totalCityProduction`
+- `production_reserve` nedostává přírůstek z legacy produkce
 - karta produkce nečte `total_wealth`
+
 - Dvojitý přepočet na živé session → identický stav (idempotence)
 
 ## Explicitní ontologie
