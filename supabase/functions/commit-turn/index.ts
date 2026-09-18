@@ -828,8 +828,11 @@ Deno.serve(async (req) => {
       const settled = await Promise.allSettled(
         Array.from(allEconEntities).map(async (name) => {
           const { error: ptErr } = await supabase.functions.invoke("process-turn", {
-            body: { sessionId, playerName: name },
+            // CAPEX accrual only when every Layer B step succeeded — stale goods data
+            // must never fund construction stock.
+            body: { sessionId, playerName: name, allowCapexAccrual: economyStepFailures.length === 0 },
           });
+
           if (ptErr) {
             console.warn(`process-turn for ${name}:`, ptErr.message);
             return { ok: false, name, error: ptErr.message };
