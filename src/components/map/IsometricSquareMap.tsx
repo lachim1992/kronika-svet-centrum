@@ -347,7 +347,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, city_id, controlled_by, production_output, wealth_output, food_value, parcel_index, upgrade_level, infrastructure_level").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("trade_flows").select("id, path_cells, transport_modes").eq("session_id", sessionId).not("path_cells", "is", null),
-      supabase.from("basket_trade_flows").select("id, path_cells, transport_modes").eq("session_id", sessionId).not("path_cells", "is", null),
+      supabase.from("basket_trade_flows").select("id, path_cells, transport_modes").eq("session_id", sessionId).eq("turn_number", currentTurn).not("path_cells", "is", null),
       supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
       supabase.from("tile_parcels").select("grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId).limit(40000),
@@ -387,7 +387,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     ]);
 
     setTreasury({ gold: Number(realmRes.data?.gold_reserve || 0), production: Number(realmRes.data?.production_reserve || 0) });
-  }, [sessionId, playerName]);
+  }, [sessionId, playerName, currentTurn]);
 
   useEffect(() => { void load(); }, [load]);
   // Every city must own a footprint on the 32-parcel grid; this tops up anything missing.
@@ -574,12 +574,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return { segments, bridges };
   }, [infrastructure, tileByCell, roadStepsOf, sessionId, subPoint, terrainOf]);
 
-  /** Authoritative inter-cell road segments, including projects still under construction. */
-  const explicitRoadNetwork = useMemo(() => roadSegments.map(segment => ({
-    ...segment,
-    from: projectCell("square4", { a: segment.from_x, b: segment.from_y }, TILE_SIZE),
-    to: projectCell("square4", { a: segment.to_x, b: segment.to_y }, TILE_SIZE),
-  })), [roadSegments]);
+  /** Exact sub-parcel trace for every road edge; trade animation reuses this instead of drawing a parallel route. */
+  const roadTraceByEdge = useMemo(() => {
+    const traces = new Map<string, SubRoadCell[]>();
+    roadSegments.filter(segment => segment.status !== "blocked").forEach(segment => {
+      const from = { a: segment.from_x, b: segment.from_y };
+      const to = { a: segment.to_x, b: segment.to_y };
+      const start: SubRoadCell = { gridX: from.a, gridY: from.b, parcelX: ROAD_TRACE_CENTER.x, parcelY: ROAD_TRACE_CENTER.y };
+      const end: SubRoadCell = { gridX: to.a, gridY: to.b, parcelX: ROAD_TRACE_CENTER.x, parcelY: ROAD_TRACE_CENTER.y };
+      const trace = Array.isArray(segment.sub_path_cells) && segment.sub_path_cells.length >= 2
+        ? segment.sub_path_cells
+        : [start, ...subRoadPathBetween(start, end)];
+      traces.set(roadEdgeKey(from, to), trace);
+    });
+    return traces;
+  }, [roadSegments]);
 
   /** Roads live on the sub-parcel grid; legacy segments receive a deterministic fallback trace. */
   const roadSurfaceByCell = useMemo(() => {
@@ -669,26 +678,36 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return [...reach.values()];
   }, [roadDraft.length, cities, nodes, playerName, cityCellOf, entityCell]);
 
-  /** Trade flows ride the road trace instead of cutting straight across cell centres. */
+  /** Trade flows ride the exact road trace instead of cutting a second visual corridor beside it. */
   const routePolylines = useMemo(() => routes.flatMap(route => {
     const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path;
     if (!Array.isArray(path) || path.length < 2) return [];
     const cells = path.map(cell => ({ a: cell.x ?? cell.q ?? 0, b: cell.y ?? cell.r ?? 0 }));
     const points: Array<{ x: number; y: number }> = [];
-    cells.forEach((cell, index) => {
-      const previous = cells[index - 1]; const next = cells[index + 1];
-      const steps = [previous, next].flatMap(other => other
-        ? [{ dx: Math.sign(other.a - cell.a), dy: Math.sign(other.b - cell.b) }]
-        : []).filter(step => Math.abs(step.dx) + Math.abs(step.dy) === 1);
-      if (!steps.length) { points.push(subPoint(cell.a, cell.b, 2, 2)); return; }
-      const branches = tileRoadBranches(sessionId, cell.a, cell.b, steps);
-      const toPrevious = previous ? branches[0] : null;
-      const toNext = previous ? branches[1] : branches[0];
-      (toPrevious || []).forEach(sub => points.push(subPoint(cell.a, cell.b, sub.x, sub.y)));
-      [...(toNext || [])].reverse().forEach(sub => points.push(subPoint(cell.a, cell.b, sub.x, sub.y)));
-    });
+    const pushSubPoint = (sub: SubRoadCell) => {
+      const point = subPoint(sub.gridX, sub.gridY, sub.parcelX, sub.parcelY);
+      const last = points[points.length - 1];
+      if (!last || Math.abs(last.x - point.x) > 0.01 || Math.abs(last.y - point.y) > 0.01) points.push(point);
+    };
+    for (let index = 0; index < cells.length - 1; index += 1) {
+      const from = cells[index];
+      const to = cells[index + 1];
+      const storedTrace = roadTraceByEdge.get(roadEdgeKey(from, to));
+      if (storedTrace?.length) {
+        const first = storedTrace[0];
+        const last = storedTrace[storedTrace.length - 1];
+        const oriented = sameMacroCell(first, from) || !sameMacroCell(last, from)
+          ? storedTrace
+          : [...storedTrace].reverse();
+        oriented.forEach(pushSubPoint);
+        continue;
+      }
+      const start: SubRoadCell = { gridX: from.a, gridY: from.b, parcelX: ROAD_TRACE_CENTER.x, parcelY: ROAD_TRACE_CENTER.y };
+      const end: SubRoadCell = { gridX: to.a, gridY: to.b, parcelX: ROAD_TRACE_CENTER.x, parcelY: ROAD_TRACE_CENTER.y };
+      [start, ...subRoadPathBetween(start, end)].forEach(pushSubPoint);
+    }
     return [{ id: route.route_id || JSON.stringify(path), points }];
-  }), [routes, gridKind, sessionId, subPoint]);
+  }), [routes, gridKind, subPoint, roadTraceByEdge]);
 
 
   /** One war-band illustration per cell; further stacks are folded into a count badge. */
@@ -1500,21 +1519,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <line x1={point.x - 5} y1={point.y - 2.6} x2={point.x + 5} y2={point.y - 2.6} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity=".8" />
             </g>;
           })}
-          {showRoutes && explicitRoadNetwork.map(segment => {
-            const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
-            const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
-            const width = segment.level === 3 ? 5.4 : segment.level === 2 ? 4 : 2.5;
-            return <g key={`explicit-${segment.id}`} pointerEvents="none">
-              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 2} strokeLinecap="round" opacity=".55" />
-              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-route)" strokeWidth={width} strokeLinecap="round"
-                strokeDasharray={segment.status === "building" ? "5 3" : segment.level === 1 ? "2 3" : undefined} opacity={segment.status === "blocked" ? .35 : .95} />
-              {segment.level === 3 && <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-label)" strokeWidth=".65" strokeDasharray="2 3" opacity=".5" />}
-            </g>;
-          })}
           {!cityLayerCityId && showRoutes && routePolylines.map(route => (
             <polyline key={route.id} points={route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ")}
-              fill="none" stroke="var(--map-route)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
-              opacity=".95" className="iso-active-route" pointerEvents="none" />
+              fill="none" stroke="var(--map-focus)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"
+              opacity=".9" className="iso-active-route" pointerEvents="none" />
           ))}
 
           {showNodes && nodes.map(node => {
