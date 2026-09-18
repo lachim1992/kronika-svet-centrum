@@ -136,4 +136,4 @@ COMMIT HISTORY: commit-turn() → count(snapshot for session+turn) = 1
 
 ## Verifikace
 
-`tsgo --noEmit`, `bunx vitest run`, build, nové testy: guard test read-only refreshe, idempotence refreshe, commit+refresh×2 nemění treasury, ghost inventory, node capacity bez orderu, součet income komponent.
+`tsgo --noEmit`, `bunx vitest run`, build, nové testy: guard test read-only refreshe, history guard, commit history = 1 snapshot, idempotence refreshe, commit+refresh×2 nemění fiskální stav, ghost inventory, node capacity bez orderu, součet income komponent.
