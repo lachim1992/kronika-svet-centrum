@@ -103,6 +103,9 @@ GUARD TEST: before = { gold_reserve, legitimacy, wealth_pop_tax,
             after === before
             (agregovaný alias fiscal_revenue se smí přepočítat na tutéž
              hodnotu, jeho fiskální pilíře se měnit nesmí)
+
+HISTORY GUARD: count(history) = N → refresh ×2 → count(history) = N
+COMMIT HISTORY: commit-turn() → count(snapshot for session+turn) = 1
 ```
 
 
