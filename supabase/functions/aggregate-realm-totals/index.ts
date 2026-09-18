@@ -60,8 +60,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // NOTE: wealth_output is legacy abstract wealth-flow and is deliberately NOT read
+    // here (allowlist: compute-economy-flow + dev/debug only).
     const { data: nodes, error: nodesErr } = await sb.from("province_nodes")
-      .select("controlled_by, production_output, wealth_output, food_value, capacity_score, importance_score, strategic_resource_type, metadata")
+      .select("controlled_by, production_output, food_value, capacity_score, importance_score, strategic_resource_type, metadata")
       .eq("session_id", session_id);
     if (nodesErr) throw nodesErr;
 
@@ -71,8 +73,9 @@ Deno.serve(async (req) => {
       if (!player) continue;
       if (!byPlayer.has(player)) byPlayer.set(player, emptyTotals());
       const t = byPlayer.get(player)!;
+      // LAYER A: organized production capacity (potential), NOT production.
       t.production += Number((node as any).production_output || 0);
-      t.wealth += Number((node as any).wealth_output || 0);
+
       t.supplies += Number((node as any).food_value || 0);
       t.capacity += Number((node as any).capacity_score || 0);
       t.importance += Number((node as any).importance_score || 0);
