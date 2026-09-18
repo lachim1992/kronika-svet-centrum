@@ -302,7 +302,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { session_id, turn_number, save_history } = await req.json();
+    // NOTE: `save_history` is intentionally ignored (INVARIANT 2 — no history writes here).
+    const { session_id } = await req.json();
     if (!session_id) {
       return new Response(JSON.stringify({ error: "session_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
