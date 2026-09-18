@@ -53,3 +53,6 @@
 - [ ] nodeProductionFactor pryč z recipe quantity, jen throughput budget
 - [ ] wealth_output deprecated + allowlist guard
 - [ ] ProductionOverviewCard jako řetězec, obchod vedle
+- [ ] Krok 4b: zrušit paralelní produkci v process-turn (cityProduction, layers.production/wealth)
+- [ ] hlad/obilí ze staple_food, ne z goods_supply_volume
+- [ ] goods_value_detail.structures (budovy + čtvrti), nikdy z post-trade local_supply
