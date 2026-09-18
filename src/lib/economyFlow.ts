@@ -418,118 +418,89 @@ export function getImportanceColor(score: number): string {
 // ═══════════════════════════════════════════
 // METRIC ROLES — Ontological layer separation
 // ═══════════════════════════════════════════
-// activity: wealth_domestic_component, commercial_retention
-// position: wealth_market_share
-// fiscal: wealth_pop_tax, tax_market, tax_transit, tax_extraction, commercial_capture, wealth_route_commerce
+// activity: goods_production_value, goods_supply_volume, commercial_retention
+// position: trade turnover (basket trade flows), export share
+// fiscal: wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal
 // control: route_access_factor, isolation_penalty (future)
+// See docs/architecture/economy-contract.md
 
 export type MetricRole = 'activity' | 'position' | 'fiscal' | 'control';
 
-/** ACTIVITY — world economic vitality, NOT state income */
+/** ACTIVITY — physical economy vitality, NOT state income (canonical columns only) */
 export function getEconomicActivity(realm: any) {
   return {
-    domesticActivity: Number(realm?.wealth_domestic_component ?? 0),
+    domesticActivity: Number(realm?.goods_production_value ?? 0),
+    supplyVolume: Number(realm?.goods_supply_volume ?? 0),
     internalRetentionPct: Number(realm?.commercial_retention ?? 0),
   };
 }
 
-/** POSITION — trade competitiveness, NOT state income */
+/** POSITION — trade competitiveness, NOT state income. Derived from trade turnover. */
 export function getMarketPosition(realm: any) {
+  const gdp = Number(realm?.total_gdp ?? 0);
+  const production = Number(realm?.goods_production_value ?? 0);
+  // total_gdp = production + export gross value (provisional proxy),
+  // so the export leg is the residual above domestic production.
+  const exportPosition = Math.max(0, gdp - production);
   return {
-    exportPosition: Number(realm?.wealth_market_share ?? 0),
+    exportPosition,
+    exportSharePct: gdp > 0 ? exportPosition / gdp : 0,
   };
 }
 
 /**
  * FISCAL v6 — actual treasury intake per turn.
  *
- * SSOT contract: mirrors the 3-pillar Lafferian model in
- * `process-turn/index.ts`. Engine adds to gold_reserve each turn:
- *   wealthIncome = wealth_pop_tax + wealth_domestic_market + goods_wealth_fiscal
+ * SSOT contract: mirrors the Lafferian model in `process-turn/index.ts`, which is
+ * the sole writer of turn fiscal state (INVARIANT 1). Engine adds to gold_reserve:
+ *   fiscal_revenue = wealth_pop_tax + wealth_domestic_market + goods_wealth_fiscal
  *
- * `goods_wealth_fiscal` already bundles market + transit + extraction tariffs.
- * Legacy columns (tax_market, tax_transit, tax_extraction, commercial_capture,
- * wealth_route_commerce) are NO LONGER read or written by v6.
+ * `goods_wealth_fiscal` bundles market tariff + transit toll + extraction tax; the
+ * real sub-components come from computed_modifiers.wealth_breakdown.goods_fiscal_detail.
  */
 export function getFiscalIncome(realm: any) {
   const popTax = Number(realm?.wealth_pop_tax ?? 0);
   const domesticMarket = Number(realm?.wealth_domestic_market ?? 0);
   const goodsFiscal = Number(realm?.goods_wealth_fiscal ?? 0);
-  const routeCommerce = 0; // v6: deprecated, always 0
 
   // SSOT total — must equal what process-turn adds to gold_reserve
   const totalIncome = popTax + domesticMarket + goodsFiscal;
 
   const wb = realm?.computed_modifiers?.wealth_breakdown || {};
+  const detail = wb.goods_fiscal_detail || {};
   const armyUpkeep = Number(wb.army_upkeep ?? 0);
   const tolls = Number(wb.tolls ?? 0);
   const sportFunding = Number(wb.sport_funding ?? 0);
   const totalExpenses = armyUpkeep + tolls + sportFunding;
+
+  const taxBasesRaw = realm?.computed_modifiers?.tax_bases || {};
+  const taxBases = {
+    domestic: Number(taxBasesRaw.domestic_tax_base ?? realm?.last_turn_gdp_domestic ?? 0),
+    market: Number(taxBasesRaw.market_tax_base ?? realm?.last_turn_gdp_market ?? 0),
+    transit: Number(taxBasesRaw.transit_tax_base ?? realm?.last_turn_gdp_transit ?? 0),
+    extraction: Number(taxBasesRaw.extraction_tax_base ?? realm?.last_turn_gdp_extraction ?? 0),
+    poll: Number(taxBasesRaw.poll_tax_base ?? realm?.total_population ?? 0),
+  };
 
   return {
     popTax,
     domesticMarket,
     goodsFiscal,
-    routeCommerce,
-    // Legacy aliases kept so older callers don't break — all derive from goodsFiscal.
-    marketTax: 0, transitTax: 0, extractionTax: 0, exportCapture: 0,
-    corridorTolls: routeCommerce,
-    goodsFiscalAggregate: goodsFiscal,
-    tradeTaxes: goodsFiscal,
-    externalTradeIncome: routeCommerce,
+    marketTariff: Number(detail.market_tariff ?? 0),
+    transitToll: Number(detail.transit_toll ?? 0),
+    extractionTax: Number(detail.extraction_tax ?? 0),
+    taxBases,
+    fiscalRevenue: totalIncome,
     totalIncome,
     armyUpkeep, tolls, sportFunding, totalExpenses,
+    recurringExpenses: armyUpkeep + sportFunding,
     netChange: totalIncome - totalExpenses,
   };
 }
 
 // ═══════════════════════════════════════════
-// WEALTH BREAKDOWN — Legacy 4-Pillar (DEPRECATED)
+// Legacy 4-pillar getWealthBreakdown() REMOVED (Economy Integrity Pass, Krok 5).
+// It read wealth_domestic_component / wealth_market_share, which v6 no longer
+// writes. Use getFiscalIncome() / getEconomicActivity() / getMarketPosition().
 // ═══════════════════════════════════════════
 
-export interface WealthBreakdown {
-  popTax: number;
-  domesticMarket: number;
-  domesticComponent: number;
-  marketShare: number;
-  goodsFiscal: number;
-  routeCommerce: number;
-  totalIncome: number;
-  armyUpkeep: number;
-  tolls: number;
-  sportFunding: number;
-  totalExpenses: number;
-  netChange: number;
-}
-
-const PILLAR2_DOMESTIC_WEIGHT = 0.4;
-const PILLAR2_MARKET_SHARE_WEIGHT = 0.6;
-
-/**
- * @deprecated Use getFiscalIncome(), getEconomicActivity(), getMarketPosition() instead.
- * This function blends economic activity with fiscal income, which is ontologically incorrect.
- */
-export function getWealthBreakdown(realm: any): WealthBreakdown {
-  const popTax = Number(realm?.wealth_pop_tax ?? 0);
-  const domesticComponent = Number(realm?.wealth_domestic_component ?? 0);
-  const marketShare = Number(realm?.wealth_market_share ?? 0);
-  const domesticMarket = domesticComponent * PILLAR2_DOMESTIC_WEIGHT + marketShare * PILLAR2_MARKET_SHARE_WEIGHT;
-  const goodsFiscal = Number(realm?.goods_wealth_fiscal ?? 0);
-  const routeCommerce = Number(realm?.wealth_route_commerce ?? 0);
-  const totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce;
-
-  const wb = realm?.computed_modifiers?.wealth_breakdown || {};
-  const armyUpkeep = Number(wb.army_upkeep ?? 0);
-  const tolls = Number(wb.tolls ?? 0);
-  const sportFunding = Number(wb.sport_funding ?? 0);
-  const totalExpenses = armyUpkeep + tolls + sportFunding;
-
-  return {
-    popTax, domesticMarket, domesticComponent, marketShare,
-    goodsFiscal, routeCommerce,
-    totalIncome,
-    armyUpkeep, tolls, sportFunding,
-    totalExpenses,
-    netChange: totalIncome - totalExpenses,
-  };
-}

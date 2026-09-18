@@ -28,35 +28,36 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
   const tariff_base = idData.tariffBase;
   const domestic_retention_bonus = ideology === "crown_mercantile" ? 0.15 : ideology === "guild_chartered" ? 0.10 : ideology === "palace_commanded" ? 0.20 : 0;
 
-  // 4-pillar wealth model — MUST mirror process-turn/index.ts.
-  // The engine adds: gold_reserve += popTax + domesticMarket + goodsFiscal + routeCommerce
-  // Each pillar is shown once; goodsFiscal sub-components are exposed as a breakdown
-  // (informational only) so they don't double-count toward the total.
+  // v6 fiscal model — MUST mirror process-turn/index.ts (sole fiscal writer).
+  // fiscal_revenue = popTax + domesticMarket + goodsFiscal
+  // Each tax has its own base: Revenue = Base × rate × Laffer(rate) × Governance
   const pillars = [
-    { icon: "👥", label: "Populační daň", value: fi.popTax,         desc: "Pilíř 1: Flat odvod z populace a městské vrstvy." },
-    { icon: "🏛️", label: "Domácí trh",    value: fi.domesticMarket, desc: "Pilíř 2: Tržní mechanismus z domácí spotřeby (domestic_component × 0,4 + market_share × 0,6)." },
-    { icon: "📦", label: "Daně ze zboží", value: fi.goodsFiscal,    desc: "Pilíř 3: Souhrn daní z obchodu — tržní + tranzitní + extrakční + export capture." },
-    { icon: "🛤️", label: "Koridorové mýto", value: fi.corridorTolls, desc: "Pilíř 4: Příjem z kontrolovaných obchodních tras (capacity × economic relevance × control)." },
+    { icon: "👥", label: "Populační daň", value: fi.popTax,         desc: "Základ: populace + městská vrstva. Poll-tax a daň z bohatství měst." },
+    { icon: "🏛️", label: "Domácí trh",    value: fi.domesticMarket, desc: "Základ: domácí HDP (domestic_tax_base) × sazba × Lafferova křivka × správa." },
+    { icon: "📦", label: "Daně ze zboží", value: fi.goodsFiscal,    desc: "Souhrn tržní, tranzitní a extrakční daně z obchodního základu." },
   ];
 
   const goodsBreakdown = [
-    { icon: "🏪", label: "Tržní daň",    value: fi.marketTax },
-    { icon: "🚚", label: "Tranzitní daň", value: fi.transitTax },
+    { icon: "🏪", label: "Tržní daň",     value: fi.marketTariff },
+    { icon: "🚚", label: "Tranzitní daň", value: fi.transitToll },
     { icon: "⛏️", label: "Extrakční daň", value: fi.extractionTax },
-    { icon: "🎯", label: "Export capture", value: fi.exportCapture },
-  ];
+  ].filter(g => g.value > 0);
 
-  // Pillar 2 transparency — raw inputs from compute-trade-flows
-  const wealthDomesticComponent = Number(realm?.wealth_domestic_component ?? 0);
-  const wealthMarketShare = Number(realm?.wealth_market_share ?? 0);
-  const PILLAR2_DOMESTIC_WEIGHT = 0.4;
-  const PILLAR2_MARKET_WEIGHT = 0.6;
+  // Tax bases — five separate bases, canonical from process-turn
+  const taxBases = [
+    { icon: "🏛️", label: "Domácí základ",    value: fi.taxBases.domestic },
+    { icon: "🏪", label: "Tržní základ",     value: fi.taxBases.market },
+    { icon: "🚚", label: "Tranzitní základ", value: fi.taxBases.transit },
+    { icon: "⛏️", label: "Extrakční základ", value: fi.taxBases.extraction },
+    { icon: "👥", label: "Populační základ", value: fi.taxBases.poll },
+  ];
 
   // Pillar 1 transparency — poll-tax vs city-wealth tax
   const totalPopulation = Number(realm?.total_population ?? 0);
   const POLL_TAX_PER_CAPITA = 0.002;
   const pollTaxRaw = totalPopulation * POLL_TAX_PER_CAPITA;
   const cityWealthTaxRaw = Math.max(0, fi.popTax - pollTaxRaw * (1 + (Number(realm?.tax_rate_modifier ?? 0) / 100)));
+
 
   const maxRevenue = Math.max(...pillars.map(r => r.value), 1);
 
@@ -94,7 +95,7 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             🏛️ Příjmy státu
-            <InfoTip>Skutečné příjmy pokladny — pouze daně, cla a capture z ekonomické aktivity.</InfoTip>
+            <InfoTip>Skutečné příjmy pokladny z posledního vyhodnocení tahu — daně a cla. Přepočet ekonomiky je nemění.</InfoTip>
             <span className="ml-auto font-mono font-bold text-xl text-primary">+{fi.totalIncome.toFixed(1)} /kolo</span>
           </CardTitle>
         </CardHeader>
@@ -112,12 +113,12 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
             </div>
           ))}
 
-          {/* Goods Fiscal breakdown — informational only, already counted in pillar 3 */}
-          {fi.goodsFiscal > 0 && (
+          {/* Goods Fiscal breakdown — informational only, already counted in the goods pillar */}
+          {goodsBreakdown.length > 0 && (
             <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 Rozklad pilíře „Daně ze zboží"
-                <InfoTip side="right">Tyto čtyři položky jsou již zahrnuty v pilíři Daně ze zboží — nesčítají se znovu.</InfoTip>
+                <InfoTip side="right">Tyto položky jsou již zahrnuty v pilíři Daně ze zboží — nesčítají se znovu.</InfoTip>
               </div>
               {goodsBreakdown.map(g => (
                 <div key={g.label} className="flex justify-between text-[11px] text-muted-foreground pl-3">
@@ -143,24 +144,22 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
             </div>
           </div>
 
-          {/* Pillar 2 transparency */}
+          {/* Tax bases — five separate bases (canonical from last turn resolution) */}
           <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-              Rozklad pilíře „Domácí trh"
-              <InfoTip side="right">Vstupy z trade-flow solveru. Domácí složka × 0,4 + tržní podíl × 0,6.</InfoTip>
+              Daňové základy z posledního kola
+              <InfoTip side="right">Každá daň má vlastní základ. Příjem = základ × sazba × Lafferova křivka × správa (legitimita).</InfoTip>
             </div>
-            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
-              <span>🏠 Domácí složka × 0,4</span>
-              <span className="font-mono">{wealthDomesticComponent.toFixed(1)} → {(wealthDomesticComponent * PILLAR2_DOMESTIC_WEIGHT).toFixed(1)}</span>
-            </div>
-            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
-              <span>🌍 Tržní podíl × 0,6</span>
-              <span className="font-mono">{wealthMarketShare.toFixed(1)} → {(wealthMarketShare * PILLAR2_MARKET_WEIGHT).toFixed(1)}</span>
-            </div>
+            {taxBases.map(b => (
+              <div key={b.label} className="flex justify-between text-[11px] text-muted-foreground pl-3">
+                <span>{b.icon} {b.label}</span>
+                <span className="font-mono">{b.value.toFixed(1)}</span>
+              </div>
+            ))}
           </div>
 
           {/* Pillar summary footer */}
-          <div className="pt-2 border-t border-border/30 grid grid-cols-4 gap-2 text-[10px] text-muted-foreground">
+          <div className="pt-2 border-t border-border/30 grid grid-cols-3 gap-2 text-[10px] text-muted-foreground">
             <div className="text-center">
               <div className="font-semibold text-foreground">{fi.popTax.toFixed(1)}</div>
               <div>Populace</div>
@@ -171,13 +170,10 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
             </div>
             <div className="text-center">
               <div className="font-semibold text-foreground">{fi.goodsFiscal.toFixed(1)}</div>
-              <div>Goods fiscal</div>
-            </div>
-            <div className="text-center">
-              <div className="font-semibold text-foreground">{fi.corridorTolls.toFixed(1)}</div>
-              <div>Trasy</div>
+              <div>Daně ze zboží</div>
             </div>
           </div>
+
         </CardContent>
       </Card>
 

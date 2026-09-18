@@ -560,6 +560,9 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
         body: { session_id: sessionId },
       });
       if (error) throw error;
+      await supabase.functions.invoke("aggregate-realm-totals", {
+        body: { session_id: sessionId },
+      });
       toast.success(`Ekonomika: ${data?.nodes_computed || 0} uzlů spočítáno`);
       await loadGraph();
     } catch (e: any) {

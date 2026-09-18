@@ -271,6 +271,11 @@ export function useProvinceGraph(sessionId: string) {
       });
       if (econErr) throw econErr;
 
+      // Final aggregation (read + sum only) — realm totals live here now.
+      await supabase.functions.invoke("aggregate-realm-totals", {
+        body: { session_id: sessionId },
+      });
+
       await loadGraph();
       return data;
     } finally {

@@ -376,8 +376,13 @@ Deno.serve(async (req) => {
       let orderReason: string | null = null;
 
       if (!order) {
-        // Legacy: share=1 per recipe, no cap. Full backward-compat.
-        shares = eligibleRecipes.map(() => 1);
+        // Economy Integrity Pass, Krok 6: "no order" === implicit AUTO.
+        // Previously every eligible recipe got share=1 with no capacity cap,
+        // which made unmanaged nodes out-produce managed ones.
+        const budget = capacityFor(node);
+        const perRecipe = budget / N;
+        shares = eligibleRecipes.map(() => Math.min(PRODUCTION_SHARE_CAP, perRecipe));
+        orderStatus = "auto_implicit";
       } else {
         const matchIdx: number[] = [];
         for (let i = 0; i < N; i++) {
@@ -484,11 +489,14 @@ Deno.serve(async (req) => {
     }
     const dedupedInventories = [...invAgg.values()].map(({ count, ...rest }) => rest);
 
+    // Economy Integrity Pass, Krok 3 (ghost inventory): clear inventory for ALL
+    // nodes of the session, not only nodes that produced something this pass.
+    // Otherwise a node that stops producing keeps its stale inventory forever.
+    const allSessionNodeIds = nodes.map((n: any) => n.id);
+    for (let i = 0; i < allSessionNodeIds.length; i += 50) {
+      await sb.from("node_inventory").delete().in("node_id", allSessionNodeIds.slice(i, i + 50));
+    }
     if (dedupedInventories.length > 0) {
-      const nodeIds = [...new Set(dedupedInventories.map(ni => ni.node_id))];
-      for (let i = 0; i < nodeIds.length; i += 50) {
-        await sb.from("node_inventory").delete().in("node_id", nodeIds.slice(i, i + 50));
-      }
       for (let i = 0; i < dedupedInventories.length; i += 50) {
         await sb.from("node_inventory").insert(dedupedInventories.slice(i, i + 50));
       }

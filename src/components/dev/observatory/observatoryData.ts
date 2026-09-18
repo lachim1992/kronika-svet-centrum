@@ -109,7 +109,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     upstreamCount: 4, downstreamCount: 3, playerInfluenceScore: 5, aiDependencyScore: 7, uiSurfacingLevel: 9,
     gaps: [], formula: "base[node_type] × role_mult × (1 − isolation) × workforce_ratio",
     description: "Fyzický výstup uzlů — generován demograficky (rolníci). Akumuluje se v production_reserve.",
-    layers: ["core"], dbTable: "realm_resources", writerFn: "compute-economy-flow",
+    layers: ["core"], dbTable: "realm_resources", writerFn: "aggregate-realm-totals",
   },
   {
     id: "wealth", label: "💰 Bohatství", type: "resource", status: "full",
@@ -125,7 +125,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     upstreamCount: 3, downstreamCount: 3, playerInfluenceScore: 4, aiDependencyScore: 3, uiSurfacingLevel: 8,
     gaps: [], formula: "Σ(urbanizace sídel) + Σ(infra_uzly × 2) + Σ(klerici × 0.05)",
     description: "Administrativní limit. Určuje max stavebních projektů, tras, provincií.",
-    layers: ["core"], dbTable: "realm_resources", writerFn: "compute-economy-flow",
+    layers: ["core"], dbTable: "realm_resources", writerFn: "aggregate-realm-totals",
   },
   {
     id: "faith", label: "⛪ Víra", type: "resource", status: "full",
@@ -149,7 +149,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     upstreamCount: 1, downstreamCount: 3, playerInfluenceScore: 4, aiDependencyScore: 5, uiSurfacingLevel: 8,
     gaps: ["Threshold unused"], formula: "1 kontrolovaný minor uzel = +1 tier (max 3). 11 typů.",
     description: "Access-based: Železo, Koně, Sůl, Měď, Zlato, Mramor, Drahokamy, Dřevo, Obsidián, Hedvábí, Kadidlo.",
-    layers: ["core", "economy_v41"], dbTable: "realm_resources", writerFn: "compute-economy-flow",
+    layers: ["core", "economy_v41"], dbTable: "realm_resources", writerFn: "aggregate-realm-totals",
   },
 
   // ══════════════ STATS ══════════════
@@ -347,7 +347,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     upstreamCount: 2, downstreamCount: 2, playerInfluenceScore: 3, aiDependencyScore: 4, uiSurfacingLevel: 7,
     gaps: [], formula: "recipe output per node: good_key × quantity × quality_band",
     description: "Výstup receptů per node. Vstup pro demand matching a trade.",
-    layers: ["economy_v41"], dbTable: "node_inventory", writerFn: "compute-economy-flow",
+    layers: ["economy_v41"], dbTable: "node_inventory", writerFn: "compute-trade-flows",
   },
   {
     id: "demand_baskets", label: "🛒 Poptávkové koše", type: "goods_pipeline", status: "full",
@@ -355,7 +355,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     upstreamCount: 1, downstreamCount: 2, playerInfluenceScore: 2, aiDependencyScore: 3, uiSurfacingLevel: 7,
     gaps: [], formula: "per city: staple_food, tools, construction, military, ritual, luxury",
     description: "Koše poptávky per city. Satisfaction 0-1 ovlivňuje trade pressure a stabilitu.",
-    layers: ["economy_v41"], dbTable: "demand_baskets", writerFn: "compute-economy-flow",
+    layers: ["economy_v41"], dbTable: "demand_baskets", writerFn: "compute-trade-flows",
   },
   {
     id: "trade_flows", label: "🚢 Trade Flows", type: "goods_pipeline", status: "full",
@@ -363,7 +363,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     upstreamCount: 2, downstreamCount: 2, playerInfluenceScore: 3, aiDependencyScore: 4, uiSurfacingLevel: 7,
     gaps: [], formula: "deficit city ← surplus city via routes. Status: latent/trial/active/dominant/blocked",
     description: "Meziměstské toky zboží. Objem, pressure_score, status.",
-    layers: ["economy_v41"], dbTable: "trade_flows", writerFn: "compute-economy-flow",
+    layers: ["economy_v41"], dbTable: "trade_flows", writerFn: "compute-trade-flows",
   },
   {
     id: "city_market_summary", label: "🏪 Tržní souhrn", type: "goods_pipeline", status: "full",
@@ -371,7 +371,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     upstreamCount: 2, downstreamCount: 1, playerInfluenceScore: 2, aiDependencyScore: 2, uiSurfacingLevel: 7,
     gaps: [], formula: "per city per good: supply, demand, domestic_share, import_share, price_band",
     description: "Agregovaný přehled trhu per city. UI visualizace.",
-    layers: ["economy_v41"], dbTable: "city_market_summary", writerFn: "compute-economy-flow",
+    layers: ["economy_v41"], dbTable: "city_market_summary", writerFn: "compute-trade-flows",
   },
   {
     id: "goods_macro", label: "📊 Goods → Macro", type: "goods_pipeline", status: "full",
@@ -379,7 +379,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     upstreamCount: 3, downstreamCount: 3, playerInfluenceScore: 0, aiDependencyScore: 0, uiSurfacingLevel: 2,
     gaps: ["No player agency", "UI hidden"], formula: "goods_production_value, goods_supply_volume, goods_wealth_fiscal → blend with legacy",
     description: "Projekce goods vrstvy do realm_resources makro agregátů.",
-    layers: ["economy_v41"], dbTable: "realm_resources", writerFn: "compute-economy-flow",
+    layers: ["economy_v41"], dbTable: "realm_resources", writerFn: "aggregate-realm-totals",
   },
 
   // ══════════════ INFRASTRUCTURE ══════════════

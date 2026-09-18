@@ -1,7 +1,12 @@
 // compute-basket-trade-flows: L2 basket-level solver.
 // Pairs export_surplus × unmet_demand inside the same trade_system,
 // gated by player_trade_system_access. Writes basket_trade_flows and
-// folds imports back into city_market_baskets + goods_wealth_fiscal.
+// folds imports back into city_market_baskets.
+//
+// WRITER CONTRACT (Economy Integrity Pass):
+// - WRITES: basket_trade_flows, city_market_baskets (derived current-turn state)
+// - NEVER WRITES: realm_resources (no goods_wealth_fiscal, no treasury),
+//   no *_history / *_snapshot tables. `process-turn` owns all fiscal state.
 //
 // Phase 2 invariants:
 // - source_city_id / target_city_id MUST be cities.id
@@ -307,26 +312,20 @@ Deno.serve(async (req) => {
       else basketUpdates++;
     }
 
-    // 9. Fold fiscal_capture into goods_wealth_fiscal
-    for (const [player, amount] of fiscalByPlayer) {
-      const { data: rr } = await sb.from("realm_resources")
-        .select("goods_wealth_fiscal")
-        .eq("session_id", session_id)
-        .eq("player_name", player)
-        .maybeSingle();
-      const prev = Number(rr?.goods_wealth_fiscal || 0);
-      const { error: rErr } = await sb.from("realm_resources")
-        .update({ goods_wealth_fiscal: Math.round((prev + amount) * 100) / 100 })
-        .eq("session_id", session_id)
-        .eq("player_name", player);
-      if (rErr) console.error("update goods_wealth_fiscal", player, rErr);
-    }
+    // 9. NO FISCAL WRITES (Economy Integrity Pass, INVARIANT 1).
+    // `fiscal_capture` is persisted per flow row; `process-turn` is the sole
+    // writer of realm fiscal state. This solver must never touch
+    // realm_resources — folding it here made repeated recomputes cumulative.
+    let fiscalCaptureTotal = 0;
+    for (const amount of fiscalByPlayer.values()) fiscalCaptureTotal += amount;
 
     return new Response(JSON.stringify({
       ok: true,
       flows: flows.length,
       basket_updates: basketUpdates,
       fiscal_recipients: fiscalByPlayer.size,
+      fiscal_capture_total: Math.round(fiscalCaptureTotal * 100) / 100,
+      fiscal_writes: 0,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("compute-basket-trade-flows error", e);

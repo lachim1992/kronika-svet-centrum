@@ -3044,6 +3044,30 @@ export type Database = {
           },
         ]
       }
+      economy_recompute_locks: {
+        Row: {
+          created_at: string
+          locked_at: string
+          locked_by: string | null
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          locked_at?: string
+          locked_by?: string | null
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          locked_at?: string
+          locked_by?: string | null
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       encyclopedia_images: {
         Row: {
           created_at: string

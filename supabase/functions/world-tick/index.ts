@@ -1358,10 +1358,10 @@ Deno.serve(async (req) => {
           results.hex_flows_error = (hfErr as Error).message;
         }
 
-        // 12f. Compute macro economy flow (Production / Wealth / Capacity)
+        // 12f. Compute macro economy flow (physical/derived node state only)
         try {
           const { data: econFlowData, error: econFlowErr } = await supabase.functions.invoke("compute-economy-flow", {
-            body: { session_id: sessionId, turn_number: turnNumber, save_history: true },
+            body: { session_id: sessionId },
           });
           if (econFlowErr) {
             console.warn("compute-economy-flow error:", econFlowErr);
@@ -1369,13 +1369,55 @@ Deno.serve(async (req) => {
           } else {
             results.economy_flow = {
               nodes_computed: econFlowData?.nodes_computed || 0,
-              realm_updates: econFlowData?.realm_updates || 0,
               totals: econFlowData?.totals_by_player || {},
             };
           }
         } catch (efErr) {
           console.warn("Economy flow computation non-fatal:", efErr);
           results.economy_flow_error = (efErr as Error).message;
+        }
+
+        // 12g. FINAL AGGREGATION (read + sum only) then idempotent history row.
+        let tickAggregationOk = false;
+        try {
+          const { data: aggData, error: aggErr } = await supabase.functions.invoke("aggregate-realm-totals", {
+            body: { session_id: sessionId },
+          });
+          if (aggErr) console.warn("aggregate-realm-totals error:", aggErr);
+          tickAggregationOk = !aggErr && !!aggData?.ok;
+          results.aggregate_totals = aggData || { error: aggErr?.message };
+        } catch (agErr) {
+          console.warn("aggregate-realm-totals non-fatal:", agErr);
+          results.aggregate_totals = { error: (agErr as Error).message };
+        }
+
+        if (tickAggregationOk && turnNumber) {
+          try {
+            const { data: histNodes } = await supabase.from("province_nodes")
+              .select("id, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, isolation_penalty")
+              .eq("session_id", sessionId);
+            await supabase.from("node_economy_history")
+              .delete().eq("session_id", sessionId).eq("turn_number", turnNumber);
+            const histRows = (histNodes || []).map((n: any) => ({
+              session_id: sessionId,
+              node_id: n.id,
+              turn_number: turnNumber,
+              production_output: Number(n.production_output || 0),
+              wealth_output: Number(n.wealth_output || 0),
+              capacity_score: Number(n.capacity_score || 0),
+              importance_score: Number(n.importance_score || 0),
+              incoming_production: Number(n.incoming_production || 0),
+              connectivity_score: Number(n.connectivity_score || 0),
+              isolation_penalty: Number(n.isolation_penalty || 0),
+            }));
+            for (let i = 0; i < histRows.length; i += 50) {
+              await supabase.from("node_economy_history").insert(histRows.slice(i, i + 50));
+            }
+            results.economy_history = { rows: histRows.length, turn_number: turnNumber };
+          } catch (hErr) {
+            console.warn("node_economy_history non-fatal:", hErr);
+            results.economy_history = { error: (hErr as Error).message };
+          }
         }
       }
     } catch (graphErr) {

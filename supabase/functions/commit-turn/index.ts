@@ -753,9 +753,10 @@ Deno.serve(async (req) => {
         results.basketTradeFlows = { error: (basketE as Error).message };
       }
 
-      // Final aggregation must see newly routed goods and basket fiscal capture.
+      // Physical/derived node state only. Realm totals are aggregated AFTER
+      // process-turn (Economy Integrity Pass, Krok 2 — fiscal writer first).
       const { data: economyRes, error: economyErr } = await supabase.functions.invoke("compute-economy-flow", {
-        body: { sessionId },
+        body: { session_id: sessionId },
       });
       if (economyErr) console.warn("compute-economy-flow warning:", economyErr.message);
       results.economyFlow = economyRes || { error: economyErr?.message };
@@ -824,6 +825,73 @@ Deno.serve(async (req) => {
       console.error("Process turn error:", e);
       results.economy = { error: (e as Error).message };
     }
+
+    // ═══════════════════════════════════════════
+    // 5a. FINAL AGGREGATION → VALIDATION → SNAPSHOT (INVARIANT 3)
+    // Order: physical state → fiscal resolution (phase 5) → aggregation →
+    // validation → snapshot → DONE. The economy snapshot / history row is only
+    // written when every previous phase succeeded.
+    // ═══════════════════════════════════════════
+    const economyFailed = !!(results.economy as any)?.error
+      || (((results.economy as any)?.failures?.length ?? 0) > 0);
+    let aggregationOk = false;
+    try {
+      const { data: aggRes, error: aggErr } = await supabase.functions.invoke("aggregate-realm-totals", {
+        body: { session_id: sessionId },
+      });
+      if (aggErr) console.warn("aggregate-realm-totals warning:", aggErr.message);
+      aggregationOk = !aggErr && !!aggRes?.ok;
+      results.aggregateTotals = aggRes || { error: aggErr?.message };
+    } catch (e) {
+      console.error("aggregate-realm-totals error:", e);
+      results.aggregateTotals = { error: (e as Error).message };
+    }
+
+    // SNAPSHOT / HISTORY — single writer, idempotent per (session, turn).
+    if (!aggregationOk || economyFailed) {
+      results.economySnapshot = {
+        skipped: true,
+        status: "stale",
+        reason: economyFailed ? "process-turn failures" : "aggregation failed",
+      };
+      console.warn("[commit-turn] economy snapshot skipped — turn not economically complete");
+    } else {
+      try {
+        const historyTurn = turnNumber + 1;
+        const { data: histNodes } = await supabase.from("province_nodes")
+          .select("id, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, isolation_penalty")
+          .eq("session_id", sessionId);
+
+        // Idempotent: replace any existing rows for this (session, turn).
+        await supabase.from("node_economy_history")
+          .delete()
+          .eq("session_id", sessionId)
+          .eq("turn_number", historyTurn);
+
+        const histRows = (histNodes || []).map((n: any) => ({
+          session_id: sessionId,
+          node_id: n.id,
+          turn_number: historyTurn,
+          production_output: Number(n.production_output || 0),
+          wealth_output: Number(n.wealth_output || 0),
+          capacity_score: Number(n.capacity_score || 0),
+          importance_score: Number(n.importance_score || 0),
+          incoming_production: Number(n.incoming_production || 0),
+          connectivity_score: Number(n.connectivity_score || 0),
+          isolation_penalty: Number(n.isolation_penalty || 0),
+        }));
+        for (let i = 0; i < histRows.length; i += 50) {
+          const { error: hErr } = await supabase.from("node_economy_history").insert(histRows.slice(i, i + 50));
+          if (hErr) console.warn("node_economy_history insert warning:", hErr.message);
+        }
+        results.economySnapshot = { status: "done", turn_number: historyTurn, rows: histRows.length };
+      } catch (e) {
+        console.error("economy snapshot error:", e);
+        results.economySnapshot = { status: "error", error: (e as Error).message };
+      }
+    }
+
+
 
     // ═══════════════════════════════════════════
     // 5b. STRATEGIC GRAPH RECOMPUTE (hex flows + collapse chain)

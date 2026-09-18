@@ -27,20 +27,24 @@ const TaxPolicySubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => 
   });
   const [saving, setSaving] = useState(false);
 
-  // GDP volumes from last turn
+  // Five separate tax bases from the last turn resolution (process-turn is the sole writer).
+  const bases = realm?.computed_modifiers?.tax_bases || {};
   const gdp = {
-    domestic:   Number(realm?.last_turn_gdp_domestic   ?? realm?.wealth_domestic_component ?? 0),
-    market:     Number(realm?.last_turn_gdp_market     ?? 0),
-    transit:    Number(realm?.last_turn_gdp_transit    ?? 0),
-    extraction: Number(realm?.last_turn_gdp_extraction ?? 0),
-    poll:       Number(realm?.tax_population ?? 0) * 500, // rough population proxy
+    domestic:   Number(bases.domestic_tax_base   ?? realm?.last_turn_gdp_domestic   ?? 0),
+    market:     Number(bases.market_tax_base     ?? realm?.last_turn_gdp_market     ?? 0),
+    transit:    Number(bases.transit_tax_base    ?? realm?.last_turn_gdp_transit    ?? 0),
+    extraction: Number(bases.extraction_tax_base ?? realm?.last_turn_gdp_extraction ?? 0),
+    poll:       Number(bases.poll_tax_base       ?? realm?.total_population ?? 0),
   };
+
+  // Governance modifier — engine: govMod = 0.5 + 0.5 × (legitimacy / 100)
+  const govMod = 0.5 + 0.5 * (Number(realm?.legitimacy ?? 50) / 100);
 
   const previewRevenue = (key: string) => {
     const p = PILLARS.find(p => p.key === key)!;
     const r = rates[key];
     const vol = (gdp as any)[key];
-    return vol * laffer(r, p.max) * r;
+    return vol * laffer(r, p.max) * r * govMod;
   };
 
   const totalPreview = PILLARS.reduce((s, p) => s + previewRevenue(p.key), 0);
@@ -69,7 +73,7 @@ const TaxPolicySubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => 
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             ⚖️ Daňová politika
-            <InfoTip>Lafferův princip: vysoká sazba sníží zdaněný objem (úniky, šedá ekonomika). Optimální výnos je obvykle kolem 30–40 % maxima sazby.</InfoTip>
+            <InfoTip>Lafferův princip: vysoká sazba sníží zdaněný objem (úniky, šedá ekonomika). Engine používá L(r) = 1 − (r/r_max)², takže výnos je nejvyšší kolem 58 % maxima sazby a nad tím klesá. Vysoké sazby navíc snižují legitimitu, což dál sráží výběr.</InfoTip>
             <span className="ml-auto text-xs text-muted-foreground">
               Ztráta minulého kola: <span className="font-mono">{((Number(realm?.last_turn_laffer_loss ?? 0)) * 100).toFixed(0)} %</span>
             </span>

@@ -1,0 +1,168 @@
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { getFiscalIncome, getEconomicActivity, getMarketPosition } from "@/lib/economyFlow";
+
+const fn = (name: string) => readFileSync(`supabase/functions/${name}/index.ts`, "utf8");
+
+/**
+ * Economy Integrity Pass — static contract guards.
+ * See docs/architecture/economy-contract.md (INVARIANT 1-3).
+ */
+describe("INVARIANT 1 — process-turn is the sole turn-fiscal writer", () => {
+  it("compute-basket-trade-flows never writes realm fiscal pillars", () => {
+    const src = fn("compute-basket-trade-flows");
+    expect(src).not.toMatch(/goods_wealth_fiscal\s*:/);
+    expect(src.includes('from("realm_resources")\n') && /update\(\s*\{[^}]*goods_wealth_fiscal/.test(src)).toBe(false);
+  });
+
+  it("aggregate-realm-totals writes totals only, no fiscal pillars", () => {
+    const src = fn("aggregate-realm-totals");
+    for (const col of ["wealth_pop_tax", "wealth_domestic_market", "goods_wealth_fiscal", "gold_reserve", "legitimacy"]) {
+      expect(src).not.toMatch(new RegExp(`${col}\\s*:`));
+    }
+    expect(src).toMatch(/total_gdp/);
+    expect(src).toMatch(/total_production/);
+  });
+
+  it("process-turn publishes the five separate tax bases", () => {
+    const src = fn("process-turn");
+    for (const base of ["domestic_tax_base", "market_tax_base", "transit_tax_base", "extraction_tax_base", "poll_tax_base"]) {
+      expect(src).toContain(base);
+    }
+  });
+});
+
+describe("INVARIANT 2 — refresh-economy is a pure derived recompute", () => {
+  const src = fn("refresh-economy");
+
+  it("does not invoke process-turn", () => {
+    expect(src).not.toContain("process-turn");
+  });
+
+  it("does not write treasury, legitimacy or history", () => {
+    expect(src).not.toMatch(/gold_reserve\s*:/);
+    expect(src).not.toMatch(/legitimacy\s*:/);
+    expect(src).not.toMatch(/_history"\)[\s\S]{0,40}\.insert/);
+  });
+
+  it("guards the fiscal pillars before and after the chain", () => {
+    expect(src).toContain("FISCAL_COLUMNS");
+    expect(src).toContain("fiscal_unchanged");
+  });
+
+  it("runs the canonical step order ending in aggregation", () => {
+    const order = [
+      "compute-province-routes",
+      "compute-hex-flows",
+      "compute-trade-systems",
+      "compute-trade-flows",
+      "compute-basket-trade-flows",
+      "compute-economy-flow",
+      "aggregate-realm-totals",
+    ];
+    let cursor = -1;
+    for (const step of order) {
+      const at = src.indexOf(step, cursor + 1);
+      expect(at, step).toBeGreaterThan(cursor);
+      cursor = at;
+    }
+  });
+
+  it("uses a DB lock, not only an in-memory one", () => {
+    expect(src).toContain("economy_recompute_locks");
+  });
+
+  it("compute-economy-flow writes no history and no realm aggregates", () => {
+    const eco = fn("compute-economy-flow");
+    expect(eco).not.toMatch(/node_economy_history"\)[\s\S]{0,60}\.insert/);
+    expect(eco).not.toMatch(/from\("realm_resources"\)[\s\S]{0,80}\.update/);
+  });
+});
+
+describe("INVARIANT 3 — snapshot only after the whole pipeline succeeds", () => {
+  const src = fn("commit-turn");
+
+  it("aggregates before writing history", () => {
+    const agg = src.indexOf("aggregate-realm-totals");
+    const hist = src.indexOf("node_economy_history");
+    expect(agg).toBeGreaterThan(0);
+    expect(hist).toBeGreaterThan(agg);
+  });
+
+  it("marks the economy stale instead of snapshotting on failure", () => {
+    expect(src).toContain("stale");
+    expect(src).toMatch(/aggregationOk/);
+  });
+
+  it("writes history idempotently for (session, turn)", () => {
+    expect(src).toMatch(/node_economy_history"\)[\s\S]{0,200}\.delete\(\)/);
+  });
+});
+
+describe("Krok 6 — node capacity applies without an explicit production order", () => {
+  it("compute-trade-flows treats a missing order as implicit auto", () => {
+    const src = fn("compute-trade-flows");
+    expect(src).toContain("auto_implicit");
+    expect(src).toContain("PRODUCTION_SHARE_CAP");
+  });
+
+  it("clears node_inventory for every node of the session (no ghost inventory)", () => {
+    const src = fn("compute-trade-flows");
+    expect(src).toMatch(/node_inventory"\)[\s\S]{0,200}\.delete\(\)/);
+  });
+});
+
+describe("UI data contract", () => {
+  const realm = {
+    wealth_pop_tax: 12.5,
+    wealth_domestic_market: 30,
+    goods_wealth_fiscal: 7.5,
+    goods_production_value: 100,
+    goods_supply_volume: 240,
+    commercial_retention: 0.62,
+    total_gdp: 130,
+    total_population: 4000,
+    computed_modifiers: {
+      tax_bases: {
+        domestic_tax_base: 80, market_tax_base: 100, transit_tax_base: 10,
+        extraction_tax_base: 25, poll_tax_base: 4000,
+      },
+      wealth_breakdown: {
+        army_upkeep: 5, tolls: 1, sport_funding: 2,
+        goods_fiscal_detail: { market_tariff: 4, transit_toll: 1.5, extraction_tax: 2 },
+      },
+    },
+  };
+
+  it("INCOME SUM — fiscal revenue equals the three income pillars only", () => {
+    const fi = getFiscalIncome(realm);
+    expect(fi.fiscalRevenue).toBeCloseTo(fi.popTax + fi.domesticMarket + fi.goodsFiscal, 6);
+    expect(fi.totalIncome).toBeCloseTo(50, 6);
+    expect(fi.recurringExpenses).toBeCloseTo(7, 6);
+    expect(fi.netChange).toBeCloseTo(50 - 8, 6);
+  });
+
+  it("exposes all five tax bases", () => {
+    const { taxBases } = getFiscalIncome(realm);
+    expect(taxBases).toEqual({ domestic: 80, market: 100, transit: 10, extraction: 25, poll: 4000 });
+  });
+
+  it("goods fiscal detail carries real sub-components, not zeros", () => {
+    const fi = getFiscalIncome(realm);
+    expect(fi.marketTariff + fi.transitToll + fi.extractionTax).toBeCloseTo(7.5, 6);
+  });
+
+  it("activity and position read canonical columns, not dead v5 ones", () => {
+    expect(getEconomicActivity(realm).domesticActivity).toBe(100);
+    expect(getEconomicActivity(realm).supplyVolume).toBe(240);
+    expect(getMarketPosition(realm).exportPosition).toBe(30);
+    expect(getEconomicActivity({}).domesticActivity).toBe(0);
+    expect(getMarketPosition({}).exportPosition).toBe(0);
+  });
+
+  it("economyFlow no longer reads the dead wealth columns", () => {
+    const src = readFileSync("src/lib/economyFlow.ts", "utf8");
+    expect(src).not.toMatch(/realm\?\.wealth_domestic_component/);
+    expect(src).not.toMatch(/realm\?\.wealth_market_share/);
+  });
+});
