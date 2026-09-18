@@ -99,8 +99,9 @@ Deno.serve(async (req) => {
     const [nodeRes, routeRes, riverRes, prevSnapRes, treatyRes, pactRes] = await Promise.all([
       sb
         .from("province_nodes")
-        .select("id, controlled_by, is_neutral, discovered, discovered_by, is_active, grid_x, grid_y, hex_q, hex_r")
+        .select("id, controlled_by, is_neutral, discovered, discovered_by, is_active, grid_x, grid_y, hex_q, hex_r, node_tier, upgrade_level, infrastructure_level, production_output, importance_score")
         .eq("session_id", session_id),
+
       sb
         .from("road_segments")
         .select("id, from_x, from_y, to_x, to_y, status, capacity")
