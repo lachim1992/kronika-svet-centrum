@@ -153,8 +153,7 @@ const Dashboard = () => {
           .from("user_roles")
           .select("role")
           .eq("user_id", user.id)
-          .in("role", ["admin", "moderator"])
-          .maybeSingle(),
+          .in("role", ["admin", "moderator"]),
         supabase
           .from("game_players")
           .select("player_name, user_id")
@@ -163,20 +162,30 @@ const Dashboard = () => {
           .maybeSingle(),
       ]);
 
+      const globalRoles = (globalRoleRes.data || []).map((r: { role: string }) => r.role);
+      const globalRole = globalRoles.includes("admin")
+        ? "admin"
+        : globalRoles.includes("moderator")
+          ? "moderator"
+          : null;
+
       const canonicalPlayerName = membershipRes.data?.player_name || sessionPlayersRes.data?.player_name;
+
+      const rank = (r: string) => (r === "admin" ? 3 : r === "moderator" ? 2 : 1);
 
       if (canonicalPlayerName) {
         let role = membershipRes.data?.role || "player";
-        // Elevate to moderator if global role exists and game role is lower
-        if (globalRoleRes.data && role === "player") {
-          role = globalRoleRes.data.role === "admin" ? "admin" : "moderator";
+        // Global role always wins when it is higher than the per-game role
+        if (globalRole && rank(globalRole) > rank(role)) {
+          role = globalRole;
         }
         setMyRole(role);
         setMyPlayerName(canonicalPlayerName);
       } else {
         setMyPlayerName(localStorage.getItem("ch_playerName") || "Hráč");
-        setMyRole(globalRoleRes.data?.role === "moderator" ? "moderator" : "admin");
+        setMyRole(globalRole === "moderator" ? "moderator" : "admin");
       }
+
     };
 
     const fetchFoundation = async () => {
