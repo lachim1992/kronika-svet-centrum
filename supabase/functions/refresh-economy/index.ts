@@ -1,31 +1,36 @@
+import { createClient } from "npm:@supabase/supabase-js@2";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 /**
- * refresh-economy: Safe economy recalculation without process-turn.
+ * refresh-economy: PURE DERIVED RECOMPUTE (Economy Integrity Pass, INVARIANT 2).
  *
- * Pipeline:
- * Legacy province routes are refreshed only for military/older overlays. Economic
- * connectivity and goods movement are derived solely from roads and rivers.
+ * MAY: rebuild routes, production, demand, markets, trade flows and derived
+ *      aggregates (aggregate-realm-totals is read + sum only).
+ * MUST NOT: collect taxes, pay upkeep, mutate gold_reserve, mutate legitimacy,
+ *      apply transfers, run a player transaction, or append to any *_history,
+ *      *_snapshot or event/action log table.
  *
- * No side effects on turn state. Best-effort in-memory per-session guard.
+ * Fiscal pillars (wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal)
+ * are READ ONLY — they come from the last successful turn resolution.
+ * Running it twice over the same state must produce identical derived state.
  */
 
 interface StepResult {
   name: string;
   ok: boolean;
   durationMs: number;
+  rowsWritten?: number;
   detail?: string;
 }
 
-// Best-effort in-memory guard — not a distributed lock
-const inProgress = new Set<string>();
+const LOCK_TTL_MS = 5 * 60 * 1000;
 
 async function invokeStep(
   supabaseUrl: string,
-  anonKey: string,
   serviceKey: string,
   functionName: string,
   body: Record<string, unknown>,
@@ -53,46 +58,73 @@ async function invokeStep(
       return { ok: false, error: data?.error || `HTTP ${res.status}: ${text.slice(0, 200)}` };
     }
     return { ok: true, data };
-  } catch (e: any) {
-    return { ok: false, error: e.message || "Network error" };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message || "Network error" };
   }
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  let lockedSession: string | null = null;
+  let sb: any = null;
+
   try {
     const { session_id } = await req.json();
     if (!session_id) throw new Error("Missing session_id");
 
-    // Best-effort concurrency guard
-    if (inProgress.has(session_id)) {
-      return new Response(
-        JSON.stringify({ error: "already_in_progress", session_id }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 },
-      );
-    }
-
-    inProgress.add(session_id);
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    sb = createClient(supabaseUrl, serviceKey);
 
-    // ORDER MATTERS (Phase A fix): compute-economy-flow performs the FINAL
-    // aggregation of total_wealth & total_capacity into realm_resources by
-    // reading wealth components produced by compute-trade-flows. It must run
-    // LAST so it sees the freshest pop_tax / domestic_market / route_commerce
-    // / fiscal-goods values; otherwise the canonical totals lag one cycle.
+    // ── Distributed lock (DB, with TTL) ─────────────────────────
+    const { data: existingLock } = await sb.from("economy_recompute_locks")
+      .select("session_id, locked_at")
+      .eq("session_id", session_id)
+      .maybeSingle();
+
+    if (existingLock) {
+      const age = Date.now() - new Date(existingLock.locked_at).getTime();
+      if (age < LOCK_TTL_MS) {
+        return new Response(
+          JSON.stringify({ error: "already_in_progress", session_id, lock_age_ms: age }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 },
+        );
+      }
+      // Stale lock → take it over
+      await sb.from("economy_recompute_locks")
+        .update({ locked_at: new Date().toISOString(), locked_by: "refresh-economy" })
+        .eq("session_id", session_id);
+    } else {
+      const { error: lockErr } = await sb.from("economy_recompute_locks")
+        .insert({ session_id, locked_by: "refresh-economy" });
+      if (lockErr) {
+        return new Response(
+          JSON.stringify({ error: "already_in_progress", session_id }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 },
+        );
+      }
+    }
+    lockedSession = session_id;
+
+    // ── Fiscal guard snapshot: these must be identical after the refresh ──
+    const FISCAL_COLUMNS = "player_name, gold_reserve, legitimacy, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal";
+    const { data: fiscalBefore } = await sb.from("realm_resources")
+      .select(FISCAL_COLUMNS)
+      .eq("session_id", session_id);
+
+    // Legacy province routes stay only for military/older overlays; economic
+    // connectivity and goods movement derive from roads and rivers.
     const steps: { name: string; fn: string; body: Record<string, unknown> }[] = [
       { name: "compute-province-routes", fn: "compute-province-routes", body: { session_id } },
       { name: "compute-hex-flows", fn: "compute-hex-flows", body: { session_id, force_all: true } },
-      // Node-Trade v1: project trade systems & player access BEFORE the goods solver consumes them
       { name: "compute-trade-systems", fn: "compute-trade-systems", body: { session_id } },
       { name: "compute-trade-flows", fn: "compute-trade-flows", body: { session_id } },
-      // L2 basket-level solver: pairs export_surplus × unmet_demand inside trade systems
       { name: "compute-basket-trade-flows", fn: "compute-basket-trade-flows", body: { session_id } },
+      // Physical/derived node state (no history, no realm aggregation)
       { name: "compute-economy-flow", fn: "compute-economy-flow", body: { session_id } },
+      // FINAL AGGREGATION: read + sum only, never fiscal
+      { name: "aggregate-realm-totals", fn: "aggregate-realm-totals", body: { session_id } },
     ];
 
     const results: StepResult[] = [];
@@ -100,14 +132,19 @@ Deno.serve(async (req) => {
 
     for (const step of steps) {
       const t0 = Date.now();
-      const res = await invokeStep(supabaseUrl, anonKey, serviceKey, step.fn, step.body);
+      const res = await invokeStep(supabaseUrl, serviceKey, step.fn, step.body);
       const durationMs = Date.now() - t0;
+      const rowsWritten = Number(
+        res.data?.nodes_computed ?? res.data?.flows ?? res.data?.players ?? 0,
+      );
       results.push({
         name: step.name,
         ok: res.ok,
         durationMs,
+        rowsWritten,
         detail: res.ok ? JSON.stringify(res.data).slice(0, 300) : res.error,
       });
+      console.log(`[refresh-economy] step=${step.name} ok=${res.ok} rows=${rowsWritten} ms=${durationMs}`);
 
       if (!res.ok) {
         console.error(`Step ${step.name} failed:`, res.error);
@@ -115,9 +152,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    inProgress.delete(session_id);
+    // ── Fiscal guard verification (INVARIANT 2) ───────────────
+    const { data: fiscalAfter } = await sb.from("realm_resources")
+      .select(FISCAL_COLUMNS)
+      .eq("session_id", session_id);
+    const fiscalKey = (rows: any[] | null) =>
+      JSON.stringify((rows || []).slice().sort((a, b) => a.player_name.localeCompare(b.player_name)));
+    const fiscalUnchanged = fiscalKey(fiscalBefore) === fiscalKey(fiscalAfter);
+    if (!fiscalUnchanged) {
+      console.error("[refresh-economy] FISCAL GUARD VIOLATION — a step mutated fiscal state");
+      warnings.push("fiscal_guard_violation: a derived step mutated fiscal state");
+    }
 
-    const allOk = results.every((r) => r.ok);
+    const allOk = results.every((r) => r.ok) && fiscalUnchanged;
     const totalMs = results.reduce((s, r) => s + r.durationMs, 0);
 
     return new Response(
@@ -125,7 +172,10 @@ Deno.serve(async (req) => {
         ok: allOk,
         session_id,
         totalMs,
-        refreshed_domains: ["roads", "rivers", "flows", "economy", "trade"],
+        status: allOk ? "fresh" : "stale",
+        fiscal_state: "read_only_from_last_turn_resolution",
+        fiscal_unchanged: fiscalUnchanged,
+        refreshed_domains: ["roads", "rivers", "flows", "production", "markets", "trade", "aggregates"],
         steps: results,
         warnings,
       }),
@@ -134,16 +184,16 @@ Deno.serve(async (req) => {
         status: allOk ? 200 : 207,
       },
     );
-  } catch (e: any) {
-    // Clean up guard on error
-    try {
-      const body = await req.clone().json().catch(() => ({}));
-      if (body?.session_id) inProgress.delete(body.session_id);
-    } catch { /* ignore */ }
-
+  } catch (e) {
     return new Response(
-      JSON.stringify({ error: (e as Error).message }),
+      JSON.stringify({ error: (e as Error).message, status: "stale" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
     );
+  } finally {
+    if (lockedSession && sb) {
+      try {
+        await sb.from("economy_recompute_locks").delete().eq("session_id", lockedSession);
+      } catch { /* lock expires via TTL */ }
+    }
   }
 });
