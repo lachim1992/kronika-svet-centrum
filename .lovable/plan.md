@@ -122,8 +122,3 @@ GUARD TEST: before = { gold_reserve, legitimacy, wealth_pop_tax,
 ## Verifikace
 
 `tsgo --noEmit`, `bunx vitest run`, build, nové testy: guard test read-only refreshe, idempotence refreshe, commit+refresh×2 nemění treasury, ghost inventory, node capacity bez orderu, součet income komponent.
-
-
-## Verifikace
-
-`tsgo --noEmit`, `bunx vitest run`, build, nové testy: idempotence refreshe, commit+refresh×2 nemění treasury, ghost inventory, node capacity bez orderu, součet income komponent.
