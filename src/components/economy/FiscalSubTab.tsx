@@ -28,35 +28,36 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
   const tariff_base = idData.tariffBase;
   const domestic_retention_bonus = ideology === "crown_mercantile" ? 0.15 : ideology === "guild_chartered" ? 0.10 : ideology === "palace_commanded" ? 0.20 : 0;
 
-  // 4-pillar wealth model — MUST mirror process-turn/index.ts.
-  // The engine adds: gold_reserve += popTax + domesticMarket + goodsFiscal + routeCommerce
-  // Each pillar is shown once; goodsFiscal sub-components are exposed as a breakdown
-  // (informational only) so they don't double-count toward the total.
+  // v6 fiscal model — MUST mirror process-turn/index.ts (sole fiscal writer).
+  // fiscal_revenue = popTax + domesticMarket + goodsFiscal
+  // Each tax has its own base: Revenue = Base × rate × Laffer(rate) × Governance
   const pillars = [
-    { icon: "👥", label: "Populační daň", value: fi.popTax,         desc: "Pilíř 1: Flat odvod z populace a městské vrstvy." },
-    { icon: "🏛️", label: "Domácí trh",    value: fi.domesticMarket, desc: "Pilíř 2: Tržní mechanismus z domácí spotřeby (domestic_component × 0,4 + market_share × 0,6)." },
-    { icon: "📦", label: "Daně ze zboží", value: fi.goodsFiscal,    desc: "Pilíř 3: Souhrn daní z obchodu — tržní + tranzitní + extrakční + export capture." },
-    { icon: "🛤️", label: "Koridorové mýto", value: fi.corridorTolls, desc: "Pilíř 4: Příjem z kontrolovaných obchodních tras (capacity × economic relevance × control)." },
+    { icon: "👥", label: "Populační daň", value: fi.popTax,         desc: "Základ: populace + městská vrstva. Poll-tax a daň z bohatství měst." },
+    { icon: "🏛️", label: "Domácí trh",    value: fi.domesticMarket, desc: "Základ: domácí HDP (domestic_tax_base) × sazba × Lafferova křivka × správa." },
+    { icon: "📦", label: "Daně ze zboží", value: fi.goodsFiscal,    desc: "Souhrn tržní, tranzitní a extrakční daně z obchodního základu." },
   ];
 
   const goodsBreakdown = [
-    { icon: "🏪", label: "Tržní daň",    value: fi.marketTax },
-    { icon: "🚚", label: "Tranzitní daň", value: fi.transitTax },
+    { icon: "🏪", label: "Tržní daň",     value: fi.marketTariff },
+    { icon: "🚚", label: "Tranzitní daň", value: fi.transitToll },
     { icon: "⛏️", label: "Extrakční daň", value: fi.extractionTax },
-    { icon: "🎯", label: "Export capture", value: fi.exportCapture },
-  ];
+  ].filter(g => g.value > 0);
 
-  // Pillar 2 transparency — raw inputs from compute-trade-flows
-  const wealthDomesticComponent = Number(realm?.wealth_domestic_component ?? 0);
-  const wealthMarketShare = Number(realm?.wealth_market_share ?? 0);
-  const PILLAR2_DOMESTIC_WEIGHT = 0.4;
-  const PILLAR2_MARKET_WEIGHT = 0.6;
+  // Tax bases — five separate bases, canonical from process-turn
+  const taxBases = [
+    { icon: "🏛️", label: "Domácí základ",    value: fi.taxBases.domestic },
+    { icon: "🏪", label: "Tržní základ",     value: fi.taxBases.market },
+    { icon: "🚚", label: "Tranzitní základ", value: fi.taxBases.transit },
+    { icon: "⛏️", label: "Extrakční základ", value: fi.taxBases.extraction },
+    { icon: "👥", label: "Populační základ", value: fi.taxBases.poll },
+  ];
 
   // Pillar 1 transparency — poll-tax vs city-wealth tax
   const totalPopulation = Number(realm?.total_population ?? 0);
   const POLL_TAX_PER_CAPITA = 0.002;
   const pollTaxRaw = totalPopulation * POLL_TAX_PER_CAPITA;
   const cityWealthTaxRaw = Math.max(0, fi.popTax - pollTaxRaw * (1 + (Number(realm?.tax_rate_modifier ?? 0) / 100)));
+
 
   const maxRevenue = Math.max(...pillars.map(r => r.value), 1);
 
