@@ -54,28 +54,41 @@ const ProductionOverviewCard = ({ realm }: Props) => {
         <Package className="h-4 w-4 text-primary" />
         <h3 className="font-display font-semibold text-sm">Produkce říše</h3>
         <InfoTip side="right">
-          <b>Řetězec, ne dvě ekonomiky:</b> produkční potenciál (infrastruktura a
-          geografie) omezuje specializovanou výrobu → skutečně vyrobené zboží je
-          jediná kanonická produkce → z jeho tržní hodnoty vzniká fiskální příjem.
+          <b>Pozor na jednotky:</b> produkční potenciál je počet výrobních míst
+          (kolik zakázek zvládnou tvé dvory za kolo), realizovaná produkce je
+          <b> peněžní hodnota</b> vyrobeného zboží. Nejsou to stejné jednotky, proto
+          nelze říct, že hodnota musí být menší než počet míst.
+          <br />
+          Potenciál navíc omezuje <b>jen specializovanou výrobu podle receptů</b>.
+          Domácnosti a produkční čtvrti jsou samostatné sektory a kapacitou uzlů
+          omezené nejsou.
           <br />
           <b>Export</b> je obchodní metrika, ne další produkce — do HDP se nepřičítá.
         </InfoTip>
         <Badge variant="outline" className="ml-auto text-[10px]">SSOT: realm_resources</Badge>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-2 items-center">
-        <Step icon="🏗️" label="Produkční potenciál" value={capacity.toFixed(1)} unit="kapacita uzlů (Layer A)">
-          <div className="text-[10px] text-muted-foreground mt-1">
-            {capacity > 0 ? "strop specializované výroby" : "žádné produkční uzly"}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <Step icon="🏗️" label="Specializovaná výroba (receptury)" value={capacity.toFixed(1)} unit="výrobních míst / kolo (Layer A)">
+          <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">
+            <div>vyrobeno za {recipeVal.toFixed(1)} zlata hodnoty</div>
+            <div className="text-muted-foreground/70">
+              {capacity > 0 ? "jen tato větev je omezená kapacitou uzlů" : "žádné produkční uzly"}
+            </div>
           </div>
         </Step>
-
-        <ArrowRight className="hidden md:block h-4 w-4 text-muted-foreground mx-auto" />
-        <Step icon="📦" label="Realizovaná produkce" value={goodsProd.toFixed(1)} unit="hodnota vyrobeného zboží / kolo" accent>
+        <Step icon="🏘️" label="Sektory bez kapacitního stropu" value={(autoVal + structVal).toFixed(1)} unit="hodnota zboží / kolo">
           <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">
             <div>domácnosti {autoVal.toFixed(1)}</div>
-            <div>recepty {recipeVal.toFixed(1)}</div>
             <div>budovy a čtvrti {structVal.toFixed(1)}</div>
+          </div>
+        </Step>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-2 items-center">
+        <Step icon="📦" label="Realizovaná produkce celkem" value={goodsProd.toFixed(1)} unit="hodnota vyrobeného zboží / kolo" accent>
+          <div className="text-[10px] text-muted-foreground mt-1">
+            domácnosti + receptury + budovy a čtvrti
           </div>
         </Step>
         <ArrowRight className="hidden md:block h-4 w-4 text-muted-foreground mx-auto" />
@@ -85,6 +98,7 @@ const ProductionOverviewCard = ({ realm }: Props) => {
           </div>
         </Step>
       </div>
+
 
       <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
