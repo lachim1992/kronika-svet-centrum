@@ -376,8 +376,13 @@ Deno.serve(async (req) => {
       let orderReason: string | null = null;
 
       if (!order) {
-        // Legacy: share=1 per recipe, no cap. Full backward-compat.
-        shares = eligibleRecipes.map(() => 1);
+        // Economy Integrity Pass, Krok 6: "no order" === implicit AUTO.
+        // Previously every eligible recipe got share=1 with no capacity cap,
+        // which made unmanaged nodes out-produce managed ones.
+        const budget = capacityFor(node);
+        const perRecipe = budget / N;
+        shares = eligibleRecipes.map(() => Math.min(PRODUCTION_SHARE_CAP, perRecipe));
+        orderStatus = "auto_implicit";
       } else {
         const matchIdx: number[] = [];
         for (let i = 0; i < N; i++) {
