@@ -37,11 +37,14 @@ const TaxPolicySubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => 
     poll:       Number(bases.poll_tax_base       ?? realm?.total_population ?? 0),
   };
 
+  // Governance modifier — engine: govMod = 0.5 + 0.5 × (legitimacy / 100)
+  const govMod = 0.5 + 0.5 * (Number(realm?.legitimacy ?? 50) / 100);
+
   const previewRevenue = (key: string) => {
     const p = PILLARS.find(p => p.key === key)!;
     const r = rates[key];
     const vol = (gdp as any)[key];
-    return vol * laffer(r, p.max) * r;
+    return vol * laffer(r, p.max) * r * govMod;
   };
 
   const totalPreview = PILLARS.reduce((s, p) => s + previewRevenue(p.key), 0);

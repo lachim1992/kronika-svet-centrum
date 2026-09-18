@@ -136,7 +136,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
       // SSOT: hrubý příjem státu /kolo (sjednoceno s EconomyTab a TreasuryHub).
       // Tooltip ukazuje rozklad včetně výdajů a čisté změny pokladny.
       value: `${Math.round(wealthReserve)} (+${fi.totalIncome.toFixed(0)}/kolo)`,
-      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo\n  • Populační daň: ${fi.popTax.toFixed(1)}\n  • Domácí trh: ${fi.domesticMarket.toFixed(1)}\n  • Daně ze zboží: ${fi.goodsFiscal.toFixed(1)}\n  • Koridorové mýto: ${fi.corridorTolls.toFixed(1)}\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistá změna pokladny: ${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(1)}/kolo`,
+      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo\n  • Populační daň: ${fi.popTax.toFixed(1)}\n  • Domácí trh: ${fi.domesticMarket.toFixed(1)}\n  • Daně ze zboží: ${fi.goodsFiscal.toFixed(1)}\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistá změna pokladny: ${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(1)}/kolo`,
     },
     {
       icon: <span className="text-xs">🌾</span>,
