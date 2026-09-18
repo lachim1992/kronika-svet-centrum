@@ -1,10 +1,13 @@
-// ProductionOverviewCard — primary "what realm produces" KPI block.
-// Two-layer model: realized (Goods v4.3) primary, infra raw output secondary (greyed).
-// No fake utilization. Dev-mode-only semantic warning lives in NodeFlowBreakdown.
+// ProductionOverviewCard — Layer A → B → C chain, NOT two parallel economies.
+//   🏗 Produkční potenciál (Layer A: total_production_capacity)
+//   📦 Realizovaná produkce (Layer B: goods_production_value = auto + recipe + structures)
+//   💰 Tržní hodnota / fiskální záchyt
+//   🏛 Fiskální příjem z goods (Layer C)
+// Never reads total_wealth (= alias fiskálního příjmu) nor the legacy node wealth flow.
 
 import { InfoTip } from "@/components/ui/info-tip";
 import { Badge } from "@/components/ui/badge";
-import { Package } from "lucide-react";
+import { Package, ArrowRight } from "lucide-react";
 
 interface Props {
   realm: any;
@@ -13,12 +16,35 @@ interface Props {
 const ProductionOverviewCard = ({ realm }: Props) => {
   if (!realm) return null;
 
+  // Layer A — potential (capacity), never a production number.
+  const capacity = Number(realm.total_production_capacity ?? realm.total_production ?? 0);
+  // Layer B — realized production (single canonical value, also total_gdp proxy).
   const goodsProd = Number(realm.goods_production_value ?? 0);
+  const detail = (realm.goods_value_detail || {}) as Record<string, number>;
+  const autoVal = Number(detail.auto ?? 0);
+  const recipeVal = Number(detail.recipe ?? 0);
+  const structVal = Number(detail.structures ?? 0);
+  // Layer C — fiscal.
   const goodsWealth = Number(realm.goods_wealth_fiscal ?? 0);
-  // realm.total_production aggregates province_nodes.production_output server-side.
-  const infraRaw = Number(realm.total_production ?? 0);
-  const infraWealth = Number(realm.total_wealth ?? 0);
   const fiscalCapture = goodsProd > 0 ? goodsWealth / goodsProd : 0;
+  const utilization = capacity > 0 ? goodsProd / capacity : 0;
+  // Trade (separate metric — NOT part of HDP).
+  const exportGross = Number(realm.export_gross_value ?? 0);
+  const domesticConsumption = Number(realm.goods_domestic_consumption_value ?? 0);
+  const logistics = Number(realm.total_capacity ?? 0);
+
+  const Step = ({
+    icon, label, value, unit, accent, children,
+  }: { icon: string; label: string; value: string; unit: string; accent?: boolean; children?: React.ReactNode }) => (
+    <div className={`rounded-lg border p-3 ${accent ? "border-accent/40 bg-accent/5" : "border-border/40 bg-muted/20"}`}>
+      <div className={`text-[10px] uppercase tracking-wider font-bold mb-1 ${accent ? "text-accent" : "text-muted-foreground"}`}>
+        {icon} {label}
+      </div>
+      <div className={`font-display font-bold ${accent ? "text-2xl text-accent" : "text-xl"}`}>{value}</div>
+      <div className="text-[10px] text-muted-foreground">{unit}</div>
+      {children}
+    </div>
+  );
 
   return (
     <div className="rounded-xl border border-border/40 bg-card/50 p-5 space-y-4">
@@ -26,59 +52,56 @@ const ProductionOverviewCard = ({ realm }: Props) => {
         <Package className="h-4 w-4 text-primary" />
         <h3 className="font-display font-semibold text-sm">Produkce říše</h3>
         <InfoTip side="right">
-          <b>Realizovaný tržní objem (HDP)</b> = co ekonomika skutečně produkuje a co
-          trh absorbuje (Goods v4.3). Jediná kanonická hodnota.
+          <b>Řetězec, ne dvě ekonomiky:</b> produkční potenciál (infrastruktura a
+          geografie) omezuje specializovanou výrobu → skutečně vyrobené zboží je
+          jediná kanonická produkce → z jeho tržní hodnoty vzniká fiskální příjem.
           <br />
-          <b>Infrastrukturní vstup</b> = surový výkon uzlů (province_nodes). Jiná
-          vrstva i jednotka — nepoužívat jako „strop".
+          <b>Export</b> je obchodní metrika, ne další produkce — do HDP se nepřičítá.
         </InfoTip>
-        <Badge variant="outline" className="ml-auto text-[10px]">
-          SSOT: realm_resources
-        </Badge>
+        <Badge variant="outline" className="ml-auto text-[10px]">SSOT: realm_resources</Badge>
       </div>
 
-      {/* Primary: realized */}
-      <div className="rounded-lg border-2 border-accent/40 bg-accent/5 p-4">
-        <div className="text-[10px] uppercase tracking-wider text-accent font-bold mb-1">
-          📦 Realizovaný tržní objem (HDP)
-        </div>
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <div className="text-2xl font-bold font-display text-accent">
-              {goodsProd.toFixed(1)}
-            </div>
-            <div className="text-[10px] text-muted-foreground">tržní objem / kolo</div>
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-2 items-center">
+        <Step icon="🏗️" label="Produkční potenciál" value={capacity.toFixed(1)} unit="kapacita uzlů (Layer A)">
+          <div className="text-[10px] text-muted-foreground mt-1">
+            využití {Math.round(utilization * 100)}%
           </div>
-          <div>
-            <div className="text-2xl font-bold font-display">{goodsWealth.toFixed(1)}</div>
-            <div className="text-[10px] text-muted-foreground">fiskální výnos z goods</div>
+        </Step>
+        <ArrowRight className="hidden md:block h-4 w-4 text-muted-foreground mx-auto" />
+        <Step icon="📦" label="Realizovaná produkce" value={goodsProd.toFixed(1)} unit="hodnota vyrobeného zboží / kolo" accent>
+          <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">
+            <div>domácnosti {autoVal.toFixed(1)}</div>
+            <div>recepty {recipeVal.toFixed(1)}</div>
+            <div>budovy a čtvrti {structVal.toFixed(1)}</div>
           </div>
-          <div>
-            <div className="text-2xl font-bold font-display text-primary">
-              {Math.round(fiscalCapture * 100)}
-              <span className="text-xs">%</span>
-            </div>
-            <div className="text-[10px] text-muted-foreground">fiskální záchyt</div>
+        </Step>
+        <ArrowRight className="hidden md:block h-4 w-4 text-muted-foreground mx-auto" />
+        <Step icon="🏛️" label="Fiskální příjem z goods" value={goodsWealth.toFixed(1)} unit="zlato / kolo (Layer C)">
+          <div className="text-[10px] text-muted-foreground mt-1">
+            fiskální záchyt {Math.round(fiscalCapture * 100)}%
           </div>
-        </div>
+        </Step>
       </div>
 
-      {/* Secondary: infra raw output, greyed */}
       <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-          🏗️ Infrastrukturní vstup (node raw output)
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          🚚 Trh &amp; obchod
           <span className="ml-2 normal-case font-normal text-muted-foreground/70">
-            — kontextová hodnota, ne strop
+            — samostatné metriky, nesčítají se s produkcí
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-4 text-muted-foreground">
+        <div className="grid grid-cols-3 gap-4 text-muted-foreground">
           <div>
-            <div className="text-sm font-semibold">{infraRaw.toFixed(1)}</div>
-            <div className="text-[10px]">Σ node production</div>
+            <div className="text-sm font-semibold">{domesticConsumption.toFixed(1)}</div>
+            <div className="text-[10px]">domácí spotřeba (uspokojená)</div>
           </div>
           <div>
-            <div className="text-sm font-semibold">{infraWealth.toFixed(1)}</div>
-            <div className="text-[10px]">Σ node wealth</div>
+            <div className="text-sm font-semibold">{exportGross.toFixed(1)}</div>
+            <div className="text-[10px]">export (hrubá hodnota)</div>
+          </div>
+          <div>
+            <div className="text-sm font-semibold">{logistics.toFixed(1)}</div>
+            <div className="text-[10px]">dopravní kapacita</div>
           </div>
         </div>
       </div>

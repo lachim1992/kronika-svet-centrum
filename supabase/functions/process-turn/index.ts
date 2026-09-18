@@ -199,16 +199,17 @@ Deno.serve(async (req) => {
     // Integrity Pass closure (P0): never read stale realm.total_* here. The
     // physical layer (compute-economy-flow) persists province_nodes; we sum them
     // live so this turn is resolved against the current physical state.
+    // wealth_output is a LEGACY abstract wealth-flow (Layer A) and MUST NOT be read here.
     const { data: physNodes } = await supabase.from("province_nodes")
-      .select("production_output, wealth_output, capacity_score, importance_score")
+      .select("production_output, capacity_score, importance_score")
       .eq("session_id", sessionId).eq("controlled_by", playerName);
-    let totalProduction = 0, totalWealth = 0, totalImportance = 0, totalCapacity = 0;
+    let totalProduction = 0, totalImportance = 0, totalCapacity = 0;
     for (const n of physNodes || []) {
       totalProduction += Number((n as any).production_output || 0);
-      totalWealth += Number((n as any).wealth_output || 0);
       totalImportance += Number((n as any).importance_score || 0);
       totalCapacity += Number((n as any).capacity_score || 0);
     }
+
 
     // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.3) ──
     const goodsProductionValue = realm.goods_production_value || 0;
@@ -221,7 +222,7 @@ Deno.serve(async (req) => {
     const goodsExtractionValue = Number((realm as any).goods_extraction_value || 0);
 
 
-    logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Fyzický výnos: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
+    logEntries.push(`🏗️ Produkční potenciál: ${totalProduction.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
     if (goodsProductionValue > 0) {
       logEntries.push(`📦 Goods v4.3: produkce=${goodsProductionValue.toFixed(1)} zásoby=${goodsSupplyVolume.toFixed(1)}`);
     }
@@ -248,7 +249,7 @@ Deno.serve(async (req) => {
     // ── Load network layer: nodes linked to cities + routes + supply state ──
     const [nodesRes, routesRes, supplyRes] = await Promise.all([
       supabase.from("province_nodes")
-        .select("id, city_id, node_type, flow_role, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, isolation_penalty, controlled_by, toll_rate, throughput_military, province_id")
+        .select("id, city_id, node_type, flow_role, production_output, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, isolation_penalty, controlled_by, toll_rate, throughput_military, province_id")
         .eq("session_id", sessionId),
       supabase.from("province_routes")
         .select("id, node_a, node_b, control_state, capacity_value, damage_level")
