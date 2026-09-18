@@ -354,6 +354,7 @@ Deno.serve(async (req) => {
       basket_updates: basketUpdates,
       fiscal_recipients: fiscalByPlayer.size,
       fiscal_capture_total_telemetry: Math.round(fiscalCaptureTotal * 100) / 100,
+      domestic_consumption_players: domesticConsumptionPlayers,
       fiscal_writes: 0,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
