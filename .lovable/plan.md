@@ -85,7 +85,15 @@ Acceptance testy:
 S0 --refresh--> S1 --refresh--> S2      S1 === S2 pro všechny derived current-turn hodnoty
 S0 --commit--> A                        ===  S0 --commit--> refresh --> refresh
                                         (stejné treasury, daně, legitimita)
+
+GUARD TEST: before = { gold_reserve, legitimacy, wealth_pop_tax,
+                       wealth_domestic_market, goods_wealth_fiscal }
+            refresh-economy()
+            after === before
+            (agregovaný alias fiscal_revenue se smí přepočítat na tutéž
+             hodnotu, jeho fiskální pilíře se měnit nesmí)
 ```
+
 
 ## Krok 4 — P1: přesné metriky
 
