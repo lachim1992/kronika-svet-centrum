@@ -3,7 +3,7 @@
 //   📦 Realizovaná produkce (Layer B: goods_production_value = auto + recipe + structures)
 //   💰 Tržní hodnota / fiskální záchyt
 //   🏛 Fiskální příjem z goods (Layer C)
-// Never reads total_wealth (= alias fiskálního příjmu) nor node wealth_output (legacy).
+// Never reads total_wealth (= alias fiskálního příjmu) nor the legacy node wealth flow.
 
 import { InfoTip } from "@/components/ui/info-tip";
 import { Badge } from "@/components/ui/badge";
