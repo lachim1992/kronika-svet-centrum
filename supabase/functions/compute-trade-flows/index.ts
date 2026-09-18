@@ -1551,6 +1551,11 @@ Deno.serve(async (req) => {
       trade_flows_created: tradeFlows.length,
       players_updated: playerAggregates.size,
       sys_supply_injected_count: sysSupplyInjectedCount,
+      capacity_budget: Math.round(capacityDiag.budget * 10) / 10,
+      capacity_allocated: Math.round(capacityDiag.allocated * 10) / 10,
+      capacity_utilization: capacityDiag.budget > 0 ? Math.round((capacityDiag.allocated / capacityDiag.budget) * 1000) / 1000 : 0,
+      capacity_nodes: capacityDiag.nodes,
+
       unmapped_count: remapCounters.unmapped,
       legacy_remap_count: remapCounters.legacy,
       warnings: uniqueWarnings.slice(0, 50),
