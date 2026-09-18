@@ -161,7 +161,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, recalcOnly } = await req.json();
+    // `allowCapexAccrual` is passed as true by commit-turn ONLY when the whole Layer B
+    // pipeline succeeded. Stale goods data must never fund construction stock.
+    const { sessionId, playerName, recalcOnly, allowCapexAccrual } = await req.json();
+
     if (!sessionId || !playerName) throw new Error("Missing sessionId or playerName");
 
     const supabase = createClient(
@@ -300,33 +303,13 @@ Deno.serve(async (req) => {
       .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
 
     // ══════════════════════════════════════════
-    // BUILDING COMPLETION
+    // BUILDING COMPLETION — NOT HERE.
+    // commit-turn (phase 4a2) is the sole writer of building/district completion, so a
+    // finished yard feeds the same turn's goods pipeline. process-turn only reads the
+    // effects of already completed structures.
     // ══════════════════════════════════════════
-    const { data: allBuildings } = await supabase.from("city_buildings").select("*")
-      .eq("session_id", sessionId).eq("status", "building")
-      .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    const completedCount = 0;
 
-    let completedCount = 0;
-    // Capacity-based building speed: if too many active projects, some may be delayed
-    const activeBuildingCount = (allBuildings || []).length;
-    const capacityBuildLimit = Math.max(2, Math.floor(totalCapacity / 5 + 2)); // Minimum 2 projects at full speed
-    const capacityOverload = activeBuildingCount > capacityBuildLimit;
-    if (capacityOverload) {
-      logEntries.push(`🏛️ Kapacita přetížena: ${activeBuildingCount} staveb vs limit ${capacityBuildLimit} — stavby zpomaleny`);
-    }
-
-    for (const b of (allBuildings || [])) {
-      // Marble reduces build duration, capacity overload increases it
-      const baseDuration = b.build_duration || 1;
-      const adjustedDuration = Math.max(1, Math.round(baseDuration * (capacityOverload ? 1.5 : 1.0)));
-      const finishTurn = (b.build_started_turn || 0) + adjustedDuration;
-      if (currentTurn >= finishTurn) {
-        await supabase.from("city_buildings").update({ status: "completed", completed_turn: currentTurn }).eq("id", b.id);
-        completedCount++;
-        const cityName = myCities.find(c => c.id === b.city_id)?.name || "?";
-        logEntries.push(`🏗️ Stavba "${b.name}" v ${cityName} dokončena!`);
-      }
-    }
 
     // ══════════════════════════════════════════
     // BUILDING EFFECTS (per-city aggregate)
@@ -353,21 +336,8 @@ Deno.serve(async (req) => {
     const buildingGranaryBonus = globalBuildingEffects["granary_capacity"] || 0;
     const granaryCapacity = infraGranary + buildingGranaryBonus;
 
-    // ══════════════════════════════════════════
-    // DISTRICT COMPLETION
-    // ══════════════════════════════════════════
-    const { data: buildingDistricts } = await supabase.from("city_districts").select("*")
-      .eq("session_id", sessionId).eq("status", "building")
-      .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    // DISTRICT COMPLETION — NOT HERE (see commit-turn phase 4a2, sole writer).
 
-    for (const d of (buildingDistricts || [])) {
-      const finishTurn = (d.build_started_turn || 0) + (d.build_turns || 1);
-      if (currentTurn >= finishTurn) {
-        await supabase.from("city_districts").update({ status: "completed", completed_turn: currentTurn }).eq("id", d.id);
-        const cityName = myCities.find(c => c.id === d.city_id)?.name || "?";
-        logEntries.push(`🏘️ Čtvrť "${d.name}" v ${cityName} dokončena!`);
-      }
-    }
 
     // ══════════════════════════════════════════
     // DISTRICT EFFECTS
@@ -1407,15 +1377,18 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // UPDATE REALM RESOURCES (with faith + prestige + supply strain + mobilization penalties)
     // ══════════════════════════════════════════
-    // ⚠️ DEPRECATED / UNRESOLVED: production_reserve accumulation.
-    // It used to accrue from the removed parallel macro `totalCityProduction`. Layer A
-    // capacity must NOT be converted into CAPEX stock, and no replacement conversion is
-    // invented in this pass. Existing stock is preserved and still spent by
-    // command-dispatch (buildings, roads) — this is a temporary, deliberately unsafe
-    // compatibility state. TODO(construction-goods pass): CAPEX must come from realized
-    // construction goods (Layer B) before gameplay release.
-    const productionIncome = 0;
+    // CAPEX SOURCE (Layer B → construction stock).
+    // production_reserve accrues 1:1 from `construction_available_for_capex`, the post-trade
+    // construction material left over after local demand, imports and exports
+    // (written by compute-basket-trade-flows). Layer A capacity is NEVER converted into
+    // CAPEX stock, and post-trade `local_supply` must not be used (it still covers demand
+    // and ignores exports). Accrual happens only when the goods pipeline is confirmed fresh
+    // (commit-turn passes allowCapexAccrual) and at most once per processed turn
+    // (last_processed_turn guard). Spending stays in command-dispatch, unchanged.
+    const constructionForCapex = Number((realm as any).construction_available_for_capex || 0);
+    const productionIncome = allowCapexAccrual === true ? constructionForCapex : 0;
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
+
 
 
     // ── Goods economy: fiscal data now handled by 4-pillar model (pillar 3) ──

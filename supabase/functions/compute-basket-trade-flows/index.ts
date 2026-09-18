@@ -287,22 +287,27 @@ Deno.serve(async (req) => {
     }
 
     // 8. Fold imports/exports back into city_market_baskets
+    // IMPORTANT: pre-trade `local_supply` ALREADY contains auto_supply + recipe_bonus +
+    // building_bonus (written by compute-trade-flows). Adding auto/bonus again here would
+    // double-count domestic supply and understate unmet_demand.
+    //   post_trade_supply = local_supply + imports      ✅
+    //   local_supply + auto + bonus + imports           ❌ (double count)
     let basketUpdates = 0;
+    const postTradeSupply = new Map<string, number>(); // city::basket → post-trade supply
     for (const b of baskets) {
       const imp = importsByCityBasket.get(`${b.city_id}::${b.basket_key}`) || 0;
       const exp = exportsByCityBasket.get(`${b.city_id}::${b.basket_key}`) || 0;
+      const localSupply = Number(b.local_supply || 0);
+      const demand = Number(b.local_demand || 0);
+      const totalSupply = localSupply + imp;
+      postTradeSupply.set(`${b.city_id}::${b.basket_key}`, totalSupply);
       if (imp === 0 && exp === 0) continue;
 
-      const localSupply = Number(b.local_supply || 0);
-      const auto = Number(b.auto_supply || 0);
-      const bonus = Number(b.bonus_supply || 0);
-      const demand = Number(b.local_demand || 0);
-      const totalSupply = localSupply + auto + bonus + imp;
       const sat = demand > 0 ? Math.min(1, totalSupply / demand) : 1;
 
       const { error: uErr } = await sb.from("city_market_baskets")
         .update({
-          local_supply: Math.round((localSupply + imp) * 1000) / 1000,
+          local_supply: Math.round(totalSupply * 1000) / 1000,
           export_surplus: Math.max(0, Number(b.export_surplus || 0) - exp),
           unmet_demand: Math.max(0, demand - totalSupply),
           domestic_satisfaction: Math.round(sat * 1000) / 1000,
@@ -313,6 +318,22 @@ Deno.serve(async (req) => {
       if (uErr) { console.error("update basket", uErr); /* non-fatal per row */ }
       else basketUpdates++;
     }
+
+    // 8a. CONSTRUCTION MATERIAL FREE FOR CAPEX (Layer B derived volume, not fiscal).
+    // Only material that survives domestic demand AND exports may fund construction.
+    // Imports count only insofar as something is left after demand is satisfied.
+    //   available = max(0, post_trade_supply − local_demand − exports)
+    const capexByPlayer = new Map<string, number>();
+    for (const b of baskets) {
+      if (b.basket_key !== "construction") continue;
+      const player = b.player_name || "";
+      if (!player) continue;
+      const exp = exportsByCityBasket.get(`${b.city_id}::${b.basket_key}`) || 0;
+      const supply = postTradeSupply.get(`${b.city_id}::${b.basket_key}`) ?? Number(b.local_supply || 0);
+      const available = Math.max(0, supply - Number(b.local_demand || 0) - exp);
+      capexByPlayer.set(player, (capexByPlayer.get(player) || 0) + available);
+    }
+
 
     // 8b. LAYER B → LAYER C input: value of actually satisfied domestic consumption.
     // satisfied = local_demand − unmet_demand (post-trade), so sold imports are taxed
@@ -331,13 +352,20 @@ Deno.serve(async (req) => {
       const satisfied = Math.max(0, Number(b.local_demand || 0) - Number(b.unmet_demand || 0));
       consumptionByPlayer.set(p, (consumptionByPlayer.get(p) || 0) + satisfied * basketValueFor(b.basket_key));
     }
-    for (const [player, value] of consumptionByPlayer) {
+    // Union of players so a realm with no construction (or no demand) is written as an
+    // explicit 0 instead of keeping a stale value from an earlier recompute.
+    const playersToWrite = new Set<string>([...consumptionByPlayer.keys(), ...capexByPlayer.keys()]);
+    for (const player of playersToWrite) {
       const { error: cErr } = await sb.from("realm_resources")
-        .update({ goods_domestic_consumption_value: Math.round(value * 10) / 10 })
+        .update({
+          goods_domestic_consumption_value: Math.round((consumptionByPlayer.get(player) || 0) * 10) / 10,
+          construction_available_for_capex: Math.round((capexByPlayer.get(player) || 0) * 100) / 100,
+        })
         .eq("session_id", session_id).eq("player_name", player);
       if (cErr) console.error("domestic consumption update", cErr);
       else domesticConsumptionPlayers++;
     }
+
 
 
     // 9. NO FISCAL WRITES (Economy Integrity Pass, INVARIANT 1).

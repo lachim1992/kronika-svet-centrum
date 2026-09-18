@@ -66,3 +66,14 @@
 - [ ] Napojit obnovu production_reserve výhradně na post-trade koš construction
 - [ ] Ověřit živý svět: specializovaný dvůr změní structures/recipe a opakovaný refresh je idempotentní
 
+
+## Layer B post-trade opravy (audit aaa4be27)
+- [x] P0: post-trade fold nesmí dvakrát počítat auto+bonus (local_supply + import)
+- [x] P0: production_reserve se obnovuje jen z construction_available_for_capex (po poptávce a exportu)
+- [x] Layer A kapacita 0 nesmí vyrábět recepty (capacityFor bez fallbacku z nuly)
+- [x] Dokončení budov/čtvrtí přesunout do commit-turn PO advance tahu, PŘED economy pipeline; odstranit druhého writera v process-turn
+- [x] BUILD_SUBNODE: bez platného města/rodiče stavbu odmítnout
+- [x] Akruál stavební zásoby jen při plně úspěšné economy pipeline (commit-turn předá flag)
+- [x] ProductionOverviewCard: neporovnávat peněžní hodnotu s throughput slotem procentem
+- [x] aggregate-realm-totals: hráči bez uzlů musí dostat explicitní 0, ne stale hodnotu
+- [ ] Live test rozšířit na node_inventory, city_market_baskets, basket_trade_flows a goods_* metriky; akceptovat jen čistý úspěch

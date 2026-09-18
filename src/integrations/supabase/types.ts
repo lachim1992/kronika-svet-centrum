@@ -8454,6 +8454,7 @@ export type Database = {
           commercial_retention: number | null
           computed_modifiers: Json | null
           connected_nodes: number | null
+          construction_available_for_capex: number
           created_at: string
           cultural_prestige: number
           economic_prestige: number
@@ -8564,6 +8565,7 @@ export type Database = {
           commercial_retention?: number | null
           computed_modifiers?: Json | null
           connected_nodes?: number | null
+          construction_available_for_capex?: number
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
@@ -8674,6 +8676,7 @@ export type Database = {
           commercial_retention?: number | null
           computed_modifiers?: Json | null
           connected_nodes?: number | null
+          construction_available_for_capex?: number
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number

@@ -345,10 +345,15 @@ Deno.serve(async (req) => {
       else if (role === "urban" || role === "guild") base = 1;
       const upg = Math.max(0, (node.upgrade_level || 1) - 1);
       const guild = node.guild_level || 0;
-      const prodOut = Math.max(0.5, Math.min(1.5, (node.production_output || 5) / 5));
+      // Zero Layer A potential means zero throughput. No `|| 5` fallback: an unproductive
+      // node must not silently receive implicit capacity and manufacture goods.
+      const output = Number(node.production_output || 0);
+      if (!(output > 0)) return 0;
+      const prodOut = Math.max(0.5, Math.min(1.5, output / 5));
       const raw = (base + upg * 0.5 + Math.min(1.5, guild * 0.5)) * prodOut;
       return Math.max(1, Math.min(6, Math.round(raw * 10) / 10));
     }
+
 
 
     // Build good_key → canonical basket map (using existing resolveBasketKey)
