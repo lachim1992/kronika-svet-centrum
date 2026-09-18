@@ -15,6 +15,7 @@
 // - access_level 0 = no flow; tariff_factor 1.0 = no tariff applied
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { basketValueFor } from "../_shared/basketValues.ts";
+import { cityCatchmentRadius, nearestTransportCell, spurCapacity, SPUR_COST_PER_TILE } from "../_shared/roadCatchment.ts";
 
 
 const corsHeaders = {
