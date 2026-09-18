@@ -1727,7 +1727,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       ok: true, turn: currentTurn,
       summary: {
-        totalProduction: totalCityProduction, totalWealth: combinedWealth,
+        goodsProductionValue, totalWealth: combinedWealth,
         totalCapacity: logisticCapacity, totalImportance,
         demand: totalDemand, netProduction,
         grainReserve: globalGrainReserve, granaryCapacity,
