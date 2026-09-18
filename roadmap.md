@@ -77,3 +77,9 @@
 - [x] ProductionOverviewCard: neporovnávat peněžní hodnotu s throughput slotem procentem
 - [x] aggregate-realm-totals: hráči bez uzlů musí dostat explicitní 0, ne stale hodnotu
 - [ ] Live test rozšířit na node_inventory, city_market_baskets, basket_trade_flows a goods_* metriky; akceptovat jen čistý úspěch
+
+## Economy analytics pass
+- [ ] Vyčistit hlavní ekonomické metriky a odstranit staré GDP/wealth popisky
+- [ ] Přidat městský rozbor produkce, poptávky, staveb a přebytků
+- [ ] Přidat přehled obchodních toků mezi městy pro aktuální tah
+- [ ] Sloučit duplicitní ekonomické podpanely do jednoho analytického toku
