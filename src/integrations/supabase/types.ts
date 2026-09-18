@@ -10384,8 +10384,11 @@ export type Database = {
           node_count: number
           route_count: number
           session_id: string
+          spur_connected_nodes: number
           system_key: string
           total_capacity: number
+          total_importance: number
+          total_production_capacity: number
           updated_at: string
         }
         Insert: {
@@ -10396,8 +10399,11 @@ export type Database = {
           node_count?: number
           route_count?: number
           session_id: string
+          spur_connected_nodes?: number
           system_key: string
           total_capacity?: number
+          total_importance?: number
+          total_production_capacity?: number
           updated_at?: string
         }
         Update: {
@@ -10408,8 +10414,11 @@ export type Database = {
           node_count?: number
           route_count?: number
           session_id?: string
+          spur_connected_nodes?: number
           system_key?: string
           total_capacity?: number
+          total_importance?: number
+          total_production_capacity?: number
           updated_at?: string
         }
         Relationships: []
