@@ -28,6 +28,7 @@ export const areSubRoadNeighbours = (left: SubRoadCell, right: SubRoadCell) => {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
 };
 
+/** Macro transport path derived from a precise sub-parcel trace. */
 export function macroPathFromSubRoad(path: SubRoadCell[]): RoadCell[] {
   const result: RoadCell[] = [];
   path.forEach(cell => {
@@ -121,4 +122,70 @@ export function tileRoadCost(base: { gold: number; production: number }, bridges
     production: base.production + bridges * BRIDGE_COST.production,
     bridges,
   };
+}
+
+/** Global sub-parcel coordinates back to the macro cell + parcel pair. */
+export function globalToSubRoad(x: number, y: number): SubRoadCell {
+  const floorDiv = (value: number, span: number) => Math.floor(value / span);
+  const mod = (value: number, span: number) => ((value % span) + span) % span;
+  return {
+    gridX: floorDiv(x, TILE_PARCEL_COLS), gridY: floorDiv(y, TILE_PARCEL_ROWS),
+    parcelX: mod(x, TILE_PARCEL_COLS), parcelY: mod(y, TILE_PARCEL_ROWS),
+  };
+}
+
+/**
+ * Straight-ish sub-parcel walk between two cells (exclusive of `from`, inclusive of `to`).
+ * Lets the player click or drag over gaps — the trace stays cardinal and continuous.
+ */
+export function subRoadPathBetween(from: SubRoadCell, to: SubRoadCell): SubRoadCell[] {
+  const start = subRoadGlobal(from); const end = subRoadGlobal(to);
+  const path: SubRoadCell[] = [];
+  let { x, y } = start;
+  let axis = Math.abs(end.x - x) >= Math.abs(end.y - y);
+  let guard = 0;
+  while ((x !== end.x || y !== end.y) && guard++ < 512) {
+    const canX = x !== end.x; const canY = y !== end.y;
+    if ((axis && canX) || !canY) x += x < end.x ? 1 : -1;
+    else y += y < end.y ? 1 : -1;
+    path.push(globalToSubRoad(x, y));
+    axis = !axis;
+  }
+  return path;
+}
+
+/**
+ * Shortest passable sub-parcel detour between two cells (exclusive of `from`,
+ * inclusive of `to`). Returns null when nothing walkable connects them nearby.
+ */
+export function subRoadDetour(
+  from: SubRoadCell, to: SubRoadCell, passable: (cell: SubRoadCell) => boolean, budget = 20000,
+): SubRoadCell[] | null {
+  const start = subRoadGlobal(from); const goal = subRoadGlobal(to);
+  const startKey = `${start.x},${start.y}`; const goalKey = `${goal.x},${goal.y}`;
+  const previous = new Map<string, string | null>([[startKey, null]]);
+  const queue: RoadCell[] = [start];
+  let visited = 0;
+  while (queue.length && visited++ < budget) {
+    const cell = queue.shift()!;
+    const key = `${cell.x},${cell.y}`;
+    if (key === goalKey) break;
+    for (const step of CARDINAL_STEPS) {
+      const nextCell = { x: cell.x + step.dx, y: cell.y + step.dy };
+      const nextKey = `${nextCell.x},${nextCell.y}`;
+      if (previous.has(nextKey)) continue;
+      if (nextKey !== goalKey && !passable(globalToSubRoad(nextCell.x, nextCell.y))) continue;
+      previous.set(nextKey, key);
+      queue.push(nextCell);
+    }
+  }
+  if (!previous.has(goalKey)) return null;
+  const path: SubRoadCell[] = [];
+  let cursor: string | null = goalKey;
+  while (cursor && cursor !== startKey) {
+    const [x, y] = cursor.split(",").map(Number);
+    path.push(globalToSubRoad(x, y));
+    cursor = previous.get(cursor) ?? null;
+  }
+  return path.reverse();
 }

@@ -808,8 +808,9 @@ async function executeBuildRoadPath(
   const existingByEdge = new Map((existingSegments || []).map((edge: any) => [`${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`, edge]));
   for (const edge of edges) {
     const existing = existingByEdge.get(`${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`);
-    if (existing && Number(existing.level) >= level) return { events: [], error: "Část trasy už má stejnou nebo vyšší úroveň" };
-    if (level > 1 && (!existing || Number(existing.level) !== level - 1 || existing.status !== "completed")) return { events: [], error: "Vyšší úroveň lze postavit jen na dokončené souvislé cestě" };
+    const where = `mezi poli ${edge.from_x},${edge.from_y} a ${edge.to_x},${edge.to_y}`;
+    if (existing && Number(existing.level) >= level) return { events: [], error: `Tady už cesta ${where} je (úroveň ${existing.level}) — vyber vyšší úroveň nebo veď trasu jinam.` };
+    if (level > 1 && (!existing || Number(existing.level) !== level - 1 || existing.status !== "completed")) return { events: [], error: `Vyšší úroveň lze postavit jen na dokončené cestě o stupeň nižší — ${where} taková cesta chybí.` };
   }
 
   const riverSubCells = new Set<string>();
