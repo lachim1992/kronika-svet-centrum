@@ -1481,13 +1481,29 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Persist fiscal + market share to realm_resources ──
+    // ── LAYER B: realized domestic production value per player ──
+    // Unit of account: basket scale (quantity × basketValue) for ALL three channels
+    // (auto / recipe / structures). base_price_numeric is NOT mixed into this sum.
+    // Never derived from local_supply (post-trade it also contains imports).
+    const realizedByPlayer = new Map<string, { auto: number; recipe: number; structures: number }>();
+    for (const row of cityBasketRows) {
+      const p = row.player_name || "";
+      if (!p) continue;
+      const bv = (BASKET_CONFIG as any)[row.basket_key]?.basketValue ?? 1;
+      const acc = realizedByPlayer.get(p) || { auto: 0, recipe: 0, structures: 0 };
+      acc.auto += (row.auto_supply || 0) * bv;
+      acc.recipe += (row.recipe_bonus || 0) * bv;
+      acc.structures += (row.building_bonus || 0) * bv;
+      realizedByPlayer.set(p, acc);
+    }
+
+    // ── Persist Layer B volumes + market share to realm_resources ──
     for (const [player, agg] of playerAggregates) {
       const cityCount = cities.filter(c => c.owner_player === player).length;
       const avgRetention = cityCount > 0 ? agg.commercial_retention / cityCount : 0;
 
-      let playerGoodsProductionValue = 0;
       let playerGoodsSupplyVolume = 0;
+      let playerExtractionValue = 0;
       const playerCityIds = cities.filter(c => c.owner_player === player).map(c => c.id);
       const playerNodeIds = new Set<string>();
       for (const [nodeId, cityId] of nodeToCityMap) {
@@ -1496,23 +1512,31 @@ Deno.serve(async (req) => {
       for (const inv of dedupedInventories) {
         if (!playerNodeIds.has(inv.node_id)) continue;
         const good = goodsMap.get(inv.good_key);
-        const basePrice = good?.base_price_numeric || 1;
-        playerGoodsProductionValue += inv.quantity * basePrice;
         if (good?.storable) playerGoodsSupplyVolume += inv.quantity;
       }
+      for (const [nodeId, v] of extractionValueByNode) {
+        if (playerNodeIds.has(nodeId)) playerExtractionValue += v;
+      }
+
+      const detail = realizedByPlayer.get(player) || { auto: 0, recipe: 0, structures: 0 };
+      const r1 = (x: number) => Math.round(x * 10) / 10;
+      const auto = r1(detail.auto), recipe = r1(detail.recipe), structures = r1(detail.structures);
+      // Invariant: goods_production_value == auto + recipe + structures
+      const realized = r1(auto + recipe + structures);
 
       // v6 fiscal: compute-trade-flows NO LONGER writes the fiscal ledger.
-      // It only publishes the canonical Goods v4.3 volume; process-turn owns
+      // It only publishes the canonical Goods v4.3 volumes; process-turn owns
       // tax pillars (wealth_*, goods_wealth_fiscal, last_turn_gdp_*).
-      // Legacy columns tax_market/transit/extraction/commercial_capture and
-      // wealth_domestic_component/market_share are NOT touched here anymore.
       await sb.from("realm_resources").update({
-        goods_production_value: Math.round(playerGoodsProductionValue * 10) / 10,
-        goods_supply_volume: Math.round(playerGoodsSupplyVolume * 10) / 10,
+        goods_production_value: realized,
+        goods_value_detail: { auto, recipe, structures },
+        goods_extraction_value: r1(playerExtractionValue),
+        goods_supply_volume: r1(playerGoodsSupplyVolume),
         commercial_retention: Math.round(avgRetention * 1000) / 1000,
       }).eq("session_id", session_id).eq("player_name", player);
 
     }
+
 
     const uniqueWarnings = [...new Set(warnings)];
     return new Response(JSON.stringify({
