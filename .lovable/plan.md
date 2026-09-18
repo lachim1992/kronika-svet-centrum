@@ -2,10 +2,23 @@
 
 Cíl: jedna konzistentní ekonomika. Žádný nový subsystém, žádné ladění čísel.
 
-Dvě architektonická pravidla, která platí nad všemi kroky:
+Dva invarianty, které platí nad všemi kroky:
 
-1. `process-turn` je **jediný** writer daní, příjmů, výdajů, treasury a legitimity.
-2. `refresh-economy` = RECOMPUTE DERIVED STATE, nikdy RESOLVE ECONOMIC TURN. Je to čistá funkce nad stavem.
+**INVARIANT 1** — `process-turn` je jediným vlastníkem **turn-resolution** fiskálu: daňové základy, daňový příjem, periodické výdaje, `wealth_*` komponenty, fiskální breakdown a legitimita vznikající z ekonomického vyhodnocení. `command-dispatch` smí měnit `gold_reserve` **pouze** kvůli explicitní jednorázové transakci hráče (stavba, silnice, nákup, transfer) — cena stavby ani silnice se do `process-turn` nepřesouvá.
+
+**INVARIANT 2** — `refresh-economy` = PURE DERIVED RECOMPUTE. Smí přepočítat routes, produkci, poptávku, markets, trade flows a derived agregáty. Nesmí vybírat daně, platit upkeep, měnit `gold_reserve` ani legitimitu, aplikovat transfery, spouštět transakci hráče ani appendovat historii.
+
+```text
+                     GOLD RESERVE
+              ┌───────────┴───────────┐
+     explicit player action      turn resolution
+       command-dispatch           process-turn
+       −road/building/purchase   +taxes −upkeep −recurring
+              └───────────┬───────────┘
+                     realm state
+refresh-economy ───────── READ ONLY
+```
+
 
 ## Ověřený stav (přečteno v kódu)
 
@@ -24,22 +37,31 @@ Zapsat do `docs/architecture/economy-contract.md` a dodržet v kódu i UI:
 FYZICKÁ EKONOMIKA   goods_production_value, goods_supply_volume,
                     trade_turnover, commercial_retention
 GDP                 total_gdp = hodnota finální produkce za tah
+                    total_gdp ≠ trade turnover, ≠ tax revenue, ≠ treasury,
+                    ≠ domácí produkce + export, ≠ součet node outputu
+                    total_gdp NESMÍ dvojitě započítat intermediate goods
+                    (obilí → mouka → chléb se počítá jednou: final output
+                     nebo value added)
 DAŇOVÉ ZÁKLADY      domestic_tax_base, market_tax_base, transit_tax_base,
                     extraction_tax_base, poll_tax_base   (pět samostatných základů)
 FISKÁLNÍ PŘÍJEM     fiscal_revenue = wealth_pop_tax + wealth_domestic_market
                                      + goods_wealth_fiscal
-VÝDAJE              army_upkeep, sport_funding, tolls, ...
-TREASURY            net_treasury_change = fiscal_revenue − expenses ± transfers
-                    gold_reserve_new = gold_reserve_old + net_treasury_change
+VÝDAJE              recurring_expenses = army_upkeep + sport_funding + ...
+TURN RESOLUTION     turn_fiscal_delta = fiscal_revenue − recurring_expenses
+                                        ± turn transfers
+                    gold_after_turn = gold_before_turn + turn_fiscal_delta
+TRANSAKCE HRÁČE     transaction_delta = road / building / purchase / ...
+                    gold_reserve += transaction_delta   (command-dispatch)
 ```
 
-Žádný univerzální `tax_base`. `total_wealth` se přestává používat jako ekonomický koncept — v DB zůstává jen jako dočasný alias `fiscal_revenue` do doby, než se přepíšou čtenáři, a v UI se popisuje výhradně jako fiskální příjem.
+Žádný univerzální `tax_base`. Žádný obecný `net_treasury_change` — turnový fiskální delta a účetnictví hráčových akcí jsou oddělené koncepty. `total_wealth` se přestává používat jako ekonomický koncept; v DB zůstává jen jako dočasný alias `fiscal_revenue`, dokud se nepřepíšou čtenáři, a v UI se popisuje výhradně jako fiskální příjem.
+
 
 ## Krok 1 — P0: jediný vlastník fiskálu
 
 - Nejprve **zjistit**, zda lze `fiscal_capture` deterministicky dopočítat z existujících řádků `basket_trade_flows` (quantity, value, tarif, access). Pokud ano, žádná migrace — `process-turn` si ho spočítá při čtení flow řádků. Migraci přidávat jen pokud se ukáže, že vstup pro dopočet v řádcích chybí.
 - `compute-basket-trade-flows`: odstranit blok 9 (fold do `goods_wealth_fiscal`) a vůbec nezapisovat do `realm_resources` fiskální pole. Vrací pouze flows.
-- `process-turn` zůstává jediným writerem `wealth_*`, `goods_wealth_fiscal`, `wealth_breakdown`, `gold_reserve`, legitimity.
+- `process-turn` zůstává jediným writerem `wealth_*`, `goods_wealth_fiscal`, `wealth_breakdown`, daňových základů, periodických výdajů a ekonomické legitimity; `gold_reserve` mění jen o `turn_fiscal_delta`. Jednorázové transakce hráče (stavba, silnice, nákup) zůstávají v `command-dispatch` — nepřesouvat je.
 - Do hlaviček obou funkcí přidat writer/reader kontrakt.
 
 ## Krok 2 — P0: pořadí pipeline
@@ -63,7 +85,15 @@ Acceptance testy:
 S0 --refresh--> S1 --refresh--> S2      S1 === S2 pro všechny derived current-turn hodnoty
 S0 --commit--> A                        ===  S0 --commit--> refresh --> refresh
                                         (stejné treasury, daně, legitimita)
+
+GUARD TEST: before = { gold_reserve, legitimacy, wealth_pop_tax,
+                       wealth_domestic_market, goods_wealth_fiscal }
+            refresh-economy()
+            after === before
+            (agregovaný alias fiscal_revenue se smí přepočítat na tutéž
+             hodnotu, jeho fiskální pilíře se měnit nesmí)
 ```
+
 
 ## Krok 4 — P1: přesné metriky
 
@@ -87,9 +117,8 @@ S0 --commit--> A                        ===  S0 --commit--> refresh --> refresh
 
 - P2: production orders do hráčského UI; `trade_ideology` do solveru nebo skrýt z UI; OPEX silnic (maintenance, degradace, repair).
 - P3: greedy basket routing → min-cost-flow.
-
-Balancování čísel až po dokončení kroků 0–6.
+- Během Integrity Passu se nic z toho ani balancing neřeší — rozsah zůstává Kroky 0–6.
 
 ## Verifikace
 
-`tsgo --noEmit`, `bunx vitest run`, build, nové testy: idempotence refreshe, commit+refresh×2 nemění treasury, ghost inventory, node capacity bez orderu, součet income komponent.
+`tsgo --noEmit`, `bunx vitest run`, build, nové testy: guard test read-only refreshe, idempotence refreshe, commit+refresh×2 nemění treasury, ghost inventory, node capacity bez orderu, součet income komponent.
