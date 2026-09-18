@@ -131,7 +131,8 @@ COMMIT HISTORY: commit-turn() → count(snapshot for session+turn) = 1
 
 - P2: production orders do hráčského UI; `trade_ideology` do solveru nebo skrýt z UI; OPEX silnic (maintenance, degradace, repair).
 - P3: greedy basket routing → min-cost-flow.
-- Během Integrity Passu se nic z toho ani balancing neřeší — rozsah zůstává Kroky 0–6.
+- P3: value-added / final-output reforma GDP.
+- Během Integrity Passu se nic z toho ani balancing neřeší — rozsah zůstává Kroky 0–6. Po dokončení znovu audit skutečného diffu a testů, hlavně zda `refresh-economy` nemá skrytou side-effect cestu.
 
 ## Verifikace
 
