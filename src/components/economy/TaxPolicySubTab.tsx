@@ -27,13 +27,14 @@ const TaxPolicySubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => 
   });
   const [saving, setSaving] = useState(false);
 
-  // GDP volumes from last turn
+  // Five separate tax bases from the last turn resolution (process-turn is the sole writer).
+  const bases = realm?.computed_modifiers?.tax_bases || {};
   const gdp = {
-    domestic:   Number(realm?.last_turn_gdp_domestic   ?? realm?.wealth_domestic_component ?? 0),
-    market:     Number(realm?.last_turn_gdp_market     ?? 0),
-    transit:    Number(realm?.last_turn_gdp_transit    ?? 0),
-    extraction: Number(realm?.last_turn_gdp_extraction ?? 0),
-    poll:       Number(realm?.tax_population ?? 0) * 500, // rough population proxy
+    domestic:   Number(bases.domestic_tax_base   ?? realm?.last_turn_gdp_domestic   ?? 0),
+    market:     Number(bases.market_tax_base     ?? realm?.last_turn_gdp_market     ?? 0),
+    transit:    Number(bases.transit_tax_base    ?? realm?.last_turn_gdp_transit    ?? 0),
+    extraction: Number(bases.extraction_tax_base ?? realm?.last_turn_gdp_extraction ?? 0),
+    poll:       Number(bases.poll_tax_base       ?? realm?.total_population ?? 0),
   };
 
   const previewRevenue = (key: string) => {
