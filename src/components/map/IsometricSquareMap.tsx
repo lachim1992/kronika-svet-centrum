@@ -1251,7 +1251,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setSelectedNodeId(null);
     setSelected(null);
     onDetailOpenChange?.(false);
-    toast.info("Klikáním nebo tažením vyznač trasu přes sousední podčtverce");
+    toast.info("Klikáním nebo tažením vyznač trasu přes sousední podčtverce. Mapu posuneš pravým nebo prostředním tlačítkem, přiblížíš kolečkem.");
   };
 
   const extendRoadDraft = (next: SubRoadCell) => {
