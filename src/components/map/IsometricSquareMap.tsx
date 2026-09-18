@@ -821,27 +821,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     await load();
   };
 
-  /** Pointer position → sub-parcel under the cursor (inverse of the isometric projection). */
-  const subRoadFromPointer = (event: { clientX: number; clientY: number; currentTarget: EventTarget & SVGGraphicsElement }): SubRoadCell | null => {
-    const element = event.currentTarget;
-    const matrix = element.getScreenCTM();
-    const svg = element.ownerSVGElement;
-    if (!matrix || !svg) return null;
-    const pointer = svg.createSVGPoint();
-    pointer.x = event.clientX; pointer.y = event.clientY;
-    const local = pointer.matrixTransform(matrix.inverse());
-    const u = (local.x - pan.x) / TILE_SIZE;
-    const v = ((local.y - pan.y) * 2) / TILE_SIZE + 1;
-    const continuousX = (u + v) / 2; const continuousY = (v - u) / 2;
-    const gridX = Math.floor(continuousX); const gridY = Math.floor(continuousY);
-    const clamp = (value: number, span: number) => Math.min(span - 1, Math.max(0, Math.floor(value * span)));
-    return {
-      gridX, gridY,
-      parcelX: clamp(continuousX - gridX, TILE_PARCEL_COLS),
-      parcelY: clamp(continuousY - gridY, TILE_PARCEL_ROWS),
-    };
-  };
-
   const parcelQuad = (centerPoint: { x: number; y: number }, px: number, py: number) => {
     const point = (a: number, b: number) => `${centerPoint.x + (a - b) * TILE_SIZE},${centerPoint.y + (a + b - 1) * TILE_SIZE / 2}`;
     const a0 = px / TILE_PARCEL_COLS; const a1 = (px + 1) / TILE_PARCEL_COLS;
