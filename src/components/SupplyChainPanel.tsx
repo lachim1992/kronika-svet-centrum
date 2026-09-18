@@ -37,7 +37,7 @@ interface NodeInfo {
   node_type: string;
   controlled_by: string | null;
   production_output: number;
-  wealth_output: number;
+  capacity_score: number;
   is_major: boolean;
 }
 
@@ -66,7 +66,7 @@ const SupplyChainPanel = ({ sessionId, playerName, currentTurn }: Props) => {
           .eq("session_id", sessionId)
           .eq("turn_number", currentTurn ?? 1),
         supabase.from("province_nodes")
-          .select("id, name, node_type, controlled_by, production_output, wealth_output, is_major")
+          .select("id, name, node_type, controlled_by, production_output, capacity_score, is_major")
           .eq("session_id", sessionId)
           .eq("is_active", true),
         supabase.from("province_routes")
@@ -112,7 +112,8 @@ const SupplyChainPanel = ({ sessionId, playerName, currentTurn }: Props) => {
   const avgSupply = mySupply.length > 0 ? mySupply.reduce((s, x) => s + x.supply_level, 0) / mySupply.length : 0;
   const avgQuality = mySupply.length > 0 ? mySupply.reduce((s, x) => s + x.route_quality, 0) / mySupply.length : 0;
   const totalProd = myNodes.reduce((s, n) => s + (n.production_output || 0), 0);
-  const totalWealth = myNodes.reduce((s, n) => s + (n.wealth_output || 0), 0);
+  // Layer A only: capacity, never the legacy node wealth flow.
+  const totalCapacity = myNodes.reduce((s, n) => s + (n.capacity_score || 0), 0);
 
   const supplyColor = (level: number) => {
     if (level >= 0.8) return "text-green-500";
@@ -141,8 +142,8 @@ const SupplyChainPanel = ({ sessionId, playerName, currentTurn }: Props) => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <SummaryCard icon={<CheckCircle2 className="h-4 w-4 text-green-500" />} label="Připojeno" value={`${connectedNodes.length}/${myNodes.length}`} />
           <SummaryCard icon={<AlertTriangle className="h-4 w-4 text-destructive" />} label="Izolováno" value={String(isolatedNodes.length)} highlight={isolatedNodes.length > 0} />
-          <SummaryCard icon={<Factory className="h-4 w-4 text-primary" />} label="Produkce" value={`⚒️ ${totalProd.toFixed(0)}`} />
-          <SummaryCard icon={<Shield className="h-4 w-4 text-primary" />} label="Bohatství" value={`💰 ${totalWealth.toFixed(0)}`} />
+          <SummaryCard icon={<Factory className="h-4 w-4 text-primary" />} label="Potenciál" value={`🏗️ ${totalProd.toFixed(0)}`} />
+          <SummaryCard icon={<Shield className="h-4 w-4 text-primary" />} label="Kapacita" value={`🏛️ ${totalCapacity.toFixed(0)}`} />
         </div>
 
         {/* Supply / Quality bars */}
