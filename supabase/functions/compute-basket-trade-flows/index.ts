@@ -352,13 +352,20 @@ Deno.serve(async (req) => {
       const satisfied = Math.max(0, Number(b.local_demand || 0) - Number(b.unmet_demand || 0));
       consumptionByPlayer.set(p, (consumptionByPlayer.get(p) || 0) + satisfied * basketValueFor(b.basket_key));
     }
-    for (const [player, value] of consumptionByPlayer) {
+    // Union of players so a realm with no construction (or no demand) is written as an
+    // explicit 0 instead of keeping a stale value from an earlier recompute.
+    const playersToWrite = new Set<string>([...consumptionByPlayer.keys(), ...capexByPlayer.keys()]);
+    for (const player of playersToWrite) {
       const { error: cErr } = await sb.from("realm_resources")
-        .update({ goods_domestic_consumption_value: Math.round(value * 10) / 10 })
+        .update({
+          goods_domestic_consumption_value: Math.round((consumptionByPlayer.get(player) || 0) * 10) / 10,
+          construction_available_for_capex: Math.round((capexByPlayer.get(player) || 0) * 100) / 100,
+        })
         .eq("session_id", session_id).eq("player_name", player);
       if (cErr) console.error("domestic consumption update", cErr);
       else domesticConsumptionPlayers++;
     }
+
 
 
     // 9. NO FISCAL WRITES (Economy Integrity Pass, INVARIANT 1).
