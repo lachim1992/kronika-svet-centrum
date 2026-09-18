@@ -213,9 +213,13 @@ Deno.serve(async (req) => {
     // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.3) ──
     const goodsProductionValue = realm.goods_production_value || 0;
     const goodsSupplyVolume = realm.goods_supply_volume || 0;
-    // v6 fiscal: legacy wealth_domestic_component / wealth_market_share NO LONGER read.
-    // gdp_domestic is now computed from city production × consumption pressure (below).
-    // gdp_market = goods_production_value (Goods v4.3 is the canonical market volume).
+    // LAYER B published values (compute-trade-flows / compute-basket-trade-flows):
+    //   goods_domestic_consumption_value = Σ satisfied consumption × basketValue (post-trade)
+    //   goods_extraction_value           = realized recipe output on production_role=source nodes
+    // These are the ONLY sources of the domestic and extraction tax bases.
+    const goodsDomesticConsumptionValue = Number((realm as any).goods_domestic_consumption_value || 0);
+    const goodsExtractionValue = Number((realm as any).goods_extraction_value || 0);
+
 
     logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Fyzický výnos: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
     if (goodsProductionValue > 0) {
@@ -227,6 +231,19 @@ Deno.serve(async (req) => {
       .eq("session_id", sessionId).eq("owner_player", playerName);
     const myCities = cities || [];
     const cityIds = myCities.map(c => c.id);
+
+    // ── LAYER B: FOOD & CONSUMPTION (post-trade city_market_baskets) ──
+    // staple_food is the SSOT for food. local_supply ALREADY contains imports folded
+    // in by compute-basket-trade-flows — imports must NOT be added a second time.
+    const { data: myBasketRows } = await supabase.from("city_market_baskets")
+      .select("city_id, basket_key, local_demand, local_supply, unmet_demand, domestic_satisfaction")
+      .eq("session_id", sessionId)
+      .in("city_id", cityIds.length ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    const stapleByCity = new Map<string, any>();
+    for (const b of (myBasketRows as any[]) || []) {
+      if (b.basket_key === "staple_food") stapleByCity.set(b.city_id, b);
+    }
+
 
     // ── Load network layer: nodes linked to cities + routes + supply state ──
     const [nodesRes, routesRes, supplyRes] = await Promise.all([
@@ -547,7 +564,12 @@ Deno.serve(async (req) => {
     let globalGrainReserve = realm.grain_reserve || 0;
     let famineCityCount = 0;
     let totalDemand = 0;
-    let totalCityProduction = 0;
+    // LAYER B food totals (staple_food). The legacy macro `totalCityProduction`
+    // (node capacity + city layers + goods share) is REMOVED — it was a third,
+    // parallel economy. Layer A capacity never becomes production here.
+    let totalFoodSupply = 0;
+    let totalFoodDeficit = 0;
+
     let totalCityWealth = 0;
     let totalCityCapacity = 0;
     let totalFaith = 0;
@@ -640,8 +662,20 @@ Deno.serve(async (req) => {
     }> = [];
 
     for (const city of myCities) {
-      const cityDemand = Math.max(1, Math.round(computeCityDemand(city) * grainRationMult));
+      // FOOD = staple_food basket (Layer B, post-trade). Legacy computeCityDemand is
+      // only a fallback for cities the goods layer has not scored yet.
+      const staple = stapleByCity.get(city.id);
+      const cityDemand = Math.max(1, Math.round(
+        (staple ? Number(staple.local_demand || 0) : computeCityDemand(city)) * grainRationMult,
+      ));
+      const cityFoodSupply = staple ? Number(staple.local_supply || 0) : 0;
+      const cityFoodDeficit = staple
+        ? Number(staple.unmet_demand || 0)
+        : Math.max(0, cityDemand - cityFoodSupply);
       totalDemand += cityDemand;
+      totalFoodSupply += cityFoodSupply;
+      totalFoodDeficit += cityFoodDeficit;
+
 
       // ── Population layer economy ──
       const bldgEff = cityBuildingEffects[city.id] || {};
@@ -683,10 +717,9 @@ Deno.serve(async (req) => {
         nodeProduction = totalProduction * cityShare;
       }
 
-      // v4.2: No more legacy/goods blend — production uses node layers + goods production directly
-      const cityPopShare = totalPopulation > 0 ? (city.population_total || 0) / totalPopulation : 1 / Math.max(1, myCities.length);
-      const goodsCityProduction = goodsProductionValue * cityPopShare;
-      const cityProduction = (nodeProduction + layers.production) * laborGrainMult + goodsCityProduction;
+      // LAYER SEPARATION: no macro "cityProduction" here. Node capacity (Layer A) and
+      // city population layers feed capacity/wealth/faith and upstream auto production,
+      // never a second production number. Realized production lives in the Goods layer.
 
       // v4.2: City wealth comes from Pillar 2 (domestic + market share), distributed by market level
       const totalMarketLevelAll = myCities.reduce((s, c) => s + (c.market_level || 1), 0) || 1;
@@ -705,14 +738,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      totalCityProduction += cityProduction;
       totalCityWealth += cityWealth;
       totalCityCapacity += cityCapacity;
       totalFaith += cityFaith;
 
-      // Per-city food balance
-      const cityBalance = cityProduction - cityDemand;
-      const cityFamine = cityBalance < 0 && globalGrainReserve <= 0;
+      // Per-city food balance — staple_food only (post-trade, imports already included)
+      const cityBalance = cityFoodSupply - cityDemand;
+      const cityFamine = cityFoodDeficit > 0 && globalGrainReserve <= 0;
 
       if (cityBalance >= 0) {
         globalGrainReserve += cityBalance * 0.5;
@@ -737,11 +769,12 @@ Deno.serve(async (req) => {
         logEntries.push(`⚠️ Hladomor v ${city.name}! Ztráta ${deathToll} obyvatel.`);
         newEvents.push({
           event_type: "famine",
-          note: `Hladomor zachvátil ${city.name}. Produkce (${cityProduction.toFixed(1)}) nestačí na pokrytí poptávky (${cityDemand}). Zemřelo ${deathToll} obyvatel.`,
+          note: `Hladomor zachvátil ${city.name}. Zásoby potravin (${cityFoodSupply.toFixed(1)}) nestačí na poptávku (${cityDemand}), chybí ${cityFoodDeficit.toFixed(1)}. Zemřelo ${deathToll} obyvatel.`,
           importance: "critical",
           city_id: city.id,
-          reference: { production: cityProduction, demand: cityDemand, death_toll: deathToll, isolation: isolationPenalty },
+          reference: { food_supply: cityFoodSupply, demand: cityDemand, deficit: cityFoodDeficit, death_toll: deathToll, isolation: isolationPenalty },
         });
+
       } else {
         if (city.famine_turn) {
           await supabase.from("cities").update({ famine_turn: false, famine_consecutive_turns: 0 }).eq("id", city.id);
@@ -767,7 +800,7 @@ Deno.serve(async (req) => {
         layerCapacity: Math.round(layers.capacity * 10) / 10,
         layerFaith: Math.round(layers.faith * 10) / 10,
         demand: cityDemand,
-        balance: Math.round((cityProduction - cityDemand) * 10) / 10,
+        balance: Math.round((cityFoodSupply - cityDemand) * 10) / 10,
         isolationPenalty: Math.round(isolationPenalty * 100),
         famine: cityFamine,
       });
@@ -780,16 +813,13 @@ Deno.serve(async (req) => {
     // Removed from here to prevent duplicate growth.
     // ══════════════════════════════════════════════════════════════
 
-    // Apply mobilization penalties to totals
-    totalCityProduction = Math.max(0, totalCityProduction - mobProductionPenalty);
+    // Mobilization: peasants pulled into armies reduce food supply, not a macro production.
+    totalFoodSupply = Math.max(0, totalFoodSupply - mobProductionPenalty);
     totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
 
-    // v4.2: Goods supply supplements grain reserve directly (no blend)
-    if (goodsSupplyVolume > 0) {
-      const goodsSupplyBonus = Math.round(goodsSupplyVolume);
-      globalGrainReserve += goodsSupplyBonus;
-      logEntries.push(`📦 Goods zásoby: +${goodsSupplyBonus}`);
-    }
+    // NOTE: the legacy "goods_supply_volume → grain reserve" bonus is REMOVED.
+    // goods_supply_volume sums every storable good (tools, textiles…), not food.
+    // Food comes exclusively from the staple_food basket above.
     // Small empire buffer
     if (myCities.length <= 3) globalGrainReserve += 10;
     // Strategic salt supply bonus
@@ -804,7 +834,8 @@ Deno.serve(async (req) => {
     const adjustedGranary = Math.round(granaryCapacity * (1 + strategicBonuses.supply_bonus));
     globalGrainReserve = Math.max(0, Math.min(adjustedGranary, globalGrainReserve));
 
-    const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
+    const netProduction = totalFoodSupply - totalDemand - armyProductionUpkeep;
+
 
     // ══════════════════════════════════════════════════════════════
     // ▶ WEALTH: Lafferian Fiscal Model (v5)
@@ -842,14 +873,18 @@ Deno.serve(async (req) => {
     const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
     const lawTaxMult = 1 + (taxRateModifier / 100); // legacy law modifier (kept for compat)
 
-    // ── GDP volumes v6 (gross, before tax) — overwrite each turn ──
-    //   domestic   = populace × spotřeba/hlava + lokálně spotřebovaná produkce
-    //   market     = goods_production_value (Goods v4.3 = canonical traded volume)
+    // ── TAX BASES v7 (gross volumes, before tax) — all sourced from LAYER B ──
+    //   domestic   = goods_domestic_consumption_value (satisfied consumption, incl. sold imports)
+    //   market     = goods_production_value (realized production: auto + recipe + structures)
     //   transit    = Σ route capacity × control × relevance (below)
-    //   extraction = node-level extractive output (city-attached + neutral nodes)
-    const gdp_domestic   = totalPopulation * 0.01 + totalCityProduction * 0.5;
+    //   extraction = goods_extraction_value (recipes on production_role=source nodes)
+    // Layer A capacity (province_nodes.production_output) NEVER becomes a tax base.
+    const gdp_domestic   = goodsDomesticConsumptionValue > 0
+      ? goodsDomesticConsumptionValue
+      : totalPopulation * 0.01; // fallback until the goods layer publishes consumption
     const gdp_market     = goodsProductionValue;
-    const gdp_extraction = totalCityProduction * 0.3 * strategicBonuses.wealth_mult;
+    const gdp_extraction = goodsExtractionValue * strategicBonuses.wealth_mult;
+
 
     let gdp_transit = 0;
     const playerRoutes = allRoutes.filter(r => {
@@ -1371,9 +1406,16 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // UPDATE REALM RESOURCES (with faith + prestige + supply strain + mobilization penalties)
     // ══════════════════════════════════════════
-    // Production reserve accumulation: totalCityProduction (net of army upkeep) added each turn
-    const productionIncome = Math.max(0, Math.round(totalCityProduction - armyProductionUpkeep));
+    // ⚠️ DEPRECATED / UNRESOLVED: production_reserve accumulation.
+    // It used to accrue from the removed parallel macro `totalCityProduction`. Layer A
+    // capacity must NOT be converted into CAPEX stock, and no replacement conversion is
+    // invented in this pass. Existing stock is preserved and still spent by
+    // command-dispatch (buildings, roads) — this is a temporary, deliberately unsafe
+    // compatibility state. TODO(construction-goods pass): CAPEX must come from realized
+    // construction goods (Layer B) before gameplay release.
+    const productionIncome = 0;
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
+
 
     // ── Goods economy: fiscal data now handled by 4-pillar model (pillar 3) ──
     // No longer adding goodsFiscalBonus separately — it's already in wealthIncome.
@@ -1523,7 +1565,7 @@ Deno.serve(async (req) => {
       manpower_pool: manpowerPool,
       logistic_capacity: logisticCapacity,
       last_processed_turn: currentTurn,
-      last_turn_grain_prod: Math.round(totalCityProduction),
+      last_turn_grain_prod: Math.round(totalFoodSupply), // staple_food supply (post-trade)
       last_turn_grain_cons: totalDemand,
       last_turn_grain_net: Math.round(netProduction),
       last_turn_wood_prod: 0,
@@ -1652,9 +1694,13 @@ Deno.serve(async (req) => {
     await supabase.from("world_action_log").insert({
       session_id: sessionId, turn_number: currentTurn, player_name: playerName,
       action_type: "turn_processing",
-      description: `Kolo ${currentTurn}: ⚒️${totalCityProduction.toFixed(0)} 💰${wealthIncome} 🏛️${logisticCapacity} ⛪${newFaith.toFixed(0)} | pop ${totalPopulation} | ⚔${totalWarriors} | manpower ${manpowerPool}`,
+      description: `Kolo ${currentTurn}: 📦${goodsProductionValue.toFixed(0)} 💰${wealthIncome} 🏛️${logisticCapacity} ⛪${newFaith.toFixed(0)} | pop ${totalPopulation} | ⚔${totalWarriors} | manpower ${manpowerPool}`,
       metadata: {
-        total_production: totalCityProduction,
+        // Layer B realized production (Goods v4.3) — NOT a node-capacity macro.
+        goods_production_value: goodsProductionValue,
+        food_supply: totalFoodSupply,
+        food_deficit: totalFoodDeficit,
+
         total_wealth: combinedWealth,
         total_capacity: logisticCapacity,
         total_importance: totalImportance,
@@ -1681,7 +1727,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       ok: true, turn: currentTurn,
       summary: {
-        totalProduction: totalCityProduction, totalWealth: combinedWealth,
+        goodsProductionValue, totalWealth: combinedWealth,
         totalCapacity: logisticCapacity, totalImportance,
         demand: totalDemand, netProduction,
         grainReserve: globalGrainReserve, granaryCapacity,

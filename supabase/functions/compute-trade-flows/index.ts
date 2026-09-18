@@ -1,5 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
+import { basketValueFor } from "../_shared/basketValues.ts";
+
 
 
 const corsHeaders = {
@@ -326,7 +328,16 @@ Deno.serve(async (req) => {
     // ════════════════════════════════════════════
     const nodeInventories: Array<{ node_id: string; good_key: string; quantity: number; quality_band: number }> = [];
 
+    // LAYER B provenance: value of recipe output produced on production_role = "source"
+    // nodes, recorded AT PRODUCTION TIME. Provenance must never be inferred back from the
+    // resulting basket (the same basket can be produced by different chains).
+    const extractionValueByNode = new Map<string, number>();
+    // Throughput diagnostics (slots, NOT goods pieces).
+    const capacityDiag = { budget: 0, allocated: 0, nodes: 0 };
+
     const PRODUCTION_SHARE_CAP = 2.0;
+    // LAYER A → LAYER B: production_output acts EXACTLY ONCE, here, as the recipe
+    // throughput budget. It must not be re-applied to the produced quantity.
     function capacityFor(node: any): number {
       const role = node.production_role || "";
       let base = 1;
@@ -338,6 +349,7 @@ Deno.serve(async (req) => {
       const raw = (base + upg * 0.5 + Math.min(1.5, guild * 0.5)) * prodOut;
       return Math.max(1, Math.min(6, Math.round(raw * 10) / 10));
     }
+
 
     // Build good_key → canonical basket map (using existing resolveBasketKey)
     const goodToBasket = new Map<string, string>();
@@ -426,16 +438,20 @@ Deno.serve(async (req) => {
         statusUpdates.push({ node_id: node.id, last_status: orderStatus, last_status_reason: orderReason });
       }
 
+      capacityDiag.budget += capacityFor(node);
+      capacityDiag.nodes += 1;
+
       for (let i = 0; i < N; i++) {
         const share = shares[i];
         if (share <= 0) continue;
         const recipe = eligibleRecipes[i];
-
+        capacityDiag.allocated += share;
 
         const baseOutput = recipe.output_quantity || 1;
         const guildBonus = 1 + (node.guild_level || 0) * 0.15;
         const upgradeMult = 1 + ((node.upgrade_level || 1) - 1) * 0.2;
-        const nodeProductionFactor = Math.max(0.1, (node.production_output || 1) / 5);
+        // NOTE: no nodeProductionFactor here — production_output already acted once
+        // through the throughput budget (capacityFor → share).
 
         let resourceYield = 1.0;
         if (role === "source") {
@@ -450,7 +466,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        const quantity = Math.round(baseOutput * guildBonus * upgradeMult * nodeProductionFactor * resourceYield * share * 10) / 10;
+        const quantity = Math.round(baseOutput * guildBonus * upgradeMult * resourceYield * share * 10) / 10;
         const qualityBand = Math.min(3, Math.max(0, Math.floor((node.guild_level || 0) / 2) + (recipe.quality_output_bonus || 1) - 1));
 
         if (quantity > 0) {
@@ -460,9 +476,15 @@ Deno.serve(async (req) => {
             quantity,
             quality_band: Math.min(qualityBand, recipe.quality_output_bonus || 2),
           });
+          if (role === "source") {
+            const bk = goodToBasket.get(recipe.output_good_key) || "staple_food";
+            const bv = basketValueFor(bk);
+            extractionValueByNode.set(node.id, (extractionValueByNode.get(node.id) || 0) + quantity * bv);
+          }
         }
       }
     }
+
 
     // Write back order statuses (best-effort, batched)
     if (statusUpdates.length > 0) {
@@ -1461,13 +1483,29 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Persist fiscal + market share to realm_resources ──
+    // ── LAYER B: realized domestic production value per player ──
+    // Unit of account: basket scale (quantity × basketValue) for ALL three channels
+    // (auto / recipe / structures). base_price_numeric is NOT mixed into this sum.
+    // Never derived from local_supply (post-trade it also contains imports).
+    const realizedByPlayer = new Map<string, { auto: number; recipe: number; structures: number }>();
+    for (const row of cityBasketRows) {
+      const p = row.player_name || "";
+      if (!p) continue;
+      const bv = basketValueFor(row.basket_key);
+      const acc = realizedByPlayer.get(p) || { auto: 0, recipe: 0, structures: 0 };
+      acc.auto += (row.auto_supply || 0) * bv;
+      acc.recipe += (row.recipe_bonus || 0) * bv;
+      acc.structures += (row.building_bonus || 0) * bv;
+      realizedByPlayer.set(p, acc);
+    }
+
+    // ── Persist Layer B volumes + market share to realm_resources ──
     for (const [player, agg] of playerAggregates) {
       const cityCount = cities.filter(c => c.owner_player === player).length;
       const avgRetention = cityCount > 0 ? agg.commercial_retention / cityCount : 0;
 
-      let playerGoodsProductionValue = 0;
       let playerGoodsSupplyVolume = 0;
+      let playerExtractionValue = 0;
       const playerCityIds = cities.filter(c => c.owner_player === player).map(c => c.id);
       const playerNodeIds = new Set<string>();
       for (const [nodeId, cityId] of nodeToCityMap) {
@@ -1476,23 +1514,31 @@ Deno.serve(async (req) => {
       for (const inv of dedupedInventories) {
         if (!playerNodeIds.has(inv.node_id)) continue;
         const good = goodsMap.get(inv.good_key);
-        const basePrice = good?.base_price_numeric || 1;
-        playerGoodsProductionValue += inv.quantity * basePrice;
         if (good?.storable) playerGoodsSupplyVolume += inv.quantity;
       }
+      for (const [nodeId, v] of extractionValueByNode) {
+        if (playerNodeIds.has(nodeId)) playerExtractionValue += v;
+      }
+
+      const detail = realizedByPlayer.get(player) || { auto: 0, recipe: 0, structures: 0 };
+      const r1 = (x: number) => Math.round(x * 10) / 10;
+      const auto = r1(detail.auto), recipe = r1(detail.recipe), structures = r1(detail.structures);
+      // Invariant: goods_production_value == auto + recipe + structures
+      const realized = r1(auto + recipe + structures);
 
       // v6 fiscal: compute-trade-flows NO LONGER writes the fiscal ledger.
-      // It only publishes the canonical Goods v4.3 volume; process-turn owns
+      // It only publishes the canonical Goods v4.3 volumes; process-turn owns
       // tax pillars (wealth_*, goods_wealth_fiscal, last_turn_gdp_*).
-      // Legacy columns tax_market/transit/extraction/commercial_capture and
-      // wealth_domestic_component/market_share are NOT touched here anymore.
       await sb.from("realm_resources").update({
-        goods_production_value: Math.round(playerGoodsProductionValue * 10) / 10,
-        goods_supply_volume: Math.round(playerGoodsSupplyVolume * 10) / 10,
+        goods_production_value: realized,
+        goods_value_detail: { auto, recipe, structures },
+        goods_extraction_value: r1(playerExtractionValue),
+        goods_supply_volume: r1(playerGoodsSupplyVolume),
         commercial_retention: Math.round(avgRetention * 1000) / 1000,
       }).eq("session_id", session_id).eq("player_name", player);
 
     }
+
 
     const uniqueWarnings = [...new Set(warnings)];
     return new Response(JSON.stringify({
@@ -1507,6 +1553,11 @@ Deno.serve(async (req) => {
       trade_flows_created: tradeFlows.length,
       players_updated: playerAggregates.size,
       sys_supply_injected_count: sysSupplyInjectedCount,
+      capacity_budget: Math.round(capacityDiag.budget * 10) / 10,
+      capacity_allocated: Math.round(capacityDiag.allocated * 10) / 10,
+      capacity_utilization: capacityDiag.budget > 0 ? Math.round((capacityDiag.allocated / capacityDiag.budget) * 1000) / 1000 : 0,
+      capacity_nodes: capacityDiag.nodes,
+
       unmapped_count: remapCounters.unmapped,
       legacy_remap_count: remapCounters.legacy,
       warnings: uniqueWarnings.slice(0, 50),

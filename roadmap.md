@@ -53,10 +53,11 @@
 - [ ] nodeProductionFactor pryč z recipe quantity, jen throughput budget
 - [ ] wealth_output deprecated + allowlist guard
 - [ ] ProductionOverviewCard jako řetězec, obchod vedle
-- [ ] Krok 4b: zrušit paralelní produkci v process-turn (cityProduction, layers.production/wealth)
-- [ ] hlad/obilí ze staple_food, ne z goods_supply_volume
+- [x] Krok 4b: zrušit paralelní produkci v process-turn (totalCityProduction odstraněn)
+- [x] hlad/obilí ze staple_food, ne z goods_supply_volume
 - [ ] goods_value_detail.structures (budovy + čtvrti), nikdy z post-trade local_supply
-- [ ] Krok 4c: nové zdroje domestic/extraction tax base, famine ze staple_food (import už v local_supply), grain metriky, faction satisfaction, production_reserve rozhodnutí, labor multiplikátory
-- [ ] domestic consumption = Σ (local_demand - unmet_demand) × basketValue
-- [ ] extraction provenience počítat při recipe produkci (production_role=source)
-- [ ] BLOCKER: production_reserve — ověřit, že není jediný obnovitelný CAPEX zdroj; construction-goods pass před release
+- [x] Krok 4c: domestic/extraction tax base z Layer B, famine + grain metriky ze staple_food, faction satisfaction z food balance, production_reserve akumulace deprecated, labor multiplikátory nevytvářejí produkci
+- [ ] domestic consumption = Σ (local_demand - unmet_demand) × basketValue — publikovat v goods vrstvě (process-turn už čte goods_domestic_consumption_value)
+- [ ] extraction provenience počítat při recipe produkci (production_role=source) — publikovat goods_extraction_value
+- [ ] BLOCKER: production_reserve — akumulace zrušena, existující zásoba se spotřebovává; construction-goods → CAPEX pass MUSÍ přijít před release
+
