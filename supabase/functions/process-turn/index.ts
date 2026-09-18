@@ -873,14 +873,18 @@ Deno.serve(async (req) => {
     const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
     const lawTaxMult = 1 + (taxRateModifier / 100); // legacy law modifier (kept for compat)
 
-    // ── GDP volumes v6 (gross, before tax) — overwrite each turn ──
-    //   domestic   = populace × spotřeba/hlava + lokálně spotřebovaná produkce
-    //   market     = goods_production_value (Goods v4.3 = canonical traded volume)
+    // ── TAX BASES v7 (gross volumes, before tax) — all sourced from LAYER B ──
+    //   domestic   = goods_domestic_consumption_value (satisfied consumption, incl. sold imports)
+    //   market     = goods_production_value (realized production: auto + recipe + structures)
     //   transit    = Σ route capacity × control × relevance (below)
-    //   extraction = node-level extractive output (city-attached + neutral nodes)
-    const gdp_domestic   = totalPopulation * 0.01 + totalCityProduction * 0.5;
+    //   extraction = goods_extraction_value (recipes on production_role=source nodes)
+    // Layer A capacity (province_nodes.production_output) NEVER becomes a tax base.
+    const gdp_domestic   = goodsDomesticConsumptionValue > 0
+      ? goodsDomesticConsumptionValue
+      : totalPopulation * 0.01; // fallback until the goods layer publishes consumption
     const gdp_market     = goodsProductionValue;
-    const gdp_extraction = totalCityProduction * 0.3 * strategicBonuses.wealth_mult;
+    const gdp_extraction = goodsExtractionValue * strategicBonuses.wealth_mult;
+
 
     let gdp_transit = 0;
     const playerRoutes = allRoutes.filter(r => {
