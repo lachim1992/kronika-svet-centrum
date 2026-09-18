@@ -85,12 +85,17 @@ zmizí — karta dnes navíc zobrazuje `total_wealth`, což je alias fiskálníh
 Stejný slovník projdu v `NodeFlowBreakdown`, `ResourceHUD` a `EconomyDebugTab`
 (legacy node wealth zůstane jen v Dev Mode).
 
-### 6. Testy a ověření
-- `src/test/economy-integrity.test.ts`: HDP proxy nečte výkon uzlů; karta produkce nečte
-  `total_wealth`; `production_output` se v compute-trade-flows aplikuje jen jednou;
-  realizovaná produkce má tři složky.
+### 6. Testy a ověření (vynutitelné vrstvení)
+- `goods_production_value == goods_value_detail.auto + recipe + buildings`
+- `total_gdp == goods_production_value` (provisional model)
+- `export_gross_value` nevstupuje do `total_gdp` podruhé
+- `wealth_output` nemá konzumenta mimo allowlist (compute-economy-flow + dev/debug)
+- `production_output` se v compute-trade-flows aplikuje jen jednou (bez nodeProductionFactor)
+- karta produkce nečte `total_wealth`
 - Dvojitý přepočet na živé session → identický stav (idempotence).
 
 ## Co se nemění
 Fiskální kontrakt (process-turn jediný writer turnového fiskálu), pravidla snapshotů a
-historie, pět daňových základů, `fiscal_capture` zůstává telemetrií, balancing čísel.
+historie, pět daňových základů, `fiscal_capture` zůstává telemetrií, daňové sazby a
+multiplikátory (i kdyby se fiskální výsledek kvůli opravě základu výrazně změnil).
+
