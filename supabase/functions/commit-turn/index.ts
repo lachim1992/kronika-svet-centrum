@@ -720,7 +720,7 @@ Deno.serve(async (req) => {
       // Node-Trade v1: project trade systems & player access from current treaties
       try {
         const { data: tsRes, error: tsErr } = await supabase.functions.invoke("compute-trade-systems", {
-          body: { session_id: sessionId },
+          body: { session_id: sessionId, emit_events: true },
         });
         if (tsErr) console.warn("compute-trade-systems warning:", tsErr.message);
         results.tradeSystems = tsRes || { error: tsErr?.message };

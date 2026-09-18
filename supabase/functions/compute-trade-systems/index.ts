@@ -255,9 +255,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (eventsToInsert.length > 0) {
+    if (emitEvents && eventsToInsert.length > 0) {
       const { error: evErr } = await sb.from("world_events").insert(eventsToInsert);
       if (evErr) console.warn("world_events insert failed:", evErr.message);
+    } else if (!emitEvents && eventsToInsert.length > 0) {
+      console.log(`[derived-only] suppressed ${eventsToInsert.length} world_events (emit_events=false)`);
     }
 
     // 5) Upsert trade_systems and link province_nodes
