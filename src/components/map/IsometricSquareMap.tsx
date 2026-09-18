@@ -1603,19 +1603,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </g>
             </g>;
           })}
-          {/* top-most drawing surface: every click or drag lands on a sub-parcel */}
-          {roadDraft.length > 0 && <rect x={-200000} y={-200000} width={400000} height={400000} fill="transparent"
-            className="cursor-crosshair" role="button" aria-label="Kreslicí plocha cesty"
-            onPointerDown={event => {
-              if (event.button !== 0) return;
-              event.stopPropagation();
-              const next = subRoadFromPointer(event); if (next) extendRoadDraft(next);
-            }}
-            onPointerMove={event => {
-              if (event.buttons !== 1) return;
-              const next = subRoadFromPointer(event); if (next) extendRoadDraft(next);
-            }}
-            onClick={event => event.stopPropagation()} />}
+          {/* top-most drawing layer: sub-parcels of passable cells catch every click and drag */}
+          {roadDraft.length > 0 && <g>
+            {sortedTiles.map(tile => {
+              if (tile.is_passable === false || tile.biome_family === "sea") return null;
+              const cell = tileCell(tile); const point = at(cell.a, cell.b);
+              return <g key={`road-hit-${tile.id}`}>
+                {Array.from({ length: TILE_PARCEL_COLS * TILE_PARCEL_ROWS }, (unused, parcelIndex) => {
+                  const parcelX = parcelIndex % TILE_PARCEL_COLS; const parcelY = Math.floor(parcelIndex / TILE_PARCEL_COLS);
+                  const next: SubRoadCell = { gridX: cell.a, gridY: cell.b, parcelX, parcelY };
+                  return <polygon key={parcelIndex} points={parcelQuad(point, parcelX, parcelY)} fill="transparent" stroke="transparent"
+                    className="cursor-crosshair" role="button" aria-label={`Vést cestu přes pole ${cell.a}, ${cell.b} podčtverec ${parcelIndex + 1}`}
+                    onPointerDown={event => { if (event.button !== 0) return; event.stopPropagation(); extendRoadDraft(next); }}
+                    onPointerEnter={event => { if (event.buttons === 1) extendRoadDraft(next); }}
+                    onClick={event => event.stopPropagation()} />;
+                })}
+              </g>;
+            })}
+          </g>}
         </g>
 
       </svg>
