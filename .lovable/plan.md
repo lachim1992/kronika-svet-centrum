@@ -39,38 +39,51 @@ Domácí/auto produkce obyvatelstva je samostatný základní sektor.
 - `COMMENT ON COLUMN` pro oba sloupce + sekce „Layer A / B / C“ v
   `docs/architecture/economy-contract.md`. Fyzické přejmenování sloupců = samostatný pass.
 
-### 2. Definice realizované produkce (nejdřív, než se změní HDP)
+### 2. Definice realizované produkce a jednotná valuace (nejdřív, než se změní HDP)
 - Dnes `goods_production_value` sčítá jen node recipe inventory, nikoli `auto_supply`
   ani `building_bonus` / district output, zatímco `city_market_baskets.local_supply` je
-  součtem všech tří. Sjednotím to: realizovaná produkce = auto + recipe + buildings,
-  se explicitním rozpadem (`goods_value_detail`: auto / recipe / buildings).
-- Až pak `total_gdp` (proxy) přestane číst výkon uzlů a bude
-  `realized_goods_value + export_gross_value`. Value-added reforma zůstává TODO.
+  součtem všech tří. Sjednotím to: realizovaná produkce = auto + recipe + buildings.
+- **Jedna účetní jednotka**: všechny tři kanály oceněny na basketové škále
+  (`auto_supply × basketValue`, `recipe_bonus × basketValue`, `building_bonus × basketValue`).
+  `base_price_numeric` u jednotlivých goods se do tohoto součtu nemíchá (není potvrzeno,
+  že je kalibrovaný ve stejné měnové škále) — zůstává pro goods-level UI a obchod.
+- Rozpad `goods_value_detail: { auto, recipe, buildings }` s invariantem
+  `goods_production_value == auto + recipe + buildings`.
+- `total_gdp` (provisional proxy) **= realized_goods_value**, bez exportu.
+  `export_gross_value` je samostatná obchodní metrika a NESMÍ vstoupit do HDP podruhé
+  (exportované zboží už je součástí realizované produkce). Value-added / final-demand
+  reforma = samostatný pass.
+- Explicitně: přesnější základ změní `market_tax_base` → tarify → `goods_wealth_fiscal` →
+  pokladnu. Je to očekávaný důsledek opravy datového základu, **ne balancing**. Daňové
+  sazby ani multiplikátory se v tomto passu neladí, i kdyby příjem výrazně vzrostl.
 
 ### 3. Kapacita působí právě jednou
 - Dnes `production_output` vstupuje dvakrát: v `capacityFor()` (`capacityBudget`) a znovu
-  jako `nodeProductionFactor` v množství receptu. Odstraním druhou aplikaci —
-  `production_output` bude působit výhradně přes throughput budget kapacity.
-- Žádný strop „quantity ≤ production_output“: kapacita limituje work/throughput, ne kusy
-  výrobku (různé goods mají různé jednotky a výnosy). Diagnostika: hlášení, kolik budgetu
-  bylo vyčerpáno (`capacity_utilization`).
+  jako `nodeProductionFactor` v množství receptu. `nodeProductionFactor` z finálního
+  vzorce odstraním — `production_output` působí výhradně přes throughput budget.
+- Quantity zůstává `output × guild × upgrade × resourceYield × share`.
+- Žádný strop „quantity ≤ production_output“: kapacita limituje work/throughput slots, ne
+  kusy výrobku. Diagnostika: `capacity_budget`, `capacity_allocated`,
+  `capacity_utilization = allocated / budget` (ve slotech, nikoli v kusech goods).
 
-### 4. Souhrny říše
+### 4. Souhrny říše a guard pro legacy wealth
 - `aggregate-realm-totals`: nový `total_production_capacity` (Σ production_output),
-  `total_production` označen jako deprecated alias.
-- `process-turn` už nebude potřebovat stará node-agregáta; čte Layer B daňové základy a
-  fyzické údaje, které skutečně používá (kapacita pro logistiku zůstává fyzická).
+  `total_production` označen jako deprecated alias; `total_gdp` dle bodu 2.
+- `wealth_output` smí číst jen `compute-economy-flow` a dev/debug nástroje. NESMÍ ho číst
+  hráčské makro KPI, pokladna, fiskální výpočet ani HDP — vynuceno testem přes allowlist.
+- `process-turn` čte Layer B daňové základy a fyzické údaje, které skutečně používá.
 
 ### 5. UI
-`ProductionOverviewCard` jako řetězec:
+`ProductionOverviewCard` jako lineární řetězec:
 ```text
-🏗 Organizovaná produkční kapacita  →  📦 Realizovaná produkce (auto + recepty + budovy)
-   →  🏪 Tržní hodnota  →  🏛 Fiskální příjem z goods
+🏗 Organizovaná kapacita  →  📦 Realizovaná produkce (auto | recepty | budovy)
+   →  💰 Hodnota produkce  →  🏛 Fiskální příjem z goods
 ```
-Vedle toho „🚚 Distribuce“ z fyzické dopravní vrstvy (route access / market access), nikoli
-Σ node wealth. Zároveň opravím chybu: karta dnes zobrazuje „Σ node wealth“ z `total_wealth`,
-což je alias fiskálního příjmu. Stejný slovník projdu v `NodeFlowBreakdown`, `ResourceHUD`
-a `EconomyDebugTab`; legacy node wealth zmizí z hráčského UI (zůstane jen v Dev Mode).
+Export není další stupeň výroby, proto vedle řetězce samostatný blok
+„🚚 Obchod“ (export, import, využití cest, market access). Σ node wealth z hráčského UI
+zmizí — karta dnes navíc zobrazuje `total_wealth`, což je alias fiskálního příjmu.
+Stejný slovník projdu v `NodeFlowBreakdown`, `ResourceHUD` a `EconomyDebugTab`
+(legacy node wealth zůstane jen v Dev Mode).
 
 ### 6. Testy a ověření
 - `src/test/economy-integrity.test.ts`: HDP proxy nečte výkon uzlů; karta produkce nečte
