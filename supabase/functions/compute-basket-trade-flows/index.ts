@@ -1,7 +1,12 @@
 // compute-basket-trade-flows: L2 basket-level solver.
 // Pairs export_surplus × unmet_demand inside the same trade_system,
 // gated by player_trade_system_access. Writes basket_trade_flows and
-// folds imports back into city_market_baskets + goods_wealth_fiscal.
+// folds imports back into city_market_baskets.
+//
+// WRITER CONTRACT (Economy Integrity Pass):
+// - WRITES: basket_trade_flows, city_market_baskets (derived current-turn state)
+// - NEVER WRITES: realm_resources (no goods_wealth_fiscal, no treasury),
+//   no *_history / *_snapshot tables. `process-turn` owns all fiscal state.
 //
 // Phase 2 invariants:
 // - source_city_id / target_city_id MUST be cities.id
