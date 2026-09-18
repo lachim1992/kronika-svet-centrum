@@ -83,8 +83,30 @@ Domácí/auto produkce obyvatelstva je samostatný základní sektor.
   `layers.production` a `layers.wealth` jsou deprecated jako makro veličiny. Jejich vstupy
   (populace, labor allocation) působí upstream na `auto_supply`, workforce a stabilitu.
 - **Hlad a obilí** přestanou číst obecný `goods_supply_volume` (součet storable goods, tedy
-  i nástroje či textil). Nově se čte konkrétní koš `staple_food`
-  (supply + import vs. demand) z `city_market_baskets`.
+  i nástroje či textil). Nově se čte konkrétní koš `staple_food` z `city_market_baskets`
+  **po** basket trade: `local_supply` (import už je v něm zahrnutý — nesmí se přičítat
+  podruhé), `local_demand`, `unmet_demand`.
+
+### 4c. Nahradit downstream spotřebitele legacy cityProduction
+Každá veličina, která dnes visí na `cityProduction`, dostane explicitní Layer B zdroj:
+- **domestic_tax_base** = hodnota skutečně uspokojené domácí spotřeby:
+  `Σ min(post_trade_supply, demand) × basketValue` (zdaňuje i prodaný import).
+- **extraction_tax_base** = hodnota realizovaného outputu extractive/source sektoru
+  (recepty na uzlech s `production_role = source`), oceněná stejným basketValue.
+  Goods vrstva publikuje `goods_domestic_consumption_value` a `goods_extraction_value`;
+  process-turn z nich udělá daňové základy a zůstává jediným writerem fiskálu.
+- **famine / food balance**, `last_turn_grain_prod` / `_cons` / `_net` a **faction food
+  satisfaction** čtou výhradně `staple_food` (satisfaction, `unmet_demand`), ne
+  `cityEcon.balance`.
+- **production_reserve**: akumulace z `totalCityProduction` se ruší. V tomto passu je
+  označena jako **DEPRECATED / unresolved** — nesmí dostat ad hoc nový vzorec. Cílový model
+  (napájení z `construction` koše, případně zrušení ve prospěch construction goods) je
+  samostatný navazující pass. Do té doby zůstává jen existující zásoba jako CAPEX pro
+  command-dispatch, bez nového přírůstku z legacy produkce.
+- **labor multiplikátory**: legacy `laborGrainMult` / `laborWealthMult` se nesmí použít ke
+  vytvoření paralelní produkce. Existující labor efekt v Goods vrstvě zůstává; sektorové
+  labor multiplikátory = samostatný pass (jinak by šlo o balancing).
+
 
 ### 5. UI
 `ProductionOverviewCard` jako lineární řetězec:
