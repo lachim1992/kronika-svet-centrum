@@ -1410,15 +1410,18 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // UPDATE REALM RESOURCES (with faith + prestige + supply strain + mobilization penalties)
     // ══════════════════════════════════════════
-    // ⚠️ DEPRECATED / UNRESOLVED: production_reserve accumulation.
-    // It used to accrue from the removed parallel macro `totalCityProduction`. Layer A
-    // capacity must NOT be converted into CAPEX stock, and no replacement conversion is
-    // invented in this pass. Existing stock is preserved and still spent by
-    // command-dispatch (buildings, roads) — this is a temporary, deliberately unsafe
-    // compatibility state. TODO(construction-goods pass): CAPEX must come from realized
-    // construction goods (Layer B) before gameplay release.
-    const productionIncome = 0;
+    // CAPEX SOURCE (Layer B → construction stock).
+    // production_reserve accrues 1:1 from `construction_available_for_capex`, the post-trade
+    // construction material left over after local demand, imports and exports
+    // (written by compute-basket-trade-flows). Layer A capacity is NEVER converted into
+    // CAPEX stock, and post-trade `local_supply` must not be used (it still covers demand
+    // and ignores exports). Accrual happens only when the goods pipeline is confirmed fresh
+    // (commit-turn passes allowCapexAccrual) and at most once per processed turn
+    // (last_processed_turn guard). Spending stays in command-dispatch, unchanged.
+    const constructionForCapex = Number((realm as any).construction_available_for_capex || 0);
+    const productionIncome = allowCapexAccrual === true ? constructionForCapex : 0;
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
+
 
 
     // ── Goods economy: fiscal data now handled by 4-pillar model (pillar 3) ──
