@@ -475,6 +475,8 @@ Deno.serve(async (req) => {
         systems: components.length,
         nodes: nodes.length,
         routes_used: usedRoutes,
+        spur_connected_nodes: spurConnected,
+
         events: eventsToInsert.length,
         access_rows: accessRows.length,
         turn: currentTurn,
