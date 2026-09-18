@@ -1,6 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
 import { basketValueFor } from "../_shared/basketValues.ts";
+import { nodeCatchmentRadius, cityCatchmentRadius, nearestTransportCell, spurCapacity, SPUR_COST_PER_TILE } from "../_shared/roadCatchment.ts";
+
 
 
 
