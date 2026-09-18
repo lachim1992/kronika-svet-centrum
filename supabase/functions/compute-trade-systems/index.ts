@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
     }
 
 
-    // 3) Group nodes by component root
+    // 3) Group nodes (and attached cities) by component root
     const compNodes = new Map<string, string[]>();
     for (const n of nodes) {
       const root = ufFind(uf, n.id);
@@ -193,27 +193,42 @@ Deno.serve(async (req) => {
       arr.push(n.id);
       compNodes.set(root, arr);
     }
+    const compCities = new Map<string, string[]>();
+    const cityById = new Map<string, any>(cities.map((c: any) => [c.id, c]));
+    for (const city of cities) {
+      if (!uf.parent.has(`city:${city.id}`)) continue; // never attached to transport
+      const root = ufFind(uf, `city:${city.id}`);
+      compCities.set(root, [...(compCities.get(root) ?? []), city.id]);
+      if (!compNodes.has(root)) compNodes.set(root, []);
+    }
 
     // Compute system_key + members per component
     type Comp = {
       root: string;
       nodeIds: string[];
+      cityIds: string[];
       systemKey: string;
       members: string[];
     };
     const components: Comp[] = [];
     for (const [root, ids] of compNodes.entries()) {
       const sortedIds = [...ids].sort();
-      const keyHash = await sha256Hex(sortedIds.join(","));
+      const cityIds = [...(compCities.get(root) ?? [])].sort();
+      const keyHash = await sha256Hex([...sortedIds, ...cityIds.map((id) => `city:${id}`)].join(","));
       const systemKey = keyHash.slice(0, 16);
       const memberSet = new Set<string>();
       for (const id of ids) {
         const owner = nodeById.get(id)?.controlled_by;
         if (owner) memberSet.add(owner);
       }
+      for (const id of cityIds) {
+        const owner = cityById.get(id)?.owner_player;
+        if (owner) memberSet.add(owner);
+      }
       components.push({
         root,
         nodeIds: sortedIds,
+        cityIds,
         systemKey,
         members: Array.from(memberSet).sort(),
       });
