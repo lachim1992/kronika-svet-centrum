@@ -150,8 +150,13 @@ Graf v `HistoryChartsPanel` je „Objem nabídky", nikoli HDP.
 - **Daňové základy**: `domestic = goods_domestic_consumption_value`,
   `market = goods_production_value`, `extraction = goods_extraction_value × wealth_mult`,
   `transit` = route capacity, `poll` = populace. Layer A se daňovým základem nikdy nestává.
-- **production_reserve**: akumulace je DEPRECATED (`productionIncome = 0`). Existující zásoba
-  se dál spotřebovává v `command-dispatch` na stavby a silnice — dočasný nebezpečný stav.
-  CAPEX musí před release přejít na construction goods (samostatný pass).
+- **production_reserve (CAPEX)**: akumuluje se 1:1 pouze z
+  `realm_resources.construction_available_for_capex`, což je post-trade materiál koše
+  `construction` zbylý po domácí poptávce, importech a exportu
+  (`max(0, post_trade_supply − local_demand − exports)`, writer = `compute-basket-trade-flows`).
+  Layer A kapacita se na CAPEX nikdy nepřevádí a `local_supply` se jako zdroj nepoužívá.
+  Přírůstek proběhne nejvýše jednou za tah (`last_processed_turn`) a jen když celá Layer B
+  pipeline uspěla (`commit-turn` předá `allowCapexAccrual`). `refresh-economy` zásobu nemění.
+  Spotřeba zůstává v `command-dispatch` (stavby, silnice) bez změny.
 - `laborGrainMult` / `laborWealthMult` nesmí vytvářet paralelní produkci; zůstávají jen
   jako modifikátory kapacity/bohatství a v diagnostice.

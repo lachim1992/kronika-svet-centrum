@@ -245,11 +245,41 @@ describe("Layer A/B/C separation", () => {
     expect(src).not.toMatch(/globalGrainReserve \+= goodsSupplyBonus/);
   });
 
-  it("production_reserve accumulation is explicitly deprecated", () => {
+  it("production_reserve accrues only from construction_available_for_capex behind a freshness flag", () => {
     const src = readFileSync("supabase/functions/process-turn/index.ts", "utf8");
-    expect(src).toMatch(/DEPRECATED \/ UNRESOLVED: production_reserve/);
-    expect(src).toMatch(/const productionIncome\s*=\s*0/);
+    expect(src).toMatch(/construction_available_for_capex/);
+    expect(src).toMatch(/allowCapexAccrual === true \? constructionForCapex : 0/);
+    const commit = readFileSync("supabase/functions/commit-turn/index.ts", "utf8");
+    expect(commit).toMatch(/allowCapexAccrual: economyStepFailures\.length === 0/);
   });
+
+  it("post-trade fold does not double count auto/bonus supply", () => {
+    const src = readFileSync("supabase/functions/compute-basket-trade-flows/index.ts", "utf8");
+    expect(src).toMatch(/const totalSupply = localSupply \+ imp;/);
+    expect(src).not.toMatch(/localSupply \+ auto \+ bonus \+ imp/);
+    expect(src).toMatch(/construction_available_for_capex/);
+  });
+
+  it("building and district completion has a single writer in commit-turn", () => {
+    const commit = readFileSync("supabase/functions/commit-turn/index.ts", "utf8");
+    expect(commit).toMatch(/const effectiveTurn = turnNumber \+ 1;/);
+    expect(commit).toMatch(/city_districts[\s\S]{0,400}status: "completed"/);
+    const pt = readFileSync("supabase/functions/process-turn/index.ts", "utf8");
+    expect(pt).not.toMatch(/from\("city_buildings"\)\s*\.update\(\{ status: "completed"/);
+    expect(pt).not.toMatch(/from\("city_districts"\)\.update\(\{ status: "completed"/);
+  });
+
+  it("zero Layer A output yields zero recipe throughput", () => {
+    const src = readFileSync("supabase/functions/compute-trade-flows/index.ts", "utf8");
+    expect(src).toMatch(/if \(!\(output > 0\)\) return 0;/);
+    expect(src).not.toMatch(/node\.production_output \|\| 5/);
+  });
+
+  it("aggregate-realm-totals writes explicit zeros for realms without nodes", () => {
+    const src = readFileSync("supabase/functions/aggregate-realm-totals/index.ts", "utf8");
+    expect(src).toMatch(/if \(p && !byPlayer\.has\(p\)\) byPlayer\.set\(p, emptyTotals\(\)\)/);
+  });
+
 
   it("ProductionOverviewCard shows the chain and never reads total_wealth", () => {
     const src = readFileSync("src/components/economy/ProductionOverviewCard.tsx", "utf8");
