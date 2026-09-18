@@ -379,11 +379,28 @@ Deno.serve(async (req) => {
     for (const c of components) {
       const sysId = systemIdByKey.get(c.systemKey);
       if (!sysId) continue;
-      await sb
-        .from("province_nodes")
-        .update({ trade_system_id: sysId })
-        .eq("session_id", session_id)
-        .in("id", c.nodeIds);
+      if (c.nodeIds.length) {
+        await sb
+          .from("province_nodes")
+          .update({ trade_system_id: sysId })
+          .eq("session_id", session_id)
+          .in("id", c.nodeIds);
+      }
+      if (c.cityIds.length) {
+        await sb
+          .from("cities")
+          .update({ trade_system_id: sysId })
+          .eq("session_id", session_id)
+          .in("id", c.cityIds);
+      }
+    }
+    // Cities that lost their road connection fall out of every system.
+    const attachedCityIds = components.flatMap((c) => c.cityIds);
+    if (attachedCityIds.length) {
+      await sb.from("cities").update({ trade_system_id: null })
+        .eq("session_id", session_id).not("id", "in", `(${attachedCityIds.join(",")})`);
+    } else {
+      await sb.from("cities").update({ trade_system_id: null }).eq("session_id", session_id);
     }
 
     // 6) Refresh snapshot
