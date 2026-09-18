@@ -52,12 +52,12 @@
 - [ ] jednotná basketová valuace auto/recipe/buildings + goods_value_detail
 - [ ] nodeProductionFactor pryč z recipe quantity, jen throughput budget
 - [ ] wealth_output deprecated + allowlist guard
-- [ ] ProductionOverviewCard jako řetězec, obchod vedle
+- [x] ProductionOverviewCard jako řetězec, obchod vedle
 - [x] Krok 4b: zrušit paralelní produkci v process-turn (totalCityProduction odstraněn)
 - [x] hlad/obilí ze staple_food, ne z goods_supply_volume
-- [ ] goods_value_detail.structures (budovy + čtvrti), nikdy z post-trade local_supply
+- [x] goods_value_detail.structures (budovy + čtvrti), nikdy z post-trade local_supply
 - [x] Krok 4c: domestic/extraction tax base z Layer B, famine + grain metriky ze staple_food, faction satisfaction z food balance, production_reserve akumulace deprecated, labor multiplikátory nevytvářejí produkci
-- [ ] domestic consumption = Σ (local_demand - unmet_demand) × basketValue — publikovat v goods vrstvě (process-turn už čte goods_domestic_consumption_value)
-- [ ] extraction provenience počítat při recipe produkci (production_role=source) — publikovat goods_extraction_value
+- [x] domestic consumption = Σ (local_demand - unmet_demand) × basketValue (publikuje compute-basket-trade-flows)
+- [x] extraction provenience počítat při recipe produkci (production_role=source)
 - [ ] BLOCKER: production_reserve — akumulace zrušena, existující zásoba se spotřebovává; construction-goods → CAPEX pass MUSÍ přijít před release
 
