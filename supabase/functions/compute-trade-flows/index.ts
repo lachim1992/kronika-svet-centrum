@@ -326,7 +326,16 @@ Deno.serve(async (req) => {
     // ════════════════════════════════════════════
     const nodeInventories: Array<{ node_id: string; good_key: string; quantity: number; quality_band: number }> = [];
 
+    // LAYER B provenance: value of recipe output produced on production_role = "source"
+    // nodes, recorded AT PRODUCTION TIME. Provenance must never be inferred back from the
+    // resulting basket (the same basket can be produced by different chains).
+    const extractionValueByNode = new Map<string, number>();
+    // Throughput diagnostics (slots, NOT goods pieces).
+    const capacityDiag = { budget: 0, allocated: 0, nodes: 0 };
+
     const PRODUCTION_SHARE_CAP = 2.0;
+    // LAYER A → LAYER B: production_output acts EXACTLY ONCE, here, as the recipe
+    // throughput budget. It must not be re-applied to the produced quantity.
     function capacityFor(node: any): number {
       const role = node.production_role || "";
       let base = 1;
@@ -338,6 +347,7 @@ Deno.serve(async (req) => {
       const raw = (base + upg * 0.5 + Math.min(1.5, guild * 0.5)) * prodOut;
       return Math.max(1, Math.min(6, Math.round(raw * 10) / 10));
     }
+
 
     // Build good_key → canonical basket map (using existing resolveBasketKey)
     const goodToBasket = new Map<string, string>();
