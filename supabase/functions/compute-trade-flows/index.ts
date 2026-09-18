@@ -478,7 +478,7 @@ Deno.serve(async (req) => {
           });
           if (role === "source") {
             const bk = goodToBasket.get(recipe.output_good_key) || "staple_food";
-            const bv = (BASKET_CONFIG as any)[bk]?.basketValue ?? 1;
+            const bv = basketValueFor(bk);
             extractionValueByNode.set(node.id, (extractionValueByNode.get(node.id) || 0) + quantity * bv);
           }
         }
@@ -1491,7 +1491,7 @@ Deno.serve(async (req) => {
     for (const row of cityBasketRows) {
       const p = row.player_name || "";
       if (!p) continue;
-      const bv = (BASKET_CONFIG as any)[row.basket_key]?.basketValue ?? 1;
+      const bv = basketValueFor(row.basket_key);
       const acc = realizedByPlayer.get(p) || { auto: 0, recipe: 0, structures: 0 };
       acc.auto += (row.auto_supply || 0) * bv;
       acc.recipe += (row.recipe_bonus || 0) * bv;
