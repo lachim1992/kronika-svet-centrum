@@ -10,7 +10,7 @@ import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
-import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadPathBetween, tileBridgeCells, tileRoadBranches, tileRoadCells, tileRoadCost, type RoadStep, type SubRoadCell } from "@/lib/tileRoads";
+import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDetour, subRoadPathBetween, tileBridgeCells, tileRoadBranches, tileRoadCells, tileRoadCost, type RoadStep, type SubRoadCell } from "@/lib/tileRoads";
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";

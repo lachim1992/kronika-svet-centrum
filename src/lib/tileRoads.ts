@@ -153,3 +153,39 @@ export function subRoadPathBetween(from: SubRoadCell, to: SubRoadCell): SubRoadC
   }
   return path;
 }
+
+/**
+ * Shortest passable sub-parcel detour between two cells (exclusive of `from`,
+ * inclusive of `to`). Returns null when nothing walkable connects them nearby.
+ */
+export function subRoadDetour(
+  from: SubRoadCell, to: SubRoadCell, passable: (cell: SubRoadCell) => boolean, budget = 20000,
+): SubRoadCell[] | null {
+  const start = subRoadGlobal(from); const goal = subRoadGlobal(to);
+  const startKey = `${start.x},${start.y}`; const goalKey = `${goal.x},${goal.y}`;
+  const previous = new Map<string, string | null>([[startKey, null]]);
+  const queue: RoadCell[] = [start];
+  let visited = 0;
+  while (queue.length && visited++ < budget) {
+    const cell = queue.shift()!;
+    const key = `${cell.x},${cell.y}`;
+    if (key === goalKey) break;
+    for (const step of CARDINAL_STEPS) {
+      const nextCell = { x: cell.x + step.dx, y: cell.y + step.dy };
+      const nextKey = `${nextCell.x},${nextCell.y}`;
+      if (previous.has(nextKey)) continue;
+      if (nextKey !== goalKey && !passable(globalToSubRoad(nextCell.x, nextCell.y))) continue;
+      previous.set(nextKey, key);
+      queue.push(nextCell);
+    }
+  }
+  if (!previous.has(goalKey)) return null;
+  const path: SubRoadCell[] = [];
+  let cursor: string | null = goalKey;
+  while (cursor && cursor !== startKey) {
+    const [x, y] = cursor.split(",").map(Number);
+    path.push(globalToSubRoad(x, y));
+    cursor = previous.get(cursor) ?? null;
+  }
+  return path.reverse();
+}
