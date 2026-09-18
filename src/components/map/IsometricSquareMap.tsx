@@ -582,12 +582,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       project.sub_path_cells.forEach(sub => push(sub.gridX, sub.gridY, project.level, null, project.status === "building", { x: sub.parcelX, y: sub.parcelY }));
     });
     roadSegments.filter(segment => segment.status !== "blocked" && (!segment.project_id || !projectsWithExactTrace.has(segment.project_id))).forEach(segment => {
-      const dx = Math.sign(segment.to_x - segment.from_x); const dy = Math.sign(segment.to_y - segment.from_y);
       if (segment.sub_path_cells?.length) {
         segment.sub_path_cells.forEach(sub => push(sub.gridX, sub.gridY, segment.level, null, segment.status === "building", { x: sub.parcelX, y: sub.parcelY }));
       } else {
-        push(segment.from_x, segment.from_y, segment.level, { dx, dy }, segment.status === "building");
-        push(segment.to_x, segment.to_y, segment.level, { dx: -dx, dy: -dy }, segment.status === "building");
+        // Legacy segments carry no sub-parcel trace: draw the same thin line a player would build.
+        const mid = { x: Math.floor(TILE_PARCEL_COLS / 2), y: Math.floor(TILE_PARCEL_ROWS / 2) };
+        const from: SubRoadCell = { gridX: segment.from_x, gridY: segment.from_y, parcelX: mid.x, parcelY: mid.y };
+        const to: SubRoadCell = { gridX: segment.to_x, gridY: segment.to_y, parcelX: mid.x, parcelY: mid.y };
+        [from, ...subRoadPathBetween(from, to)].forEach(sub =>
+          push(sub.gridX, sub.gridY, segment.level, null, segment.status === "building", { x: sub.parcelX, y: sub.parcelY }));
       }
     });
     roadDraft.forEach(sub => push(sub.gridX, sub.gridY, roadDraftLevel, null, true, { x: sub.parcelX, y: sub.parcelY }));

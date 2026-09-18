@@ -15,6 +15,7 @@
 // - access_level 0 = no flow; tariff_factor 1.0 = no tariff applied
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { basketValueFor } from "../_shared/basketValues.ts";
+import { cityCatchmentRadius, nearestTransportCell, spurCapacity, SPUR_COST_PER_TILE } from "../_shared/roadCatchment.ts";
 
 
 const corsHeaders = {
@@ -68,7 +69,7 @@ Deno.serve(async (req) => {
       .eq("session_id", session_id);
     if (bErr) { console.error("baskets load", bErr); throw bErr; }
 
-    // 2. Load nodes → city_id → trade_system_id
+    // 2. Load nodes → city_id → trade_system_id (fallback for cities without direct link)
     const { data: nodes, error: nErr } = await sb
       .from("province_nodes")
       .select("city_id, trade_system_id")
@@ -99,7 +100,7 @@ Deno.serve(async (req) => {
     // Physical transport graph. Land edges exist only where a completed road segment exists;
     // cardinally adjacent river cells create automatic river edges. Capacity is shared by all baskets.
     const [cityRes, roadRes, riverRes] = await Promise.all([
-      sb.from("cities").select("id, grid_x, grid_y, province_q, province_r").eq("session_id", session_id),
+      sb.from("cities").select("id, grid_x, grid_y, province_q, province_r, settlement_level, development_level, trade_system_id").eq("session_id", session_id),
       sb.from("road_segments").select("id, from_x, from_y, to_x, to_y, capacity, friction, status").eq("session_id", session_id).eq("status", "completed"),
       sb.from("province_hexes").select("grid_x, grid_y").eq("session_id", session_id).eq("has_river", true).eq("is_passable", true),
     ]);
@@ -128,6 +129,26 @@ Deno.serve(async (req) => {
       }
     }
     const cityCell = new Map((cityRes.data || []).map(city => [city.id, `${city.grid_x ?? city.province_q},${city.grid_y ?? city.province_r}`]));
+    // A city need not sit on a road: within its catchment radius a feeder spur
+    // attaches its market to the network (pricier, lower throughput than a road).
+    const transportCells = new Set<string>([...rivers, ...graph.keys()]);
+    for (const city of cityRes.data || []) {
+      const cell = cityCell.get(city.id); if (!cell) continue;
+      if (graph.has(cell)) continue;
+      const [x, y] = cell.split(",").map(Number);
+      const hit = nearestTransportCell(x, y, cityCatchmentRadius(city), transportCells);
+      if (!hit || hit.dist <= 0) continue;
+      const id = `spur:${city.id}`;
+      const capacity = spurCapacity(hit.dist);
+      const cost = SPUR_COST_PER_TILE * hit.dist;
+      addEdge(cell, { id, to: hit.cell, cost, capacity, mode: "road" });
+      addEdge(hit.cell, { id, to: cell, cost, capacity, mode: "road" });
+      edgeCapacity.set(id, capacity);
+    }
+    // Trade system membership: the city's own link wins, node link is the fallback.
+    for (const city of cityRes.data || []) {
+      if ((city as any).trade_system_id) citySystem.set(city.id, String((city as any).trade_system_id));
+    }
     const reserved = new Map<string, number>();
     const route = (from: string, target: string) => {
       const dist = new Map<string, number>([[from, 0]]); const previous = new Map<string, { cell: string; edge: Edge }>(); const pending = new Set<string>([from]);

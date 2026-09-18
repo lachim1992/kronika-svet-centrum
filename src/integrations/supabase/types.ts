@@ -1147,6 +1147,7 @@ export type Database = {
           status: string
           tags: string[] | null
           temple_level: number
+          trade_system_id: string | null
           uprising_cooldown_until: number
           vulnerability_score: number
         }
@@ -1223,6 +1224,7 @@ export type Database = {
           status?: string
           tags?: string[] | null
           temple_level?: number
+          trade_system_id?: string | null
           uprising_cooldown_until?: number
           vulnerability_score?: number
         }
@@ -1299,6 +1301,7 @@ export type Database = {
           status?: string
           tags?: string[] | null
           temple_level?: number
+          trade_system_id?: string | null
           uprising_cooldown_until?: number
           vulnerability_score?: number
         }
@@ -1329,6 +1332,13 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cities_trade_system_id_fkey"
+            columns: ["trade_system_id"]
+            isOneToOne: false
+            referencedRelation: "trade_systems"
             referencedColumns: ["id"]
           },
         ]

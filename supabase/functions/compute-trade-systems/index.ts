@@ -16,7 +16,7 @@
 // Architecture: Diplomacy writes treaties → THIS function projects access → compute-trade-flows consumes.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { nodeCatchmentRadius, nearestTransportCell } from "../_shared/roadCatchment.ts";
+import { nodeCatchmentRadius, cityCatchmentRadius, nearestTransportCell } from "../_shared/roadCatchment.ts";
 
 
 const corsHeaders = {
@@ -167,8 +167,25 @@ Deno.serve(async (req) => {
       if (hit.dist > 0) spurConnected++;
     }
 
+    // Cities are first-class members of a trade system: a road inside the city
+    // catchment radius attaches the whole market (its baskets) to the network.
+    const { data: cityRows } = await sb
+      .from("cities")
+      .select("id, owner_player, grid_x, grid_y, province_q, province_r, settlement_level, development_level")
+      .eq("session_id", session_id);
+    const cities = cityRows || [];
+    let citiesConnected = 0;
+    for (const city of cities) {
+      const x = Number((city as any).grid_x ?? (city as any).province_q);
+      const y = Number((city as any).grid_y ?? (city as any).province_r);
+      const hit = nearestTransportCell(x, y, cityCatchmentRadius(city), transportCells);
+      if (!hit) continue;
+      ufUnion(uf, `city:${city.id}`, cellId(...(hit.cell.split(",").map(Number) as [number, number])));
+      citiesConnected++;
+    }
 
-    // 3) Group nodes by component root
+
+    // 3) Group nodes (and attached cities) by component root
     const compNodes = new Map<string, string[]>();
     for (const n of nodes) {
       const root = ufFind(uf, n.id);
@@ -176,27 +193,42 @@ Deno.serve(async (req) => {
       arr.push(n.id);
       compNodes.set(root, arr);
     }
+    const compCities = new Map<string, string[]>();
+    const cityById = new Map<string, any>(cities.map((c: any) => [c.id, c]));
+    for (const city of cities) {
+      if (!uf.parent.has(`city:${city.id}`)) continue; // never attached to transport
+      const root = ufFind(uf, `city:${city.id}`);
+      compCities.set(root, [...(compCities.get(root) ?? []), city.id]);
+      if (!compNodes.has(root)) compNodes.set(root, []);
+    }
 
     // Compute system_key + members per component
     type Comp = {
       root: string;
       nodeIds: string[];
+      cityIds: string[];
       systemKey: string;
       members: string[];
     };
     const components: Comp[] = [];
     for (const [root, ids] of compNodes.entries()) {
       const sortedIds = [...ids].sort();
-      const keyHash = await sha256Hex(sortedIds.join(","));
+      const cityIds = [...(compCities.get(root) ?? [])].sort();
+      const keyHash = await sha256Hex([...sortedIds, ...cityIds.map((id) => `city:${id}`)].join(","));
       const systemKey = keyHash.slice(0, 16);
       const memberSet = new Set<string>();
       for (const id of ids) {
         const owner = nodeById.get(id)?.controlled_by;
         if (owner) memberSet.add(owner);
       }
+      for (const id of cityIds) {
+        const owner = cityById.get(id)?.owner_player;
+        if (owner) memberSet.add(owner);
+      }
       components.push({
         root,
         nodeIds: sortedIds,
+        cityIds,
         systemKey,
         members: Array.from(memberSet).sort(),
       });
@@ -347,11 +379,28 @@ Deno.serve(async (req) => {
     for (const c of components) {
       const sysId = systemIdByKey.get(c.systemKey);
       if (!sysId) continue;
-      await sb
-        .from("province_nodes")
-        .update({ trade_system_id: sysId })
-        .eq("session_id", session_id)
-        .in("id", c.nodeIds);
+      if (c.nodeIds.length) {
+        await sb
+          .from("province_nodes")
+          .update({ trade_system_id: sysId })
+          .eq("session_id", session_id)
+          .in("id", c.nodeIds);
+      }
+      if (c.cityIds.length) {
+        await sb
+          .from("cities")
+          .update({ trade_system_id: sysId })
+          .eq("session_id", session_id)
+          .in("id", c.cityIds);
+      }
+    }
+    // Cities that lost their road connection fall out of every system.
+    const attachedCityIds = components.flatMap((c) => c.cityIds);
+    if (attachedCityIds.length) {
+      await sb.from("cities").update({ trade_system_id: null })
+        .eq("session_id", session_id).not("id", "in", `(${attachedCityIds.join(",")})`);
+    } else {
+      await sb.from("cities").update({ trade_system_id: null }).eq("session_id", session_id);
     }
 
     // 6) Refresh snapshot
@@ -476,6 +525,8 @@ Deno.serve(async (req) => {
         nodes: nodes.length,
         routes_used: usedRoutes,
         spur_connected_nodes: spurConnected,
+        cities_connected: citiesConnected,
+        cities_total: cities.length,
 
         events: eventsToInsert.length,
         access_rows: accessRows.length,
