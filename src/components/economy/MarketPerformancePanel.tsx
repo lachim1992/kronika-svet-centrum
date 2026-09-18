@@ -36,21 +36,23 @@ const MarketPerformancePanel = ({ realm }: Props) => {
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold flex items-center gap-1">
               🏠 Domácí ekonomická aktivita
-              <InfoTip side="right">Velikost interně uspokojené poptávky. Není to příjem pokladny.</InfoTip>
+              <InfoTip side="right">Hodnota domácí produkce zboží za kolo (goods production value). Není to příjem pokladny.</InfoTip>
             </span>
             <span className="font-mono font-bold">{activity.domesticActivity.toFixed(1)}</span>
           </div>
           <Progress value={Math.min(100, (activity.domesticActivity / maxVal) * 100)} className="h-1.5" />
         </div>
 
+
         {/* Export Position */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold flex items-center gap-1">
               📈 Exportní tržní pozice
-              <InfoTip side="right">Bohatství z reálných obchodních cest (trade flows). Započítává se pouze u košíků, kde má vaše říše aktivní obchodní tok do sousedního města. Pokud nemáte žádné aktivní toky, bude 0.</InfoTip>
+              <InfoTip side="right">Hrubá hodnota exportu z reálných obchodních toků (rozdíl HDP a domácí produkce). Bez aktivních toků je 0.</InfoTip>
             </span>
             <span className="font-mono font-bold">{position.exportPosition.toFixed(1)}</span>
+
           </div>
           <Progress value={Math.min(100, (position.exportPosition / maxVal) * 100)} className="h-1.5" />
         </div>
