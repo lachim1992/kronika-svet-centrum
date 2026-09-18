@@ -117,8 +117,12 @@ GUARD TEST: before = { gold_reserve, legitimacy, wealth_pop_tax,
 
 - P2: production orders do hráčského UI; `trade_ideology` do solveru nebo skrýt z UI; OPEX silnic (maintenance, degradace, repair).
 - P3: greedy basket routing → min-cost-flow.
+- Během Integrity Passu se nic z toho ani balancing neřeší — rozsah zůstává Kroky 0–6.
 
-Balancování čísel až po dokončení kroků 0–6.
+## Verifikace
+
+`tsgo --noEmit`, `bunx vitest run`, build, nové testy: guard test read-only refreshe, idempotence refreshe, commit+refresh×2 nemění treasury, ghost inventory, node capacity bez orderu, součet income komponent.
+
 
 ## Verifikace
 
