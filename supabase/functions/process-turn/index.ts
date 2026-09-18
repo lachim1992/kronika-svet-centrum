@@ -560,7 +560,12 @@ Deno.serve(async (req) => {
     let globalGrainReserve = realm.grain_reserve || 0;
     let famineCityCount = 0;
     let totalDemand = 0;
-    let totalCityProduction = 0;
+    // LAYER B food totals (staple_food). The legacy macro `totalCityProduction`
+    // (node capacity + city layers + goods share) is REMOVED — it was a third,
+    // parallel economy. Layer A capacity never becomes production here.
+    let totalFoodSupply = 0;
+    let totalFoodDeficit = 0;
+
     let totalCityWealth = 0;
     let totalCityCapacity = 0;
     let totalFaith = 0;
