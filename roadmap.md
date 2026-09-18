@@ -57,3 +57,6 @@
 - [ ] hlad/obilí ze staple_food, ne z goods_supply_volume
 - [ ] goods_value_detail.structures (budovy + čtvrti), nikdy z post-trade local_supply
 - [ ] Krok 4c: nové zdroje domestic/extraction tax base, famine ze staple_food (import už v local_supply), grain metriky, faction satisfaction, production_reserve rozhodnutí, labor multiplikátory
+- [ ] domestic consumption = Σ (local_demand - unmet_demand) × basketValue
+- [ ] extraction provenience počítat při recipe produkci (production_role=source)
+- [ ] BLOCKER: production_reserve — ověřit, že není jediný obnovitelný CAPEX zdroj; construction-goods pass před release
