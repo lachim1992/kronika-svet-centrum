@@ -314,6 +314,32 @@ Deno.serve(async (req) => {
       else basketUpdates++;
     }
 
+    // 8b. LAYER B → LAYER C input: value of actually satisfied domestic consumption.
+    // satisfied = local_demand − unmet_demand (post-trade), so sold imports are taxed
+    // too and consumption is never reconstructed from the mutable local_supply field.
+    // This is a Layer B VOLUME column, not a fiscal write: process-turn turns it into
+    // domestic_tax_base and remains the sole writer of fiscal state.
+    let domesticConsumptionPlayers = 0;
+    const { data: postBaskets } = await sb
+      .from("city_market_baskets")
+      .select("player_name, basket_key, local_demand, unmet_demand")
+      .eq("session_id", session_id);
+    const consumptionByPlayer = new Map<string, number>();
+    for (const b of (postBaskets as any[]) || []) {
+      const p = b.player_name || "";
+      if (!p) continue;
+      const satisfied = Math.max(0, Number(b.local_demand || 0) - Number(b.unmet_demand || 0));
+      consumptionByPlayer.set(p, (consumptionByPlayer.get(p) || 0) + satisfied * basketValueFor(b.basket_key));
+    }
+    for (const [player, value] of consumptionByPlayer) {
+      const { error: cErr } = await sb.from("realm_resources")
+        .update({ goods_domestic_consumption_value: Math.round(value * 10) / 10 })
+        .eq("session_id", session_id).eq("player_name", player);
+      if (cErr) console.error("domestic consumption update", cErr);
+      else domesticConsumptionPlayers++;
+    }
+
+
     // 9. NO FISCAL WRITES (Economy Integrity Pass, INVARIANT 1).
     // `fiscal_capture` on each flow row is TELEMETRY ONLY — an estimated tariff
     // capture used for trade diagnostics/UI. It is NOT crown income and no
