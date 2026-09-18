@@ -1694,9 +1694,13 @@ Deno.serve(async (req) => {
     await supabase.from("world_action_log").insert({
       session_id: sessionId, turn_number: currentTurn, player_name: playerName,
       action_type: "turn_processing",
-      description: `Kolo ${currentTurn}: ⚒️${totalCityProduction.toFixed(0)} 💰${wealthIncome} 🏛️${logisticCapacity} ⛪${newFaith.toFixed(0)} | pop ${totalPopulation} | ⚔${totalWarriors} | manpower ${manpowerPool}`,
+      description: `Kolo ${currentTurn}: 📦${goodsProductionValue.toFixed(0)} 💰${wealthIncome} 🏛️${logisticCapacity} ⛪${newFaith.toFixed(0)} | pop ${totalPopulation} | ⚔${totalWarriors} | manpower ${manpowerPool}`,
       metadata: {
-        total_production: totalCityProduction,
+        // Layer B realized production (Goods v4.3) — NOT a node-capacity macro.
+        goods_production_value: goodsProductionValue,
+        food_supply: totalFoodSupply,
+        food_deficit: totalFoodDeficit,
+
         total_wealth: combinedWealth,
         total_capacity: logisticCapacity,
         total_importance: totalImportance,
