@@ -1620,8 +1620,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <Button size="icon" variant={showSubBiomes ? "secondary" : "ghost"} aria-label={showSubBiomes ? "Skrýt subbiomy" : "Zobrazit subbiomy"} aria-pressed={showSubBiomes} onClick={() => setShowSubBiomes(value => !value)}><Grid3x3 className={`h-4 w-4 ${showSubBiomes ? "" : "opacity-40"}`} /></Button>
       </div>
       <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>Čtvercová síť · izometrické zobrazení</span></div>
-      {/* sits at the bottom: the top bar (resources, tabs) would otherwise swallow the clicks */}
-      {roadDraft.length > 0 && <div className={`map-floating-control absolute left-1/2 z-[60] w-[min(92vw,560px)] -translate-x-1/2 p-3 ${isMobile ? "bottom-24" : "bottom-16"}`}>
+      {/* rendered straight into the page body: app chrome (tabs, docks) would swallow the clicks */}
+      {roadDraft.length > 0 && createPortal(<div className={`map-floating-control fixed left-1/2 z-[200] w-[min(92vw,560px)] -translate-x-1/2 p-3 ${isMobile ? "bottom-24" : "bottom-16"}`}>
         <div className="flex flex-wrap items-center gap-2">
           <RouteIcon className="h-4 w-4 text-primary" />
           <strong className="mr-auto text-sm">Kreslení cesty · {Math.max(0, roadDraft.length - 1)} podúseků</strong>
