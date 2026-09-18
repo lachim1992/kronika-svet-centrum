@@ -244,7 +244,7 @@ const SupplyChainPanel = ({ sessionId, playerName, currentTurn }: Props) => {
           <TabsContent value="nodes">
             <ScrollArea className="h-48">
               <div className="space-y-1">
-                {myNodes.sort((a, b) => (b.production_output + b.wealth_output) - (a.production_output + a.wealth_output)).map(n => {
+                {myNodes.sort((a, b) => (b.production_output + b.capacity_score) - (a.production_output + a.capacity_score)).map(n => {
                   const supply = supplyMap.get(n.id);
                   return (
                     <div key={n.id} className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-muted/30 text-xs">
@@ -254,8 +254,8 @@ const SupplyChainPanel = ({ sessionId, playerName, currentTurn }: Props) => {
                         <span className="text-muted-foreground text-[10px]">{NODE_TYPE_LABELS[n.node_type] || n.node_type}</span>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-muted-foreground">⚒️{n.production_output.toFixed(0)}</span>
-                        <span className="text-muted-foreground">💰{n.wealth_output.toFixed(0)}</span>
+                        <span className="text-muted-foreground">🏗️{n.production_output.toFixed(0)}</span>
+                        <span className="text-muted-foreground">🏛️{(n.capacity_score || 0).toFixed(0)}</span>
                         {supply && (
                           <span className={`font-mono ${supplyColor(supply.supply_level)}`}>
                             {(supply.supply_level * 100).toFixed(0)}%
