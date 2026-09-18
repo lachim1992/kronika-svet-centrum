@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
     // Physical transport graph. Land edges exist only where a completed road segment exists;
     // cardinally adjacent river cells create automatic river edges. Capacity is shared by all baskets.
     const [cityRes, roadRes, riverRes] = await Promise.all([
-      sb.from("cities").select("id, grid_x, grid_y, province_q, province_r").eq("session_id", session_id),
+      sb.from("cities").select("id, grid_x, grid_y, province_q, province_r, settlement_level, development_level, trade_system_id").eq("session_id", session_id),
       sb.from("road_segments").select("id, from_x, from_y, to_x, to_y, capacity, friction, status").eq("session_id", session_id).eq("status", "completed"),
       sb.from("province_hexes").select("grid_x, grid_y").eq("session_id", session_id).eq("has_river", true).eq("is_passable", true),
     ]);
