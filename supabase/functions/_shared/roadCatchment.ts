@@ -31,7 +31,7 @@ export function nodeCatchmentRadius(node: any): number {
 
 /** Catchment radius of a city, in tiles. */
 export function cityCatchmentRadius(city: any): number {
-  const level = Number(city?.city_level ?? city?.level ?? 1);
+  const level = Number(city?.city_level ?? city?.settlement_level ?? city?.level ?? 1);
   let base = 2;
   if (level >= 4) base = 3;
   if (level >= 6) base = 4;
