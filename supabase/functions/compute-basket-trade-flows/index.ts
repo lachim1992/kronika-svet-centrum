@@ -128,6 +128,26 @@ Deno.serve(async (req) => {
       }
     }
     const cityCell = new Map((cityRes.data || []).map(city => [city.id, `${city.grid_x ?? city.province_q},${city.grid_y ?? city.province_r}`]));
+    // A city need not sit on a road: within its catchment radius a feeder spur
+    // attaches its market to the network (pricier, lower throughput than a road).
+    const transportCells = new Set<string>([...rivers, ...graph.keys()]);
+    for (const city of cityRes.data || []) {
+      const cell = cityCell.get(city.id); if (!cell) continue;
+      if (graph.has(cell)) continue;
+      const [x, y] = cell.split(",").map(Number);
+      const hit = nearestTransportCell(x, y, cityCatchmentRadius(city), transportCells);
+      if (!hit || hit.dist <= 0) continue;
+      const id = `spur:${city.id}`;
+      const capacity = spurCapacity(hit.dist);
+      const cost = SPUR_COST_PER_TILE * hit.dist;
+      addEdge(cell, { id, to: hit.cell, cost, capacity, mode: "road" });
+      addEdge(hit.cell, { id, to: cell, cost, capacity, mode: "road" });
+      edgeCapacity.set(id, capacity);
+    }
+    // Trade system membership: the city's own link wins, node link is the fallback.
+    for (const city of cityRes.data || []) {
+      if ((city as any).trade_system_id) citySystem.set(city.id, String((city as any).trade_system_id));
+    }
     const reserved = new Map<string, number>();
     const route = (from: string, target: string) => {
       const dist = new Map<string, number>([[from, 0]]); const previous = new Map<string, { cell: string; edge: Edge }>(); const pending = new Set<string>([from]);
