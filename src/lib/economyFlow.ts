@@ -499,52 +499,8 @@ export function getFiscalIncome(realm: any) {
 }
 
 // ═══════════════════════════════════════════
-// WEALTH BREAKDOWN — Legacy 4-Pillar (DEPRECATED)
+// Legacy 4-pillar getWealthBreakdown() REMOVED (Economy Integrity Pass, Krok 5).
+// It read wealth_domestic_component / wealth_market_share, which v6 no longer
+// writes. Use getFiscalIncome() / getEconomicActivity() / getMarketPosition().
 // ═══════════════════════════════════════════
 
-export interface WealthBreakdown {
-  popTax: number;
-  domesticMarket: number;
-  domesticComponent: number;
-  marketShare: number;
-  goodsFiscal: number;
-  routeCommerce: number;
-  totalIncome: number;
-  armyUpkeep: number;
-  tolls: number;
-  sportFunding: number;
-  totalExpenses: number;
-  netChange: number;
-}
-
-const PILLAR2_DOMESTIC_WEIGHT = 0.4;
-const PILLAR2_MARKET_SHARE_WEIGHT = 0.6;
-
-/**
- * @deprecated Use getFiscalIncome(), getEconomicActivity(), getMarketPosition() instead.
- * This function blends economic activity with fiscal income, which is ontologically incorrect.
- */
-export function getWealthBreakdown(realm: any): WealthBreakdown {
-  const popTax = Number(realm?.wealth_pop_tax ?? 0);
-  const domesticComponent = Number(realm?.wealth_domestic_component ?? 0);
-  const marketShare = Number(realm?.wealth_market_share ?? 0);
-  const domesticMarket = domesticComponent * PILLAR2_DOMESTIC_WEIGHT + marketShare * PILLAR2_MARKET_SHARE_WEIGHT;
-  const goodsFiscal = Number(realm?.goods_wealth_fiscal ?? 0);
-  const routeCommerce = Number(realm?.wealth_route_commerce ?? 0);
-  const totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce;
-
-  const wb = realm?.computed_modifiers?.wealth_breakdown || {};
-  const armyUpkeep = Number(wb.army_upkeep ?? 0);
-  const tolls = Number(wb.tolls ?? 0);
-  const sportFunding = Number(wb.sport_funding ?? 0);
-  const totalExpenses = armyUpkeep + tolls + sportFunding;
-
-  return {
-    popTax, domesticMarket, domesticComponent, marketShare,
-    goodsFiscal, routeCommerce,
-    totalIncome,
-    armyUpkeep, tolls, sportFunding,
-    totalExpenses,
-    netChange: totalIncome - totalExpenses,
-  };
-}
