@@ -796,7 +796,7 @@ Deno.serve(async (req) => {
         layerCapacity: Math.round(layers.capacity * 10) / 10,
         layerFaith: Math.round(layers.faith * 10) / 10,
         demand: cityDemand,
-        balance: Math.round((cityProduction - cityDemand) * 10) / 10,
+        balance: Math.round((cityFoodSupply - cityDemand) * 10) / 10,
         isolationPenalty: Math.round(isolationPenalty * 100),
         famine: cityFamine,
       });
@@ -809,16 +809,13 @@ Deno.serve(async (req) => {
     // Removed from here to prevent duplicate growth.
     // ══════════════════════════════════════════════════════════════
 
-    // Apply mobilization penalties to totals
-    totalCityProduction = Math.max(0, totalCityProduction - mobProductionPenalty);
+    // Mobilization: peasants pulled into armies reduce food supply, not a macro production.
+    totalFoodSupply = Math.max(0, totalFoodSupply - mobProductionPenalty);
     totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
 
-    // v4.2: Goods supply supplements grain reserve directly (no blend)
-    if (goodsSupplyVolume > 0) {
-      const goodsSupplyBonus = Math.round(goodsSupplyVolume);
-      globalGrainReserve += goodsSupplyBonus;
-      logEntries.push(`📦 Goods zásoby: +${goodsSupplyBonus}`);
-    }
+    // NOTE: the legacy "goods_supply_volume → grain reserve" bonus is REMOVED.
+    // goods_supply_volume sums every storable good (tools, textiles…), not food.
+    // Food comes exclusively from the staple_food basket above.
     // Small empire buffer
     if (myCities.length <= 3) globalGrainReserve += 10;
     // Strategic salt supply bonus
@@ -833,7 +830,8 @@ Deno.serve(async (req) => {
     const adjustedGranary = Math.round(granaryCapacity * (1 + strategicBonuses.supply_bonus));
     globalGrainReserve = Math.max(0, Math.min(adjustedGranary, globalGrainReserve));
 
-    const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
+    const netProduction = totalFoodSupply - totalDemand - armyProductionUpkeep;
+
 
     // ══════════════════════════════════════════════════════════════
     // ▶ WEALTH: Lafferian Fiscal Model (v5)
