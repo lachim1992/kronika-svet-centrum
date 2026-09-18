@@ -46,6 +46,12 @@ GDP                 total_gdp = hodnota finální produkce za tah
                     total_gdp NESMÍ dvojitě započítat intermediate goods
                     (obilí → mouka → chléb se počítá jednou: final output
                      nebo value added)
+                    ROZSAH PASSU: pokud současný datový model neumí bez změny
+                    ekonomické mechaniky spolehlivě oddělit intermediate goods,
+                    nevymýšlet nový GDP algoritmus — zachovat existující výpočet
+                    jako provisional GDP proxy s TODO v kódu a v tomto passu
+                    pouze odstranit konkurenční definice GDP.
+                    Value-added reforma = samostatný pass.
 DAŇOVÉ ZÁKLADY      domestic_tax_base, market_tax_base, transit_tax_base,
                     extraction_tax_base, poll_tax_base   (pět samostatných základů)
 FISKÁLNÍ PŘÍJEM     fiscal_revenue = wealth_pop_tax + wealth_domestic_market
