@@ -27,7 +27,9 @@ const ProductionOverviewCard = ({ realm }: Props) => {
   // Layer C — fiscal.
   const goodsWealth = Number(realm.goods_wealth_fiscal ?? 0);
   const fiscalCapture = goodsProd > 0 ? goodsWealth / goodsProd : 0;
-  const utilization = capacity > 0 ? goodsProd / capacity : 0;
+  // NOTE: no "utilization %" here — capacity is a throughput budget (slots), while
+  // realized production is a money value. Dividing them would be a meaningless ratio.
+
   // Trade (separate metric — NOT part of HDP).
   const exportGross = Number(realm.export_gross_value ?? 0);
   const domesticConsumption = Number(realm.goods_domestic_consumption_value ?? 0);
@@ -64,9 +66,10 @@ const ProductionOverviewCard = ({ realm }: Props) => {
       <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-2 items-center">
         <Step icon="🏗️" label="Produkční potenciál" value={capacity.toFixed(1)} unit="kapacita uzlů (Layer A)">
           <div className="text-[10px] text-muted-foreground mt-1">
-            využití {Math.round(utilization * 100)}%
+            {capacity > 0 ? "strop specializované výroby" : "žádné produkční uzly"}
           </div>
         </Step>
+
         <ArrowRight className="hidden md:block h-4 w-4 text-muted-foreground mx-auto" />
         <Step icon="📦" label="Realizovaná produkce" value={goodsProd.toFixed(1)} unit="hodnota vyrobeného zboží / kolo" accent>
           <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">

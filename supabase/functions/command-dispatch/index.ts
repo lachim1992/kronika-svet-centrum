@@ -3114,7 +3114,7 @@ async function executeBuildSubnode(
 
   // A production node without a market anchor would produce goods nobody can consume.
   // Require a valid own city within reach instead of creating an orphaned node.
-  if (!parcelCityId && def.nodeType === "production") {
+  if (!parcelCityId && def.group === "production") {
     return { events: [], error: "Produkční dvůr musí patřit k vlastnímu městu do vzdálenosti 6 polí" };
   }
 
