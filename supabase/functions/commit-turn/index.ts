@@ -753,9 +753,10 @@ Deno.serve(async (req) => {
         results.basketTradeFlows = { error: (basketE as Error).message };
       }
 
-      // Final aggregation must see newly routed goods and basket fiscal capture.
+      // Physical/derived node state only. Realm totals are aggregated AFTER
+      // process-turn (Economy Integrity Pass, Krok 2 — fiscal writer first).
       const { data: economyRes, error: economyErr } = await supabase.functions.invoke("compute-economy-flow", {
-        body: { sessionId },
+        body: { session_id: sessionId },
       });
       if (economyErr) console.warn("compute-economy-flow warning:", economyErr.message);
       results.economyFlow = economyRes || { error: economyErr?.message };
