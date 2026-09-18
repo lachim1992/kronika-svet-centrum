@@ -260,3 +260,24 @@ describe("Layer A/B/C separation", () => {
     expect(src).toContain("export_gross_value");
   });
 });
+
+// wealth_output allowlist: legacy abstract wealth-flow. MAY be read only by
+// compute-economy-flow (its owner) and dev/debug views.
+describe("wealth_output allowlist guard", () => {
+  const forbidden = [
+    "supabase/functions/process-turn/index.ts",
+    "supabase/functions/aggregate-realm-totals/index.ts",
+    "src/lib/economyFlow.ts",
+    "src/components/economy/ProductionOverviewCard.tsx",
+    "src/components/economy/TreasuryPanel.tsx",
+    "src/components/economy/FiscalSubTab.tsx",
+    "src/components/SupplyChainPanel.tsx",
+  ];
+  for (const file of forbidden) {
+    it(`${file} does not read wealth_output`, () => {
+      const src = readFileSync(file, "utf8");
+      expect(src).not.toMatch(/\.wealth_output/);
+      expect(src).not.toMatch(/wealth_output:/);
+    });
+  }
+});
