@@ -1291,9 +1291,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   return (
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
       style={{ touchAction: "none" }}
+      onContextMenu={(event) => { if (roadDraft.length > 0) event.preventDefault(); }}
       onPointerDown={(event) => {
-        // Never capture the pointer while drawing: tile groups must receive the click/drag.
-        if (roadDraft.length > 0) return;
         pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
@@ -1301,10 +1300,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           dragRef.current = null;
           return;
         }
+        // While drawing a road the primary button belongs to the route; pan with middle/right button or two fingers.
+        if (roadDraft.length > 0 && event.button === 0) { dragRef.current = null; return; }
         dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
       }}
       onPointerMove={(event) => {
-        if (roadDraft.length > 0) return;
+
         if (pinchRef.current.has(event.pointerId)) pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         const start = pinchStartRef.current;
         if (start && pinchRef.current.size === 2) {
