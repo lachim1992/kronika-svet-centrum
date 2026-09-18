@@ -16,6 +16,8 @@
 // Architecture: Diplomacy writes treaties → THIS function projects access → compute-trade-flows consumes.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { nodeCatchmentRadius, nearestTransportCell } from "../_shared/roadCatchment.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
