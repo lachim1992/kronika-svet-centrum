@@ -702,19 +702,28 @@ Deno.serve(async (req) => {
     // Ensures new nodes built between turns get connected before economy runs.
     // ═══════════════════════════════════════════
     const t4b = Date.now();
+    // Integrity Pass closure (P0): every mandatory economy step is recorded.
+    // A failure here makes the turn economically incomplete → no snapshot.
+    const economyStepFailures: Array<{ step: string; error: string }> = [];
+    const noteStepFailure = (step: string, error?: string | null) => {
+      if (error) {
+        console.warn(`${step} failure:`, error);
+        economyStepFailures.push({ step, error });
+      }
+    };
     try {
       // Always recompute routes to pick up any new nodes
       const { data: routesRes, error: routesErr } = await supabase.functions.invoke("compute-province-routes", {
         body: { session_id: sessionId },
       });
-      if (routesErr) console.warn("compute-province-routes warning:", routesErr.message);
+      noteStepFailure("compute-province-routes", routesErr?.message);
       results.routes = routesRes || { error: routesErr?.message };
 
       // Recompute hex flows (force_all since routes were rebuilt)
       const { data: preFlowRes, error: preFlowErr } = await supabase.functions.invoke("compute-hex-flows", {
         body: { session_id: sessionId, force_all: true },
       });
-      if (preFlowErr) console.warn("compute-hex-flows pre-economy warning:", preFlowErr.message);
+      noteStepFailure("compute-hex-flows", preFlowErr?.message);
       results.preHexFlows = preFlowRes || { error: preFlowErr?.message };
 
       // Node-Trade v1: project trade systems & player access from current treaties
@@ -722,10 +731,10 @@ Deno.serve(async (req) => {
         const { data: tsRes, error: tsErr } = await supabase.functions.invoke("compute-trade-systems", {
           body: { session_id: sessionId, emit_events: true },
         });
-        if (tsErr) console.warn("compute-trade-systems warning:", tsErr.message);
+        noteStepFailure("compute-trade-systems", tsErr?.message);
         results.tradeSystems = tsRes || { error: tsErr?.message };
       } catch (tsE) {
-        console.warn("compute-trade-systems warning:", (tsE as Error).message);
+        noteStepFailure("compute-trade-systems", (tsE as Error).message);
         results.tradeSystems = { error: (tsE as Error).message };
       }
 
@@ -734,10 +743,10 @@ Deno.serve(async (req) => {
         const { data: tfRes, error: tfErr } = await supabase.functions.invoke("compute-trade-flows", {
           body: { session_id: sessionId, turn_number: turnNumber + 1 },
         });
-        if (tfErr) console.warn("compute-trade-flows warning:", tfErr.message);
+        noteStepFailure("compute-trade-flows", tfErr?.message);
         results.tradeFlows = tfRes || { error: tfErr?.message };
       } catch (tfE) {
-        console.warn("compute-trade-flows warning:", (tfE as Error).message);
+        noteStepFailure("compute-trade-flows", (tfE as Error).message);
         results.tradeFlows = { error: (tfE as Error).message };
       }
 
@@ -746,25 +755,39 @@ Deno.serve(async (req) => {
         const { data: basketRes, error: basketErr } = await supabase.functions.invoke("compute-basket-trade-flows", {
           body: { session_id: sessionId },
         });
-        if (basketErr) console.warn("compute-basket-trade-flows warning:", basketErr.message);
+        noteStepFailure("compute-basket-trade-flows", basketErr?.message);
         results.basketTradeFlows = basketRes || { error: basketErr?.message };
       } catch (basketE) {
-        console.warn("compute-basket-trade-flows warning:", (basketE as Error).message);
+        noteStepFailure("compute-basket-trade-flows", (basketE as Error).message);
         results.basketTradeFlows = { error: (basketE as Error).message };
       }
 
-      // Physical/derived node state only. Realm totals are aggregated AFTER
+      // Physical/derived node state only. Fiscal aliases are aggregated AFTER
       // process-turn (Economy Integrity Pass, Krok 2 — fiscal writer first).
       const { data: economyRes, error: economyErr } = await supabase.functions.invoke("compute-economy-flow", {
         body: { session_id: sessionId },
       });
-      if (economyErr) console.warn("compute-economy-flow warning:", economyErr.message);
+      noteStepFailure("compute-economy-flow", economyErr?.message);
       results.economyFlow = economyRes || { error: economyErr?.message };
+
+      // PHYSICAL AGGREGATES — must be fresh before the fiscal writer runs, so
+      // process-turn never resolves the turn against last turn's physical totals.
+      try {
+        const { data: physAgg, error: physErr } = await supabase.functions.invoke("aggregate-realm-totals", {
+          body: { session_id: sessionId, phase: "physical" },
+        });
+        noteStepFailure("aggregate-realm-totals(physical)", physErr?.message);
+        results.physicalAggregates = physAgg || { error: physErr?.message };
+      } catch (paE) {
+        noteStepFailure("aggregate-realm-totals(physical)", (paE as Error).message);
+        results.physicalAggregates = { error: (paE as Error).message };
+      }
     } catch (e) {
-      console.warn("Route/flow/economy chain warning:", (e as Error).message);
+      noteStepFailure("economy-chain", (e as Error).message);
       results.economyFlow = { error: (e as Error).message };
     }
-    console.log(`[commit-turn] phase-4b routes/flows/economy/trade: ${Date.now() - t4b}ms`);
+    results.economyStepFailures = economyStepFailures;
+    console.log(`[commit-turn] phase-4b routes/flows/economy/trade: ${Date.now() - t4b}ms, failures=${economyStepFailures.length}`);
 
     // ─── Claim processed route_completed events (Increment 3) ──────────
     // World-turn already advanced (phase 4) and economy chain ran. Mark
@@ -837,7 +860,7 @@ Deno.serve(async (req) => {
     let aggregationOk = false;
     try {
       const { data: aggRes, error: aggErr } = await supabase.functions.invoke("aggregate-realm-totals", {
-        body: { session_id: sessionId },
+        body: { session_id: sessionId, phase: "final" },
       });
       if (aggErr) console.warn("aggregate-realm-totals warning:", aggErr.message);
       aggregationOk = !aggErr && !!aggRes?.ok;
@@ -848,11 +871,17 @@ Deno.serve(async (req) => {
     }
 
     // SNAPSHOT / HISTORY — single writer, idempotent per (session, turn).
-    if (!aggregationOk || economyFailed) {
+    // Guard covers the WHOLE pipeline: any failed mandatory derived step makes
+    // the physical economy stale, so the turn is not economically complete.
+    const pipelineFailed = economyStepFailures.length > 0;
+    if (!aggregationOk || economyFailed || pipelineFailed) {
       results.economySnapshot = {
         skipped: true,
         status: "stale",
-        reason: economyFailed ? "process-turn failures" : "aggregation failed",
+        reason: pipelineFailed
+          ? `derived pipeline failures: ${economyStepFailures.map((f) => f.step).join(", ")}`
+          : economyFailed ? "process-turn failures" : "aggregation failed",
+        failed_steps: economyStepFailures,
       };
       console.warn("[commit-turn] economy snapshot skipped — turn not economically complete");
     } else {

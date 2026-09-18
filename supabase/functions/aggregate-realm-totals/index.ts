@@ -45,6 +45,10 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const session_id = body.session_id ?? body.sessionId;
+    // phase = "physical" → physical/derived totals only (runs BEFORE process-turn,
+    //   so the fiscal writer never resolves a turn against stale aggregates).
+    // phase = "final"    → same totals + fiscal aliases (runs AFTER process-turn).
+    const phase: "physical" | "final" = body.phase === "physical" ? "physical" : "final";
     if (!session_id) {
       return new Response(JSON.stringify({ error: "session_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -57,7 +61,7 @@ Deno.serve(async (req) => {
     );
 
     const { data: nodes, error: nodesErr } = await sb.from("province_nodes")
-      .select("controlled_by, production_output, wealth_output, food_value, capacity_score, importance_score, logistic_capacity, strategic_resource_type, metadata")
+      .select("controlled_by, production_output, wealth_output, food_value, capacity_score, importance_score, strategic_resource_type, metadata")
       .eq("session_id", session_id);
     if (nodesErr) throw nodesErr;
 
@@ -72,7 +76,7 @@ Deno.serve(async (req) => {
       t.supplies += Number((node as any).food_value || 0);
       t.capacity += Number((node as any).capacity_score || 0);
       t.importance += Number((node as any).importance_score || 0);
-      t.logistic += Number((node as any).logistic_capacity || 0);
+      // province_nodes has no logistic_capacity column; capacity_score is the SSOT.
 
       const res = (node as any).strategic_resource_type || (node as any).metadata?.strategic_resource;
       if (res === "iron" || res === "mineral") t.iron++;
@@ -127,14 +131,15 @@ Deno.serve(async (req) => {
         Number(pillars.wealth_domestic_market || 0) +
         Number(pillars.goods_wealth_fiscal || 0);
 
-      const totalGdp = t.production + (exportValue.get(player) || 0);
-      const capacity = t.logistic > 0 ? t.logistic : t.capacity;
+      const exportGross = exportValue.get(player) || 0;
+      const totalGdp = t.production + exportGross;
+      const capacity = t.capacity;
 
-      const update = {
+      const update: Record<string, any> = {
         total_production: Math.round(t.production * 100) / 100,
-        // total_wealth is a legacy alias of fiscal_revenue; never a fiscal source.
-        total_wealth: Math.round(fiscalRevenue * 100) / 100,
         total_gdp: Math.round(totalGdp * 100) / 100,
+        // Canonical export magnitude — never derive export as total_gdp − goods_production_value.
+        export_gross_value: Math.round(exportGross * 100) / 100,
         total_supplies: Math.round(t.supplies * 100) / 100,
         total_capacity: Math.round(capacity * 100) / 100,
         total_importance: Math.round(t.importance * 100) / 100,
@@ -150,18 +155,22 @@ Deno.serve(async (req) => {
         strategic_silk_tier: computeTier(t.silk),
         strategic_incense_tier: computeTier(t.incense),
       };
+      if (phase === "final") {
+        // total_wealth is a legacy alias of fiscal_revenue; never a fiscal source.
+        update.total_wealth = Math.round(fiscalRevenue * 100) / 100;
+      }
       const { error: uErr } = await sb.from("realm_resources").update(update)
         .eq("session_id", session_id).eq("player_name", player);
       if (uErr) console.error("aggregate-realm-totals update", player, uErr);
       summary[player] = {
         total_gdp: update.total_gdp,
-        fiscal_revenue: update.total_wealth,
+        fiscal_revenue: update.total_wealth ?? null,
         total_production: update.total_production,
         total_capacity: update.total_capacity,
       };
     }
 
-    return new Response(JSON.stringify({ ok: true, players: playerNames.length, totals: summary }), {
+    return new Response(JSON.stringify({ ok: true, phase, players: playerNames.length, totals: summary }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

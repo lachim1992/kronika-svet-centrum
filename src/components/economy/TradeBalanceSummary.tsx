@@ -1,6 +1,7 @@
 // Player-facing trade balance: aggregates basket_trade_flows for this player
 // into imports (incoming volume + value), exports (outgoing volume + value)
-// and resulting fiscal income (sum of fiscal_capture on exports).
+// and the estimated tariff capture on exports (TELEMETRY ONLY — `fiscal_capture`
+// is not treasury income; process-turn computes crown income independently).
 // Always visible — no dev gate. Numbers are direct sums from the L2 solver.
 
 import { useEffect, useMemo, useState } from "react";
@@ -120,7 +121,7 @@ const TradeBalanceSummary = ({ sessionId, playerName }: Props) => {
       <CardHeader className="p-4 pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
           🔁 Bilance zahraničního obchodu
-          <InfoTip>Souhrn všech mezistátních toků basketů v aktuálním kole. Fiskální příjem = co z exportu plyne do pokladny.</InfoTip>
+          <InfoTip>Souhrn všech mezistátních toků basketů v aktuálním kole. Odhad tarifního záchytu z exportu je pouze telemetrie — skutečný příjem koruny počítá engine při ukončení tahu.</InfoTip>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 pt-1 space-y-3">
@@ -137,7 +138,7 @@ const TradeBalanceSummary = ({ sessionId, playerName }: Props) => {
             <div className="text-[10px] text-muted-foreground">{totals.expVolume.toFixed(1)} jedn.</div>
           </div>
           <div className="rounded-lg border border-primary/40 bg-primary/5 p-2.5">
-            <div className="text-[10px] uppercase tracking-wide text-primary/80">💰 Fiskální příjem</div>
+            <div className="text-[10px] uppercase tracking-wide text-primary/80">💰 Odhad tarifů (telemetrie)</div>
             <div className="text-lg font-bold font-mono text-primary">{totals.fiscal.toFixed(2)}</div>
             <div className="text-[10px] text-muted-foreground">z {partners} partnerů</div>
           </div>
@@ -162,7 +163,7 @@ const TradeBalanceSummary = ({ sessionId, playerName }: Props) => {
                 <span>Partner</span>
                 <span className="text-right">📥 Import</span>
                 <span className="text-right">📤 Export</span>
-                <span className="text-right">💰 Fiskál</span>
+                <span className="text-right">💰 Tarify (odhad)</span>
                 <span className="text-right">Δ Netto</span>
               </div>
               {byPartner.map(p => (

@@ -195,11 +195,20 @@ Deno.serve(async (req) => {
     const logEntries: string[] = [];
     const newEvents: Array<{ event_type: string; note: string; importance: string; city_id?: string; reference?: any }> = [];
 
-    // ── MACRO FLOW TOTALS (from compute-economy-flow) ──
-    const totalProduction = realm.total_production || 0;
-    const totalWealth = realm.total_wealth || 0;
-    const totalCapacity = realm.total_capacity || 0;
-    const totalImportance = realm.total_importance || 0;
+    // ── MACRO FLOW TOTALS — FRESH PHYSICAL AGGREGATES ──
+    // Integrity Pass closure (P0): never read stale realm.total_* here. The
+    // physical layer (compute-economy-flow) persists province_nodes; we sum them
+    // live so this turn is resolved against the current physical state.
+    const { data: physNodes } = await supabase.from("province_nodes")
+      .select("production_output, wealth_output, capacity_score, importance_score")
+      .eq("session_id", sessionId).eq("controlled_by", playerName);
+    let totalProduction = 0, totalWealth = 0, totalImportance = 0, totalCapacity = 0;
+    for (const n of physNodes || []) {
+      totalProduction += Number((n as any).production_output || 0);
+      totalWealth += Number((n as any).wealth_output || 0);
+      totalImportance += Number((n as any).importance_score || 0);
+      totalCapacity += Number((n as any).capacity_score || 0);
+    }
 
     // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.3) ──
     const goodsProductionValue = realm.goods_production_value || 0;
@@ -208,7 +217,7 @@ Deno.serve(async (req) => {
     // gdp_domestic is now computed from city production × consumption pressure (below).
     // gdp_market = goods_production_value (Goods v4.3 is the canonical market volume).
 
-    logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Bohatství: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
+    logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Fyzický výnos: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
     if (goodsProductionValue > 0) {
       logEntries.push(`📦 Goods v4.3: produkce=${goodsProductionValue.toFixed(1)} zásoby=${goodsSupplyVolume.toFixed(1)}`);
     }
