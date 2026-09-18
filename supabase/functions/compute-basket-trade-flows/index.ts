@@ -14,6 +14,8 @@
 // - Greedy largest-demand-first within (trade_system, basket_key)
 // - access_level 0 = no flow; tariff_factor 1.0 = no tariff applied
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { basketValueFor } from "../_shared/basketValues.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
