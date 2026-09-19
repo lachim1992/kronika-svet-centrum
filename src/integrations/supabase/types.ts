@@ -12003,6 +12003,23 @@ export type Database = {
         }
         Relationships: []
       }
+      economy_management_reports: {
+        Row: {
+          player_name: string | null
+          report: Json | null
+          session_id: string | null
+          turn_number: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "economy_turn_ledgers_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_route_with_state: {
         Row: {
           last_maintained_turn: number | null
