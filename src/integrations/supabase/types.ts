@@ -12138,6 +12138,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_session_member: {
+        Args: { _session_id: string; _user_id?: string }
+        Returns: boolean
+      }
       read_economy_management: {
         Args: { p_player: string; p_session: string; p_turn: number }
         Returns: Json
