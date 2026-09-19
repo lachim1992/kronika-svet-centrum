@@ -188,10 +188,16 @@ export async function computeCanonicalEconomy(sb:any,session:string){
         food_stored:bs.filter(b=>goodMap.get(b.good)!.basket==='staple_food').reduce((s,b)=>s+b.stored,0),
         fame_prestige:result.famous.filter(f=>owned.has(f.city)&&f.created!=null).reduce((s,f)=>s+f.fame*ECONOMY.famePrestige,0)}};
   });
-  const summaries=result.balances.filter(b=>cityNode.has(b.city)).map(b=>({session_id:session,turn_number:turn,
+  const priceIndex=new Map(result.prices.map(p=>[`${p.city}::${p.good}`,p]));
+  const summaries=result.balances.filter(b=>cityNode.has(b.city)).map(b=>{const price=priceIndex.get(`${b.city}::${b.good}`);
+    return {session_id:session,turn_number:turn,
     city_node_id:cityNode.get(b.city),good_key:b.good,supply_volume:produced(b),demand_volume:b.demand,avg_quality:Math.floor(b.quality),
-    price_numeric:goodMap.get(b.good)!.price,price_band:0,domestic_share:b.demand?Math.min(1,(b.consumed_household+b.consumed_state)/b.demand):1,
-    import_share:(b.opening+produced(b)+b.imported)>0?b.imported/(b.opening+produced(b)+b.imported):0}));
+    // Endogenous local price; the catalogue base price stays the long-run reference in goods.
+    price_numeric:price?price.local_price:goodMap.get(b.good)!.price,
+    price_band:price?Math.max(1,Math.min(5,Math.round(price.scarcity_factor*2))):0,
+    domestic_share:b.demand?Math.min(1,(b.consumed_household+b.consumed_state)/b.demand):1,
+    import_share:(b.opening+produced(b)+b.imported)>0?b.imported/(b.opening+produced(b)+b.imported):0};});
+
   const marketShares=realms.flatMap(realm=>Object.keys(BASKET_TIER).map(bk=>{
     const world=marketBaskets.filter(b=>b.basket_key===bk),local=world.filter(b=>b.player_name===realm.player_name);
     const exports=basketFlows.filter(f=>f.basket_key===bk&&f.source_player!==f.target_player);

@@ -30,7 +30,13 @@ export interface Balance { city: string; good: string; opening: number; produced
   extraction_value: number; capex: number }
 export interface Flow { good: string; source: string; destination: string; qty: number; delivered: number; quality: number;
   gross_value: number; transport_cost: number; tolls: number; net_value: number; reason: string;
-  path: string[]; edges: string[]; via_hubs: string[]; famous: string|null }
+  path: string[]; edges: string[]; via_hubs: string[]; famous: string|null;
+  source_price: number; destination_price: number; expected_margin: number }
+/** Endogenous local market price, derived from the physical ledger only. */
+export interface PriceRow { city: string; good: string; base_price: number; local_price: number;
+  scarcity_factor: number; quality_factor: number; fame_factor: number; coverage: number;
+  demand: number; supply: number; imported: number; substitutability: number }
+
 const n = (x: number) => Number.isFinite(x) ? Math.max(0,x) : 0;
 const clamp = (x: number) => Math.max(0,Math.min(1,x));
 const key = (city: string, good: string) => `${city}::${good}`;
@@ -57,6 +63,28 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     b[`produced_${channel}`]+=qty;b.gross_output_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
     if(source)b.extraction_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
   };
+  /** Bounded endogenous price. Reads the ledger, never creates or destroys physical units. */
+  const priceDetail=(city:string,good:string):PriceRow=>{
+    const b=stock(city,good),g=goodByKey.get(good)!,c=cityById.get(city)!;
+    const supply=b.opening+produced(b)+b.imported-b.lost_spoilage;
+    const need=b.demand+b.consumed_as_input;
+    const coverage=need>C.epsilon?supply/need:(supply>C.epsilon?2:1);
+    const substitutes=goods.filter(s=>s.key!==good&&s.basket===g.basket&&s.substitutability>0)
+      .reduce((a,s)=>a+available(stock(city,s.key)),0);
+    const relief=1/(1+substitutes*Math.max(0.01,g.substitutability)/Math.max(1,need))
+      /(1+n(c.storage)*C.priceStorageRelief);
+    const shortage=Math.max(0,1-Math.min(1,coverage)),glut=Math.min(1,Math.max(0,coverage-1));
+    const scarcity=Math.min(C.priceCeiling,Math.max(C.priceFloor,
+      1+C.priceScarcityGain*shortage*relief/Math.max(0.25,g.substitutability)-C.priceGlutRelief*glut));
+    const fame=priorFame.get(key(city,good));
+    const fameFactor=fame?.created!=null&&fame.fame>0?1+C.famePremium*fame.fame/100:1;
+    const qualityFactor=1+b.quality*C.qualityPremium;
+    return {city,good,base_price:g.price,local_price:g.price*scarcity*qualityFactor*fameFactor,
+      scarcity_factor:scarcity,quality_factor:qualityFactor,fame_factor:fameFactor,coverage,
+      demand:need,supply,imported:b.imported,substitutability:g.substitutability};
+  };
+  const priceOf=(city:string,good:string)=>priceDetail(city,good).local_price;
+
   for(const o of snapshot.opening){const b=stock(o.city,o.good),g=goodByKey.get(o.good)!;
     b.quality=(b.opening*b.quality+n(o.qty)*n(o.quality))/(b.opening+n(o.qty)||1);b.opening+=n(o.qty);
     b.lost_spoilage+=n(o.qty)*clamp(g.storageLoss/(1+cityById.get(o.city)!.storage));}
@@ -143,8 +171,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const transport=p.cost*policy.merchantFriction;
     if(transport>unit||p.cost>reach*policy.reach)return 0;
     if ((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0) return 0;
-    const scarcity=1+Math.min(2,Math.max(0,db.demand-available(db))/Math.max(1,db.demand));
-    if(p.cost>C.regionalReach&&unit*scarcity-unit-transport-p.tolls<unit*C.merchantMargin)return 0;
+    // Price gradient: merchants move goods for realized value differences, not for bare deficits.
+    const sourcePrice=priceOf(src.id,g.key),destinationPrice=priceOf(dst.id,g.key);
+    const risk=p.edges.reduce((a,e)=>a+n(e.risk),0)*C.priceRiskCost*destinationPrice;
+    const margin=destinationPrice*(1-p.loss)*(1-targetPolicy.tariff)-sourcePrice-transport-p.tolls-risk;
+    if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return 0;
     const qty=Math.min(Math.max(0,available(b)-keep),wanted/(1-p.loss),p.capacity)*targetPolicy.imports;
     if(qty<C.minLot)return 0;const delivered=qty*(1-p.loss),before=available(db);
     b.exported+=qty;db.imported+=delivered;db.quality=(before*db.quality+delivered*b.quality)/(before+delivered);
@@ -154,7 +185,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const tolls=qty*(p.tolls+unit*targetPolicy.tariff);
     flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:b.quality,gross_value:delivered*unit,
       transport_cost:qty*transport,tolls,net_value:delivered*unit-qty*transport-tolls,reason:branded&&reason==='household_consumption'?'famous_good_demand':reason,
-      path:p.cells,edges:p.edges.map(e=>e.id),via_hubs:via.filter(id=>p.cells.includes(cityById.get(id)?.cell||'')),famous:branded?key(src.id,g.key):null});return delivered;
+      path:p.cells,edges:p.edges.map(e=>e.id),via_hubs:via.filter(id=>p.cells.includes(cityById.get(id)?.cell||'')),famous:branded?key(src.id,g.key):null,
+      source_price:sourcePrice,destination_price:destinationPrice,expected_margin:margin*delivered});return delivered;
+
   };
   const producers=[...snapshot.producers].sort((a,b)=>Number(b.source)-Number(a.source)||a.id.localeCompare(b.id));
   const pending=new Map(producers.map(p=>[p.id,p]));
@@ -286,5 +319,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const residual=b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage-b.stored-b.capex;
     if(Math.abs(residual)>1e-6)throw Error(`Goods conservation failed ${key(c.id,g.key)}: ${residual}`);
   }}
-  return {balances:[...balances.values()],flows,metrics,famous,diagnostics,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),workforce:Object.fromEntries(workforce)};
+  const prices:PriceRow[]=cities.flatMap(c=>goods.map(g=>priceDetail(c.id,g.key)));
+  return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),workforce:Object.fromEntries(workforce)};
+
 }
