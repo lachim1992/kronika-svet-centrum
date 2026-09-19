@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { readEconomySnapshot } from '@/lib/economySnapshots';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -10,6 +10,7 @@ import { DEMAND_BASKETS } from "@/lib/goodsCatalog";
 interface Props {
   sessionId: string;
   playerName: string;
+  currentTurn: number;
 }
 
 interface MarketShareRow {
@@ -25,33 +26,27 @@ interface MarketShareRow {
   player_name: string;
 }
 
-const MarketSharePanel = ({ sessionId, playerName }: Props) => {
+const MarketSharePanel = ({ sessionId, playerName, currentTurn }: Props) => {
   const [shares, setShares] = useState<MarketShareRow[]>([]);
   const [allShares, setAllShares] = useState<MarketShareRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error,setError]=useState('');
 
   useEffect(() => {
+    let active = true;
     const fetch = async () => {
       setLoading(true);
-      // Get latest turn's market shares for all players
-      const { data } = await supabase
-        .from("market_shares")
-        .select("*")
-        .eq("session_id", sessionId)
-        .order("turn_number", { ascending: false })
-        .limit(200);
-
-      const rows = (data || []) as MarketShareRow[];
-      // Get the latest turn
-      const maxTurn = rows.reduce((m, r) => Math.max(m, r.turn_number), 0);
-      const latest = rows.filter(r => r.turn_number === maxTurn);
-      
+      setError('');setAllShares([]);setShares([]);
+      try{
+      const latest = await readEconomySnapshot('market_shares',sessionId,currentTurn);
+      if (!active) return;
       setAllShares(latest);
       setShares(latest.filter(r => r.player_name === playerName));
-      setLoading(false);
+      }catch(e){if(active)setError(String(e));}finally{if(active)setLoading(false);}
     };
     fetch();
-  }, [sessionId, playerName]);
+    return () => { active = false; };
+  }, [sessionId, playerName, currentTurn]);
 
   const basketMeta = useMemo(() => {
     const map = new Map<string, { label: string; icon: string }>();
@@ -79,6 +74,7 @@ const MarketSharePanel = ({ sessionId, playerName }: Props) => {
     return byBasket;
   }, [allShares]);
 
+  if(error)return <p role="alert" className="text-sm text-destructive">{error}</p>;
   if (loading) {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   }
