@@ -96,8 +96,11 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,tags:string[],allowSource=false)=>{
     if(!cityMap.has(city))return;
     for(const [bk,capacity] of Object.entries(outputs)){
+      // A structure that explicitly declares an output basket brings its own craft with it;
+      // only structures with declared capability tags are restricted to matching recipes.
+      const gated=tags.length>0;
       const candidates=db.production_recipes.filter(r=>goodMap.get(r.output_good_key)?.basket===basket(bk)&&
-        (role(r)!=='source'||allowSource)&&(r.required_tags||[]).every((tag:string)=>tags.includes(tag)));
+        (role(r)!=='source'||allowSource)&&(!gated||(r.required_tags||[]).every((tag:string)=>tags.includes(tag))));
       if(!candidates.length)continue;
       for(const r of candidates)producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity:nonnegative(capacity),recipe:recipe(r),
         allocation:1/candidates.length,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
