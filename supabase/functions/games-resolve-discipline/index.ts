@@ -1,3 +1,4 @@
+import { sportsActor, requireSportsHost, SportsError } from "../_shared/sportsAuth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -122,6 +123,7 @@ Napětí: ${tension} (rozdíl: ${rollDiff.toFixed(1)})`;
   try {
     const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
+      signal: AbortSignal.timeout(20000),
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
@@ -187,6 +189,7 @@ Napětí: ${tension} (rozdíl: ${rollDiff.toFixed(1)})`;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  let claimed: {db: any; festival: string; discipline: string} | null = null;
   try {
     const { session_id, festival_id, discipline_id } = await req.json();
     if (!session_id || !festival_id || !discipline_id) {
@@ -196,27 +199,20 @@ Deno.serve(async (req) => {
     }
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const actor = await sportsActor(req, sb, session_id);
 
     // Check festival
-    const { data: festival } = await sb.from("games_festivals").select("*").eq("id", festival_id).single();
+    const { data: festival } = await sb.from("games_festivals").select("*").eq("id", festival_id).eq("session_id", session_id).single();
     if (!festival) return new Response(JSON.stringify({ error: "Festival nenalezen" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    if (festival) requireSportsHost(actor, festival);
+    if (festival.status !== "finals") throw new SportsError("Disciplíny lze hrát pouze během finále.", 409);
     // Check discipline not already resolved
     const { data: existingReveal } = await sb.from("games_discipline_reveals")
-      .select("status").eq("festival_id", festival_id).eq("discipline_id", discipline_id).maybeSingle();
+      .select("*").eq("festival_id", festival_id).eq("discipline_id", discipline_id).maybeSingle();
 
     if (existingReveal?.status === "resolved") {
-      return new Response(JSON.stringify({ error: "Disciplína již vyhodnocena" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    // Mark as resolving
-    if (existingReveal) {
-      await sb.from("games_discipline_reveals").update({ status: "resolving" })
-        .eq("festival_id", festival_id).eq("discipline_id", discipline_id);
-    } else {
-      await sb.from("games_discipline_reveals").insert({
-        festival_id, discipline_id, session_id, status: "resolving",
-      });
+      return Response.json({ok: true, reveal_id: existingReveal.id, reveal_script: existingReveal.reveal_script, crowd_reactions: existingReveal.crowd_reactions, medal_tally: existingReveal.medal_snapshot}, {headers: corsHeaders});
     }
 
     // Load data
@@ -229,6 +225,14 @@ Deno.serve(async (req) => {
     if (!participants || participants.length < 2 || !disc) {
       return new Response(JSON.stringify({ error: "Nedostatek dat" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
+    // Claim with a compare-and-set (or the unique festival/discipline insert).
+    const claim = existingReveal
+      ? await sb.from("games_discipline_reveals").update({status: "resolving"})
+        .eq("id", existingReveal.id).eq("status", "pending").select("id").maybeSingle()
+      : await sb.from("games_discipline_reveals").insert({festival_id, discipline_id, session_id, status: "resolving"}).select("id").single();
+    if (claim.error || !claim.data) throw new SportsError("Disciplína se právě vyhodnocuje. Obnovte její stav.", 409);
+    claimed = {db: sb, festival: festival_id, discipline: discipline_id};
 
     const cfg = DISC_CONFIGS[disc.key] || DEFAULT_CFG;
 
@@ -329,7 +333,8 @@ Deno.serve(async (req) => {
       });
     }
     if (dbResults.length > 0) {
-      await sb.from("games_results").upsert(dbResults, { onConflict: "festival_id,discipline_id,participant_id" });
+      const {error} = await sb.from("games_results").upsert(dbResults, { onConflict: "festival_id,discipline_id,participant_id" });
+      if (error) throw error;
     }
 
     // Compute cumulative medal tally
@@ -354,13 +359,16 @@ Deno.serve(async (req) => {
     });
 
     // Update discipline reveal status
-    await sb.from("games_discipline_reveals").update({
+    const {error: revealError} = await sb.from("games_discipline_reveals").update({
       status: "resolved",
       reveal_script: revealScript,
       crowd_reactions: crowdReactions,
       medal_snapshot: medalTally,
       resolved_at: new Date().toISOString(),
     }).eq("festival_id", festival_id).eq("discipline_id", discipline_id);
+
+    if (revealError) throw revealError;
+    claimed = null;
 
     // Check if ALL disciplines are resolved
     const { data: allDiscs } = await sb.from("games_disciplines").select("id");
@@ -380,9 +388,11 @@ Deno.serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e: any) {
+    if (claimed) await claimed.db.from("games_discipline_reveals").update({status: "pending"})
+      .eq("festival_id", claimed.festival).eq("discipline_id", claimed.discipline).eq("status", "resolving");
     console.error("games-resolve-discipline error:", e);
     return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: e instanceof SportsError ? e.status : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

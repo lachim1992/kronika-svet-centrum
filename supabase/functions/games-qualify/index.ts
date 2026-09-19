@@ -1,3 +1,5 @@
+import { sportsActor, requireSportsHost, SportsError } from "../_shared/sportsAuth.ts";
+import { nominationIds } from "../_shared/sports.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -35,10 +37,11 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    const actor = await sportsActor(req, sb, session_id, player_name);
 
     // Verify festival exists and is in nomination phase
     const { data: festival } = await sb.from("games_festivals")
-      .select("*").eq("id", festival_id).single();
+      .select("*").eq("id", festival_id).eq("session_id", session_id).single();
 
     if (!festival) {
       return new Response(JSON.stringify({ error: "Festival nenalezen" }), {
@@ -72,7 +75,7 @@ Deno.serve(async (req) => {
           .select("*, academies!inner(name)")
           .in("id", studentIds);
 
-        const studentMap = new Map((studentsData || []).map(s => [s.id, s]));
+        const studentMap = new Map<string, any>((studentsData || []).map(s => [s.id, s]));
 
         // Aggregate per student
         const studentAgg: Record<string, { rank: number; totalScore: number; disciplines: any[] }> = {};
@@ -247,45 +250,16 @@ Deno.serve(async (req) => {
     // ACTION: SELECT — player picks 3 athletes
     // ═══════════════════════════════════════════
     if (action === "select") {
-      if (!selected_student_ids || !Array.isArray(selected_student_ids) || selected_student_ids.length === 0) {
-        return new Response(JSON.stringify({ error: "selected_student_ids required (array of student IDs)" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      if (selected_student_ids.length > 3) {
-        return new Response(JSON.stringify({ error: "Maximálně 3 zástupci" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      // Delete old participants if re-nominating (allow overwrite while in nomination phase)
-      const { data: oldParticipants } = await sb.from("games_participants")
-        .select("id, student_id")
-        .eq("festival_id", festival_id).eq("player_name", player_name);
-
-      if (oldParticipants && oldParticipants.length > 0) {
-        // Revert old students back to graduated
-        const oldStudentIds = oldParticipants.map(p => p.student_id).filter(Boolean);
-        if (oldStudentIds.length > 0) {
-          await sb.from("academy_students").update({ status: "graduated" }).in("id", oldStudentIds);
-        }
-        await sb.from("games_participants")
-          .delete().eq("festival_id", festival_id).eq("player_name", player_name);
-      }
-
-      // Get selected students
-      const { data: students } = await sb.from("academy_students")
-        .select("*")
-        .in("id", selected_student_ids)
-        .eq("session_id", session_id)
-        .eq("player_name", player_name)
-        .eq("status", "graduated");
-
-      if (!students || students.length === 0) {
-        return new Response(JSON.stringify({ error: "Vybraní studenti nenalezeni" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      let ids: string[];
+      try { ids = nominationIds(selected_student_ids); }
+      catch (error) { return Response.json({error: error.message}, {status: 400, headers: corsHeaders}); }
+      // Validate the complete replacement before touching the existing nomination.
+      const {data: students, error: studentsError} = await sb.from("academy_students")
+        .select("*").in("id", ids).eq("session_id", session_id).eq("player_name", player_name)
+        .in("status", ["graduated", "promoted"]);
+      if (studentsError) throw studentsError;
+      if (!students || students.length !== ids.length) {
+        return Response.json({error: "Některý z vybraných sportovců není dostupný nebo vám nepatří."}, {status: 400, headers: corsHeaders});
       }
 
       // Get city + civ context
@@ -298,38 +272,12 @@ Deno.serve(async (req) => {
         .select("morale_modifier").eq("session_id", session_id).eq("player_name", player_name).maybeSingle();
       const civMod = civId?.morale_modifier || 0;
 
-      // Create participants
-      for (const student of students) {
-        await sb.from("games_participants").insert({
-          session_id,
-          festival_id,
-          player_name,
-          city_id: bestCity?.id || null,
-          athlete_name: student.name,
-          student_id: student.id,
-          strength: student.strength,
-          endurance: student.endurance,
-          agility: student.agility,
-          tactics: student.tactics,
-          charisma: student.charisma,
-          training_bonus: infraBonus + 10,
-          city_infrastructure_bonus: infraBonus,
-          civ_modifier: civMod * 10,
-          traits: student.traits || [],
-          form: "peak",
-          background: student.bio,
-        });
-
-        // Mark student as promoted
-        await sb.from("academy_students").update({ status: "promoted" }).eq("id", student.id);
-      }
-
-      // Mark selected in qualifications
-      await sb.from("games_qualifications")
-        .update({ selected: true })
-        .eq("festival_id", festival_id)
-        .eq("player_name", player_name)
-        .in("student_id", selected_student_ids);
+      const {error: nominationError} = await sb.rpc("replace_games_nomination", {
+        p_session_id: session_id, p_festival_id: festival_id, p_player_name: player_name,
+        p_participants: students.map(student => ({student_id: student.id, city_id: bestCity?.id || null,
+          training_bonus: infraBonus + 10, city_infrastructure_bonus: infraBonus, civ_modifier: civMod * 10})),
+      });
+      if (nominationError) throw nominationError;
 
       // Game event
       await sb.from("game_events").insert({
@@ -360,7 +308,7 @@ Deno.serve(async (req) => {
   } catch (e: any) {
     console.error("games-qualify error:", e);
     return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: e instanceof SportsError ? e.status : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

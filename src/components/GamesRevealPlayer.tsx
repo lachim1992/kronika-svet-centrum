@@ -177,6 +177,10 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, isAdmin
         table: "games_discipline_reveals",
         filter: `festival_id=eq.${festivalId}`,
       }, (payload: any) => {
+        if (payload.eventType === "DELETE") {
+          setDisciplineReveals(prev => prev.filter(r => r.id !== payload.old.id));
+          return;
+        }
         const newRow = payload.new as DisciplineReveal;
         setDisciplineReveals(prev => {
           const idx = prev.findIndex(r => r.discipline_id === newRow.discipline_id);
@@ -253,6 +257,12 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, isAdmin
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
+      // The HTTP response is authoritative even if Realtime is delayed or disconnected.
+      setDisciplineReveals(prev => [...prev.filter(r => r.discipline_id !== discId), {
+        id: data.reveal_id || discId, discipline_id: discId, status: "resolved",
+        reveal_script: data.reveal_script || [], crowd_reactions: data.crowd_reactions || [],
+        medal_snapshot: data.medal_tally || {},
+      } as DisciplineReveal]);
       // Auto-play the result
       setActiveDisciplineId(discId);
       setCurrentStep(0);
@@ -265,6 +275,7 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, isAdmin
       }
     } catch (e: any) {
       console.error(e);
+      toast.error(e.message || "Disciplínu se nepodařilo vyhodnotit.");
     } finally {
       setResolvingDisc(null);
     }
@@ -279,6 +290,7 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, isAdmin
 
 
   const handleConcludeGames = async () => {
+    if (!allResolved) { toast.error("Nejprve dokončete všechny disciplíny."); return; }
     setConcluding(true);
     try {
       // Find champion from medal tally
@@ -286,11 +298,13 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, isAdmin
         (b[1].gold * 5 + b[1].silver * 3 + b[1].bronze) - (a[1].gold * 5 + a[1].silver * 3 + a[1].bronze)
       );
 
-      await supabase.from("games_festivals").update({
+      const { error } = await supabase.from("games_festivals").update({
         status: "concluded",
         concluded_turn: currentTurn || null,
         reveal_phase: "concluded",
       }).eq("id", festivalId);
+
+      if (error) throw error;
 
       // Propagate results to wiki (non-blocking)
       supabase.functions.invoke("games-wiki-propagate", {
@@ -309,7 +323,7 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, isAdmin
   const sortedEmpires = Object.entries(currentMedals)
     .sort((a, b) => (b[1].gold * 100 + b[1].silver * 10 + b[1].bronze) - (a[1].gold * 100 + a[1].silver * 10 + a[1].bronze));
 
-  const allResolved = disciplines.every(d =>
+  const allResolved = disciplines.length > 0 && disciplines.every(d =>
     disciplineReveals.some(r => r.discipline_id === d.id && r.status === "resolved")
   );
 

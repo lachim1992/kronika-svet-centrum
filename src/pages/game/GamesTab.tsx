@@ -215,6 +215,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       setIncidents((inc || []) as any);
       setBids((b || []) as any);
     }
+    if (!f?.length) { setParticipants([]); setResults([]); setIncidents([]); setBids([]); }
     setLoading(false);
   }, [sessionId]);
 
@@ -292,8 +293,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       await fetchData();
     } catch (e: any) {
       toast.error(e.message || "Chyba při zahájení her");
-      // Fallback: open overlay
-      setRevealFestivalId(festivalId);
+      // Keep the actual server phase visible after a rejected transition.
     } finally {
       setResolving(false);
     }

@@ -1,3 +1,4 @@
+import { sportsActor, requireSportsHost, SportsError } from "../_shared/sportsAuth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -34,10 +35,11 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    const actor = await sportsActor(req, sb, session_id, player_name);
 
     // Verify festival is in candidacy phase
     const { data: festival } = await sb.from("games_festivals")
-      .select("*").eq("id", festival_id).single();
+      .select("*").eq("id", festival_id).eq("session_id", session_id).single();
 
     if (!festival || festival.status !== "candidacy") {
       return new Response(JSON.stringify({ error: "Festival není ve fázi kandidatury" }), {
@@ -145,7 +147,7 @@ Deno.serve(async (req) => {
   } catch (e: any) {
     console.error("games-bid error:", e);
     return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: e instanceof SportsError ? e.status : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
