@@ -61,26 +61,46 @@ Deno.serve(async (req) => {
     const allResults: any[] = [];
     let anySeasonComplete = false;
     let playoffResults: any = null;
+    const waiting: any[] = [];
+    const roundsTarget = roundsPerTurn(rounds_per_turn);
 
-    for (const [tier, tierTeams] of tierMap.entries()) {
+    // Every league above must be decided before a lower one starts, so relegation is known.
+    const { data: seasonPhases } = await sb.from("league_seasons")
+      .select("league_tier, status, playoff_status").eq("session_id", session_id);
+
+    for (const tier of [...tierMap.keys()].sort((a, b) => a - b)) {
+      const tierTeams = tierMap.get(tier)!;
       if (tierTeams.length < 2) continue;
 
       // Check if there's an active season in playoff phase
-      const { data: activeSeason } = await sb.from("league_seasons").select("*")
+      let { data: activeSeason } = await sb.from("league_seasons").select("*")
         .eq("session_id", session_id).eq("league_tier", tier).eq("status", "active").maybeSingle();
 
-      if (activeSeason && activeSeason.playoff_status && activeSeason.playoff_status !== "none" && activeSeason.playoff_status !== "completed") {
-        // Play playoff round
-        const result = await playPlayoffRound(sb, session_id, currentTurn, activeSeason, tierTeams);
-        playoffResults = result;
-        if (result.seasonComplete) anySeasonComplete = true;
-        continue;
+      if (!activeSeason) {
+        const blocker = lowerTierStartBlocker(tier, seasonPhases || []);
+        if (blocker) { waiting.push({ tier, waits_for_tier: blocker.tier, phase: blocker.phase, reason: blocker.reason }); continue; }
       }
 
-      const result = await playTierRound(sb, session_id, currentTurn, tier, tierTeams);
-      if (result.matches) allResults.push(...result.matches);
-      if (result.seasonComplete) anySeasonComplete = true;
+      // Several rounds are resolved per game turn, playoffs included.
+      for (let played = 0; played < roundsTarget; played++) {
+        if (activeSeason && activeSeason.playoff_status && activeSeason.playoff_status !== "none" && activeSeason.playoff_status !== "completed") {
+          const result = await playPlayoffRound(sb, session_id, currentTurn, activeSeason, tierTeams);
+          playoffResults = playoffResults
+            ? { ...result, matches: [...(playoffResults.matches || []), ...(result.matches || [])] }
+            : result;
+          if (result.seasonComplete) { anySeasonComplete = true; break; }
+        } else {
+          const result = await playTierRound(sb, session_id, currentTurn, tier, tierTeams);
+          if (result.matches) allResults.push(...result.matches);
+          if (result.seasonComplete) { anySeasonComplete = true; break; }
+        }
+        const { data: refreshed } = await sb.from("league_seasons").select("*")
+          .eq("session_id", session_id).eq("league_tier", tier).eq("status", "active").maybeSingle();
+        if (!refreshed) break;
+        activeSeason = refreshed;
+      }
     }
+
 
     if (anySeasonComplete) await handlePromotionRelegation(sb, session_id);
 
