@@ -28,7 +28,7 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
       timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
 
       const { data, error } = await supabase.functions.invoke("commit-turn", {
-        body: { sessionId, playerName },
+        body: { sessionId, playerName, expectedTurn: currentTurn },
         signal: controller.signal,
       });
 

@@ -1,0 +1,9 @@
+{
+  "project_ref": "kvzzfthrefdisuohzfws",
+  "test_session": "eba99766-9046-4daf-a367-9f31380cbba1",
+  "migrations": ["20260919120000_canonical_goods_economy.sql", "20260919121000_turn_execution_guard.sql"],
+  "functions": ["command-dispatch", "commit-turn", "process-turn", "refresh-economy", "recompute-all", "aggregate-realm-totals", "compute-province-routes", "compute-hex-flows", "compute-trade-systems", "compute-economy-flow", "compute-trade-flows", "compute-basket-trade-flows", "preview-economy"],
+  "local_checks": ["npm run typecheck", "npm run typecheck:edge", "npm test", "npm run build"],
+  "live_checks": ["first-refresh fiscal purity", "second-refresh idempotence", "private report scope", "preview read-only", "single fiscal turn accrual", "square army movement", "visible management views"],
+  "deployment_verified": false
+}

@@ -654,15 +654,7 @@ export function computeNodeProductionBudget(node: {
   guild_level?: number | null;
   production_output?: number | null;
 }): number {
-  const role = node.production_role || "";
-  let base = 1;
-  if (role === "source" || role === "processing") base = 2;
-  else if (role === "urban" || role === "guild") base = 1;
-  const upg = Math.max(0, (node.upgrade_level || 1) - 1);
-  const guild = node.guild_level || 0;
-  const prodOut = Math.max(0.5, Math.min(1.5, (node.production_output || 5) / 5));
-  const raw = (base + upg * 0.5 + Math.min(1.5, guild * 0.5)) * prodOut;
-  return Math.max(1, Math.min(6, Math.round(raw * 10) / 10));
+  return Math.max(0, Number(node.production_output) || 0);
 }
 
 export type BasketCause =

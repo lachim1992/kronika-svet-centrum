@@ -1,3 +1,4 @@
+import ManagementCockpit from '@/components/management/ManagementCockpit';
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -136,7 +137,7 @@ const HomeTab = ({
   const totalCapacity = realm?.total_capacity ?? 0;
 
   const mobRate = realm?.mobilization_rate || 0.1;
-  const wf = computeWorkforceBreakdown(myCities, mobRate);
+  const wf = computeWorkforceBreakdown(myCities, mobRate, 0, 0, realm?.manpower_mobilized ?? 0);
   const currentMob = Math.round(mobRate * 100);
 
   const totalPop = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
@@ -239,6 +240,8 @@ const HomeTab = ({
   if (isMobile) {
     return (
       <MobileRealmDashboard
+        sessionId={sessionId}
+        canRecompute={devMode && myRole === "admin"}
         realm={realm}
         myCities={myCities}
         capital={capital}
@@ -268,12 +271,13 @@ const HomeTab = ({
         <Crown className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
         <h2 className="text-lg sm:text-xl font-display font-bold">Moje říše</h2>
         <span className="text-xs sm:text-sm text-muted-foreground font-display">Rok {currentTurn}</span>
-        <Button variant="outline" size="sm" className="ml-auto text-[10px] sm:text-xs h-7 sm:h-8 px-2 sm:px-3" onClick={handleRecompute} disabled={recomputing}>
+        {devMode && myRole === "admin" && <Button variant="outline" size="sm" className="ml-auto text-[10px] sm:text-xs h-7 sm:h-8 px-2 sm:px-3" onClick={handleRecompute} disabled={recomputing}>
           <RefreshCw className={`h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1 ${recomputing ? "animate-spin" : ""}`} />
           {recomputing ? "…" : "Přepočítat"}
-        </Button>
+        </Button>}
       </div>
 
+      <ManagementCockpit sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} onEntityClick={onEntityClick} onTabChange={onTabChange}/>
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="game-card border-destructive/30 bg-destructive/5 p-4 space-y-2">
@@ -359,84 +363,6 @@ const HomeTab = ({
           </div>
         )}
       </div>
-
-      {/* Workforce */}
-      <div className="game-card p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <Users className="h-5 w-5 text-primary" />
-          <h3 className="font-display font-semibold text-base">Lidská síla</h3>
-        </div>
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
-          <div className="bg-muted/40 rounded-lg p-2 sm:p-3">
-            <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Pracovní síla</div>
-            <div className="text-lg sm:text-2xl font-bold font-display">{wf.workforce}</div>
-          </div>
-          <div className="bg-muted/40 rounded-lg p-2 sm:p-3">
-            <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Vojáci</div>
-            <div className="text-lg sm:text-2xl font-bold font-display">{wf.mobilized}</div>
-          </div>
-          <div className={`rounded-lg p-2 sm:p-3 ${wf.isOverMob ? "bg-destructive/10" : "bg-muted/40"}`}>
-            <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Mobilizace</div>
-            <div className={`text-lg sm:text-2xl font-bold font-display ${wf.isOverMob ? "text-destructive" : ""}`}>{currentMob}%</div>
-          </div>
-        </div>
-        {wf.isOverMob && (
-          <div className="text-xs text-destructive flex items-center gap-1.5">
-            <AlertTriangle className="h-3 w-3" />
-            Překročena mobilizační hranice — produkce uzlů penalizována o {Math.round(wf.overMobPenalty * 100)}%
-          </div>
-        )}
-      </div>
-
-      {/* Grain Reserve */}
-      {realm && (
-        <div className="game-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🌾</span>
-            <h3 className="font-display font-semibold text-base">Zásoby obilí</h3>
-            <span className="ml-auto text-sm font-mono font-bold">
-              {Math.round(realm.grain_reserve || 0)} / {Math.round(realm.granary_capacity || 0)}
-            </span>
-          </div>
-          <Progress value={Math.min(100, ((realm.grain_reserve || 0) / Math.max(1, realm.granary_capacity || 1)) * 100)} className="h-3" />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>⚒️ Produkce: {realm.last_turn_grain_prod || 0}</span>
-            <span>🍽️ Spotřeba: {realm.last_turn_grain_cons || 0}</span>
-            <span className={`font-semibold ${(realm.last_turn_grain_net || 0) >= 0 ? "text-accent" : "text-destructive"}`}>
-              Bilance: {(realm.last_turn_grain_net || 0) >= 0 ? "+" : ""}{realm.last_turn_grain_net || 0}
-            </span>
-          </div>
-          {(realm.famine_city_count || 0) > 0 && (
-            <div className="text-xs text-destructive flex items-center gap-1.5">
-              <Skull className="h-3 w-3" />
-              {realm.famine_city_count} měst trpí hladomorem
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Wealth Reserve */}
-      {realm && (
-        <div className="game-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">💰</span>
-            <h3 className="font-display font-semibold text-base">Pokladna bohatství</h3>
-            <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
-          </div>
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>⚒️ Tok ze sítě: +{totalWealth.toFixed(1)}/kolo</span>
-            <span>⚒️ Produkční rezerva: {Math.round(realm.production_reserve || 0)}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Signal Cards */}
-      {realm && <FaithPanel realm={realm} cities={myCities} />}
-      <PopulationPanel cities={myCities} realm={realm} />
-      {realm && <MilitaryUpkeepPanel realm={realm} />}
-      {realm && <PrestigeBreakdown realm={realm} />}
-      {realm && <StrategicResourcesDetail realm={realm} />}
-
 
       {/* Laws & Decrees */}
       <RealmLawsDecrees sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />

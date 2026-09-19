@@ -68,7 +68,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
   const myCities = cities.filter(c => c.owner_player === playerName);
   const famineCities = myCities.filter(c => c.famine_turn);
   const mobRate = realm.mobilization_rate || 0.1;
-  const wf = computeWorkforceBreakdown(myCities, mobRate);
+  const wf = computeWorkforceBreakdown(myCities, mobRate, 0, 0, realm?.manpower_mobilized ?? 0);
   const computedPool = wf.effectiveActivePop;
   const committed = realm.manpower_committed || 0;
   const availableManpower = computedPool - committed;

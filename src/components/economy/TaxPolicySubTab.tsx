@@ -4,6 +4,7 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
+import { laffer,governance,taxRevenue,type TaxPillar } from '../../../supabase/functions/_shared/fiscal';
 
 interface Props { realm: any; sessionId: string; playerName: string; onRefetch?: () => void; }
 
@@ -15,7 +16,6 @@ const PILLARS = [
   { key: "poll",       label: "Daň z hlavy",     icon: "👥", max: 0.02, hint: "Per capita. Při >1 % hrozí daňové vzpoury." },
 ] as const;
 
-const laffer = (rate: number, max: number) => Math.max(0, 1 - Math.pow(rate / max, 2));
 
 const TaxPolicySubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
   const [rates, setRates] = useState<Record<string, number>>({
@@ -38,13 +38,13 @@ const TaxPolicySubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => 
   };
 
   // Governance modifier — engine: govMod = 0.5 + 0.5 × (legitimacy / 100)
-  const govMod = 0.5 + 0.5 * (Number(realm?.legitimacy ?? 50) / 100);
+  const govMod = governance(Number(realm?.legitimacy ?? 50));
 
   const previewRevenue = (key: string) => {
     const p = PILLARS.find(p => p.key === key)!;
     const r = rates[key];
     const vol = (gdp as any)[key];
-    return vol * laffer(r, p.max) * r * govMod;
+    return taxRevenue(vol,r,key as TaxPillar,govMod,key==='poll'?Number(realm?.computed_modifiers?.tax_bases?.poll_multiplier??1):1);
   };
 
   const totalPreview = PILLARS.reduce((s, p) => s + previewRevenue(p.key), 0);
@@ -114,7 +114,7 @@ const TaxPolicySubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => 
                   <span>max {(p.max * 100).toFixed(0)} %</span>
                 </div>
                 <div className="text-[10px] text-muted-foreground">
-                  GDP {vol.toFixed(0)} × Laffer {(eff * 100).toFixed(0)} % × sazba {(rate * 100).toFixed(1)} %
+                  Daňový základ {vol.toFixed(0)} × Laffer {(eff * 100).toFixed(0)} % × sazba {(rate * 100).toFixed(1)} % × výběr {(govMod*100).toFixed(0)} %
                 </div>
               </div>
             );
@@ -122,7 +122,7 @@ const TaxPolicySubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => 
 
           <div className="pt-3 border-t border-border/30 flex items-center justify-between">
             <div className="text-sm">
-              <span className="text-muted-foreground">Odhad celkového příjmu: </span>
+              <span className="text-muted-foreground">Odhad při stejných základech a legitimitě: </span>
               <span className="font-mono font-bold text-primary text-lg">+{totalPreview.toFixed(1)} /kolo</span>
             </div>
             <Button onClick={save} disabled={saving} size="sm">

@@ -41,7 +41,7 @@ const refresh = async () => {
 };
 
 const NODE_COLS = "id,production_output,wealth_output,capacity_score,importance_score";
-const FISCAL_COLS = "player_name,gold_reserve,legitimacy,wealth_pop_tax,wealth_domestic_market,goods_wealth_fiscal";
+const FISCAL_COLS = "player_name,gold_reserve,grain_reserve,production_reserve,manpower_pool,legitimacy,wealth_pop_tax,wealth_domestic_market,goods_wealth_fiscal";
 
 const stable = (rows: any[], key: string) =>
   JSON.stringify(rows.slice().sort((a, b) => String(a[key]).localeCompare(String(b[key]))));
@@ -61,13 +61,18 @@ const snapshot = async () => {
 
 describe.skipIf(!enabled)("economy idempotence (live backend)", () => {
   it("refresh ×2 leaves derived state, fiscal state and history identical", async () => {
+    const before = await snapshot();
     const r1 = await refresh();
-    expect([200, 207]).toContain(r1.status);
+    expect(r1.status).toBe(200);
+    expect(r1.body.ok).toBe(true);
     expect(r1.body.fiscal_unchanged).toBe(true);
     const s1 = await snapshot();
+    expect(s1.fiscal).toBe(before.fiscal);
+    expect(s1.historyCount).toBe(before.historyCount);
 
     const r2 = await refresh();
-    expect([200, 207]).toContain(r2.status);
+    expect(r2.status).toBe(200);
+    expect(r2.body.ok).toBe(true);
     expect(r2.body.fiscal_unchanged).toBe(true);
     const s2 = await snapshot();
 

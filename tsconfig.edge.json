@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true, "noEmit": true, "skipLibCheck": true
+  },
+  "files": [
+    "scripts/edge-globals.d.ts",
+    "supabase/functions/commit-turn/index.ts",
+    "supabase/functions/command-dispatch/index.ts",
+    "supabase/functions/process-turn/index.ts",
+    "supabase/functions/preview-economy/index.ts",
+    "supabase/functions/refresh-economy/index.ts",
+    "supabase/functions/recompute-all/index.ts",
+    "supabase/functions/aggregate-realm-totals/index.ts",
+    "supabase/functions/compute-province-routes/index.ts",
+    "supabase/functions/compute-hex-flows/index.ts",
+    "supabase/functions/compute-trade-flows/index.ts",
+    "supabase/functions/compute-basket-trade-flows/index.ts",
+    "supabase/functions/compute-economy-flow/index.ts",
+    "supabase/functions/compute-trade-systems/index.ts"
+  ]
+}

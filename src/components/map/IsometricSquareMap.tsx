@@ -861,10 +861,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     await load();
   };
 
-  const parcelQuad = (centerPoint: { x: number; y: number }, px: number, py: number) => {
+  const parcelQuad = (centerPoint: { x: number; y: number }, px: number, py: number, span = 1) => {
     const point = (a: number, b: number) => `${centerPoint.x + (a - b) * TILE_SIZE},${centerPoint.y + (a + b - 1) * TILE_SIZE / 2}`;
-    const a0 = px / TILE_PARCEL_COLS; const a1 = (px + 1) / TILE_PARCEL_COLS;
-    const b0 = py / TILE_PARCEL_ROWS; const b1 = (py + 1) / TILE_PARCEL_ROWS;
+    const a0 = px / TILE_PARCEL_COLS; const a1 = (px + span) / TILE_PARCEL_COLS;
+    const b0 = py / TILE_PARCEL_ROWS; const b1 = (py + span) / TILE_PARCEL_ROWS;
     return [point(a0, b0), point(a1, b0), point(a1, b1), point(a0, b1)].join(" ");
   };
 
@@ -1455,14 +1455,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </g>}
 
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
-              {!active && showSubBiomes && zoom >= 1.2 && <g pointerEvents="none">
+              {!active && showSubBiomes && <g pointerEvents="none">
                 <g opacity=".5">
-                  {subBiomesOf(tile, cell.a, cell.b).map(parcel => (
-                    <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY)}
+                  {subBiomesOf(tile, cell.a, cell.b).filter(parcel=>zoom>=1.2||(parcel.parcelX%2===0&&parcel.parcelY%2===0)).map(parcel => (
+                    <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY,zoom>=1.2?1:2)}
                       fill={SUB_BIOME_COLOR[parcel.subBiome] || colors[0]} stroke="none" />
                   ))}
                 </g>
-                <g opacity=".12">
+                <g opacity={zoom>=1.2?.12:0}>
                   {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
                     const fraction = (index + 1) / TILE_PARCEL_COLS;
                     const line = (ax: number, ay: number, bx: number, by: number) =>
