@@ -179,6 +179,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const tradeFlows=result.flows.filter(f=>cityNode.has(f.source)&&cityNode.has(f.destination)).map(f=>({session_id:session,good_key:f.good,
     source_city_id:cityNode.get(f.source),target_city_id:cityNode.get(f.destination),source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,
     flow_type:f.reason,volume_per_turn:f.qty,quality_band:Math.floor(f.quality),effective_price:f.qty?f.gross_value/f.qty:0,status:'active',turn_created:turn,
+    path_cells:f.path,transport_modes:f.edges.map((edgeId:string)=>edgeId.startsWith('river:')?'river':edgeId.startsWith('spur:')?'spur':'road'),
     provenance:f}));
   const basketFlows=result.flows.map(f=>({session_id:session,basket_key:goodMap.get(f.good)!.basket,source_city_id:f.source,target_city_id:f.destination,
     source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,volume:f.qty,unit_price:f.qty?f.gross_value/f.qty:0,gross_value:f.gross_value,
