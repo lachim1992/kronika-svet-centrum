@@ -63,6 +63,28 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     b[`produced_${channel}`]+=qty;b.gross_output_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
     if(source)b.extraction_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
   };
+  /** Bounded endogenous price. Reads the ledger, never creates or destroys physical units. */
+  const priceDetail=(city:string,good:string):PriceRow=>{
+    const b=stock(city,good),g=goodByKey.get(good)!,c=cityById.get(city)!;
+    const supply=b.opening+produced(b)+b.imported-b.lost_spoilage;
+    const need=b.demand+b.consumed_as_input;
+    const coverage=need>C.epsilon?supply/need:(supply>C.epsilon?2:1);
+    const substitutes=goods.filter(s=>s.key!==good&&s.basket===g.basket&&s.substitutability>0)
+      .reduce((a,s)=>a+available(stock(city,s.key)),0);
+    const relief=1/(1+substitutes*Math.max(0.01,g.substitutability)/Math.max(1,need))
+      /(1+n(c.storage)*C.priceStorageRelief);
+    const shortage=Math.max(0,1-Math.min(1,coverage)),glut=Math.min(1,Math.max(0,coverage-1));
+    const scarcity=Math.min(C.priceCeiling,Math.max(C.priceFloor,
+      1+C.priceScarcityGain*shortage*relief/Math.max(0.25,g.substitutability)-C.priceGlutRelief*glut));
+    const fame=priorFame.get(key(city,good));
+    const fameFactor=fame?.created!=null&&fame.fame>0?1+C.famePremium*fame.fame/100:1;
+    const qualityFactor=1+b.quality*C.qualityPremium;
+    return {city,good,base_price:g.price,local_price:g.price*scarcity*qualityFactor*fameFactor,
+      scarcity_factor:scarcity,quality_factor:qualityFactor,fame_factor:fameFactor,coverage,
+      demand:need,supply,imported:b.imported,substitutability:g.substitutability};
+  };
+  const priceOf=(city:string,good:string)=>priceDetail(city,good).local_price;
+
   for(const o of snapshot.opening){const b=stock(o.city,o.good),g=goodByKey.get(o.good)!;
     b.quality=(b.opening*b.quality+n(o.qty)*n(o.quality))/(b.opening+n(o.qty)||1);b.opening+=n(o.qty);
     b.lost_spoilage+=n(o.qty)*clamp(g.storageLoss/(1+cityById.get(o.city)!.storage));}
