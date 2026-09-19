@@ -1,5 +1,5 @@
 import { sportsActor, requireSportsHost, SportsError } from "../_shared/sportsAuth.ts";
-import { missingFixtureRounds } from "../_shared/sports.ts";
+import { missingFixtureRounds, roundsPerTurn, lowerTierStartBlocker } from "../_shared/sports.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { session_id, player_name, skip_commentary } = await req.json();
+    const { session_id, player_name, skip_commentary, rounds_per_turn } = await req.json();
     if (!session_id) {
       return new Response(JSON.stringify({ error: "session_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -149,6 +149,8 @@ Styl: dramatický, kronikářský, krvavý. ${isPlayoff ? "Zdůrazni váhu vyřa
       commentary,
       seasonComplete: anySeasonComplete,
       playoff: playoffResults || null,
+      roundsPerTurn: roundsTarget,
+      waiting,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("league-play-round error:", e);
