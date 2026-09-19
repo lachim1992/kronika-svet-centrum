@@ -3145,6 +3145,35 @@ export type Database = {
           },
         ]
       }
+      economy_management_reports: {
+        Row: {
+          player_name: string
+          report: Json
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          player_name: string
+          report: Json
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          player_name?: string
+          report?: Json
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "economy_management_reports_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       economy_overrides: {
         Row: {
           created_at: string
@@ -12002,23 +12031,6 @@ export type Database = {
           turn_number: number | null
         }
         Relationships: []
-      }
-      economy_management_reports: {
-        Row: {
-          player_name: string | null
-          report: Json | null
-          session_id: string | null
-          turn_number: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "economy_turn_ledgers_session_id_fkey"
-            columns: ["session_id"]
-            isOneToOne: false
-            referencedRelation: "game_sessions"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       v_route_with_state: {
         Row: {
