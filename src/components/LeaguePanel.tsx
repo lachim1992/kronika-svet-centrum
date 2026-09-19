@@ -210,8 +210,11 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Prop
       if (data?.error && !data?.seasonComplete) { toast.error(data.error); return; }
       if (data?.seasonComplete && data?.error) { toast.info(data.error); return; }
       setRoundResult(data);
-      toast.success(`⚔️ Kolo ${data.round} odehráno!`);
+      const played = (data.matches?.length || 0) + (data.playoff?.matches?.length || 0);
+      toast.success(`⚔️ Tah odehrán: ${played} zápasů (až ${data.roundsPerTurn ?? 1} kol)`);
+      for (const w of data.waiting || []) toast.info(w.reason);
       await fetchData();
+
     } catch (e: any) { toast.error(e.message); } finally { setPlayingRound(false); }
   };
 
