@@ -1,3 +1,4 @@
+import ManagementCockpit from '@/components/management/ManagementCockpit';
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
@@ -429,6 +430,7 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
               </Card>
             )}
 
+            <ManagementCockpit sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} mode="city" cityId={cityId}/>
             {/* Stats grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <StatCard label="Populace" value={(city.population_total || 0).toLocaleString()} icon={<Users className="h-4 w-4" />}

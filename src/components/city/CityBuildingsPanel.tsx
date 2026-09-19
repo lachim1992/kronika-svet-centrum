@@ -409,6 +409,7 @@ const CityBuildingsPanel = ({
   }
 
   const BuildingCard = ({ b, isConstructing = false }: { b: any; isConstructing?: boolean }) => {
+    const imageUrl=b.image_url||templates.find(t=>t.id===b.template_id)?.image_url;
     const effects = (b.effects && typeof b.effects === "object") ? b.effects : {};
     const turnsLeft = isConstructing ? Math.max(0, b.build_started_turn + b.build_duration - currentTurn) : 0;
     const currentLevel = b.current_level || 1;
@@ -423,9 +424,9 @@ const CityBuildingsPanel = ({
         isWonderLevel ? "border-yellow-500/50 bg-gradient-to-br from-yellow-500/5 to-amber-500/10" :
         isConstructing ? "border-muted bg-muted/20" : "border-border"
       }`}>
-        {b.image_url && (
+        {imageUrl && (
           <div className="relative w-full h-32 overflow-hidden">
-            <img src={b.image_url} alt={b.name} className="w-full h-full object-cover" />
+            <img src={imageUrl} alt={b.name} className="w-full h-full object-cover" loading="lazy" />
             <div className="absolute inset-0 bg-gradient-to-t from-card/90 to-transparent" />
             {isWonderLevel && (
               <div className="absolute top-2 right-2">

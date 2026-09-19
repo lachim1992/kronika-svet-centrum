@@ -1,3 +1,4 @@
+import { strictDatabase } from '../_shared/strictDatabase.ts';
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   hexTraversalCost, computeFlowPath,
@@ -30,7 +31,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const sb = strictDatabase(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!));
     const gridKind = await loadGridKind(sb, session_id);
 
     // 1. Load all hexes for this session (paged)
@@ -57,11 +58,12 @@ Deno.serve(async (req) => {
     }
 
     // 2. Load nodes (with fortress & control info)
-    const { data: nodes } = await sb
+    const { data: nodes, error: nodesError } = await sb
       .from("province_nodes")
       .select("id, hex_q, hex_r, node_type, controlled_by, fortification_level, cumulative_trade_flow")
       .eq("session_id", session_id)
       .eq("is_active", true);
+    if(nodesError)throw nodesError;
 
     // Build fortress/control lookup by hex
     const hexControl = new Map<string, { controlled_by: string | null; has_fortress: boolean; trade_density: number }>();
@@ -85,7 +87,8 @@ Deno.serve(async (req) => {
       routeQuery = routeQuery.eq("path_dirty", true);
     }
 
-    const { data: routes } = await routeQuery;
+    const { data: routes, error: routesError } = await routeQuery;
+    if(routesError)throw routesError;
 
     if (!routes || routes.length === 0) {
       return new Response(JSON.stringify({ ok: true, paths_computed: 0, reason: "no dirty routes" }), {
@@ -201,19 +204,21 @@ Deno.serve(async (req) => {
       // Clear any stale rows that collide on either unique key (route_id, or node pair)
       const batchRouteIds = batchRows.map(r => r.route_id).filter(Boolean);
       if (batchRouteIds.length > 0) {
-        await sb.from("flow_paths").delete().eq("session_id", session_id).in("route_id", batchRouteIds);
+        const {error: deleteError}=await sb.from("flow_paths").delete().eq("session_id", session_id).in("route_id", batchRouteIds);
+        if(deleteError)throw deleteError;
       }
       const { error: upsertErr } = await sb.from("flow_paths").upsert(
         batchRows,
         { onConflict: "session_id,node_a,node_b,flow_type" },
       );
-      if (upsertErr) console.error("flow_paths upsert error:", upsertErr.message);
+      if (upsertErr) throw upsertErr;
     }
 
     // 8. Update route aggregates
     for (const upd of routeUpdates) {
       const { id, ...fields } = upd;
-      await sb.from("province_routes").update(fields).eq("id", id);
+      const {error}=await sb.from("province_routes").update(fields).eq("id", id).eq("session_id",session_id);
+      if(error)throw error;
     }
 
     return new Response(JSON.stringify({

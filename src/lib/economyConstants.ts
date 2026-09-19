@@ -63,68 +63,7 @@ export const SETTLEMENT_WEALTH: Record<string, number> = {
 // WORKFORCE SYSTEM CONSTANTS
 // ═══════════════════════════════════════════
 
-/** Weight of each population layer toward the active population pool */
-export const ACTIVE_POP_WEIGHTS = {
-  peasants: 1.0,
-  burghers: 0.7,
-  clerics: 0.2,
-};
-
-/** Default ratio of active population (can be modified by laws/decrees) */
-export const DEFAULT_ACTIVE_POP_RATIO = 0.5;
-
-/** Default maximum mobilization rate (can be modified by laws/decrees) */
-export const DEFAULT_MAX_MOBILIZATION = 0.3;
-
-/**
- * Compute the weighted active population for a set of cities.
- * active_pop_raw = peasants*1.0 + burghers*0.7 + clerics*0.2
- */
-export function computeActivePopRaw(cities: any[]): number {
-  let total = 0;
-  for (const c of cities) {
-    if (c.status && c.status !== "ok") continue;
-    total += (c.population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
-           + (c.population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
-           + (c.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics;
-  }
-  return Math.floor(total);
-}
-
-/**
- * Compute effective active population, workforce, and mobilized counts.
- */
-export function computeWorkforceBreakdown(
-  cities: any[],
-  mobilizationRate: number,
-  activePopRatioModifier = 0,
-  maxMobilizationModifier = 0,
-) {
-  const activePopRaw = computeActivePopRaw(cities);
-  const effectiveRatio = Math.max(0.1, Math.min(0.9, DEFAULT_ACTIVE_POP_RATIO + activePopRatioModifier));
-  const effectiveActivePop = Math.floor(activePopRaw * effectiveRatio);
-  const maxMob = Math.max(0.05, Math.min(0.5, DEFAULT_MAX_MOBILIZATION + maxMobilizationModifier));
-  const isOverMob = mobilizationRate > maxMob;
-  const mobilized = Math.floor(effectiveActivePop * mobilizationRate);
-  const workforce = effectiveActivePop - mobilized;
-  const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
-  const overMobPenalty = isOverMob ? Math.min(0.8, (mobilizationRate - maxMob) * 2) : 0;
-  const effectiveWorkforceRatio = Math.max(0.05, workforceRatio * (1 - overMobPenalty));
-
-  return {
-    activePopRaw,
-    effectiveRatio,
-    effectiveActivePop,
-    maxMobilization: maxMob,
-    clampedMobRate: mobilizationRate,
-    mobilized,
-    workforce,
-    workforceRatio,
-    overMobPenalty,
-    effectiveWorkforceRatio,
-    isOverMob,
-  };
-}
+export { ACTIVE_POP_WEIGHTS, DEFAULT_ACTIVE_POP_RATIO, DEFAULT_MAX_MOBILIZATION, computeActivePopRaw, computeWorkforceBreakdown, actualSoldiers } from "../../supabase/functions/_shared/manpower";
 
 /** Compute total wealth income from cities (client-side mirror of process-turn logic) */
 export function computeWealthIncome(cities: any[]): number {
@@ -138,12 +77,11 @@ export function computeWealthIncome(cities: any[]): number {
   return total;
 }
 
-/** Get effective unit count for a stack — prefers unit_count, falls back to composition sum */
+/** Actual soldier count shared with the canonical civilian workforce calculation. */
 export function getStackUnitCount(stack: any): number {
-  if (typeof stack.unit_count === "number" && stack.unit_count > 0) return stack.unit_count;
-  // Fallback: sum military_stack_composition manpower
-  return (stack.military_stack_composition || [])
-    .reduce((sum: number, c: any) => sum + (c.manpower ?? 0), 0);
+  if (stack.is_active === false) return 0;
+  return Math.max(0, Number(stack.soldiers ?? stack.unit_count ??
+    (stack.military_stack_composition || []).reduce((sum: number, c: any) => sum + (c.manpower ?? 0), 0)) || 0);
 }
 
 /** Compute military wealth upkeep: unit_count × 0.003 per stack (matches process-turn backend) */

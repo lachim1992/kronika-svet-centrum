@@ -1,3 +1,6 @@
+import { economyFailure, guardedFiscal } from "../_shared/economyPhaseGuard.ts";
+import { strictDatabase } from '../_shared/strictDatabase.ts';
+import { finalizeManagementReports } from '../_shared/economyAdapter.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   computeSettlementGrowth, distributePopLayers,
@@ -40,18 +43,19 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const tCommit = Date.now();
+  let execution: {client:any;session:string;turn:number}|undefined;
   try {
-    const { sessionId, playerName, skipNarrative } = await req.json();
+    const { sessionId, playerName, skipNarrative, expectedTurn } = await req.json();
     if (!sessionId || !playerName) {
       return new Response(JSON.stringify({ error: "Missing sessionId or playerName" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabase = createClient(
+    const supabase = strictDatabase(createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    ));
 
     // ── Get session ──
     const { data: session } = await supabase
@@ -67,6 +71,10 @@ Deno.serve(async (req) => {
     }
 
     const turnNumber = session.current_turn;
+    if(expectedTurn!==undefined&&expectedTurn!==turnNumber)return new Response(JSON.stringify({ok:false,error:'Tah se mezitím změnil. Obnovte stav hry.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
+    const {data:acquired}=await supabase.rpc('acquire_turn_execution',{p_session:sessionId,p_turn:turnNumber});
+    if(acquired!==true)return new Response(JSON.stringify({ok:false,error:'Zpracování tahu již běží nebo předchozí pokus vyžaduje opravu. Tah nebyl opakován.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
+    execution={client:supabase,session:sessionId,turn:turnNumber};
     const isAIMode = session.game_mode === "tb_single_ai";
     const results: Record<string, any> = {};
 
@@ -774,6 +782,7 @@ Deno.serve(async (req) => {
     // Integrity Pass closure (P0): every mandatory economy step is recorded.
     // A failure here makes the turn economically incomplete → no snapshot.
     const economyStepFailures: Array<{ step: string; error: string }> = [];
+    if (results.constructionCompletion?.error) economyStepFailures.push({ step: "construction-completion", error: results.constructionCompletion.error });
     const noteStepFailure = (step: string, error?: string | null) => {
       if (error) {
         console.warn(`${step} failure:`, error);
@@ -785,14 +794,14 @@ Deno.serve(async (req) => {
       const { data: routesRes, error: routesErr } = await supabase.functions.invoke("compute-province-routes", {
         body: { session_id: sessionId },
       });
-      noteStepFailure("compute-province-routes", routesErr?.message);
+      noteStepFailure("compute-province-routes", economyFailure(routesRes, routesErr));
       results.routes = routesRes || { error: routesErr?.message };
 
       // Recompute hex flows (force_all since routes were rebuilt)
       const { data: preFlowRes, error: preFlowErr } = await supabase.functions.invoke("compute-hex-flows", {
         body: { session_id: sessionId, force_all: true },
       });
-      noteStepFailure("compute-hex-flows", preFlowErr?.message);
+      noteStepFailure("compute-hex-flows", economyFailure(preFlowRes, preFlowErr));
       results.preHexFlows = preFlowRes || { error: preFlowErr?.message };
 
       // Node-Trade v1: project trade systems & player access from current treaties
@@ -800,7 +809,7 @@ Deno.serve(async (req) => {
         const { data: tsRes, error: tsErr } = await supabase.functions.invoke("compute-trade-systems", {
           body: { session_id: sessionId, emit_events: true },
         });
-        noteStepFailure("compute-trade-systems", tsErr?.message);
+        noteStepFailure("compute-trade-systems", economyFailure(tsRes, tsErr));
         results.tradeSystems = tsRes || { error: tsErr?.message };
       } catch (tsE) {
         noteStepFailure("compute-trade-systems", (tsE as Error).message);
@@ -812,7 +821,7 @@ Deno.serve(async (req) => {
         const { data: tfRes, error: tfErr } = await supabase.functions.invoke("compute-trade-flows", {
           body: { session_id: sessionId, turn_number: turnNumber + 1 },
         });
-        noteStepFailure("compute-trade-flows", tfErr?.message);
+        noteStepFailure("compute-trade-flows", economyFailure(tfRes, tfErr));
         results.tradeFlows = tfRes || { error: tfErr?.message };
       } catch (tfE) {
         noteStepFailure("compute-trade-flows", (tfE as Error).message);
@@ -824,7 +833,7 @@ Deno.serve(async (req) => {
         const { data: basketRes, error: basketErr } = await supabase.functions.invoke("compute-basket-trade-flows", {
           body: { session_id: sessionId },
         });
-        noteStepFailure("compute-basket-trade-flows", basketErr?.message);
+        noteStepFailure("compute-basket-trade-flows", economyFailure(basketRes, basketErr));
         results.basketTradeFlows = basketRes || { error: basketErr?.message };
       } catch (basketE) {
         noteStepFailure("compute-basket-trade-flows", (basketE as Error).message);
@@ -836,7 +845,7 @@ Deno.serve(async (req) => {
       const { data: economyRes, error: economyErr } = await supabase.functions.invoke("compute-economy-flow", {
         body: { session_id: sessionId },
       });
-      noteStepFailure("compute-economy-flow", economyErr?.message);
+      noteStepFailure("compute-economy-flow", economyFailure(economyRes, economyErr));
       results.economyFlow = economyRes || { error: economyErr?.message };
 
       // PHYSICAL AGGREGATES — must be fresh before the fiscal writer runs, so
@@ -845,7 +854,7 @@ Deno.serve(async (req) => {
         const { data: physAgg, error: physErr } = await supabase.functions.invoke("aggregate-realm-totals", {
           body: { session_id: sessionId, phase: "physical" },
         });
-        noteStepFailure("aggregate-realm-totals(physical)", physErr?.message);
+        noteStepFailure("aggregate-realm-totals(physical)", economyFailure(physAgg, physErr));
         results.physicalAggregates = physAgg || { error: physErr?.message };
       } catch (paE) {
         noteStepFailure("aggregate-realm-totals(physical)", (paE as Error).message);
@@ -896,15 +905,16 @@ Deno.serve(async (req) => {
 
       const settled = await Promise.allSettled(
         Array.from(allEconEntities).map(async (name) => {
-          const { error: ptErr } = await supabase.functions.invoke("process-turn", {
+          if (economyStepFailures.length) return { ok: false, name, error: "Mandatory derived economy phase failed" };
+          const { data: ptData, error: ptErr } = await guardedFiscal<any>(economyStepFailures, () => supabase.functions.invoke("process-turn", {
             // CAPEX accrual only when every Layer B step succeeded — stale goods data
             // must never fund construction stock.
             body: { sessionId, playerName: name, allowCapexAccrual: economyStepFailures.length === 0 },
-          });
+          }));
 
-          if (ptErr) {
-            console.warn(`process-turn for ${name}:`, ptErr.message);
-            return { ok: false, name, error: ptErr.message };
+          if (economyFailure(ptData, ptErr)) {
+            console.warn(`process-turn for ${name}:`, economyFailure(ptData, ptErr));
+            return { ok: false, name, error: economyFailure(ptData, ptErr) };
           }
           return { ok: true, name };
         }),
@@ -959,6 +969,9 @@ Deno.serve(async (req) => {
     } else {
       try {
         const historyTurn = turnNumber + 1;
+        await finalizeManagementReports(supabase,sessionId,historyTurn);
+        const { error: ledgerError } = await supabase.rpc("commit_goods_economy_ledger", { p_session: sessionId, p_turn: historyTurn });
+        if (ledgerError) throw ledgerError;
         const { data: histNodes } = await supabase.from("province_nodes")
           .select("id, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, isolation_penalty")
           .eq("session_id", sessionId);
@@ -1564,9 +1577,11 @@ Deno.serve(async (req) => {
     }
 
     const totalMs = Date.now() - tCommit;
+    const completed=aggregationOk&&!economyFailed&&!pipelineFailed&&!results.economySnapshot?.error&&!results.worldTick?.error;
+    await supabase.from('turn_execution_guards').update({status:completed?'completed':'failed',finished_at:new Date().toISOString(),error:completed?null:'Mandatory turn phase failed; inspect turn report'}).eq('session_id',sessionId).eq('turn_number',turnNumber);
     console.log(`[commit-turn] DONE turn=${turnNumber} player=${playerName} critical=${totalMs}ms (background scheduled)`);
     return new Response(JSON.stringify({
-      ok: true,
+      ok: completed,
       turnClosed: turnNumber,
       newTurn: turnNumber + 1,
       results,
@@ -1575,6 +1590,7 @@ Deno.serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
+    if(execution)try{await execution.client.from('turn_execution_guards').update({status:'failed',finished_at:new Date().toISOString(),error:(err as Error).message}).eq('session_id',execution.session).eq('turn_number',execution.turn);}catch{/* Existing running guard still blocks replay. */}
     console.error("commit-turn error:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },

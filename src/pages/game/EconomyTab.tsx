@@ -1,3 +1,6 @@
+import ManagementCockpit from '@/components/management/ManagementCockpit';
+import EconomyScenarioPreview from '@/components/management/EconomyScenarioPreview';
+import PhysicalEconomyPanel from "@/components/economy/PhysicalEconomyPanel";
 import { useState, useCallback, useMemo, Suspense, lazy } from "react";
 import { useDevMode } from "@/hooks/useDevMode";
 import { Badge } from "@/components/ui/badge";
@@ -83,7 +86,7 @@ const EconomyTab = ({
   );
 
   const totalWealth = realm?.total_wealth ?? 0; // fiskální stream součet
-  const totalGdp = (realm as any)?.total_gdp ?? 0; // ekonomická aktivita (produkce + export)
+  const totalGdp = (realm as any)?.total_gdp ?? 0; // přidaná hodnota; vývoz se znovu nepřičítá
   const totalCapacity = realm?.total_capacity ?? 0;
   // Sjednocený fiskální zdroj — stejná čísla jako HUD a TreasuryHub
   const fi = getFiscalIncome(realm);
@@ -192,7 +195,7 @@ const EconomyTab = ({
             Rok {currentTurn} · {myCities.length} sídel
           </p>
         </div>
-        <Button
+        {devMode && myRole === "admin" && <Button
           variant="outline"
           size="sm"
           className="ml-auto text-xs h-8 gap-1.5 border-border/50"
@@ -201,7 +204,7 @@ const EconomyTab = ({
         >
           <RefreshCw className={`h-3.5 w-3.5 ${recomputing ? "animate-spin" : ""}`} />
           {recomputing ? "Počítám…" : "Přepočítat"}
-        </Button>
+        </Button>}
       </div>
 
       {/* ═══ ALERTS ═══ */}
@@ -225,54 +228,8 @@ const EconomyTab = ({
         </div>
       )}
 
-      {/* ═══ MACRO SUMMARY ROW ═══ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in">
-        {[
-          {
-            icon: "💰",
-            label: "Bohatství",
-            value: Math.round(realm?.gold_reserve ?? 0).toString(),
-            // SSOT: hrubý příjem státu /kolo (sjednoceno s HUD a TreasuryHub)
-            sub: `+${fi.totalIncome.toFixed(1)}/kolo`,
-            tooltip: "Pokladnice. Sub: fiskální příjem (daně, cla, tržní výnos) plynoucí do státní pokladny.",
-          },
-          {
-            icon: "📊",
-            label: "GDP",
-            value: Math.round(totalGdp).toString(),
-            sub: "ekon. aktivita",
-            tooltip: "Hrubá ekonomická aktivita: hodnota domácí produkce + objem exportu (basket_trade_flows). NE státní příjem.",
-          },
-          {
-            icon: "🌾",
-            label: "Zásoby",
-            value: `${Math.round(realm?.grain_reserve ?? 0)}`,
-            sub: `/${Math.round(realm?.granary_capacity ?? 0)}`,
-            tooltip: "Obilní rezervy / kapacita sýpek.",
-          },
-          {
-            icon: "🏛️",
-            label: "Kapacita",
-            value: totalCapacity.toFixed(1),
-            sub: "celkem",
-            tooltip: "Logistická kapacita říše (součet uzlů).",
-          },
-        ].map(s => (
-          <div
-            key={s.label}
-            title={s.tooltip}
-            className="rounded-xl border border-border/40 bg-card/50 p-4 space-y-1 hover:border-primary/30 transition-colors"
-          >
-            <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <span>{s.icon}</span> {s.label}
-            </div>
-            <div className="text-2xl font-bold font-display text-primary tracking-tight">
-              {s.value}
-            </div>
-            <div className="text-[10px] text-muted-foreground">{s.sub}</div>
-          </div>
-        ))}
-      </div>
+      <ManagementCockpit sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} mode="economy" onEntityClick={onEntityClick} onTabChange={onTabChange}/>
+      <EconomyScenarioPreview sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn}/>
 
       {/* ═══ TABBED CONTENT — 4 root tabs ═══ */}
       <Tabs defaultValue="production" className="space-y-4">
@@ -302,7 +259,8 @@ const EconomyTab = ({
         {/* ═══ PRODUCTION TAB ═══ */}
         <TabsContent value="production" className="space-y-5 animate-fade-in">
           {realm && <ProductionOverviewCard realm={realm} />}
-          <WorkforcePanel cities={myCities} mobilizationRate={mobRate} />
+          <WorkforcePanel cities={myCities} mobilizationRate={mobRate} soldiers={realm?.manpower_mobilized ?? 0} />
+          <PhysicalEconomyPanel sessionId={sessionId} cities={myCities} playerName={currentPlayerName} currentTurn={currentTurn} />
           <PopulationPanel cities={myCities} realm={realm} />
         </TabsContent>
 

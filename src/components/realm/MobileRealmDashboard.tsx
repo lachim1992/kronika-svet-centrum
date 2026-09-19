@@ -1,3 +1,4 @@
+import ManagementCockpit from '@/components/management/ManagementCockpit';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -18,6 +19,8 @@ const SETTLEMENT_LABELS: Record<string, string> = {
 };
 
 interface Props {
+  sessionId:string;
+  canRecompute?:boolean;
   realm: any;
   myCities: any[];
   capital: any;
@@ -39,7 +42,7 @@ interface Props {
 }
 
 const MobileRealmDashboard = ({
-  realm, myCities, capital, provinces, nodeStats, stacks, activeWars,
+  sessionId, canRecompute, realm, myCities, capital, provinces, nodeStats, stacks, activeWars,
   famineCities, isolatedNodes, deficitNodes, surplusNodes,
   currentTurn, currentPlayerName, recomputing,
   onRecompute, onCityClick, onTabChange, onFoundCity,
@@ -47,7 +50,7 @@ const MobileRealmDashboard = ({
   const totalPop = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
   const totalPower = stacks.reduce((s, st) => s + (st.power || 0), 0);
   const mobRate = realm?.mobilization_rate || 0.1;
-  const wf = computeWorkforceBreakdown(myCities, mobRate);
+  const wf = computeWorkforceBreakdown(myCities, mobRate, 0, 0, realm?.manpower_mobilized ?? 0);
 
   const totalProd = realm?.total_production ?? 0;
   const totalWealth = realm?.total_wealth ?? 0;
@@ -74,12 +77,13 @@ const MobileRealmDashboard = ({
           <Badge className="bg-primary/15 text-primary border-primary/25 font-display text-[10px] px-2 py-0.5">
             Rok {currentTurn}
           </Badge>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRecompute} disabled={recomputing}>
+          {canRecompute && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRecompute} disabled={recomputing}>
             <RefreshCw className={`h-3.5 w-3.5 ${recomputing ? "animate-spin" : ""}`} />
-          </Button>
+          </Button>}
         </div>
       </div>
 
+      <ManagementCockpit sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} onEntityClick={onCityClick} onTabChange={onTabChange}/>
       {/* ALERTS */}
       {hasAlerts && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 space-y-1.5">

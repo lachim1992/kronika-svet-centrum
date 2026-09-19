@@ -78,7 +78,7 @@ export async function cityParcelCapacity(supabase: any, sessionId: string, cityI
     .in("status", ["claimed", "occupied"]);
   const rows = data || [];
   const slots = rows.reduce((sum: number, row: any) => sum + (row.capacity_slots || 0), 0);
-  const cells = new Set(rows.map((row: any) => `${row.grid_x},${row.grid_y}`));
+  const cells = new Set<string>(rows.map((row: any) => `${row.grid_x},${row.grid_y}`));
   return { slots, capacity: slots * POPULATION_PER_SLOT, claimed: rows.length, cells: [...cells] };
 }
 

@@ -11,9 +11,9 @@ interface Props {
 
 const CLASS_META = [
   { key: "peasants", label: "Rolníci", icon: "🌾", color: "bg-emerald-600", role: "Produkce potravin a surovin. Základ ekonomiky.", effects: "Zvyšují produkci uzlů (weight 1.0 v active_pop). Spotřebovávají zásoby." },
-  { key: "burghers", label: "Měšťané", icon: "🔨", color: "bg-amber-500", role: "Obchod a řemesla. Generují bohatství.", effects: "Zvyšují wealth tok (weight 0.7 v active_pop). +1 wealth/200 měšťanů. Rostou s market_level." },
+  { key: "burghers", label: "Měšťané", icon: "🔨", color: "bg-amber-500", role: "Obchod a řemesla.", effects: "Váha 0,7 v potenciální pracovní populaci. Výnos vzniká skutečnou výrobou a obchodem; počet měšťanů není příjem pokladnice." },
   { key: "clerics", label: "Klerici", icon: "📿", color: "bg-violet-500", role: "Duchovní a akademická vrstva.", effects: "Generují víru (+0.01/klerka/kolo) a kapacitu (weight 0.2). Rostou s temple_level." },
-  { key: "warriors", label: "Válečníci", icon: "⚔️", color: "bg-red-600", role: "Vojenská třída — garnizóny a posily.", effects: "Bonus morálky garnizónu. Nezapočítávají se do active_pop. Rostou s garrison." },
+  { key: "warriors", label: "Válečníci", icon: "⚔️", color: "bg-red-600", role: "Společenská vrstva s vojenskou tradicí.", effects: "Váha 0,9 v potenciální pracovní populaci. Počet této vrstvy není stav armády; civilní pracovní sílu snižují skutečně aktivní vojáci." },
 ];
 
 const SETTLEMENT_THRESHOLDS = [
