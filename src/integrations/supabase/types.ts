@@ -1601,6 +1601,42 @@ export type Database = {
           },
         ]
       }
+      city_economic_role_metrics: {
+        Row: {
+          city_id: string
+          metrics: Json
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          city_id: string
+          metrics: Json
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          city_id?: string
+          metrics?: Json
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_economic_role_metrics_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_economic_role_metrics_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city_factions: {
         Row: {
           city_id: string
@@ -1666,6 +1702,102 @@ export type Database = {
           },
           {
             foreignKeyName: "city_factions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      city_good_balances: {
+        Row: {
+          balance: Json
+          city_id: string
+          good_key: string
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          balance: Json
+          city_id: string
+          good_key: string
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          balance?: Json
+          city_id?: string
+          good_key?: string
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_good_balances_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_good_balances_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "city_good_balances_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      city_hinterland_assignments: {
+        Row: {
+          city_id: string
+          good_key: string
+          hub_city_id: string
+          session_id: string
+        }
+        Insert: {
+          city_id: string
+          good_key: string
+          hub_city_id: string
+          session_id: string
+        }
+        Update: {
+          city_id?: string
+          good_key?: string
+          hub_city_id?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_hinterland_assignments_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_hinterland_assignments_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "city_hinterland_assignments_hub_city_id_fkey"
+            columns: ["hub_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_hinterland_assignments_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -3013,6 +3145,35 @@ export type Database = {
           },
         ]
       }
+      economy_management_reports: {
+        Row: {
+          player_name: string
+          report: Json
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          player_name: string
+          report: Json
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          player_name?: string
+          report?: Json
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "economy_management_reports_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       economy_overrides: {
         Row: {
           created_at: string
@@ -3077,6 +3238,41 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      economy_turn_ledgers: {
+        Row: {
+          committed: boolean
+          committed_result: Json | null
+          created_at: string
+          result: Json
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          committed?: boolean
+          committed_result?: Json | null
+          created_at?: string
+          result: Json
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          committed?: boolean
+          committed_result?: Json | null
+          created_at?: string
+          result?: Json
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "economy_turn_ledgers_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       encyclopedia_images: {
         Row: {
@@ -3611,6 +3807,95 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "faction_intents_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      famous_good_history: {
+        Row: {
+          city_id: string
+          good_key: string
+          reputation: Json
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          city_id: string
+          good_key: string
+          reputation: Json
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          city_id?: string
+          good_key?: string
+          reputation?: Json
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "famous_good_history_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "famous_good_history_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "famous_good_history_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      famous_goods: {
+        Row: {
+          city_id: string
+          good_key: string
+          reputation: Json
+          session_id: string
+        }
+        Insert: {
+          city_id: string
+          good_key: string
+          reputation: Json
+          session_id: string
+        }
+        Update: {
+          city_id?: string
+          good_key?: string
+          reputation?: Json
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "famous_goods_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "famous_goods_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "famous_goods_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -5207,6 +5492,7 @@ export type Database = {
           demand_basket: string | null
           description: string | null
           display_name: string
+          friction_profile: Json
           icon: string | null
           id: string
           key: string
@@ -5223,6 +5509,7 @@ export type Database = {
           demand_basket?: string | null
           description?: string | null
           display_name?: string
+          friction_profile?: Json
           icon?: string | null
           id?: string
           key: string
@@ -5239,6 +5526,7 @@ export type Database = {
           demand_basket?: string | null
           description?: string | null
           display_name?: string
+          friction_profile?: Json
           icon?: string | null
           id?: string
           key?: string
@@ -8468,6 +8756,7 @@ export type Database = {
           created_at: string
           cultural_prestige: number
           economic_prestige: number
+          economy_detail: Json
           economy_version: number | null
           export_gross_value: number
           faith: number | null
@@ -8559,6 +8848,7 @@ export type Database = {
           total_wealth: number
           trade_ideology: string | null
           updated_at: string
+          value_added_gdp: number
           warrior_ratio: number | null
           wealth_domestic_component: number | null
           wealth_domestic_market: number | null
@@ -8579,6 +8869,7 @@ export type Database = {
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
+          economy_detail?: Json
           economy_version?: number | null
           export_gross_value?: number
           faith?: number | null
@@ -8670,6 +8961,7 @@ export type Database = {
           total_wealth?: number
           trade_ideology?: string | null
           updated_at?: string
+          value_added_gdp?: number
           warrior_ratio?: number | null
           wealth_domestic_component?: number | null
           wealth_domestic_market?: number | null
@@ -8690,6 +8982,7 @@ export type Database = {
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
+          economy_detail?: Json
           economy_version?: number | null
           export_gross_value?: number
           faith?: number | null
@@ -8781,6 +9074,7 @@ export type Database = {
           total_wealth?: number
           trade_ideology?: string | null
           updated_at?: string
+          value_added_gdp?: number
           warrior_ratio?: number | null
           wealth_domestic_component?: number | null
           wealth_domestic_market?: number | null
@@ -9997,6 +10291,7 @@ export type Database = {
           maturity: number
           path_cells: Json | null
           price_band: number
+          provenance: Json
           quality_band: number
           route_path_id: string | null
           session_id: string
@@ -10022,6 +10317,7 @@ export type Database = {
           maturity?: number
           path_cells?: Json | null
           price_band?: number
+          provenance?: Json
           quality_band?: number
           route_path_id?: string | null
           session_id: string
@@ -10047,6 +10343,7 @@ export type Database = {
           maturity?: number
           path_cells?: Json | null
           price_band?: number
+          provenance?: Json
           quality_band?: number
           route_path_id?: string | null
           session_id?: string
@@ -10588,6 +10885,41 @@ export type Database = {
             foreignKeyName: "turn_briefings_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      turn_execution_guards: {
+        Row: {
+          error: string | null
+          finished_at: string | null
+          session_id: string
+          started_at: string
+          status: string
+          turn_number: number
+        }
+        Insert: {
+          error?: string | null
+          finished_at?: string | null
+          session_id: string
+          started_at?: string
+          status: string
+          turn_number: number
+        }
+        Update: {
+          error?: string | null
+          finished_at?: string | null
+          session_id?: string
+          started_at?: string
+          status?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "turn_execution_guards_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
             referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
@@ -11776,8 +12108,27 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_turn_execution: {
+        Args: { p_session: string; p_turn: number }
+        Returns: boolean
+      }
+      apply_goods_fiscal_turn: {
+        Args: {
+          p_capex_delta: number
+          p_gold_delta: number
+          p_patch: Json
+          p_player: string
+          p_session: string
+          p_turn: number
+        }
+        Returns: boolean
+      }
       cleanup_route_events: {
         Args: { p_current_turn: number; p_session_id: string }
+        Returns: undefined
+      }
+      commit_goods_economy_ledger: {
+        Args: { p_session: string; p_turn: number }
         Returns: undefined
       }
       has_role: {
@@ -11786,6 +12137,18 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      read_economy_management: {
+        Args: { p_player: string; p_session: string; p_turn: number }
+        Returns: Json
+      }
+      replace_goods_economy_projection: {
+        Args: { p_payload: Json; p_session: string; p_turn: number }
+        Returns: undefined
+      }
+      update_goods_management_reports: {
+        Args: { p_reports: Json; p_session: string; p_turn: number }
+        Returns: undefined
       }
     }
     Enums: {

@@ -7,5 +7,9 @@ Deno.serve(async req => {
     const {session_id}=await req.json();if(!session_id)throw Error("session_id required");
     const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     return new Response(JSON.stringify(await computeCanonicalEconomy(sb,session_id)),{headers});
-  } catch(e) {return new Response(JSON.stringify({error:String(e)}),{status:500,headers});}
+  } catch(e) {
+    const error=e instanceof Error?e.message:typeof e==='object'&&e!==null?JSON.stringify(e):String(e);
+    console.error('compute-trade-flows failed',error);
+    return new Response(JSON.stringify({error}),{status:500,headers});
+  }
 });
