@@ -9,6 +9,9 @@ export const ECONOMY = {
   fameMinQuality: 2, fameSpecialization: 0.4, famePremium: 0.25, fameDemand: 0.003,
   populationDemand: 0.01, armyDemand: 0.004, maxProductionPasses: 16,
   guildProductivity: 0.15, riverFriction: 0.8, riverCapacity: 70,
+  priceScarcityGain: 1.4, priceGlutRelief: 0.35, priceFloor: 0.45, priceCeiling: 3.2,
+  priceStorageRelief: 0.05, priceRiskCost: 0.04, arbitrageMargin: 0.03,
+
   famePrestige: 0.1,
   sectors: { farming: 0.4, crafting: 0.3, administration: 0.1, logistics: 0.2 },
   householdBaskets: ['staple_food', 'basic_clothing', 'tools', 'fuel', 'drinking_water', 'construction'],
