@@ -31,6 +31,7 @@ import { SETTLEMENT_LABELS } from "@/lib/economyConstants";
 import { supabase } from "@/integrations/supabase/client";
 
 import ProductionOverviewCard from "@/components/economy/ProductionOverviewCard";
+import CityEconomyAnalytics from "@/components/economy/CityEconomyAnalytics";
 import WorkforcePanel from "@/components/economy/WorkforcePanel";
 import PopulationPanel from "@/components/economy/PopulationPanel";
 import MarketsHub from "@/components/economy/MarketsHub";
@@ -289,6 +290,12 @@ const EconomyTab = ({
 
         {/* ═══ CITIES TAB ═══ */}
         <TabsContent value="cities" className="space-y-5 animate-fade-in">
+          <CityEconomyAnalytics
+            sessionId={sessionId}
+            currentPlayerName={currentPlayerName}
+            currentTurn={currentTurn}
+            cities={cities}
+          />
           <div className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
             <div className="px-5 pt-4 pb-2">
               <h3 className="text-sm font-display font-semibold flex items-center gap-2">
