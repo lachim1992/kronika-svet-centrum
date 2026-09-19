@@ -182,8 +182,9 @@ const Dashboard = () => {
         setMyRole(role);
         setMyPlayerName(canonicalPlayerName);
       } else {
-        setMyPlayerName(localStorage.getItem("ch_playerName") || "Hráč");
-        setMyRole(globalRole === "moderator" ? "moderator" : "admin");
+        const observerPlayerName = players[0]?.player_name || localStorage.getItem("ch_playerName") || "Hráč";
+        setMyPlayerName(observerPlayerName);
+        setMyRole(globalRole || "player");
       }
 
     };
@@ -222,7 +223,7 @@ const Dashboard = () => {
     fetchMembership();
     fetchFoundation();
     fetchChronicle0();
-  }, [user, sessionId]);
+  }, [user, sessionId, players]);
 
   if (loading) {
     return (
