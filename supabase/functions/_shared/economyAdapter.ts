@@ -6,6 +6,9 @@ import { buildManagementReport } from './management.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
 
 const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
+/** Baseline market/granary capability that any inhabited settlement has by its size alone. */
+const settlementBaseline=(population:unknown)=>{const p=nonnegative(population);
+  return p>=8000?3:p>=4000?2:p>=1500?1:p>0?0.5:0;};
 /** Fail closed: pagination and DB failures must never masquerade as an empty economy. */
 async function rows(sb:any,table:string,session?:string){
   const out:any[]=[];
@@ -171,7 +174,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     marketBaskets.push({session_id:session,city_id:c.id,player_name:c.owner,basket_key:bk,turn_number:turn,
       auto_supply:sum('produced_household'),recipe_bonus:recipeSupply,building_bonus:structureSupply,bonus_supply:recipeSupply+structureSupply,
       local_supply:sum('consumed_household')+sum('consumed_state'),
-      local_demand:demand,unmet_demand:unmet,domestic_satisfaction:demand?1-unmet/demand:1,export_surplus:sum('stored'),quality_weight:1,
+      local_demand:demand,unmet_demand:unmet,domestic_satisfaction:demand?1-unmet/demand:1,export_surplus:sum('stored')+sum('exported'),quality_weight:1,
       market_access:1,monetization:1});}
   const tradeFlows=result.flows.filter(f=>cityNode.has(f.source)&&cityNode.has(f.destination)).map(f=>({session_id:session,good_key:f.good,
     source_city_id:cityNode.get(f.source),target_city_id:cityNode.get(f.destination),source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,
