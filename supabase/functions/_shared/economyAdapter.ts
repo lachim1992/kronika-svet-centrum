@@ -63,8 +63,13 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       activePopModifier:lawModifiers.active,maxMobModifier:lawModifiers.maxMobilization,
       classes:{peasants:nonnegative(c.population_peasants),burghers:nonnegative(c.population_burghers),clerics:nonnegative(c.population_clerics),warriors:nonnegative(c.population_warriors)},
       soldiers:population?soldiers*nonnegative(c.population_total)/population:0,stability:nonnegative(c.city_stability??50)/100,
-      irrigation:nonnegative(c.irrigation_level),labor:normalizeLabor(c.labor_allocation||{}),market:nonnegative(c.market_level),
-      storage:effects.reduce((s,e)=>s+nonnegative(e.storage_capacity??e.warehouse_level),0),admin:nonnegative(c.temple_level),
+      irrigation:nonnegative(c.irrigation_level),labor:normalizeLabor(c.labor_allocation||{}),
+      // Every inhabited settlement keeps a baseline marketplace and granary even before dedicated
+      // buildings exist; without it all surplus spoils and no trade can ever start.
+      market:nonnegative(c.market_level)+settlementBaseline(c.population_total),
+      storage:effects.reduce((s,e)=>s+nonnegative(e.storage_capacity??e.warehouse_level),0)+settlementBaseline(c.population_total),
+      admin:nonnegative(c.temple_level),
+
       security:nonnegative(c.city_stability??50)/100,guild:Math.max(0,...db.province_nodes.filter(n=>n.city_id===c.id).map(n=>nonnegative(n.guild_level))),
       ideology:realm.trade_ideology||'customary_local',coastal:!!db.province_hexes.find(h=>(h.grid_x??h.q)===(c.grid_x??c.province_q)&&(h.grid_y??h.r)===(c.grid_y??c.province_r))?.coastal};
   });
