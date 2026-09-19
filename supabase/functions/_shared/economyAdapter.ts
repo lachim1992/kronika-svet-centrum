@@ -162,18 +162,19 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const marketBaskets:any[]=[];
   for(const c of cities)for(const bk of Object.keys(BASKET_TIER)){const bs=result.balances.filter(b=>b.city===c.id&&goodMap.get(b.good)!.basket===bk);
     const sum=(field:string)=>bs.reduce((s,b)=>s+Number((b as any)[field]||0),0),demand=sum('demand'),unmet=sum('unmet_demand');
+    const recipeSupply=sum('produced_node'),structureSupply=sum('produced_facility')+sum('produced_district');
     marketBaskets.push({session_id:session,city_id:c.id,player_name:c.owner,basket_key:bk,turn_number:turn,
-      auto_supply:sum('produced_household'),bonus_supply:sum('produced_node')+sum('produced_facility')+sum('produced_district'),
+      auto_supply:sum('produced_household'),recipe_bonus:recipeSupply,building_bonus:structureSupply,bonus_supply:recipeSupply+structureSupply,
       local_supply:sum('consumed_household')+sum('consumed_state'),
       local_demand:demand,unmet_demand:unmet,domestic_satisfaction:demand?1-unmet/demand:1,export_surplus:sum('stored'),quality_weight:1,
-      building_bonus:sum('produced_facility')+sum('produced_district')});}
+      market_access:1,monetization:1});}
   const tradeFlows=result.flows.filter(f=>cityNode.has(f.source)&&cityNode.has(f.destination)).map(f=>({session_id:session,good_key:f.good,
     source_city_id:cityNode.get(f.source),target_city_id:cityNode.get(f.destination),source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,
     flow_type:f.reason,volume_per_turn:f.qty,quality_band:Math.floor(f.quality),effective_price:f.qty?f.gross_value/f.qty:0,status:'active',turn_created:turn,
     provenance:f}));
   const basketFlows=result.flows.map(f=>({session_id:session,basket_key:goodMap.get(f.good)!.basket,source_city_id:f.source,target_city_id:f.destination,
     source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,volume:f.qty,unit_price:f.qty?f.gross_value/f.qty:0,gross_value:f.gross_value,
-    fiscal_capture:0,turn_number:turn}));
+    fiscal_capture:0,turn_number:turn,path_cells:f.path,transport_modes:f.modes}));
   const realms=db.realm_resources.map(r=>{const owned=new Set(cities.filter(c=>c.owner===r.player_name).map(c=>c.id)),bs=result.balances.filter(b=>owned.has(b.city));
     const sum=(f:string)=>bs.reduce((s,b)=>s+Number((b as any)[f]||0),0),consumption=bs.reduce((s,b)=>s+(b.consumed_household+b.consumed_state)*goodMap.get(b.good)!.price,0);
     const channelValue=(ch:string)=>bs.reduce((s,b)=>s+Number((b as any)[`produced_${ch}`])*goodMap.get(b.good)!.price*(1+b.quality*ECONOMY.qualityPremium),0);
