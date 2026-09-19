@@ -171,8 +171,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const transport=p.cost*policy.merchantFriction;
     if(transport>unit||p.cost>reach*policy.reach)return 0;
     if ((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0) return 0;
-    const scarcity=1+Math.min(2,Math.max(0,db.demand-available(db))/Math.max(1,db.demand));
-    if(p.cost>C.regionalReach&&unit*scarcity-unit-transport-p.tolls<unit*C.merchantMargin)return 0;
+    // Price gradient: merchants move goods for realized value differences, not for bare deficits.
+    const sourcePrice=priceOf(src.id,g.key),destinationPrice=priceOf(dst.id,g.key);
+    const risk=p.edges.reduce((a,e)=>a+n(e.risk),0)*C.priceRiskCost*destinationPrice;
+    const margin=destinationPrice*(1-p.loss)*(1-targetPolicy.tariff)-sourcePrice-transport-p.tolls-risk;
+    if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return 0;
     const qty=Math.min(Math.max(0,available(b)-keep),wanted/(1-p.loss),p.capacity)*targetPolicy.imports;
     if(qty<C.minLot)return 0;const delivered=qty*(1-p.loss),before=available(db);
     b.exported+=qty;db.imported+=delivered;db.quality=(before*db.quality+delivered*b.quality)/(before+delivered);
@@ -182,7 +185,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const tolls=qty*(p.tolls+unit*targetPolicy.tariff);
     flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:b.quality,gross_value:delivered*unit,
       transport_cost:qty*transport,tolls,net_value:delivered*unit-qty*transport-tolls,reason:branded&&reason==='household_consumption'?'famous_good_demand':reason,
-      path:p.cells,edges:p.edges.map(e=>e.id),via_hubs:via.filter(id=>p.cells.includes(cityById.get(id)?.cell||'')),famous:branded?key(src.id,g.key):null});return delivered;
+      path:p.cells,edges:p.edges.map(e=>e.id),via_hubs:via.filter(id=>p.cells.includes(cityById.get(id)?.cell||'')),famous:branded?key(src.id,g.key):null,
+      source_price:sourcePrice,destination_price:destinationPrice,expected_margin:margin*delivered});return delivered;
+
   };
   const producers=[...snapshot.producers].sort((a,b)=>Number(b.source)-Number(a.source)||a.id.localeCompare(b.id));
   const pending=new Map(producers.map(p=>[p.id,p]));
