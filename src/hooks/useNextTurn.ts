@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { getCommitTurnIssues } from "@/lib/commitTurnResult";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { saveCommitTurnReport } from "@/components/realm/TurnExecutionReport";
@@ -13,15 +14,18 @@ interface UseNextTurnOptions {
 
 export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onComplete }: UseNextTurnOptions) {
   const [processing, setProcessing] = useState(false);
+  const inFlight = useRef(false);
 
   const processNextTurn = async () => {
-    if (processing) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setProcessing(true);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
 
     try {
       // commit-turn can take 60s+ due to world tick + chronicles + economy
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
+      timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
 
       const { data, error } = await supabase.functions.invoke("commit-turn", {
         body: { sessionId, playerName },
@@ -55,33 +59,24 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
       }
 
       const result = data;
+      const issues = getCommitTurnIssues(result);
 
       // Persist execution report (per-phase status + failures) for UI panel
-      const phaseEntries = Object.entries(result?.results || {});
-      const errorPhases = phaseEntries.filter(([, r]: any) => r?.error);
-      const failureCount = phaseEntries.reduce(
-        (s: number, [, r]: any) => s + (r?.failures?.length || 0),
-        0,
-      );
       saveCommitTurnReport({
         ts: Date.now(),
         turn: currentTurn,
         sessionId,
-        ok: errorPhases.length === 0,
+        ok: issues.length === 0,
+        topError: issues.length > 0 ? issues.join("; ") : undefined,
         results: result?.results || {},
         criticalMs: result?.criticalMs,
       });
 
-      if (errorPhases.length > 0) {
-        toast.error(
-          `${errorPhases.length} fází selhalo: ${errorPhases.map(([k]) => k).join(", ")}`,
-          { description: "Otevři 'Report posledního tahu' v přehledu říše.", duration: 8000 },
-        );
-      } else if (failureCount > 0) {
-        toast.warning(
-          `Tah dokončen s ${failureCount} dílčími chybami (AI frakce / ekonomika).`,
-          { description: "Detaily v 'Report posledního tahu'.", duration: 6000 },
-        );
+      if (issues.length > 0) {
+        toast.error("Tah nebyl dokončen bez chyb.", {
+          description: "Otevři report posledního tahu. Neopakuj tah naslepo.",
+          duration: 8000,
+        });
       }
       const growthCount = result?.results?.worldTick?.growthCount || 0;
       const eventsCount = result?.results?.worldTick?.emittedEventsCount || 0;
@@ -98,19 +93,8 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
         toast.info("📦 Ekonomika všech hráčů zpracována.");
       }
 
-      // Canonical loop step (per BETA_SCOPE.md): refresh-economy after commit-turn.
-      // Non-fatal: turn is already committed server-side; refresh is downstream consolidation.
-      try {
-        const { error: refreshErr } = await supabase.functions.invoke("refresh-economy", {
-          body: { session_id: sessionId },
-        });
-        if (refreshErr) {
-          console.warn("refresh-economy non-fatal:", refreshErr.message);
-          toast.warning("Ekonomika nebyla plně přepočtena, hra pokračuje.");
-        }
-      } catch (e) {
-        console.warn("refresh-economy threw:", e);
-      }
+      // commit-turn owns the complete refresh pipeline. A second client-side
+      // refresh hid server failures and recalculated the same world again.
 
       // Background tasks are now scheduled asynchronously via EdgeRuntime.waitUntil
       // They will complete in the background — no need to wait for them
@@ -132,11 +116,15 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
         toast.info(`⚔️ Sphaera Liga: ${rp} kol odehráno.${sc ? " 🏆 Sezóna dokončena!" : ""}`);
       }
 
-      toast.success(`Kolo ${currentTurn} uzavřeno. Pokračujeme rokem ${currentTurn + 1}.`);
+      if (issues.length === 0) {
+        toast.success(`Kolo ${currentTurn} uzavřeno. Pokračujeme rokem ${result.newTurn ?? currentTurn + 1}.`);
+      }
     } catch (e) {
       console.error("commit-turn unexpected error:", e);
       toast.error("Neočekávaná chyba při uzavírání kola.");
     } finally {
+      clearTimeout(timeout);
+      inFlight.current = false;
       setProcessing(false);
       onComplete();
     }
