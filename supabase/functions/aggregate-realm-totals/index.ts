@@ -1,3 +1,4 @@
+import { strictDatabase } from '../_shared/strictDatabase.ts';
 // aggregate-realm-totals: FINAL AGGREGATION phase (Economy Integrity Pass, Krok 2).
 //
 // WRITER CONTRACT:
@@ -55,10 +56,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const sb = createClient(
+    const sb = strictDatabase(createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    ));
 
     // NOTE: wealth_output is legacy abstract wealth-flow and is deliberately NOT read
     // here (allowlist: compute-economy-flow + dev/debug only).
@@ -100,7 +101,7 @@ Deno.serve(async (req) => {
     // Read EVERY realm of the session (not just node owners): a player who lost or never
     // owned nodes must be written as an explicit 0, never left with a stale capacity.
     const { data: realmRows } = await sb.from("realm_resources")
-      .select("player_name, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal, goods_production_value")
+      .select("player_name, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal, goods_production_value, value_added_gdp")
       .eq("session_id", session_id);
     for (const r of realmRows || []) {
       const p = (r as any).player_name as string;
@@ -118,13 +119,22 @@ Deno.serve(async (req) => {
 
     // Export magnitude — a separate TRADE metric. It must NOT be added to GDP:
     // exported goods are already inside realized production value (double counting).
-    const { data: btfRows } = await sb.from("basket_trade_flows")
-      .select("source_player, gross_value")
-      .eq("session_id", session_id);
+    const { data: session } = await sb.from("game_sessions").select("current_turn").eq("id", session_id).single();
+    if (!session) throw new Error("Session not found");
+    const btfRows: any[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const { data } = await sb.from("basket_trade_flows")
+        .select("source_player, target_player, gross_value")
+        .eq("session_id", session_id).eq("turn_number", session.current_turn)
+        .order("id", { ascending: true }).range(offset, offset + 499);
+      if (!data) throw new Error("Missing trade projection");
+      btfRows.push(...data);
+      if (data.length < 500) break;
+    }
     const exportValue = new Map<string, number>();
     for (const row of btfRows || []) {
       const p = (row as any).source_player as string;
-      if (!p) continue;
+      if (!p || p === row.target_player) continue;
       exportValue.set(p, (exportValue.get(p) || 0) + Number((row as any).gross_value || 0));
     }
 
@@ -138,11 +148,8 @@ Deno.serve(async (req) => {
         Number(pillars.goods_wealth_fiscal || 0);
 
       const exportGross = exportValue.get(player) || 0;
-      // GDP proxy (provisional — see economy-contract.md):
-      // total_gdp == goods_production_value (Layer B realized output). Node capacity
-      // (Layer A) and export value are NOT part of it.
-      // TODO(value-added pass): eliminate intermediate goods double counting.
-      const totalGdp = Number(pillars.goods_production_value || 0);
+      // Value added: realized goods output minus the physical inputs consumed.
+      const totalGdp = Number(pillars.value_added_gdp || 0);
       const capacity = t.capacity;
 
       const update: Record<string, any> = {
@@ -174,7 +181,7 @@ Deno.serve(async (req) => {
       }
       const { error: uErr } = await sb.from("realm_resources").update(update)
         .eq("session_id", session_id).eq("player_name", player);
-      if (uErr) console.error("aggregate-realm-totals update", player, uErr);
+      if (uErr) throw uErr;
       summary[player] = {
         total_gdp: update.total_gdp,
         fiscal_revenue: update.total_wealth ?? null,

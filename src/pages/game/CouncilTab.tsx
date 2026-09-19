@@ -1,3 +1,4 @@
+import ManagementCockpit from '@/components/management/ManagementCockpit';
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -660,6 +661,7 @@ const CouncilTab = ({
 
   return (
     <div className="pb-20">
+      <ManagementCockpit sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} mode="council"/>
       {/* Header */}
       <div className="manuscript-card p-4 mb-4">
         <div className="flex items-center gap-3">

@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck:edge": "tsc -p tsconfig.edge.json",
     "test:watch": "vitest"
   },
   "dependencies": {

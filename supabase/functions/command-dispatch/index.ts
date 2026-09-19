@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { readRealmWorkforce, actualSoldiers } from '../_shared/manpower.ts';
 import {
   computeAnnexCheck,
   DEFAULT_INFLUENCE,
@@ -775,7 +776,7 @@ async function executeBuildRoadPath(
     .eq("session_id", sessionId).gte("grid_x", Math.min(...xs) - 1).lte("grid_x", Math.max(...xs) + 1)
     .gte("grid_y", Math.min(...ys) - 1).lte("grid_y", Math.max(...ys) + 1);
   if (tileError) return { events: [], error: tileError.message };
-  const tileByKey = new Map((tiles || []).map((tile: any) => [`${tile.grid_x},${tile.grid_y}`, tile]));
+  const tileByKey = new Map<string,any>((tiles || []).map((tile: any) => [`${tile.grid_x},${tile.grid_y}`, tile]));
   const pathTiles = path.map((cell: any) => tileByKey.get(`${cell.x},${cell.y}`));
   if (pathTiles.some((tile: any) => !tile || tile.is_passable === false || tile.biome_family === "sea")) return { events: [], error: "Trasa vede přes neprůchodné nebo mořské pole" };
 
@@ -805,7 +806,7 @@ async function executeBuildRoadPath(
   });
   const { data: existingSegments } = await supabase.from("road_segments").select("id, from_x, from_y, to_x, to_y, level, status")
     .eq("session_id", sessionId);
-  const existingByEdge = new Map((existingSegments || []).map((edge: any) => [`${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`, edge]));
+  const existingByEdge = new Map<string,any>((existingSegments || []).map((edge: any) => [`${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`, edge]));
   for (const edge of edges) {
     const existing = existingByEdge.get(`${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`);
     const where = `mezi poli ${edge.from_x},${edge.from_y} a ${edge.to_x},${edge.to_y}`;
@@ -1159,7 +1160,7 @@ async function executeMoveStack(
     actorName: actor.name,
   });
 
-  if (!result.ok) return { events: [], error: result.error };
+  if (result.ok === false) return { events: [], error: result.error };
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
@@ -1609,7 +1610,8 @@ async function executeRecruitStack(
   if (!realm) return { events: [], error: "Realm resources not found" };
 
   // ── Manpower validation: free-form against pool (no mobilization cap) ──
-  const manpowerPool = realm.manpower_pool || 0;
+  const currentWorkforce = await readRealmWorkforce(supabase,sessionId,playerName,realm.mobilization_rate??0.1);
+  const manpowerPool = currentWorkforce.workforce;
   if (totalManpower > manpowerPool) {
     return { events: [], error: `Nedostatek mužů v poolu: potřeba ${totalManpower}, dostupno ${manpowerPool}.` };
   }
@@ -1664,8 +1666,8 @@ async function executeRecruitStack(
   const newGrain = Math.max(0, grainReserve - totalProdCost);
   await supabase.from("realm_resources").update({
     manpower_pool: newPool,
-    manpower_committed: (realm.manpower_committed || 0) + totalManpower,
-    manpower_mobilized: (realm.manpower_mobilized || 0) + totalManpower,
+    manpower_committed: currentWorkforce.mobilized + totalManpower,
+    manpower_mobilized: currentWorkforce.mobilized + totalManpower,
     gold_reserve: newGold,
     grain_reserve: newGrain,
   }).eq("id", realm.id);
@@ -2709,11 +2711,18 @@ async function executeRemobilizeStack(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { stackId, stackName, manpower } = payload;
-  if (!stackId || !manpower) return { events: [], error: "Missing stackId or manpower" };
+  const { stackId, stackName } = payload;
+  if (!stackId) return { events: [], error: "Missing stackId" };
 
   const realm = await getRealm(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
+  const {data:storedStack,error:storedError}=await supabase.from('military_stacks').select('*').eq('session_id',sessionId).eq('player_name',actor.name).eq('id',stackId).maybeSingle();
+  if(storedError)throw storedError;
+  if(!storedStack||storedStack.is_active)return {events:[],error:'Inactive owned stack required'};
+  if(storedStack.remobilize_ready_turn!=null&&storedStack.remobilize_ready_turn>turnNumber)return {events:[],error:'Stack is not ready to remobilize'};
+  const manpower=actualSoldiers([{...storedStack,is_active:true}]);
+  const available=await readRealmWorkforce(supabase,sessionId,actor.name,realm.mobilization_rate??0.1);
+  if(manpower>available.workforce)return {events:[],error:`Nedostatek obyvatel: ${available.workforce}`};
 
   await supabase.from("military_stacks").update({
     is_active: true,
@@ -2723,7 +2732,9 @@ async function executeRemobilizeStack(
   }).eq("id", stackId).eq("player_name", actor.name);
 
   await supabase.from("realm_resources").update({
-    manpower_committed: (realm.manpower_committed || 0) + manpower,
+    manpower_committed: available.mobilized + manpower,
+    manpower_mobilized: available.mobilized + manpower,
+    manpower_pool: Math.max(0,available.workforce-manpower),
   }).eq("id", realm.id);
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
@@ -2812,11 +2823,22 @@ async function executeReinforceStack(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { stackId, stackName, reinforcements, addedManpower, addedGold } = payload;
+  const { stackId, stackName, reinforcements } = payload;
   if (!stackId) return { events: [], error: "Missing stackId" };
+  const entries = Object.entries(reinforcements || {});
+  if (!entries.length || entries.some(([unit,amount]) => !(unit in UNIT_GOLD_FACTOR) || !Number.isSafeInteger(amount) || Number(amount) < 0)) {
+    return { events: [], error: "Invalid reinforcement composition" };
+  }
+  const addedManpower = entries.reduce((sum,[,amount]) => sum + Number(amount),0);
+  const addedGold = Math.round(entries.reduce((sum,[unit,amount]) => sum + Number(amount) * (UNIT_GOLD_FACTOR[unit] || 1),0));
+  const {data:ownedStack,error:ownedError} = await supabase.from('military_stacks').select('id,is_active').eq('session_id',sessionId).eq('player_name',actor.name).eq('id',stackId).maybeSingle();
+  if(ownedError)throw ownedError;
+  if(!ownedStack?.is_active)return {events:[],error:'Active owned stack required'};
 
   const realm = await getRealm(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
+  const available = await readRealmWorkforce(supabase,sessionId,actor.name,realm.mobilization_rate??0.1);
+  if(addedManpower>available.workforce)return {events:[],error:`Nedostatek obyvatel pro posily: ${available.workforce}`};
   if ((realm.gold_reserve || 0) < (addedGold || 0)) {
     return { events: [], error: "Nedostatek zlata" };
   }
@@ -2863,7 +2885,9 @@ async function executeReinforceStack(
   }).eq("id", stackId);
 
   await supabase.from("realm_resources").update({
-    manpower_committed: (realm.manpower_committed || 0) + (addedManpower || 0),
+    manpower_committed: available.mobilized + addedManpower,
+    manpower_mobilized: available.mobilized + addedManpower,
+    manpower_pool: Math.max(0,available.workforce-addedManpower),
     gold_reserve: (realm.gold_reserve || 0) - (addedGold || 0),
   }).eq("id", realm.id);
 
@@ -2916,7 +2940,10 @@ async function executeSetMobilization(
   if (!realm) return { events: [], error: "Realm not found" };
 
   const update: any = { mobilization_rate: rate };
-  if (typeof manpowerPool === "number") update.manpower_pool = manpowerPool;
+  const workforce = await readRealmWorkforce(supabase,sessionId,actor.name,rate);
+  update.manpower_pool = workforce.workforce;
+  update.manpower_committed = workforce.mobilized;
+  update.manpower_mobilized = workforce.mobilized;
   await supabase.from("realm_resources").update(update).eq("id", realm.id);
 
   return insertEvents(supabase, commandId, [{
@@ -3096,13 +3123,13 @@ async function executeBuildSubnode(
   } else {
     // Outpost on unclaimed land: attach it to the nearest own city so its output reaches a market.
     const { data: ownCities } = await supabase.from("cities")
-      .select("id, province_id, grid_x, grid_y, hex_q, hex_r")
+      .select("id, province_id, grid_x, grid_y, province_q, province_r")
       .eq("session_id", sessionId).eq("owner_player", actor.name);
     let best: any = null; let bestDist = Infinity;
     for (const c of (ownCities || [])) {
-      const cx = c.grid_x ?? c.hex_q; const cy = c.grid_y ?? c.hex_r;
+      const cx = c.grid_x ?? c.province_q; const cy = c.grid_y ?? c.province_r;
       if (cx == null || cy == null) continue;
-      const dist = Math.max(Math.abs(Number(cx) - parcel.grid_x), Math.abs(Number(cy) - parcel.grid_y));
+      const dist = Math.abs(Number(cx) - parcel.grid_x) + Math.abs(Number(cy) - parcel.grid_y);
       if (dist < bestDist) { bestDist = dist; best = c; }
     }
     if (best && bestDist <= 6) {

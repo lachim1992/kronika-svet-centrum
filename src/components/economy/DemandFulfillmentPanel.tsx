@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { readEconomySnapshot } from '@/lib/economySnapshots';
 
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import { DEMAND_BASKETS, resolveBasketKey, VALID_BASKETS } from "@/lib/goodsCata
 interface Props {
   sessionId: string;
   playerName: string;
+  currentTurn: number;
   cities: any[];
 }
 
@@ -73,39 +75,38 @@ function getLayerForBasket(bk: string): string {
   return "need";
 }
 
-const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
+const DemandFulfillmentPanel = ({ sessionId, playerName, cities, currentTurn }: Props) => {
   const { devMode } = useDevMode();
   
   const [baskets, setBaskets] = useState<CityBasketRow[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error,setError]=useState('');
   const [showCatalog, setShowCatalog] = useState(false);
   const [expandedBasket, setExpandedBasket] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
     const fetch = async () => {
       setLoading(true);
+      setError('');setBaskets([]);
+      try{
       const [bRes, tRes] = await Promise.all([
-        supabase
-          .from("city_market_baskets")
-          .select("*")
-          .eq("session_id", sessionId)
-          .eq("player_name", playerName)
-          .order("turn_number", { ascending: false })
-          .limit(500),
+        readEconomySnapshot('city_market_baskets',sessionId,currentTurn,playerName),
         supabase
           .from("building_templates")
           .select("id, name, category, required_settlement_level, effects, cost_wealth, cost_wood, cost_stone, cost_iron"),
       ]);
 
-      const rows = (bRes.data || []) as CityBasketRow[];
-      const maxTurn = rows.reduce((m, r) => Math.max(m, r.turn_number), 0);
-      setBaskets(rows.filter(r => r.turn_number === maxTurn));
+      if (!active) return;
+      if(tRes.error)throw tRes.error;
+      setBaskets(bRes);
       setTemplates(tRes.data || []);
-      setLoading(false);
+      }catch(e){if(active)setError(String(e));}finally{if(active)setLoading(false);}
     };
     fetch();
-  }, [sessionId, playerName]);
+    return () => { active = false; };
+  }, [sessionId, playerName, currentTurn]);
 
   const basketMeta = useMemo(() => {
     const map = new Map<string, { label: string; icon: string }>();
@@ -151,6 +152,7 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
       .sort((a, b) => b.gap - a.gap),
   [byBasket]);
 
+  if(error)return <p role="alert" className="text-sm text-destructive">{error}</p>;
   if (loading) {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   }

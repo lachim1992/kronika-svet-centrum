@@ -1,3 +1,4 @@
+import { strictDatabase } from '../_shared/strictDatabase.ts';
 // compute-trade-systems
 // Node-Trade v1 — Stage 4
 //
@@ -87,7 +88,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const sb = strictDatabase(createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
 
     // Current turn (best-effort)
     const { data: sessionRow } = await sb
@@ -141,7 +142,7 @@ Deno.serve(async (req) => {
     const uf = ufMake();
     for (const n of nodes) ufFind(uf, n.id); // ensure singletons exist
     const cellId = (x: number, y: number) => `cell:${x},${y}`;
-    const riverKeys = new Set((riverRes.data || [])
+    const riverKeys = new Set<string>((riverRes.data || [])
       .filter((cell: any) => cell.has_river && cell.is_passable !== false)
       .map((cell: any) => `${cell.grid_x},${cell.grid_y}`));
     // Feeder spurs are land hauls — they may never cross water or impassable terrain.

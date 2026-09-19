@@ -54,7 +54,7 @@ async function invokeStep(
     } catch {
       data = { raw: text };
     }
-    if (!res.ok) {
+    if (!res.ok || data?.ok !== true || data?.error) {
       return { ok: false, error: data?.error || `HTTP ${res.status}: ${text.slice(0, 200)}` };
     }
     return { ok: true, data };
@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
     lockedSession = session_id;
 
     // ── Fiscal guard snapshot: these must be identical after the refresh ──
-    const FISCAL_COLUMNS = "player_name, gold_reserve, legitimacy, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal";
+    const FISCAL_COLUMNS = "player_name, gold_reserve, production_reserve, legitimacy, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal";
     const { data: fiscalBefore } = await sb.from("realm_resources")
       .select(FISCAL_COLUMNS)
       .eq("session_id", session_id);
@@ -149,6 +149,7 @@ Deno.serve(async (req) => {
       if (!res.ok) {
         console.error(`Step ${step.name} failed:`, res.error);
         warnings.push(`${step.name}: ${res.error}`);
+        break;
       }
     }
 
@@ -181,7 +182,7 @@ Deno.serve(async (req) => {
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: allOk ? 200 : 207,
+        status: allOk ? 200 : 500,
       },
     );
   } catch (e) {

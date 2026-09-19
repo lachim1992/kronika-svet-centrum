@@ -1,3 +1,4 @@
+import { computeNodeProductionBudget } from "@/lib/goodsCatalog";
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { getFiscalIncome, getEconomicActivity, getMarketPosition } from "@/lib/economyFlow";
@@ -117,16 +118,13 @@ describe("INVARIANT 3 — snapshot only after the whole pipeline succeeds", () =
 
 describe("Krok 6 — node capacity applies without an explicit production order", () => {
   it("compute-trade-flows treats a missing order as implicit auto", () => {
-    const src = fn("compute-trade-flows");
-    expect(src).toContain("auto_implicit");
-    expect(src).toContain("PRODUCTION_SHARE_CAP");
+    expect(computeNodeProductionBudget({production_output:8})).toBe(8);
+    expect(computeNodeProductionBudget({production_output:0})).toBe(0);
   });
-
   it("clears node_inventory for every node of the session (no ghost inventory)", () => {
-    const src = fn("compute-trade-flows");
-    expect(src).toMatch(/node_inventory"\)[\s\S]{0,200}\.delete\(\)/);
-  });
-});
+    const migration = readFileSync("supabase/migrations/20260919120000_canonical_goods_economy.sql", "utf8");
+    expect(migration).toContain("DELETE FROM node_inventory WHERE node_id IN");
+  });});
 
 describe("UI data contract", () => {
   const realm = {
@@ -195,11 +193,9 @@ describe("UI data contract", () => {
   });
 
   it("fiscal_capture is documented as telemetry only", () => {
-    const src = readFileSync("supabase/functions/compute-basket-trade-flows/index.ts", "utf8");
-    expect(src).toContain("TELEMETRY ONLY");
-    expect(src).toContain("fiscal_capture_total_telemetry");
+    const adapter=readFileSync("supabase/functions/_shared/economyAdapter.ts", "utf8");
+    expect(adapter).toContain("fiscal_capture:0");
   });
-
   it("commit-turn snapshot guard covers the whole derived pipeline", () => {
     const src = readFileSync("supabase/functions/commit-turn/index.ts", "utf8");
     expect(src).toContain("economyStepFailures");
@@ -234,13 +230,15 @@ describe("Layer A/B/C separation", () => {
     const src = readFileSync("supabase/functions/process-turn/index.ts", "utf8");
     expect(src).toContain("goodsDomesticConsumptionValue");
     expect(src).toContain("goodsExtractionValue");
-    expect(src).toMatch(/gdp_market\s*=\s*goodsProductionValue/);
+    expect(src).toContain("realm.economy_detail?.market_turnover");
   });
 
   it("food comes from the staple_food basket only", () => {
     const src = readFileSync("supabase/functions/process-turn/index.ts", "utf8");
     expect(src).toContain("stapleByCity");
-    expect(src).toMatch(/last_turn_grain_prod:\s*Math\.round\(totalFoodSupply\)/);
+    expect(src).toMatch(/last_turn_grain_prod:\s*Math\.round\(foodProduced\)/);
+    expect(src).toContain('economy_detail?.food_stored');
+    expect(src).not.toMatch(/globalGrainReserve\s*[+-]=/);
     // goods_supply_volume must not top up the grain reserve any more
     expect(src).not.toMatch(/globalGrainReserve \+= goodsSupplyBonus/);
   });
@@ -254,12 +252,10 @@ describe("Layer A/B/C separation", () => {
   });
 
   it("post-trade fold does not double count auto/bonus supply", () => {
-    const src = readFileSync("supabase/functions/compute-basket-trade-flows/index.ts", "utf8");
-    expect(src).toMatch(/const totalSupply = localSupply \+ imp;/);
-    expect(src).not.toMatch(/localSupply \+ auto \+ bonus \+ imp/);
-    expect(src).toMatch(/construction_available_for_capex/);
+    const source=fn("compute-basket-trade-flows");
+    expect(source).not.toContain(".update(");
+    expect(source).not.toContain(".insert(");
   });
-
   it("building and district completion has a single writer in commit-turn", () => {
     const commit = readFileSync("supabase/functions/commit-turn/index.ts", "utf8");
     expect(commit).toMatch(/const effectiveTurn = turnNumber \+ 1;/);
@@ -270,11 +266,8 @@ describe("Layer A/B/C separation", () => {
   });
 
   it("zero Layer A output yields zero recipe throughput", () => {
-    const src = readFileSync("supabase/functions/compute-trade-flows/index.ts", "utf8");
-    expect(src).toMatch(/if \(!\(output > 0\)\) return 0;/);
-    expect(src).not.toMatch(/node\.production_output \|\| 5/);
+    expect(computeNodeProductionBudget({production_output:0,guild_level:10,upgrade_level:10})).toBe(0);
   });
-
   it("aggregate-realm-totals writes explicit zeros for realms without nodes", () => {
     const src = readFileSync("supabase/functions/aggregate-realm-totals/index.ts", "utf8");
     expect(src).toMatch(/if \(p && !byPlayer\.has\(p\)\) byPlayer\.set\(p, emptyTotals\(\)\)/);

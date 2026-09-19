@@ -1,3 +1,5 @@
+import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.ts";
+import { TAX_MAX, laffer, governance, taxRevenue } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -164,6 +166,8 @@ Deno.serve(async (req) => {
     // `allowCapexAccrual` is passed as true by commit-turn ONLY when the whole Layer B
     // pipeline succeeded. Stale goods data must never fund construction stock.
     const { sessionId, playerName, recalcOnly, allowCapexAccrual } = await req.json();
+    if (recalcOnly) throw new Error("process-turn cannot recompute derived state; use refresh-economy");
+    if (allowCapexAccrual !== true) throw new Error("Mandatory economy phase failed; fiscal resolution refused");
 
     if (!sessionId || !playerName) throw new Error("Missing sessionId or playerName");
 
@@ -242,6 +246,7 @@ Deno.serve(async (req) => {
     const { data: myBasketRows } = await supabase.from("city_market_baskets")
       .select("city_id, basket_key, local_demand, local_supply, unmet_demand, domestic_satisfaction")
       .eq("session_id", sessionId)
+      .eq("turn_number", currentTurn)
       .in("city_id", cityIds.length ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
     const stapleByCity = new Map<string, any>();
     for (const b of (myBasketRows as any[]) || []) {
@@ -380,47 +385,27 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // WORKFORCE & MANPOWER (with warriors)
     // ══════════════════════════════════════════
-    const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2, warriors: 0.9 };
-    let activePopRaw = 0, totalPopulation = 0, totalWarriors = 0;
-    for (const city of myCities) {
-      if (city.status && city.status !== "ok") continue;
-      totalPopulation += city.population_total || 0;
-      totalWarriors += city.population_warriors || 0;
-      activePopRaw += (city.population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
-                    + (city.population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
-                    + (city.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics
-                    + (city.population_warriors || 0) * ACTIVE_POP_WEIGHTS.warriors;
-    }
-    activePopRaw = Math.floor(activePopRaw);
-    const effectiveRatio = Math.max(0.1, Math.min(0.9, 0.5 + activePopModifier));
-    const effectiveActivePop = Math.floor(activePopRaw * effectiveRatio);
-    const mobRate = realm.mobilization_rate || 0.1;
-    const mobilized = Math.floor(effectiveActivePop * mobRate);
-    const workforce = effectiveActivePop - mobilized;
-    const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
+    const { data: sessionStacks, error: stacksError } = await supabase.from("military_stacks")
+      .select("id, unit_count, soldiers, is_active, player_name, owner_player, upkeep_food, upkeep_gold, morale, power, assignment, assigned_route_id, construction_progress")
+      .eq("session_id", sessionId).eq("is_active", true);
+    if (stacksError) throw stacksError;
+    const stacks=(sessionStacks||[]).filter(s=>(s.owner_player??s.player_name)===playerName);
+    const totalSoldiers = actualSoldiers(stacks || []);
+    const mobRate = realm.mobilization_rate ?? 0.1;
+    const { activePopRaw, effectiveRatio, effectiveActivePop, mobilized, workforce, workforceRatio } =
+      computeWorkforceBreakdown(myCities, mobRate, activePopModifier, maxMobModifier, totalSoldiers);
+    const totalPopulation = myCities.reduce((n, c) => n + (c.population_total || 0), 0);
+    const totalWarriors = myCities.reduce((n, c) => n + (c.population_warriors || 0), 0);
     const warriorRatio = totalPopulation > 0 ? totalWarriors / totalPopulation : 0;
-
-    // Mobilization penalties on economy
     const mobProductionPenalty = mobilized * MOB_PRODUCTION_PENALTY_RATE;
     const mobWealthPenalty = mobilized * MOB_WEALTH_PENALTY_RATE;
 
-    // ══════════════════════════════════════════
-    // ARMY UPKEEP + SUPPLY STRAIN + CONSTRUCTION TICK (Stage 7)
-    // Upkeep parity: 0.3% gold + 0.4% food per soldier
-    // Over-mobilization: ×1.5 upkeep when soft trigger crossed (>10% pop mobilized)
-    // ══════════════════════════════════════════
-    const { data: stacks } = await supabase.from("military_stacks")
-      .select("id, unit_count, soldiers, upkeep_food, upkeep_gold, morale, power, assignment, assigned_route_id, construction_progress")
-      .eq("session_id", sessionId).eq("owner_player", playerName);
-
-    // Soft over-mobilization trigger (10% pop). Hard 20% cap is enforced on MOBILIZE command.
-    const totalSoldiers = (stacks || []).reduce((sum, s) => sum + (s.soldiers || s.unit_count || 0), 0);
     const overMobilized = totalPopulation > 0 && totalSoldiers > Math.floor(totalPopulation * 0.10);
     const upkeepMult = overMobilized ? 1.5 : 1.0;
 
     let totalArmySize = 0, armyProductionUpkeep = 0, armyWealthUpkeep = 0;
     for (const s of (stacks || [])) {
-      const men = s.soldiers || s.unit_count || 0;
+      const men = actualSoldiers([s]);
       totalArmySize += men;
       // Parity formula: 0.3% gold + 0.4% food per soldier (× over-mobilization mult)
       armyProductionUpkeep += Math.ceil(men * 0.004 * upkeepMult);
@@ -532,7 +517,10 @@ Deno.serve(async (req) => {
     //   4. Mobilization penalties
     // ══════════════════════════════════════════════════════════════
     const grainRationMult = 1 + (grainRationModifier / 100);
-    let globalGrainReserve = realm.grain_reserve || 0;
+    // The physical ledger has already consumed household and army rations.
+    // Fiscal resolution projects the remaining stock; it never creates food.
+    const globalGrainReserve = Number((realm as any).economy_detail?.food_stored || 0);
+    const foodProduced = Number((realm as any).economy_detail?.food_produced || 0);
     let famineCityCount = 0;
     let totalDemand = 0;
     // LAYER B food totals (staple_food). The legacy macro `totalCityProduction`
@@ -636,9 +624,8 @@ Deno.serve(async (req) => {
       // FOOD = staple_food basket (Layer B, post-trade). Legacy computeCityDemand is
       // only a fallback for cities the goods layer has not scored yet.
       const staple = stapleByCity.get(city.id);
-      const cityDemand = Math.max(1, Math.round(
-        (staple ? Number(staple.local_demand || 0) : computeCityDemand(city)) * grainRationMult,
-      ));
+      if (!staple) throw new Error(`Missing canonical food balance for city ${city.id}`);
+      const cityDemand = Number(staple.local_demand || 0);
       const cityFoodSupply = staple ? Number(staple.local_supply || 0) : 0;
       const cityFoodDeficit = staple
         ? Number(staple.unmet_demand || 0)
@@ -715,13 +702,8 @@ Deno.serve(async (req) => {
 
       // Per-city food balance — staple_food only (post-trade, imports already included)
       const cityBalance = cityFoodSupply - cityDemand;
-      const cityFamine = cityFoodDeficit > 0 && globalGrainReserve <= 0;
-
-      if (cityBalance >= 0) {
-        globalGrainReserve += cityBalance * 0.5;
-      } else {
-        globalGrainReserve += cityBalance;
-      }
+      // Unreachable stock in another city cannot cure a local shortage.
+      const cityFamine = cityFoodDeficit > 0;
 
       if (cityFamine) {
         famineCityCount++;
@@ -785,27 +767,15 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════════════════════════
 
     // Mobilization: peasants pulled into armies reduce food supply, not a macro production.
-    totalFoodSupply = Math.max(0, totalFoodSupply - mobProductionPenalty);
+    // Mobilization already reduced physical production in the canonical goods solver.
     totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
 
     // NOTE: the legacy "goods_supply_volume → grain reserve" bonus is REMOVED.
     // goods_supply_volume sums every storable good (tools, textiles…), not food.
     // Food comes exclusively from the staple_food basket above.
-    // Small empire buffer
-    if (myCities.length <= 3) globalGrainReserve += 10;
-    // Strategic salt supply bonus
-    if (strategicBonuses.supply_bonus > 0) {
-      const saltBonus = Math.round(globalGrainReserve * strategicBonuses.supply_bonus);
-      globalGrainReserve += saltBonus;
-      logEntries.push(`🧂 Solný bonus: +${saltBonus} zásob`);
-    }
-    // Army upkeep from global reserve
-    globalGrainReserve -= armyProductionUpkeep;
-    // Cap (salt also increases granary capacity)
+    // Storage and army consumption were resolved once in the goods ledger.
     const adjustedGranary = Math.round(granaryCapacity * (1 + strategicBonuses.supply_bonus));
-    globalGrainReserve = Math.max(0, Math.min(adjustedGranary, globalGrainReserve));
-
-    const netProduction = totalFoodSupply - totalDemand - armyProductionUpkeep;
+    const netProduction = foodProduced - totalFoodSupply;
 
 
     // ══════════════════════════════════════════════════════════════
@@ -823,14 +793,6 @@ Deno.serve(async (req) => {
     //     → at rate=max/√3:   peak revenue (~38% of max base)
     //     → at rate=max_rate: full evasion, 0 revenue
     // ══════════════════════════════════════════════════════════════
-    const TAX_MAX = {
-      domestic:   0.50,   // 50% domestic consumption tax → full evasion
-      market:     0.40,   // 40% market tariff → traders bypass
-      transit:    0.30,   // 30% transit toll → caravans reroute
-      extraction: 0.50,   // 50% extraction tax → black market
-      poll:       0.02,   // 2% per capita → tax revolts
-    };
-    const laffer = (rate: number, max: number) => Math.max(0, 1 - Math.pow(rate / max, 2));
 
     // Player-set tax rates (with sane defaults)
     const tr_domestic   = realm.tax_rate_domestic   ?? 0.10;
@@ -850,50 +812,34 @@ Deno.serve(async (req) => {
     //   transit    = Σ route capacity × control × relevance (below)
     //   extraction = goods_extraction_value (recipes on production_role=source nodes)
     // Layer A capacity (province_nodes.production_output) NEVER becomes a tax base.
-    const gdp_domestic   = goodsDomesticConsumptionValue > 0
-      ? goodsDomesticConsumptionValue
-      : totalPopulation * 0.01; // fallback until the goods layer publishes consumption
-    const gdp_market     = goodsProductionValue;
-    const gdp_extraction = goodsExtractionValue * strategicBonuses.wealth_mult;
-
-
-    let gdp_transit = 0;
-    const playerRoutes = allRoutes.filter(r => {
-      const nA = nodeMap.get(r.node_a); const nB = nodeMap.get(r.node_b);
-      return (nA?.controlled_by === playerName || nB?.controlled_by === playerName);
-    });
-    for (const route of playerRoutes) {
-      const dmg = Math.min((route.damage_level || 0) * 0.1, 0.9);
-      const cap = (route.capacity_value || 0) * (1 - dmg);
-      const nA = nodeMap.get(route.node_a); const nB = nodeMap.get(route.node_b);
-      const ctrl = (nA?.controlled_by === playerName && nB?.controlled_by === playerName) ? 1.0
-                 : (nA?.controlled_by === playerName || nB?.controlled_by === playerName) ? 0.5 : 0.25;
-      const rel = Math.max(nA?.importance_score || 0, nB?.importance_score || 0) * 0.1 + 0.5;
-      gdp_transit += cap * rel * ctrl;
-    }
+    const gdp_domestic = goodsDomesticConsumptionValue;
+    // Wholesale/re-export transactions are distinct from local final consumption.
+    const gdp_market = Number(realm.economy_detail?.market_turnover || 0);
+    const gdp_extraction = goodsExtractionValue;
+    const gdp_transit = Number(realm.economy_detail?.transit_value || 0);
 
     // ── Governance modifier: legitimacy gates collection efficiency ──
     // Low legitimacy = corruption, regional leakage, soft refusal. 0→0.5×, 50→0.75×, 100→1.0×.
     const realmLegitimacy = Math.max(0, Math.min(100, Number(realm.legitimacy ?? 50)));
-    const govMod = 0.5 + 0.5 * (realmLegitimacy / 100);
+    const govMod = governance(realmLegitimacy);
 
     // ── Per-pillar revenue with Lafferian dampening × governance ──
-    const pillarPopTax       = Math.round(totalPopulation * laffer(tr_poll,       TAX_MAX.poll)       * tr_poll       * govMod * copperMult * goldMult * lawTaxMult * 10) / 10;
-    const pillarDomesticMarket = Math.round(gdp_domestic   * laffer(tr_domestic,  TAX_MAX.domestic)  * tr_domestic   * govMod * 10) / 10;
-    const pillarMarketTariff   = Math.round(gdp_market     * laffer(tr_market,    TAX_MAX.market)    * tr_market     * govMod * 10) / 10;
-    const pillarTransitToll    = Math.round(gdp_transit    * laffer(tr_transit,   TAX_MAX.transit)   * tr_transit    * govMod * 10) / 10;
-    const pillarExtractionTax  = Math.round(gdp_extraction * laffer(tr_extraction, TAX_MAX.extraction) * tr_extraction * govMod * 10) / 10;
+    const pillarPopTax=taxRevenue(totalPopulation,tr_poll,'poll',govMod,copperMult*goldMult*lawTaxMult);
+    const pillarDomesticMarket=taxRevenue(gdp_domestic,tr_domestic,'domestic',govMod);
+    const pillarMarketTariff=taxRevenue(gdp_market,tr_market,'market',govMod);
+    const pillarTransitToll=taxRevenue(gdp_transit,tr_transit,'transit',govMod);
+    const pillarExtractionTax=taxRevenue(gdp_extraction,tr_extraction,'extraction',govMod);
     const pillarGoodsFiscal    = Math.round((pillarMarketTariff + pillarTransitToll + pillarExtractionTax) * 10) / 10;
     // v6: legacy `wealth_route_commerce` is deprecated and always written as 0 — transit revenue is bundled into goods_wealth_fiscal.
     const pillarRouteCommerce  = 0;
 
     // Laffer loss (informational): % of GDP lost to evasion across all pillars
-    const totalGDP = gdp_domestic + gdp_market + gdp_transit + gdp_extraction;
+    const totalTaxableVolume = gdp_domestic + gdp_market + gdp_transit + gdp_extraction;
     const totalEffective = gdp_domestic   * laffer(tr_domestic,   TAX_MAX.domestic)
                          + gdp_market     * laffer(tr_market,     TAX_MAX.market)
                          + gdp_transit    * laffer(tr_transit,    TAX_MAX.transit)
                          + gdp_extraction * laffer(tr_extraction, TAX_MAX.extraction);
-    const lafferLoss = totalGDP > 0 ? Math.round((1 - totalEffective / totalGDP) * 1000) / 1000 : 0;
+    const lafferLoss = totalTaxableVolume > 0 ? Math.round((1 - totalEffective / totalTaxableVolume) * 1000) / 1000 : 0;
 
     // Canonical 4-pillar sum (no double-counting): pop + domestic + goods_fiscal (market+transit+ext).
     const totalWealthIncome = pillarPopTax + pillarDomesticMarket + pillarGoodsFiscal;
@@ -922,7 +868,7 @@ Deno.serve(async (req) => {
     const newLegitimacy = Math.max(0, Math.min(100, realmLegitimacy + taxLegitimacyDelta));
 
     const combinedWealth = totalWealthIncome; // backward-compat alias for ledger writes
-    logEntries.push(`💰 Lafferian: pop=${pillarPopTax} dom=${pillarDomesticMarket} mkt=${pillarMarketTariff} trn=${pillarTransitToll} ext=${pillarExtractionTax} | GDP=${totalGDP.toFixed(0)} loss=${(lafferLoss*100).toFixed(0)}% govMod=${govMod.toFixed(2)} → příjem=${wealthIncome}`);
+    logEntries.push(`💰 Lafferian: pop=${pillarPopTax} dom=${pillarDomesticMarket} mkt=${pillarMarketTariff} trn=${pillarTransitToll} ext=${pillarExtractionTax} | GDP=${totalTaxableVolume.toFixed(0)} loss=${(lafferLoss*100).toFixed(0)}% govMod=${govMod.toFixed(2)} → příjem=${wealthIncome}`);
     if (taxLegitimacyDelta < 0) {
       logEntries.push(`⚖️ Přetížené daně: legitimita ${realmLegitimacy}→${newLegitimacy} (Δ${taxLegitimacyDelta}), pressure=${overTaxPressure.toFixed(2)}`);
     }
@@ -1081,15 +1027,8 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // MANPOWER (warriors contribute elite officers)
     // ══════════════════════════════════════════
-    let manpowerGrowth = 0;
-    for (const c of myCities) {
-      // Peasants provide bulk manpower, warriors provide quality
-      manpowerGrowth += Math.floor((c.population_peasants || 0) * 0.015);
-      manpowerGrowth += Math.floor((c.population_warriors || 0) * 0.005); // Small elite contribution
-    }
-    const mobilizationSpeed = civIdentity?.mobilization_speed || 1.0;
-    manpowerGrowth = Math.floor(manpowerGrowth * mobilizationSpeed);
-    const manpowerPool = (realm.manpower_pool || 0) + manpowerGrowth;
+    const manpowerPool = workforce;
+    const manpowerGrowth = manpowerPool - Number(realm.manpower_pool || 0);
 
     // ══════════════════════════════════════════
     // CAPACITY → LOGISTICS (layers + nodes)
@@ -1299,6 +1238,7 @@ Deno.serve(async (req) => {
     const activeTradeCount = (activeTradeRoutes || []).length;
     const totalMarketLevel = myCities.reduce((s, c) => s + (c.market_level || 0), 0);
     const economicPrestige = Math.min(100,
+      Number((realm as any).economy_detail?.fame_prestige || 0) +
       Math.floor(wealthIncome / 10) +
       activeTradeCount * 2 +
       totalMarketLevel +
@@ -1519,8 +1459,8 @@ Deno.serve(async (req) => {
             const topBranch = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
             if (topBranch) {
               newEvents.push({
-                event_type: "famous_good_created",
-                note: `"${gn.name}" je nyní proslulé svou produkcí "${topBranch[0]}"! Přitahuje obchodníky a zvyšuje prestiž.`,
+                event_type: "guild_mastery_achieved",
+                note: `Cech v "${gn.name}" dosáhl nové úrovně řemeslného mistrovství v oboru "${topBranch[0]}". Proslulost výrobku se vyhodnocuje samostatně podle kvality a opakovaného vývozu.`,
                 importance: "critical",
                 reference: { node_id: gn.id, branch: topBranch[0], mastery: topBranch[1], guild_level: newLevel },
               });
@@ -1533,13 +1473,13 @@ Deno.serve(async (req) => {
     // Pop tax derived from goods layer (kept for backward compat in computed_modifiers)
     const goodsPopTax = Math.round(totalPopulation * 0.002 * (1 + myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1));
 
-    await supabase.from("realm_resources").update({
+    const fiscalPatch = {
       grain_reserve: Math.round(globalGrainReserve),
       granary_capacity: adjustedGranary,
       manpower_pool: manpowerPool,
       logistic_capacity: logisticCapacity,
       last_processed_turn: currentTurn,
-      last_turn_grain_prod: Math.round(totalFoodSupply), // staple_food supply (post-trade)
+      last_turn_grain_prod: Math.round(foodProduced), // Actual production; excludes imports/opening stock.
       last_turn_grain_cons: totalDemand,
       last_turn_grain_net: Math.round(netProduction),
       last_turn_wood_prod: 0,
@@ -1617,14 +1557,10 @@ Deno.serve(async (req) => {
           capacity_mult: Math.round(laborCapacityMult * 1000) / 1000,
           stability_bonus: Math.round(laborStabilityBonus * 10) / 10,
         },
-        capacity: {
-          build_limit: capacityBuildLimit,
-          active_projects: activeBuildingCount,
-          overloaded: capacityOverload,
-        },
         // v6: legacy `goods_economy` block removed — use `wealth_breakdown` + `last_turn_gdp_*` instead.
         // Economy Integrity Pass, Krok 4: five separate tax bases, one writer, one formula each.
         tax_bases: {
+          poll_multiplier: copperMult*goldMult*lawTaxMult,
           domestic_tax_base: Math.round(gdp_domestic * 10) / 10,
           market_tax_base: Math.round(gdp_market * 10) / 10,
           transit_tax_base: Math.round(gdp_transit * 10) / 10,
@@ -1654,7 +1590,14 @@ Deno.serve(async (req) => {
 
       },
       updated_at: new Date().toISOString(),
-    }).eq("id", realm.id);
+    };
+    const { data: fiscalApplied, error: fiscalError } = await supabase.rpc("apply_goods_fiscal_turn", {
+      p_session: sessionId, p_player: playerName, p_turn: currentTurn, p_patch: fiscalPatch,
+      p_gold_delta: newGoldReserve - Number(realm.gold_reserve || 0), p_capex_delta: productionIncome,
+    });
+    if (fiscalError) throw fiscalError;
+    if (!fiscalApplied) return new Response(JSON.stringify({ ok: true, skipped: true, reason: "turn_already_processed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
 
     // ══════════════════════════════════════════
     // PLAYER_RESOURCES back-compat write REMOVED (Sprint 1, Krok 1)

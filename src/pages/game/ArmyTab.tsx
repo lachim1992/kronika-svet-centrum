@@ -1,3 +1,6 @@
+import ManagementCockpit from '@/components/management/ManagementCockpit';
+import EconomyScenarioPreview from '@/components/management/EconomyScenarioPreview';
+import { actualSoldiers } from '../../../supabase/functions/_shared/manpower';
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
@@ -92,6 +95,7 @@ interface UnitTypeVisual {
 }
 
 interface RealmRes {
+  manpower_mobilized?: number;
   id: string;
   manpower_pool: number;
   manpower_committed: number;
@@ -185,17 +189,16 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
   }
   // Mobilization rate: prefer live slider preview, fall back to canonical realm value.
   const mobRate = sliderRate ?? realm?.mobilization_rate ?? 0.1;
-  const wf = computeWorkforceBreakdown(myCities, mobRate);
+  const totalCommitted = actualSoldiers(stacks);
+  const wf = computeWorkforceBreakdown(myCities, mobRate, 0, 0, totalCommitted);
   const computedPool = wf.effectiveActivePop;
   const totalPower = stacks.filter(s => s.is_active).reduce((s, st) => s + st.power, 0);
-  const totalCommitted = realm?.manpower_committed
-    ?? stacks.filter(s => s.is_active).reduce((s, st) => s + st.compositions.reduce((a, c) => a + c.manpower, 0), 0);
   const maxMobPct = Math.round(wf.maxMobilization * 100);
   // Mobilization cap = how many can be mobilized at current rate
-  const mobilizationCap = wf.mobilized;
+  const mobilizationCap = wf.mobilizationCapacity;
   // Available manpower: canonical realm.manpower_pool is the SSOT (set by backend after recruit/refresh).
   // Fallback to derived (cap − committed) only if the realm row is missing.
-  const availableManpower = realm?.manpower_pool ?? Math.max(0, mobilizationCap - totalCommitted);
+  const availableManpower = wf.workforce;
   const isOverMobCap = mobRate > wf.maxMobilization;
   const overMobPenalty = isOverMobCap ? Math.round((mobRate - wf.maxMobilization) * 100) : 0;
 
@@ -343,7 +346,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
             if (!realm) return;
             const rate = val[0] / 100;
             const newWf = computeWorkforceBreakdown(myCities, rate);
-            const newCap = newWf.mobilized;
+            const newCap = newWf.mobilizationCapacity;
             // Check if lowering below committed — force demobilize
             if (newCap < totalCommitted) {
               setPendingMobRate(rate);
@@ -355,7 +358,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
               sessionId,
               actor: { name: currentPlayerName },
               commandType: "SET_MOBILIZATION",
-              commandPayload: { rate, manpowerPool: newWf.effectiveActivePop },
+              commandPayload: { rate },
             });
             if (!res.ok) {
               toast.error(res.error || "Změna mobilizace selhala");
@@ -418,6 +421,8 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
         })()}
       </div>
 
+      <ManagementCockpit sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} mode="army"/>
+      <EconomyScenarioPreview sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn}/>
       <Tabs defaultValue="forces" className="w-full">
         <TabsList className="w-full justify-start bg-card border border-border h-auto p-1 gap-1">
           <TabsTrigger value="forces" className="font-display text-xs gap-1">
@@ -692,14 +697,11 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
         currentTurn={currentTurn}
         realmId={realm?.id || ""}
         manpowerCommitted={totalCommitted}
-        targetCap={pendingMobRate !== null ? computeWorkforceBreakdown(myCities, pendingMobRate).mobilized : totalCommitted}
+        targetCap={pendingMobRate !== null ? computeWorkforceBreakdown(myCities, pendingMobRate).mobilizationCapacity : totalCommitted}
         onDone={async () => {
           if (pendingMobRate !== null && realm) {
-            const newWf = computeWorkforceBreakdown(myCities, pendingMobRate);
-            await supabase.from("realm_resources").update({
-              mobilization_rate: pendingMobRate,
-              manpower_pool: newWf.effectiveActivePop,
-            }).eq("id", realm.id);
+            const result=await dispatchCommand({sessionId,turnNumber:currentTurn,actor:{name:currentPlayerName},commandType:'SET_MOBILIZATION',commandPayload:{rate:pendingMobRate}});
+            if(!result.ok){toast.error(result.error||'Změna mobilizace selhala');return;}
           }
           setPendingMobRate(null);
           fetchMilitary();

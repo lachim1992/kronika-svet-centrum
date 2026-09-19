@@ -9,10 +9,11 @@ import { computeWorkforceBreakdown } from "@/lib/economyConstants";
 interface Props {
   cities: any[];
   mobilizationRate?: number;
+  soldiers?: number;
 }
 
-const WorkforcePanel = ({ cities, mobilizationRate = 0.1 }: Props) => {
-  const wf = computeWorkforceBreakdown(cities, mobilizationRate);
+const WorkforcePanel = ({ cities, mobilizationRate = 0.1, soldiers = 0 }: Props) => {
+  const wf = computeWorkforceBreakdown(cities, mobilizationRate, 0, 0, soldiers);
   const currentMob = Math.round(mobilizationRate * 100);
 
   return (
@@ -22,13 +23,14 @@ const WorkforcePanel = ({ cities, mobilizationRate = 0.1 }: Props) => {
           <Users className="h-4 w-4 text-primary" />
           <h3 className="font-display font-semibold text-sm">Lidská síla</h3>
           <InfoTip side="right">
-            Pracovní síla = celková populace − vojáci. Mobilizace nad 15 % způsobuje
-            penalizaci produkce.
+            Civilní pracovní síla = aktivní pracovní populace − skuteční vojáci.
+            Mobilizační limit není počet vojáků.
           </InfoTip>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
           {[
-            { label: "Pracovní síla", value: wf.workforce, alert: false },
+            { label: "Aktivní populace", value: wf.effectiveActivePop, alert: false },
+            { label: "Civilní pracovní síla", value: wf.workforce, alert: false },
             { label: "Vojáci", value: wf.mobilized, alert: false },
             { label: "Mobilizace", value: `${currentMob}%`, alert: wf.isOverMob },
           ].map(w => (

@@ -37,10 +37,11 @@ export function ringCells(kind: GridKind, radius: number): Array<readonly [numbe
 
 /** Resolve the immutable topology of a world. Defaults to square4 when unknown. */
 export async function loadGridKind(sb: any, sessionId: string): Promise<GridKind> {
-  const { data } = await sb
+  const { data, error } = await sb
     .from("world_foundations")
     .select("grid_kind")
     .eq("session_id", sessionId)
     .maybeSingle();
+  if (error) throw new Error(`read world topology: ${error.message}`);
   return data?.grid_kind === "hex6" ? "hex6" : "square4";
 }

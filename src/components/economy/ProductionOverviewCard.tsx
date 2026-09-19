@@ -61,23 +61,24 @@ const ProductionOverviewCard = ({ realm }: Props) => {
           <br />
           Potenciál navíc omezuje <b>jen specializovanou výrobu podle receptů</b>.
           Domácnosti a produkční čtvrti jsou samostatné sektory a kapacitou uzlů
-          omezené nejsou.
+          mají vlastní kapacitu a stejné požadavky na vstupy a pracovní sílu.
           <br />
           <b>Export</b> je obchodní metrika, ne další produkce — do HDP se nepřičítá.
         </InfoTip>
         <Badge variant="outline" className="ml-auto text-[10px]">SSOT: realm_resources</Badge>
       </div>
 
+      <p className="text-sm">Přidaná hodnota (HDP): {Number(realm.value_added_gdp ?? 0).toFixed(1)} · fyzický výstup: {Number(realm.goods_supply_volume ?? 0).toFixed(1)} jednotek</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <Step icon="🏗️" label="Specializovaná výroba (receptury)" value={capacity.toFixed(1)} unit="výrobních míst / kolo (Layer A)">
           <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">
             <div>vyrobeno za {recipeVal.toFixed(1)} zlata hodnoty</div>
             <div className="text-muted-foreground/70">
-              {capacity > 0 ? "jen tato větev je omezená kapacitou uzlů" : "žádné produkční uzly"}
+              {capacity > 0 ? "kapacita konkrétních uzlů" : "žádné produkční uzly"}
             </div>
           </div>
         </Step>
-        <Step icon="🏘️" label="Sektory bez kapacitního stropu" value={(autoVal + structVal).toFixed(1)} unit="hodnota zboží / kolo">
+        <Step icon="🏘️" label="Domácnosti, budovy a čtvrti" value={(autoVal + structVal).toFixed(1)} unit="hodnota zboží / kolo">
           <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">
             <div>domácnosti {autoVal.toFixed(1)}</div>
             <div>budovy a čtvrti {structVal.toFixed(1)}</div>
