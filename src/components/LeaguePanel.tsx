@@ -223,12 +223,13 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Prop
         body: { session_id: sessionId, player_name: currentPlayerName, rounds: 5 },
       });
       if (error) throw error;
-      if (data?.error) { toast.error(data.error); return; }
+      if (data?.error) toast.error(data.error);
       
       const results = data.results || [];
       if (results.length > 0) {
         setBulkResults(results);
-        toast.success(`⚔️ Odehráno ${data.roundsPlayed} kol!`);
+        if (!data?.error) toast.success(`⚔️ Odehráno ${data.roundsPlayed} kol!`);
+        else toast.info(`Před chybou bylo dokončeno ${data.roundsPlayed} kol.`);
         if (data.seasonComplete) toast.info("🏆 Sezóna ukončena!");
       } else {
         toast.error("Nepodařilo se odehrát žádné kolo.");

@@ -1,3 +1,5 @@
+import { sportsActor, requireSportsHost, SportsError } from "../_shared/sportsAuth.ts";
+import { missingFixtureRounds } from "../_shared/sports.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -20,6 +22,8 @@ Deno.serve(async (req) => {
     }
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const actor = await sportsActor(req, sb, session_id, player_name);
+    if (!actor.admin) throw new SportsError("Akci může provést pouze správce.", 403);
     const { data: sess } = await sb.from("game_sessions").select("current_turn").eq("id", session_id).single();
     const currentTurn = sess?.current_turn || 1;
 
@@ -128,7 +132,7 @@ Styl: dramatický, kronikářský, krvavý. ${isPlayoff ? "Zdůrazni váhu vyřa
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("league-play-round error:", e);
-    return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: (e as Error).message }), { status: e instanceof SportsError ? e.status : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
 
@@ -480,38 +484,23 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
           .eq("season_id", season.id).eq("status", "played");
         const playedPairs = new Set((playedMatches || []).map((m: any) => `${m.home_team_id}-${m.away_team_id}`));
 
-        // Generate missing pairings (each pair plays home+away)
-        const newMatches: [string, string][] = [];
-        for (let i = 0; i < allTeamIds.length; i++) {
-          for (let j = i + 1; j < allTeamIds.length; j++) {
-            const a = allTeamIds[i], b = allTeamIds[j];
-            if (!playedPairs.has(`${a}-${b}`) && !playedPairs.has(`${b}-${a}`)) {
-              newMatches.push([a, b]);
-              newMatches.push([b, a]);
-            } else if (!playedPairs.has(`${b}-${a}`)) {
-              newMatches.push([b, a]); // reverse leg
-            }
+        const rounds = missingFixtureRounds(allTeamIds, playedMatches || []);
+        // An exhausted schedule is complete, not a reason to recurse forever.
+        if (!rounds.length) return await startPlayoffs(sb, session_id, season);
+        const maxRound = season.current_round || 0;
+        for (let i = 0; i < rounds.length; i++) {
+          for (const [home, away] of rounds[i]) {
+            const {error} = await sb.from("league_matches").insert({
+              session_id, season_id: season.id, round_number: maxRound + i + 1,
+              turn_number: currentTurn, home_team_id: home, away_team_id: away,
+            });
+            if (error) throw error;
           }
         }
-
-        // Distribute into rounds
-        const maxRound = season.current_round || 1;
-        const matchesPerRound = Math.floor(allTeamIds.length / 2);
-        let rn = maxRound + 1;
-        for (let idx = 0; idx < newMatches.length; idx++) {
-          if (idx > 0 && idx % matchesPerRound === 0) rn++;
-          const [h, a] = newMatches[idx];
-          await sb.from("league_matches").insert({
-            session_id, season_id: season.id, round_number: rn,
-            turn_number: currentTurn + (rn - maxRound),
-            home_team_id: h, away_team_id: a,
-          });
-        }
-        await sb.from("league_seasons").update({
-          total_rounds: rn,
-          matches_per_round: matchesPerRound,
+        const {error} = await sb.from("league_seasons").update({
+          total_rounds: maxRound + rounds.length, matches_per_round: Math.floor(allTeamIds.length / 2),
         }).eq("id", season.id);
-        // Recurse to play
+        if (error) throw error;
         return await playTierRound(sb, session_id, currentTurn, tier, tierTeams);
       }
     }
@@ -577,7 +566,7 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
   const { count: remaining } = await sb.from("league_matches").select("id", { count: "exact", head: true }).eq("season_id", season.id).eq("status", "scheduled");
   if (remaining === 0) {
     // Regular season complete — start playoffs
-    return await startPlayoffs(sb, session_id, season, matchResults);
+    return await startPlayoffs(sb, session_id, { ...season, current_round: roundNumber }, matchResults);
   }
   return { matches: matchResults, seasonComplete: false };
 }

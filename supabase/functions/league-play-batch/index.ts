@@ -1,3 +1,5 @@
+import { sportsActor, requireSportsHost, SportsError } from "../_shared/sportsAuth.ts";
+import { batchRoundCount } from "../_shared/sports.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -22,12 +24,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    const totalRounds = Math.min(Math.max(1, rounds), 10);
+    const totalRounds = batchRoundCount(rounds);
     const baseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+    const sb = createClient(baseUrl, serviceKey);
+    const actor = await sportsActor(req, sb, session_id, player_name);
+    if (!actor.admin) throw new SportsError("Ligu může posunout pouze správce.", 403);
     const allResults: any[] = [];
     let seasonComplete = false;
+    let failure: string | null = null;
 
     for (let i = 0; i < totalRounds; i++) {
       if (seasonComplete) break;
@@ -51,12 +57,14 @@ Deno.serve(async (req) => {
         if (!resp.ok) {
           const errText = await resp.text();
           console.error(`Round ${i + 1} failed (${resp.status}):`, errText);
+          failure = `Kolo ${i + 1} selhalo (HTTP ${resp.status}).`;
           break;
         }
 
         const data = await resp.json();
         if (data.error && !data.seasonComplete) {
           console.error(`Round ${i + 1} error:`, data.error);
+          failure = String(data.error);
           break;
         }
 
@@ -73,12 +81,15 @@ Deno.serve(async (req) => {
         }
       } catch (e: any) {
         console.error(`Round ${i + 1} exception:`, e);
+        failure = e instanceof Error ? e.message : String(e);
         break;
       }
     }
 
     return new Response(JSON.stringify({
-      ok: true,
+      ok: !failure,
+      error: failure,
+      partial: !!failure && allResults.length > 0,
       roundsPlayed: allResults.length,
       roundsRequested: totalRounds,
       results: allResults,
@@ -90,7 +101,7 @@ Deno.serve(async (req) => {
   } catch (e: any) {
     console.error("league-play-batch error:", e);
     return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: e instanceof SportsError ? e.status : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

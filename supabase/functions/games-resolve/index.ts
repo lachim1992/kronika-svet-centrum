@@ -1,3 +1,4 @@
+import { sportsActor, requireSportsHost, SportsError } from "../_shared/sportsAuth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -182,13 +183,15 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    const actor = await sportsActor(req, sb, session_id);
 
-    const { data: festival } = await sb.from("games_festivals").select("*").eq("id", festival_id).single();
+    const { data: festival } = await sb.from("games_festivals").select("*").eq("id", festival_id).eq("session_id", session_id).single();
     if (!festival) {
       return new Response(JSON.stringify({ error: "Festival nenalezen" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (festival) requireSportsHost(actor, festival);
     if (festival.status === "concluded") {
       return new Response(JSON.stringify({ error: "Festival již skončil" }), {
         status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -458,7 +461,7 @@ Deno.serve(async (req) => {
   } catch (e: any) {
     console.error("games-resolve error:", e);
     return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: e instanceof SportsError ? e.status : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

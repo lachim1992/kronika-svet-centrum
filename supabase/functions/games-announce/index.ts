@@ -1,3 +1,4 @@
+import { sportsActor, requireSportsHost, SportsError } from "../_shared/sportsAuth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -36,6 +37,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    const actor = await sportsActor(req, sb, session_id, player_name);
 
     const currentTurn = turn_number || 1;
     const isGlobal = type === "olympic";
@@ -467,7 +469,7 @@ Deno.serve(async (req) => {
   } catch (e: any) {
     console.error("games-announce error:", e);
     return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: e instanceof SportsError ? e.status : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
