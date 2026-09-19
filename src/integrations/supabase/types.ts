@@ -10890,6 +10890,41 @@ export type Database = {
           },
         ]
       }
+      turn_execution_guards: {
+        Row: {
+          error: string | null
+          finished_at: string | null
+          session_id: string
+          started_at: string
+          status: string
+          turn_number: number
+        }
+        Insert: {
+          error?: string | null
+          finished_at?: string | null
+          session_id: string
+          started_at?: string
+          status: string
+          turn_number: number
+        }
+        Update: {
+          error?: string | null
+          finished_at?: string | null
+          session_id?: string
+          started_at?: string
+          status?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "turn_execution_guards_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       turn_summaries: {
         Row: {
           closed_at: string | null
@@ -12073,6 +12108,10 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_turn_execution: {
+        Args: { p_session: string; p_turn: number }
+        Returns: boolean
+      }
       apply_goods_fiscal_turn: {
         Args: {
           p_capex_delta: number
