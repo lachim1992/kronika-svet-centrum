@@ -25,3 +25,34 @@ export function batchRoundCount(value: unknown = 5): number {
   }
   return value;
 }
+
+/** Rounds resolved inside a single game turn, so a season finishes in a plausible number of turns. */
+export const ROUNDS_PER_TURN = 3;
+
+export function roundsPerTurn(value: unknown = ROUNDS_PER_TURN): number {
+  if (value === undefined || value === null) return ROUNDS_PER_TURN;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 10) {
+    throw new Error('Počet kol za tah musí být celé číslo od 1 do 10.');
+  }
+  return value;
+}
+
+export interface SeasonPhase { league_tier: number | null; status: string | null; playoff_status: string | null }
+
+/** A lower league may only open once every league above it has a decided table and a decided cup. */
+export function lowerTierStartBlocker(tier: number, seasons: SeasonPhase[]): { tier: number; phase: string; reason: string } | null {
+  if (tier <= 1) return null;
+  for (const season of seasons) {
+    const above = season.league_tier ?? 1;
+    if (above >= tier) continue;
+    const tableOpen = (season.status ?? 'active') !== 'concluded';
+    const cupOpen = !!season.playoff_status && season.playoff_status !== 'completed' && season.playoff_status !== 'none';
+    if (!tableOpen && !cupOpen) continue;
+    const phase = cupOpen ? 'cup' : 'table';
+    return { tier: above, phase, reason: cupOpen
+      ? `${tier}. liga čeká na dohrání poháru ${above}. ligy — teprve pak je jasné, kdo spadne.`
+      : `${tier}. liga čeká na dokončení tabulky ${above}. ligy — teprve pak je jasné, kdo spadne.` };
+  }
+  return null;
+}
+
