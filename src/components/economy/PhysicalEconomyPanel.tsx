@@ -6,10 +6,11 @@ const fmt=(n:number)=>Number(n||0).toLocaleString('cs-CZ',{maximumFractionDigits
 const labels:Record<string,string>={production_input:'Výrobní vstupy',household_consumption:'Spotřeba',hub_aggregation:'Sběr do centra',regional_redistribution:'Regionální rozvoz',military_supply:'Armáda',state_redistribution:'Stát',famous_good_demand:'Proslulé výrobky',external_export:'Vnější export'};
 export default function PhysicalEconomyPanel({sessionId,cities,playerName,currentTurn}:{sessionId:string;cities:any[];playerName:string;currentTurn:number}){
   const [city,setCity]=useState(''),[reason,setReason]=useState('');
-  const {data:report,error,isLoading}=useManagementReport(sessionId,playerName,currentTurn);
+  const {data:reportResult,error,isLoading}=useManagementReport(sessionId,playerName,currentTurn);
+  const report=reportResult?.report??null;
   if(error)return <p role="alert" className="text-sm text-destructive">{String(error)}</p>;
   if(isLoading)return <p className="text-sm">Načítám bilanci zboží…</p>;
-  if(!report)return <p className="text-sm">Fyzická bilance pro tento tah zatím není dostupná.</p>;
+  if(!report)return <p className="text-sm">Fyzická bilance bude k dispozici po uzavření tahu {currentTurn}.</p>;
   const ledger={balances:report.cities.flatMap(c=>c.balances),flows:report.flows,metrics:report.cities,famous:report.famous,diagnostics:report.producers} as Pick<Ledger,'balances'|'flows'|'metrics'|'famous'|'diagnostics'>;
   const name=(id:string)=>cities.find(c=>c.id===id)?.name||id;
   const balances=ledger.balances.filter(b=>!city||b.city===city),flows=ledger.flows.filter(f=>(!city||f.source===city||f.destination===city||f.via_hubs.includes(city))&&(!reason||f.reason===reason));
@@ -18,6 +19,7 @@ export default function PhysicalEconomyPanel({sessionId,cities,playerName,curren
   const project=(cell:string)=>{const [x,y]=cell.split(',').map(Number);return `${20+(x-minX)*560/w},${20+(y-minY)*260/h}`;};
   return <section className="space-y-4 rounded-xl border p-4">
     <h3 className="font-semibold">Fyzická ekonomika a původ hodnot</h3>
+    <p className="text-xs text-muted-foreground">Údaje z uzavřeného tahu {report.turn}.</p>
     <div className="flex flex-wrap gap-3">
       <label>Město <select className="bg-background border rounded p-1" value={city} onChange={e=>setCity(e.target.value)}><option value="">Všechna</option>{cities.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       <label>Důvod toku <select className="bg-background border rounded p-1" value={reason} onChange={e=>setReason(e.target.value)}><option value="">Všechny</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>

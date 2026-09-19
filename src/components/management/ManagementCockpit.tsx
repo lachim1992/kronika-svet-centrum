@@ -35,10 +35,11 @@ export function ActionPreviewCard({title,rows,assumption}:{title:string;rows:{la
 }
 type Props={sessionId:string;playerName:string;currentTurn:number;mode?:'home'|'economy'|'city'|'army'|'council';cityId?:string;onEntityClick?:(type:string,id:string)=>void;onTabChange?:(tab:string)=>void};
 export default function ManagementCockpit({sessionId,playerName,currentTurn,mode='home',cityId,onEntityClick,onTabChange}:Props){
-  const {data:report,isLoading,error}=useManagementReport(sessionId,playerName,currentTurn),[explained,setExplained]=useState<Metric|null>(null);
+  const {data:reportResult,isLoading,error}=useManagementReport(sessionId,playerName,currentTurn),[explained,setExplained]=useState<Metric|null>(null);
+  const report=reportResult?.report??null;
   if(isLoading)return <p className="text-sm text-muted-foreground" role="status">Načítám stav říše pro tah {currentTurn}…</p>;
   if(error)return <p role="alert" className="text-sm text-destructive">Přehled není dostupný: {String(error)}</p>;
-  if(!report)return <p className="text-sm text-muted-foreground">Pro tah {currentTurn} zatím není dokončená ekonomická bilance.</p>;
+  if(!report)return <p className="text-sm text-muted-foreground">Ekonomická bilance bude k dispozici po uzavření tahu {currentTurn}.</p>;
   const keys=mode==='economy'?['value_added','gross_output','final_consumption','exports','imports','trade_turnover','blocked_percent','construction_incoming']:mode==='army'?['soldiers','workforce','food_coverage','net_fiscal']:['treasury','net_fiscal','food_coverage','workforce','construction_stock','value_added'];
   const alerts=report.alerts.filter(a=>!cityId||a.entity_id===cityId).slice(0,5);
   const city=report.cities.find(c=>c.id===cityId);
@@ -47,7 +48,7 @@ export default function ManagementCockpit({sessionId,playerName,currentTurn,mode
     {mode!=='council'&&!city&&<div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">{keys.map(key=>report.metrics.find(m=>m.key===key)).filter((m):m is Metric=>!!m).map(m=><MetricCard key={m.key} metric={m} onExplain={()=>setExplained(m)}/>)}</div>}
     {city&&<div className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">{city.name} · úroveň centra {city.tier}</h3><p className="text-sm">Role: {city.roles.join(', ')||'Místní sídlo'}</p><div className="grid grid-cols-2 md:grid-cols-3 gap-3">{[['Přidaná hodnota',city.local_value_added],['Obsloužený obchod',city.handled_trade_value],['Reexport',city.reexport_value],['Sběr ze zázemí',city.aggregation_importance],['Tranzit',city.transit_importance],['Obyvatelstvo zázemí',city.hinterland_population]].map(([label,value])=><div key={label as string}><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold">{fmt(Number(value))}</p></div>)}</div>
       <details><summary className="cursor-pointer text-sm">Zboží a jeho použití</summary><div className="space-y-2 mt-2">{city.balances.map((b:any)=><div key={b.good} className="text-xs border-t pt-2"><b>{b.good}</b> · spotřeba {fmt(b.consumed_household+b.consumed_state)} · vstupy {fmt(b.consumed_as_input)} · dovoz {fmt(b.imported)} · vývoz {fmt(b.exported)} · sklad {fmt(b.stored)} · chybí {fmt(b.unmet_demand)}</div>)}</div></details></div>}
-    <p className="text-[10px] text-muted-foreground">Bilance tahu {report.turn}. Prázdné srovnání znamená, že předchozí údaj není dostupný.</p>
+    <p className="text-[10px] text-muted-foreground">Bilance posledního uzavřeného tahu {report.turn}{report.turn!==currentTurn?` (hraje se tah ${currentTurn})`:''}. Prázdné srovnání znamená, že předchozí údaj není dostupný.</p>
     <ExplainMetricDrawer metric={explained} onClose={()=>setExplained(null)} onEntityClick={onEntityClick}/>
   </section>;
 }

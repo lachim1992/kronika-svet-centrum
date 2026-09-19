@@ -5,7 +5,8 @@ import {ActionPreviewCard} from './ManagementCockpit';
 import {Button} from '@/components/ui/button';
 
 export default function EconomyScenarioPreview({sessionId,playerName,currentTurn}:{sessionId:string;playerName:string;currentTurn:number}){
-  const {data:report}=useManagementReport(sessionId,playerName,currentTurn);
+  const {data:reportResult}=useManagementReport(sessionId,playerName,currentTurn);
+  const report=reportResult?.report??null;
   const [kind,setKind]=useState('recruitment'),[target,setTarget]=useState(''),[amount,setAmount]=useState(100);
   const [preview,setPreview]=useState<any>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
   if(!report)return null;
