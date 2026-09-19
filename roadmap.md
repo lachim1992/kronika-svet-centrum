@@ -88,5 +88,5 @@
 - [x] Ověřit, že aktuální main obsahuje commit 46f0cc9 a načíst deployment manifest
 - [x] Aplikovat obě požadované migrace bez změny existujících her
 - [x] Nasadit všech 13 serverových funkcí z deployment manifestu
-- [ ] Publikovat frontend na kronika-svet-centrum.lovable.app
-- [ ] Ověřit Test01 / eba99766-9046-4daf-a367-9f31380cbba1 bez posunu tahu
+- [x] Publikovat frontend na kronika-svet-centrum.lovable.app
+- [x] Ověřit Test01 / eba99766-9046-4daf-a367-9f31380cbba1 bez posunu tahu
