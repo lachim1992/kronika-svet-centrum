@@ -6,6 +6,9 @@ import { buildManagementReport } from './management.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
 
 const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
+/** Baseline market/granary capability that any inhabited settlement has by its size alone. */
+const settlementBaseline=(population:unknown)=>{const p=nonnegative(population);
+  return p>=8000?3:p>=4000?2:p>=1500?1:p>0?0.5:0;};
 /** Fail closed: pagination and DB failures must never masquerade as an empty economy. */
 async function rows(sb:any,table:string,session?:string){
   const out:any[]=[];
@@ -63,8 +66,13 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       activePopModifier:lawModifiers.active,maxMobModifier:lawModifiers.maxMobilization,
       classes:{peasants:nonnegative(c.population_peasants),burghers:nonnegative(c.population_burghers),clerics:nonnegative(c.population_clerics),warriors:nonnegative(c.population_warriors)},
       soldiers:population?soldiers*nonnegative(c.population_total)/population:0,stability:nonnegative(c.city_stability??50)/100,
-      irrigation:nonnegative(c.irrigation_level),labor:normalizeLabor(c.labor_allocation||{}),market:nonnegative(c.market_level),
-      storage:effects.reduce((s,e)=>s+nonnegative(e.storage_capacity??e.warehouse_level),0),admin:nonnegative(c.temple_level),
+      irrigation:nonnegative(c.irrigation_level),labor:normalizeLabor(c.labor_allocation||{}),
+      // Every inhabited settlement keeps a baseline marketplace and granary even before dedicated
+      // buildings exist; without it all surplus spoils and no trade can ever start.
+      market:nonnegative(c.market_level)+settlementBaseline(c.population_total),
+      storage:effects.reduce((s,e)=>s+nonnegative(e.storage_capacity??e.warehouse_level),0)+settlementBaseline(c.population_total),
+      admin:nonnegative(c.temple_level),
+
       security:nonnegative(c.city_stability??50)/100,guild:Math.max(0,...db.province_nodes.filter(n=>n.city_id===c.id).map(n=>nonnegative(n.guild_level))),
       ideology:realm.trade_ideology||'customary_local',coastal:!!db.province_hexes.find(h=>(h.grid_x??h.q)===(c.grid_x??c.province_q)&&(h.grid_y??h.r)===(c.grid_y??c.province_r))?.coastal};
   });
@@ -88,8 +96,11 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,tags:string[],allowSource=false)=>{
     if(!cityMap.has(city))return;
     for(const [bk,capacity] of Object.entries(outputs)){
+      // A structure that explicitly declares an output basket brings its own craft with it;
+      // only structures with declared capability tags are restricted to matching recipes.
+      const gated=tags.length>0;
       const candidates=db.production_recipes.filter(r=>goodMap.get(r.output_good_key)?.basket===basket(bk)&&
-        (role(r)!=='source'||allowSource)&&(r.required_tags||[]).every((tag:string)=>tags.includes(tag)));
+        (role(r)!=='source'||allowSource)&&(!gated||(r.required_tags||[]).every((tag:string)=>tags.includes(tag))));
       if(!candidates.length)continue;
       for(const r of candidates)producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity:nonnegative(capacity),recipe:recipe(r),
         allocation:1/candidates.length,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
@@ -166,11 +177,12 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     marketBaskets.push({session_id:session,city_id:c.id,player_name:c.owner,basket_key:bk,turn_number:turn,
       auto_supply:sum('produced_household'),recipe_bonus:recipeSupply,building_bonus:structureSupply,bonus_supply:recipeSupply+structureSupply,
       local_supply:sum('consumed_household')+sum('consumed_state'),
-      local_demand:demand,unmet_demand:unmet,domestic_satisfaction:demand?1-unmet/demand:1,export_surplus:sum('stored'),quality_weight:1,
+      local_demand:demand,unmet_demand:unmet,domestic_satisfaction:demand?1-unmet/demand:1,export_surplus:sum('stored')+sum('exported'),quality_weight:1,
       market_access:1,monetization:1});}
   const tradeFlows=result.flows.filter(f=>cityNode.has(f.source)&&cityNode.has(f.destination)).map(f=>({session_id:session,good_key:f.good,
     source_city_id:cityNode.get(f.source),target_city_id:cityNode.get(f.destination),source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,
     flow_type:f.reason,volume_per_turn:f.qty,quality_band:Math.floor(f.quality),effective_price:f.qty?f.gross_value/f.qty:0,status:'active',turn_created:turn,
+    path_cells:f.path,transport_modes:f.edges.map((edgeId:string)=>edgeId.startsWith('river:')?'river':edgeId.startsWith('spur:')?'spur':'road'),
     provenance:f}));
   const basketFlows=result.flows.map(f=>({session_id:session,basket_key:goodMap.get(f.good)!.basket,source_city_id:f.source,target_city_id:f.destination,
     source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,volume:f.qty,unit_price:f.qty?f.gross_value/f.qty:0,gross_value:f.gross_value,
