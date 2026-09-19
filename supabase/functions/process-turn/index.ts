@@ -1,4 +1,5 @@
 import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.ts";
+import { promotedSettlementTier } from "../_shared/demographics.ts";
 import { TAX_MAX, laffer, governance, taxRevenue } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -732,6 +733,20 @@ Deno.serve(async (req) => {
         if (city.famine_turn) {
           await supabase.from("cities").update({ famine_turn: false, famine_consecutive_turns: 0 }).eq("id", city.id);
         }
+      }
+
+      // A settlement that keeps growing earns the next tier (market, storage, prestige follow).
+      const promotedTier = promotedSettlementTier(city.settlement_level, city.population_total);
+      if (promotedTier) {
+        await supabase.from("cities").update({ settlement_level: promotedTier }).eq("id", city.id);
+        logEntries.push(`🏛️ ${city.name} vyrostlo na ${promotedTier}.`);
+        newEvents.push({
+          event_type: "settlement_growth",
+          note: `${city.name} přerostlo dosavadní hranice a povyšuje se na ${promotedTier} (${city.population_total} obyvatel).`,
+          importance: "normal",
+          city_id: city.id,
+          reference: { from: city.settlement_level, to: promotedTier, population: city.population_total },
+        });
       }
 
       // Trade boom event for hub nodes
