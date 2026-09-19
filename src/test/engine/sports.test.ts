@@ -1,6 +1,6 @@
 // @vitest-environment node
 import {describe, expect, it, vi} from 'vitest';
-import {missingFixtureRounds, nominationIds, batchRoundCount} from '../../../supabase/functions/_shared/sports';
+import {missingFixtureRounds, nominationIds, batchRoundCount, roundsPerTurn, lowerTierStartBlocker, ROUNDS_PER_TURN} from '../../../supabase/functions/_shared/sports';
 import {loadEdgeFunction} from './loadEdgeFunction';
 
 const request = (body: unknown, authenticated = true) => new Request('https://local/sports', {
@@ -83,5 +83,34 @@ describe('sports input and command boundaries', () => {
     },calls)});
     expect((await handler(request({session_id:'s',festival_id:'f',discipline_id:'d'}))).status).toBe(400);
     expect(calls.some(c=>/:update|:insert/.test(c))).toBe(false);
+  });
+});
+
+describe('Sphaera season pacing and league order', () => {
+  it('resolves several rounds inside one game turn', () => {
+    expect(ROUNDS_PER_TURN).toBeGreaterThanOrEqual(3);
+    expect(roundsPerTurn(undefined)).toBe(ROUNDS_PER_TURN);
+    expect(roundsPerTurn(5)).toBe(5);
+  });
+  it.each([0, -1, 2.5, '3', 11])('rejects an impossible rounds-per-turn %j', value => {
+    expect(() => roundsPerTurn(value)).toThrow();
+  });
+  it('holds the second league back while the first league table is still open', () => {
+    const blocker = lowerTierStartBlocker(2, [{league_tier: 1, status: 'active', playoff_status: 'none'}]);
+    expect(blocker).toMatchObject({tier: 1, phase: 'table'});
+  });
+  it('holds the second league back while the cup is still running', () => {
+    const blocker = lowerTierStartBlocker(2, [{league_tier: 1, status: 'active', playoff_status: 'semifinals'}]);
+    expect(blocker).toMatchObject({tier: 1, phase: 'cup'});
+  });
+  it('lets the second league start once the table and the cup are decided', () => {
+    expect(lowerTierStartBlocker(2, [{league_tier: 1, status: 'concluded', playoff_status: 'completed'}])).toBeNull();
+    expect(lowerTierStartBlocker(1, [{league_tier: 1, status: 'active', playoff_status: 'none'}])).toBeNull();
+  });
+  it('makes a third league wait for every league above it', () => {
+    expect(lowerTierStartBlocker(3, [
+      {league_tier: 1, status: 'concluded', playoff_status: 'completed'},
+      {league_tier: 2, status: 'active', playoff_status: 'none'},
+    ])).toMatchObject({tier: 2});
   });
 });
