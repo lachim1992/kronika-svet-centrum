@@ -274,6 +274,8 @@ export function useGameSessionLegacy(gameSession: ReturnType<typeof useGameSessi
 // ---- Session Management ----
 
 export async function createGameSession(playerName: string): Promise<GameSession | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) { console.error("Authentication required to create a game"); return null; }
   const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
   const { data, error } = await supabase.from("game_sessions").insert({
     room_code: roomCode,
@@ -286,6 +288,7 @@ export async function createGameSession(playerName: string): Promise<GameSession
     session_id: data.id,
     player_name: playerName,
     player_number: 1,
+    user_id: user.id,
   });
 
   // initPlayerResources REMOVED (Sprint 1, Krok 2) — canonical state is realm_resources
@@ -293,6 +296,8 @@ export async function createGameSession(playerName: string): Promise<GameSession
 }
 
 export async function joinGameSession(roomCode: string, playerName: string): Promise<GameSession | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) { console.error("Authentication required to join a game"); return null; }
   const { data: session, error: fetchErr } = await supabase
     .from("game_sessions").select("*").eq("room_code", roomCode.toUpperCase()).single();
   if (fetchErr || !session) { console.error(fetchErr); return null; }
@@ -305,7 +310,7 @@ export async function joinGameSession(roomCode: string, playerName: string): Pro
 
   const nextNumber = playerCount + 1;
   const { error: plErr } = await supabase.from("game_players").insert({
-    session_id: session.id, player_name: playerName, player_number: nextNumber,
+    session_id: session.id, player_name: playerName, player_number: nextNumber, user_id: user.id,
   });
   if (plErr) { console.error(plErr); return null; }
 
