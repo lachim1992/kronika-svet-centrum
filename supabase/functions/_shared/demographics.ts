@@ -461,3 +461,26 @@ export function computeLaborModifiers(labor: {
     scribes_mod: Math.round((1.0 + (scribes - 10) * 0.01) * 1000) / 1000,     // 20% → 1.1
   };
 }
+
+/** Settlement tiers ordered from smallest, used for growth promotion. */
+export const SETTLEMENT_TIERS = ['HAMLET', 'TOWNSHIP', 'CITY', 'POLIS'] as const;
+export type SettlementTier = typeof SETTLEMENT_TIERS[number];
+
+/** A settlement grows into the next tier purely by the population it feeds and houses. */
+export function settlementTierForPopulation(population: unknown): SettlementTier {
+  const p = Math.max(0, Number(population) || 0);
+  if (p >= 8000) return 'POLIS';
+  if (p >= 4000) return 'CITY';
+  if (p >= 1500) return 'TOWNSHIP';
+  return 'HAMLET';
+}
+
+/** Promotion only; a shrinking settlement keeps its earned standing (walls and markets remain). */
+export function promotedSettlementTier(current: unknown, population: unknown): SettlementTier | null {
+  const target = settlementTierForPopulation(population);
+  const now = String(current || 'HAMLET').toUpperCase() as SettlementTier;
+  const currentIndex = SETTLEMENT_TIERS.indexOf(now);
+  const targetIndex = SETTLEMENT_TIERS.indexOf(target);
+  if (currentIndex < 0) return target;
+  return targetIndex > currentIndex ? target : null;
+}
