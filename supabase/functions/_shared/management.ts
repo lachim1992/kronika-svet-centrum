@@ -4,7 +4,7 @@ import {fiscalSummary} from './fiscal.ts';
 export interface Contribution {id:string;label:string;value:number;city?:string;good?:string;route?:string}
 export interface Metric {key:string;label:string;value:number|null;previous:number|null;unit:string;definition:string;sources:Contribution[];assumption?:string}
 export interface ManagementAlert {id:string;severity:'critical'|'warning'|'opportunity'|'info';category:string;entity_type:string;entity_id:string;metric:string;current_value:number;threshold:number;reason:string;destination:string;levers:string[]}
-export interface ManagementReport {turn:number;player:string;metrics:Metric[];alerts:ManagementAlert[];cities:any[];producers:any[];flows:any[];goods:any[];famous:any[];routes:any[];history:{turn:number;metrics:Record<string,number|null>}[]}
+export interface ManagementReport {turn:number;player:string;metrics:Metric[];alerts:ManagementAlert[];cities:any[];producers:any[];flows:any[];goods:any[];famous:any[];routes:any[];prices:any[];history:{turn:number;metrics:Record<string,number|null>}[]}
 type Ledger=ReturnType<typeof resolveGoodsEconomy>;
 const sum=<T>(rows:T[],f:(row:T)=>number)=>rows.reduce((n,row)=>n+f(row),0);
 
@@ -46,6 +46,18 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
   add('runway','Výdrž pokladnice','tahů','Pokladnice dělená záporným čistým fiskálním tokem; při nezáporném toku se nevyčerpává.',[],fiscal.net<0?Number(realm.gold_reserve||0)/-fiscal.net:null,'Stejný příjem a průběžné výdaje; bez nových jednorázových investic.');
   add('construction_stock','Stavební zásoba','jednotek','Aktuální stavební rezerva po dosavadních úhradách projektů.',[{id:player,label:'realm_resources.production_reserve',value:Number(realm.production_reserve||0)}]);
   add('construction_incoming','Volný stavební přebytek','jednotek/tah','Pouze dosud nespotřebované a nevyvezené stavební zboží způsobilé pro CAPEX.',fromBalances(b=>b.capex));
+  const prices=ledger.prices.filter(p=>owned.has(p.city)).map(p=>({...p,city_name:names.get(p.city),basket:goods.get(p.good)?.basket}));
+  const weight=prices.reduce((n,p)=>n+p.demand,0);
+  add('price_index','Cenová hladina','× referenční cena','Vážený poměr lokální tržní ceny k dlouhodobé referenční ceně; váhou je skutečná poptávka daného zboží.',[],
+    weight?prices.reduce((n,p)=>n+p.local_price/Math.max(1e-9,p.base_price)*p.demand,0)/weight:1,
+    'Cena vzniká z fyzického ledgeru (nabídka, poptávka, zásoby, substituty, dovoz, kvalita, proslulost) a nevytváří ani neničí množství.');
+  for(const p of prices.filter(p=>p.demand>0&&p.local_price>=p.base_price*1.3).sort((a,b)=>b.local_price/b.base_price-a.local_price/a.base_price).slice(0,12)){
+    const shortage=balances.find(b=>b.city===p.city&&b.good===p.good);
+    alerts.push({id:`price:${p.city}:${p.good}`,severity:p.local_price>=p.base_price*2?'critical':'warning',category:'price',entity_type:'city',entity_id:p.city,
+      metric:p.good,current_value:p.local_price,threshold:p.base_price,
+      reason:`${p.city_name}: ${p.good} je za ${p.local_price.toFixed(1)} místo ${p.base_price.toFixed(1)} (pokrytí poptávky ${(p.coverage*100).toFixed(0)} %, dovoz ${p.imported.toFixed(1)}, chybí ${(shortage?.unmet_demand||0).toFixed(1)}).`,
+      destination:'economy',levers:['Rozšířit cestu k dodavateli','Zvýšit místní výrobu','Otevřít nový dovoz','Změnit obchodní režim']});}
+
   for(const b of balances)if(b.unmet_demand>0){const fill=b.demand?1-b.unmet_demand/b.demand:1;
     alerts.push({id:`need:${b.city}:${b.good}`,severity:goods.get(b.good)?.basket==='staple_food'&&fill<0.8?'critical':'warning',category:'staple_food'===goods.get(b.good)?.basket?'food':'input',entity_type:'city',entity_id:b.city,metric:b.good,current_value:fill,threshold:1,reason:`${names.get(b.city)}: chybí ${b.unmet_demand.toFixed(1)} jednotek ${b.good}.`,destination:'economy',levers:['Prověřit dodavatele a cestu','Otevřít výrobu města']});}
   for(const d of producers)if(d.blocked)alerts.push({id:d.producer,severity:'warning',category:'production',entity_type:'node',entity_id:d.node||d.city,metric:d.good,current_value:d.realized,threshold:d.capacity,reason:`${names.get(d.city)} · ${d.good}: ${d.blocked}`,destination:'economy',levers:['Prověřit vstupy','Změnit objednávku','Otevřít pracovní sílu']});
