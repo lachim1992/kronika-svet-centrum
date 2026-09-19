@@ -174,7 +174,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     provenance:f}));
   const basketFlows=result.flows.map(f=>({session_id:session,basket_key:goodMap.get(f.good)!.basket,source_city_id:f.source,target_city_id:f.destination,
     source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,volume:f.qty,unit_price:f.qty?f.gross_value/f.qty:0,gross_value:f.gross_value,
-    fiscal_capture:0,turn_number:turn,path_cells:f.path,transport_modes:f.modes}));
+    fiscal_capture:0,turn_number:turn,path_cells:f.path,transport_modes:f.edges.map(edgeId=>edgeId.startsWith('river:')?'river':edgeId.startsWith('spur:')?'spur':'road')}));
   const realms=db.realm_resources.map(r=>{const owned=new Set(cities.filter(c=>c.owner===r.player_name).map(c=>c.id)),bs=result.balances.filter(b=>owned.has(b.city));
     const sum=(f:string)=>bs.reduce((s,b)=>s+Number((b as any)[f]||0),0),consumption=bs.reduce((s,b)=>s+(b.consumed_household+b.consumed_state)*goodMap.get(b.good)!.price,0);
     const channelValue=(ch:string)=>bs.reduce((s,b)=>s+Number((b as any)[`produced_${ch}`])*goodMap.get(b.good)!.price*(1+b.quality*ECONOMY.qualityPremium),0);
