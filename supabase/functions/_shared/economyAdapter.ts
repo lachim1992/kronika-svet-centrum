@@ -109,16 +109,34 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    */
   const levelScale=(level:unknown)=>{const scale=ECONOMY.levelCapacityScale;
     return scale[Math.min(scale.length,Math.max(1,Math.round(Number(level)||1)))-1];};
+  /**
+   * PRODUCTION ORDERS (structures and districts, mirroring node_production_orders):
+   *  AUTO   — legal recipes weighted by basket necessity (1/tier); never a blind even split.
+   *  PREFER — the chosen good/basket gets triple weight, the rest still runs.
+   *  LOCK   — only the chosen good/basket runs, if it is legal for this structure.
+   */
+  const orderWeight=(r:any,order:any)=>{
+    const g=goodMap.get(r.output_good_key);
+    const tier=BASKET_TIER[g?.basket||'']||1,auto=1/tier;
+    if(!order||order.mode==='auto')return auto;
+    const match=(order.target_good_key&&r.output_good_key===order.target_good_key)||
+      (order.target_basket_key&&g?.basket===basket(order.target_basket_key));
+    if(order.mode==='prefer')return match?auto*3:auto;
+    return match?auto:0;
+  };
   const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,
-    tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean;level?:unknown}={})=>{
+    tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean;level?:unknown;order?:any}={})=>{
     if(!cityMap.has(city))return;
     const scale=levelScale(options.level);
     const total=Object.values(outputs).reduce((s,v)=>s+nonnegative(v),0)*scale;
     const push=(candidates:any[],capacity:number)=>{
       if(!candidates.length||capacity<=0)return;
-      for(const r of candidates)producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),
-        allocation:1/candidates.length,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
-        distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});
+      const weights=candidates.map(r=>orderWeight(r,options.order)),sum=weights.reduce((s,w)=>s+w,0);
+      if(sum<=0)return;
+      candidates.forEach((r,i)=>{if(weights[i]<=0)return;
+        producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),
+          allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
+          distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
     };
     if(options.recipeKeys?.length){
       // Exact whitelist: unknown keys are a contract error, roles/tags must still match.
