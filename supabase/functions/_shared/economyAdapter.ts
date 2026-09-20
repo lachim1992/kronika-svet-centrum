@@ -173,7 +173,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const name=`${template?.key||''} ${template?.name||''} ${b.name||''}`;
     const tags=effect.capability_tags||facilityTags(name);
     structure(b.id,b.city_id,'facility',effect.basket_outputs||{},true,tags,
-      {recipeKeys:effect.recipe_keys,roles:effect.production_roles,level:b.current_level,
+      {recipeKeys:effect.recipe_keys,roles:effect.production_roles,level:b.current_level,order:structureOrder(b.id),
        allowSource:!!effect.recipe_keys||/well|aqueduct|studn|akvad|woodcut|lumber|dřev/i.test(name)});
   }
   for(const c of cities){const districts=db.city_districts.filter(d=>d.city_id===c.id&&d.status==='completed').sort((a,b)=>a.id.localeCompare(b.id));
