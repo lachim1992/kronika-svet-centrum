@@ -61,6 +61,11 @@ describe('canonical physical goods economy',()=>{
     expect(b.diagnostics.find(d=>d.producer==='ore')!.realized).toBe(a.diagnostics.find(d=>d.producer==='ore')!.realized);
     const s2=setup();s2.cities[0].soldiers=495;const c=resolveGoodsEconomy(s2);
     expect(c.diagnostics.find(d=>d.producer==='ore')!.realized).toBeLessThan(a.diagnostics.find(d=>d.producer==='ore')!.realized);});
+  it('gives every producing structure the canonical crew when none is declared',()=>{
+    const s=setup();for(const p of s.producers)delete (p as any).jobs;
+    const d=resolveGoodsEconomy(s).diagnostics.find(d=>d.producer==='ore')!;
+    expect(d.jobs_capacity).toBe(ECONOMY.structureJobsBase);
+  });
   it('refresh is pure and deterministic including reputation streaks',()=>{const s=setup(),before=JSON.stringify(s);const a=resolveGoodsEconomy(s),b=resolveGoodsEconomy(s);
     expect(a).toEqual(b);expect(JSON.stringify(s)).toBe(before);});
   it('never spends consumed or exported construction goods on CAPEX',()=>{const s=setup();s.goods=[good('timber','construction',10),good('chair','tools',20)];
