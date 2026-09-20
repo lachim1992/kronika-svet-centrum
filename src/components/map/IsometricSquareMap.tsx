@@ -15,6 +15,7 @@ import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDeto
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
+import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
 import spriteWorkshop from "@/assets/map/node-workshop.png";
 import spriteGuardPost from "@/assets/map/node-guard-post.png";
