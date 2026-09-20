@@ -262,6 +262,7 @@ const EconomyTab = ({
         <TabsContent value="production" className="space-y-5 animate-fade-in">
           {realm && <ProductionOverviewCard realm={realm} />}
           <WorkforcePanel cities={myCities} mobilizationRate={mobRate} soldiers={realm?.manpower_mobilized ?? 0} />
+          <LaborProductionPanel sessionId={sessionId} cities={myCities} playerName={currentPlayerName} currentTurn={currentTurn} />
           <PhysicalEconomyPanel sessionId={sessionId} cities={myCities} playerName={currentPlayerName} currentTurn={currentTurn} />
           <PopulationPanel cities={myCities} realm={realm} />
         </TabsContent>
