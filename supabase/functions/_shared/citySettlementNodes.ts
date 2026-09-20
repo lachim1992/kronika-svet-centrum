@@ -53,7 +53,7 @@ export async function ensureCitySettlementNodes(
   for (const city of cities) {
     const x = city.grid_x ?? city.province_q ?? 0;
     const y = city.grid_y ?? city.province_r ?? 0;
-    const capital = city.is_capital === true;
+    const capital = priority.get(city.owner_player) === city.id;
     const settlementFields = {
       city_id: city.id,
       controlled_by: city.owner_player,
