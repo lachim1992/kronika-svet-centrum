@@ -379,6 +379,26 @@ const CityEconomyAnalytics = ({
                         <span className="font-semibold text-foreground/80">Co to živí: </span>
                         {(cfg?.productionInputs?.length ? cfg.productionInputs : cfg?.resourceDependencies || []).join(", ") || "základní sektor"}
                       </div>
+                      {(() => {
+                        const steps = productionChainForBasket(row.basketKey);
+                        if (!steps.length) return null;
+                        const missing = row.unmet > 0 ? firstMissingStep(steps, cityStructureNames) : null;
+                        return (
+                          <div className="text-[10px] text-muted-foreground space-y-0.5">
+                            <div>
+                              <span className="font-semibold text-foreground/80">Výrobní cesta: </span>
+                              {chainLabel(steps)}
+                            </div>
+                            {row.unmet > 0 && (
+                              <div className={missing ? "text-destructive" : "text-amber-500"}>
+                                {missing
+                                  ? `Chybí stavba pro krok ${missing.good} — postav ${missing.buildings.map(b => `${b.building} (úroveň ${b.level})`).join(" nebo ") || "odpovídající dílnu"}.`
+                                  : "Stavby jsou na místě — omezuje pracovní síla, kapacita, dopravní cesta nebo dodavatel vstupů."}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {row.sources.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {row.sources.slice(0, 5).map(source => (
