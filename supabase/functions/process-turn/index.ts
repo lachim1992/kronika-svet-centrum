@@ -2,6 +2,7 @@ import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.t
 import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demographics.ts";
 import { TAX_MAX, laffer, governance, taxRevenue, sportFundingExpense as computeSportFunding } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isNeedBasket, waterShortageImpact } from "../_shared/demandModel.ts";
 import { foodShortageImpact } from '../_shared/foodShortage.ts';
 import { routeUpkeepDueThisTurn } from '../_shared/routeUpkeep.ts';
 
@@ -1393,11 +1394,19 @@ Deno.serve(async (req) => {
         const baskets = marketNodeId ? basketsByCity.get(marketNodeId) || [] : [];
         if (baskets.length === 0) continue;
 
-        // Demand-weighted satisfaction prevents tiny luxury baskets from outweighing staples.
-        const totalDemand = baskets.reduce((sum: number, b: any) => sum + Math.max(0, Number(b.quantity_needed || 0)), 0);
+        // STABILITY FOLLOWS NEEDS ONLY. An unmet tool, storage or luxury basket is an
+        // efficiency or market signal (handled as a production/market alert), never a reason
+        // for the population to riot. Only basic-need baskets drive the stability drift.
+        const needRows = baskets.filter((b: any) => isNeedBasket(b.basket_key));
+        const totalDemand = needRows.reduce((sum: number, b: any) => sum + Math.max(0, Number(b.quantity_needed || 0)), 0);
         const avgSat = totalDemand > 0
-          ? baskets.reduce((sum: number, b: any) => sum + Number(b.satisfaction_score || 0) * Math.max(0, Number(b.quantity_needed || 0)), 0) / totalDemand
-          : baskets.reduce((sum: number, b: any) => sum + Number(b.satisfaction_score || 0), 0) / baskets.length;
+          ? needRows.reduce((sum: number, b: any) => sum + Number(b.satisfaction_score || 0) * Math.max(0, Number(b.quantity_needed || 0)), 0) / totalDemand
+          : 1;
+        // Drinking water is a critical need on its own public-health curve (bands, not unmet>0).
+        const waterRow = baskets.find((b: any) => b.basket_key === 'drinking_water');
+        const waterCoverage = waterRow && Number(waterRow.quantity_needed) > 0
+          ? Number(waterRow.satisfaction_score || 0) : 1;
+        const water = waterShortageImpact(city.population_total || 0, waterCoverage);
         // Staple food satisfaction drives population
         const stapleSat = Number(baskets.find((b: any) => b.basket_key === "staple_food")?.satisfaction_score || 0);
         // Feast is the canonical ritual/ceremonial basket in Goods 4.3.
@@ -1409,6 +1418,7 @@ Deno.serve(async (req) => {
         else if (avgSat > 0.5) stabilityDrift = 0;  // OK
         else if (avgSat > 0.3) stabilityDrift = -2;  // Under-supplied
         else stabilityDrift = -5;                      // Critical shortage
+        stabilityDrift -= water.stabilityLoss;
 
         // PHASE A: process-turn is NOT a population writer. The staple-based
         // growth mutation was removed — commit-turn (turn-based) / world-tick
@@ -1425,10 +1435,19 @@ Deno.serve(async (req) => {
 
 
         // Generate events for critical shortages
+        if (water.band === 'severe' || water.band === 'critical') {
+          newEvents.push({
+            event_type: "goods_shortage_crisis",
+            note: `${city.name}: Nedostatek pitné vody — pokrytí ${Math.round(waterCoverage * 100)} %. Zdraví a stabilita pod tlakem.`,
+            importance: water.band === 'critical' ? "critical" : "warning",
+            city_id: city.id,
+            reference: { basket: 'drinking_water', coverage: waterCoverage, band: water.band, stability_drift: -water.stabilityLoss },
+          });
+        }
         if (avgSat < 0.3) {
           newEvents.push({
             event_type: "goods_shortage_crisis",
-            note: `${city.name}: Kritický nedostatek goods — spokojenost basketů ${Math.round(avgSat * 100)}%. Stabilita klesá.`,
+            note: `${city.name}: Kritický nedostatek základních potřeb — pokrytí ${Math.round(avgSat * 100)} %. Stabilita klesá.`,
             importance: "critical",
             city_id: city.id,
             reference: { satisfaction: avgSat, staple: stapleSat, stability_drift: stabilityDrift },

@@ -144,7 +144,9 @@ export const DEMAND = {
   /** Military demand: per actual soldier. */
   militaryPerSoldier: 0.004,
   /** Discretionary demand scales with the affluent share of the population and market reach. */
-  affluenceReference: 0.25, marketAffluenceGain: 0.08, discretionaryFloor: 0,
+  affluenceReference: 0.25, marketAffluenceGain: 0.08,
+  /** Even a poor settlement buys a little pottery or oil; the floor keeps variety alive. */
+  discretionaryFloor: 0.15,
   /** Coverage bands of a need basket. */
   needBands: { healthy: 1, minor: 0.9, meaningful: 0.75, severe: 0.5 },
   /** Water shortage curve (stability loss and mortality share by band). */

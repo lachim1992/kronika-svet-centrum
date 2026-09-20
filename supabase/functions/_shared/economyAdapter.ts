@@ -3,6 +3,7 @@ import { actualSoldiers, workforceLawModifiers } from './manpower.ts';
 import { staffingCapacity } from './cityDistricts.ts';
 import { BASKET_TIER, ECONOMY, normalizeLabor, INDUSTRIAL_INPUTS, HOUSEHOLD_GOODS, GOOD_FINAL_USE, GOOD_HOUSEHOLD } from './economyConfig.ts';
 import { buildManagementReport } from './management.ts';
+import { BASKET_KEYS, basketSpec, needBand, alertPriority, shortageEffect, basketSeverity } from './demandModel.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
 import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
 
@@ -17,7 +18,7 @@ async function rows(sb:any,table:string,session?:string){
   for(let start=0;;start+=1000){let q=sb.from(table).select('*').order(orderBy,{ascending:true}).range(start,start+999);if(session)q=q.eq('session_id',session);
     const r=await q;if(r.error)throw Error(`${table}: ${r.error.message}`);out.push(...r.data);if(r.data.length<1000)return out;}
 }
-const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clothing',variety:'feast',ritual:'luxury_clothing',prestige:'luxury_clothing'};
+const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clothing',ritual:'luxury_clothing',prestige:'luxury_clothing'};
 const basket=(v:string)=>remap[v]||v;
 /** Refresh report fiscal fields after the fiscal transaction, without rerunning production. */
 export async function finalizeManagementReports(sb:any,session:string,turn:number){
@@ -32,7 +33,7 @@ export async function finalizeManagementReports(sb:any,session:string,turn:numbe
   if(saved.error)throw saved.error;
 }
 export async function computeCanonicalEconomy(sb:any,session:string){
-  const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations'];
+  const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations','node_projects'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
   const sess=await sb.from('game_sessions').select('current_turn').eq('id',session).single();if(sess.error)throw sess.error;
@@ -43,7 +44,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const current=await sb.from('economy_turn_ledgers').select('result').eq('session_id',session).eq('turn_number',turn).maybeSingle();
   if(current.error)throw current.error;
   const goods:Good[]=db.goods.map(g=>{
-    const bk=basket(g.demand_basket);if(!BASKET_TIER[bk])throw Error(`Unmapped basket for good ${g.key}: ${bk}`);
+    const bk=basket(g.demand_basket);if(!basketSpec(bk))throw Error(`Unmapped basket for good ${g.key}: ${bk}`);
     const profile=g.friction_profile||{};
     const luxury=['luxury_clothing','feast'].includes(bk),stone=/stone|marble|brick/.test(g.key),food=bk==='staple_food'||bk==='feast';
     return {key:g.key,basket:bk,price:nonnegative(g.base_price_numeric),stage:g.production_stage,storable:g.storable,
@@ -74,6 +75,11 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       market:nonnegative(c.market_level)+settlementBaseline(c.population_total),
       storage:effects.reduce((s,e)=>s+nonnegative(e.storage_capacity??e.warehouse_level),0)+settlementBaseline(c.population_total),
       admin:nonnegative(c.temple_level),
+      // Construction demand exists only while something is actually being built.
+      constructionProjects:db.city_buildings.filter(b=>b.city_id===c.id&&b.status!=='completed').length+
+        db.city_districts.filter(d=>d.city_id===c.id&&d.status!=='completed').length+
+        db.node_projects.filter(p=>!['completed','cancelled'].includes(p.status)&&
+          db.province_nodes.some(n=>n.id===p.node_id&&n.city_id===c.id)).length,
 
       security:nonnegative(c.city_stability??50)/100,guild:Math.max(0,...db.province_nodes.filter(n=>n.city_id===c.id).map(n=>nonnegative(n.guild_level))),
       ideology:realm.trade_ideology||'customary_local',coastal:!!db.province_hexes.find(h=>(h.grid_x??h.q)===(c.grid_x??c.province_q)&&(h.grid_y??h.r)===(c.grid_y??c.province_r))?.coastal};
@@ -233,14 +239,24 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     if(node.node_subtype==='city'||!cityNode.has(c.id))cityNode.set(c.id,node.id);
     if(node.node_subtype==='city')cityNode.set(c.id,node.id);}
   const marketBaskets:any[]=[];
-  for(const c of cities)for(const bk of Object.keys(BASKET_TIER)){const bs=result.balances.filter(b=>b.city===c.id&&goodMap.get(b.good)!.basket===bk);
+  const demandByKey=new Map((result.demand||[]).map((d:any)=>[`${d.city}::${d.good}`,d.channels]));
+  for(const c of cities)for(const bk of BASKET_KEYS){const bs=result.balances.filter(b=>b.city===c.id&&goodMap.get(b.good)!.basket===bk);
     const sum=(field:string)=>bs.reduce((s,b)=>s+Number((b as any)[field]||0),0),demand=sum('demand'),unmet=sum('unmet_demand');
     const recipeSupply=sum('produced_node'),structureSupply=sum('produced_facility')+sum('produced_district');
     marketBaskets.push({session_id:session,city_id:c.id,player_name:c.owner,basket_key:bk,turn_number:turn,
       auto_supply:sum('produced_household'),recipe_bonus:recipeSupply,building_bonus:structureSupply,bonus_supply:recipeSupply+structureSupply,
       local_supply:sum('consumed_household')+sum('consumed_state'),
       local_demand:demand,unmet_demand:unmet,domestic_satisfaction:demand?1-unmet/demand:1,export_surplus:sum('stored')+sum('exported'),quality_weight:1,
-      market_access:1,monetization:1});}
+      market_access:1,monetization:1,
+      // Demand provenance + class-aware consequence, so the UI never re-derives economics.
+      demand_detail:(()=>{const coverage=demand>0?Math.max(0,demand-unmet)/demand:1,spec=basketSpec(bk)!;
+        const channels:Record<string,number>={};
+        for(const b of bs)for(const [channel,qty] of Object.entries(demandByKey.get(`${c.id}::${b.good}`)||{}))
+          if(Number(qty)>0)channels[channel]=(channels[channel]||0)+Number(qty);
+        return {demand_class:spec.class,group:spec.group,label:spec.label,channels,coverage,
+          basic_need:spec.basicNeeds,band:needBand(coverage),severity:basketSeverity(bk,coverage),
+          alert:alertPriority(bk,coverage,{activeSystem:demand>0}),effect:shortageEffect(bk,coverage),
+          tool_coverage:bk==='tools'?(result.toolCoverage?.[c.id]??1):undefined};})()});}
   // City columns carry cities.id; node columns carry the anchoring province_nodes.id. Never swap them.
   const tradeFlows=result.flows.filter(f=>cityNode.has(f.source)&&cityNode.has(f.destination)).map(f=>({session_id:session,good_key:f.good,
     source_city_id:f.source,target_city_id:f.destination,
@@ -275,7 +291,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     domestic_share:b.demand?Math.min(1,(b.consumed_household+b.consumed_state)/b.demand):1,
     import_share:(b.opening+produced(b)+b.imported)>0?b.imported/(b.opening+produced(b)+b.imported):0};});
 
-  const marketShares=realms.flatMap(realm=>Object.keys(BASKET_TIER).map(bk=>{
+  const marketShares=realms.flatMap(realm=>BASKET_KEYS.map(bk=>{
     const world=marketBaskets.filter(b=>b.basket_key===bk),local=world.filter(b=>b.player_name===realm.player_name);
     const exports=basketFlows.filter(f=>f.basket_key===bk&&f.source_player!==f.target_player);
     const totalExport=exports.reduce((s,f)=>s+f.volume,0),ownExport=exports.filter(f=>f.source_player===realm.player_name).reduce((s,f)=>s+f.volume,0);
