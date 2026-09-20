@@ -132,3 +132,11 @@
 - [ ] Fáze 6: aliance blokují válku, open borders řídí mírový pohyb, AI fallback, serverová náhoda
 - [ ] Rozhodnuto: persistentní real-time režim opuštěn — world-tick/process-tick/action_queue/time_pools k odstranění
 - [ ] Rozhodnuto: Sphaera/ligy zamrazit za beta flag
+
+### Fáze 2 — autorita příkazů (hotovo)
+- [x] RECRUIT_GENERAL: server vkládá generála, deterministická schopnost z command_id, atomické strhnutí zlata
+- [x] SIGN_NEUTRAL_PACT: tribut odvozený ze stupně osady, kontrola zlata, pakt + event na serveru
+- [x] RESOLVE_UPRISING: ústupky (zlato, sklady, odevzdání města, abdikace) řeší server, jedno hlavní město zachováno
+- [x] APPLY_DECREE_EFFECTS: rozšířeno o reakce frakcí a penalizaci stability rady
+- [x] Klient (ArmyTab, CouncilTab, UprisingDialog, CityActionsPopover) už nepíše do pokladnice ani kanonických tabulek
+- [x] Statické kontrakty: src/test/phase2-command-authority.test.ts
