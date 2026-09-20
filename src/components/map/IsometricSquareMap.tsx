@@ -2008,6 +2008,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </div>
         </div>}
       </aside>}
+      <BuildingDetailSheet sessionId={sessionId} currentTurn={currentTurn} playerName={playerName}
+        isOwner={selectedCity ? selectedCity.owner_player === playerName : true}
+        treasury={treasury} target={buildingTarget}
+        onClose={() => setBuildingTarget(null)}
+        onChanged={() => { void load(); if (selectedCell) void loadTileParcels(selectedCell.a, selectedCell.b); }} />
       {!tiles.length &&  <div className="absolute inset-0 grid place-items-center text-center"><div className="map-floating-control p-6"><Castle className="mx-auto mb-2 h-7 w-7 text-primary"/><p className="font-display text-primary">Mapa zatím nemá žádná pole.</p></div></div>}
     </div>
   );
