@@ -196,7 +196,8 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRoom) return;
 
-    const leakChance = secrecy === "LEAKABLE" ? Math.floor(Math.random() * 16) + 5 : 0;
+    // No client-side dice: a leakable message carries a fixed declared risk.
+    const leakChance = secrecy === "LEAKABLE" ? 10 : 0;
 
     const { error } = await supabase.from("diplomacy_messages").insert({
       room_id: selectedRoom.id,
