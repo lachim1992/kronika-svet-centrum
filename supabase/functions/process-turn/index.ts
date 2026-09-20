@@ -1042,7 +1042,10 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // MANPOWER (warriors contribute elite officers)
     // ══════════════════════════════════════════
-    const manpowerPool = workforce;
+    // realm_resources.manpower_pool/manpower_available are integer columns. The
+    // workforce model can return fractional values after mobilization modifiers,
+    // so normalize once before building the atomic fiscal patch.
+    const manpowerPool = Math.max(0, Math.floor(workforce));
     const manpowerGrowth = manpowerPool - Number(realm.manpower_pool || 0);
 
     // ══════════════════════════════════════════

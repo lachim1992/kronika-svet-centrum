@@ -124,13 +124,13 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
     <header className="sticky top-0 z-40 border-b border-border backdrop-blur-md bg-background/95"
       style={{ boxShadow: "0 2px 16px -4px hsl(220 30% 3% / 0.6)" }}
     >
-      <div className="flex items-center justify-between px-2 sm:px-5 py-2 sm:py-3 max-w-[1600px] mx-auto">
-        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+      <div className="flex h-11 items-center justify-between px-2 sm:px-4 max-w-[1600px] mx-auto">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <ChronicleHubLogo variant="mark" size="sm" />
-          <span className="font-display font-semibold text-sm sm:text-base text-primary truncate max-w-[120px] sm:max-w-none">
+          <span className="font-display font-semibold text-xs sm:text-sm text-primary truncate max-w-[120px] sm:max-w-none">
             {worldName || "The Chronicle Hub"}
           </span>
-          <Badge className="bg-primary/15 text-primary border-primary/25 font-display text-[10px] sm:text-xs shrink-0 px-2 sm:px-3 py-0.5 sm:py-1">
+          <Badge className="bg-primary/15 text-primary border-primary/25 font-display text-[10px] shrink-0 px-2 py-0.5">
             Rok {currentTurn}
           </Badge>
         </div>
@@ -154,7 +154,7 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
                 size="sm"
                 onClick={onCloseTurn}
                 disabled={turnProcessing}
-                className="h-8 px-3 font-display text-xs gap-1.5"
+                className="h-7 px-2.5 font-display text-[11px] gap-1.5"
               >
                 {turnProcessing ? (
                   <><Loader2 className="h-3.5 w-3.5 animate-spin" />Zpracovávám…</>
@@ -169,7 +169,7 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
                 size="sm"
                 onClick={onNextTurn}
                 disabled={turnProcessing}
-                className="h-8 px-3 font-display text-xs gap-1.5"
+                className="h-7 px-2.5 font-display text-[11px] gap-1.5"
               >
                 {turnProcessing ? (
                   <><Loader2 className="h-3.5 w-3.5 animate-spin" />Zpracovávám…</>
@@ -184,7 +184,7 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 relative text-muted-foreground hover:text-foreground"
+              className="h-7 w-7 relative text-muted-foreground hover:text-foreground"
               onClick={onOpenCouncil}
               title="Hlášení rádců"
             >
@@ -201,7 +201,7 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
             <Button
               variant={devMode ? "default" : "ghost"}
               size="icon"
-              className={`h-8 w-8 ${devMode ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+              className={`h-7 w-7 ${devMode ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}
               onClick={toggleDevMode}
               title="Dev Mode"
             >
@@ -212,19 +212,19 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
             onClick={toggleTheme}
           >
             {isLight ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </Button>
 
-          <Button variant="ghost" size="sm" onClick={copyCode} className="font-mono text-xs h-8 px-2 sm:px-3 text-muted-foreground hover:text-foreground hidden sm:flex">
+          <Button variant="ghost" size="sm" onClick={copyCode} className="font-mono text-[11px] h-7 px-2 text-muted-foreground hover:text-foreground hidden sm:flex">
             <Copy className="h-3.5 w-3.5 mr-1.5" />{roomCode}
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="h-8 sm:h-9 px-2 sm:px-3 rounded-lg bg-secondary border border-border hover:bg-secondary/80 hover:border-primary/20 transition-all duration-200 flex items-center gap-1.5 sm:gap-2 text-sm font-display">
+              <button className="h-7 px-2 sm:px-2.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 hover:border-primary/20 transition-all duration-200 flex items-center gap-1.5 text-sm font-display">
                 <User className="h-4 w-4 text-primary" />
                 <span className="text-[10px] sm:text-xs font-semibold max-w-[60px] sm:max-w-[100px] truncate">{playerName}</span>
                 {(myRole === "admin" || myRole === "moderator") && <span className="text-xs text-primary">{myRole === "moderator" ? "⚙" : "★"}</span>}

@@ -78,9 +78,18 @@ const Dashboard = () => {
   const [showVictory, setShowVictory] = useState(false);
   const [cityActionsTarget, setCityActionsTarget] = useState<string | null>(null);
   const [mapDetailOpen, setMapDetailOpen] = useState(false);
+  const [mapResetSignal, setMapResetSignal] = useState(0);
   const gridKind = worldFoundation?.grid_kind === "square4" ? "square4" : "hex6";
 
   const currentTurn = session?.current_turn ?? 0;
+
+  const handleTabChange = (tab: TabId) => {
+    setActiveTab(tab);
+    if (tab !== "worldmap") {
+      setMapDetailOpen(false);
+      setMapResetSignal(value => value + 1);
+    }
+  };
 
   useEffect(() => {
     if (!user?.id || players.length === 0) return;
@@ -347,7 +356,7 @@ const Dashboard = () => {
     <DevModeProvider allowed={myRole === "admin"}>
     <AppShell
       activeTab={activeTab}
-      onTabChange={setActiveTab}
+      onTabChange={handleTabChange}
       showDevTab={myRole === "admin"}
       showPersistentTab={session?.game_mode === "time_persistent"}
       worldName={worldFoundation?.world_name}
@@ -362,6 +371,7 @@ const Dashboard = () => {
           gridKind={gridKind}
           backgroundMode={activeTab !== "worldmap" && !mapDetailOpen}
           onDetailOpenChange={setMapDetailOpen}
+          resetSignal={mapResetSignal}
         />
       }
       header={

@@ -14,9 +14,10 @@ interface Props {
   gridKind?: "hex6" | "square4";
   backgroundMode?: boolean;
   onDetailOpenChange?: (open: boolean) => void;
+  resetSignal?: number;
 }
 
-const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentTurn, onCityClick, gridKind = "hex6", backgroundMode = false, onDetailOpenChange }: Props) => {
+const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentTurn, onCityClick, gridKind = "hex6", backgroundMode = false, onDetailOpenChange, resetSignal = 0 }: Props) => {
   const isMobile = useIsMobile();
 
   return (
@@ -28,6 +29,7 @@ const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentT
         onCityClick={onCityClick}
         gridKind={gridKind}
         onDetailOpenChange={onDetailOpenChange}
+        resetSignal={resetSignal}
       />
 
       {/* Stage 8 floating overlays */}

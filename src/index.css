@@ -216,18 +216,19 @@
   }
   .map-workspace-panel {
     pointer-events: auto;
-    width: min(40vw, 760px);
-    min-width: 520px;
-    height: calc(100vh - 132px);
+    width: 100%;
+    min-width: 0;
+    height: calc(100vh - 112px);
     max-height: none;
     margin: 0 0 0 auto;
     padding: 14px;
     overflow-y: auto;
     border: 1px solid hsl(43 64% 52% / .22);
     border-top: 0;
+    border-left: 0;
     border-right: 0;
-    border-radius: 0 0 0 16px;
-    background: linear-gradient(180deg, hsl(222 34% 12% / .97), hsl(222 34% 10% / .93));
+    border-radius: 0;
+    background: linear-gradient(180deg, hsl(222 34% 12% / .985), hsl(222 34% 10% / .97));
     box-shadow: 0 20px 70px rgb(0 0 0 / .58), inset 0 1px hsl(43 64% 70% / .08);
     backdrop-filter: blur(18px);
   }
@@ -236,7 +237,7 @@
       width: 100%;
       min-width: 0;
       height: auto;
-      max-height: calc(100vh - 132px);
+      max-height: calc(100vh - 112px);
       margin-top: 0;
       padding: 10px;
       border-left: 0;

@@ -31,6 +31,12 @@ describe("INVARIANT 1 — process-turn is the sole turn-fiscal writer", () => {
       expect(src).toContain(base);
     }
   });
+
+  it("normalizes workforce before writing integer manpower columns", () => {
+    const src = fn("process-turn");
+    expect(src).toMatch(/const manpowerPool = Math\.max\(0, Math\.floor\(workforce\)\)/);
+    expect(src).toContain("manpower_available: Math.max(0, manpowerPool - totalSoldiers)");
+  });
 });
 
 describe("HISTORY GUARD — derived recompute never appends event logs", () => {
