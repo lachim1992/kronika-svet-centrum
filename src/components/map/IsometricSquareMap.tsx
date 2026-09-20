@@ -179,6 +179,7 @@ interface Props {
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; province_id: string | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null; coastal: boolean | null };
 type StoredSubBiome = { grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number; sub_biome: string };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
+type HexPopulation = { q: number; r: number; carrying_capacity: number; rural_population: number; mobile_population: number; last_resolved_turn: number };
 type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; city_id: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null; upgrade_level: number | null; infrastructure_level: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
 /** Stored paths come as "x,y" strings, [x,y] pairs or objects — all three are valid. */
@@ -360,6 +361,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [storedSubBiomes, setStoredSubBiomes] = useState<StoredSubBiome[]>([]);
   /** Which built structure the player opened for inspection. */
   const [buildingTarget, setBuildingTarget] = useState<BuildingTarget | null>(null);
+  const [hexPopulation, setHexPopulation] = useState<HexPopulation[]>([]);
 
 
 
@@ -373,7 +375,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }), []);
 
   const load = useCallback(async () => {
-    const [tileRes, cityRes, nodeRes, routeRes, tradeFlowRes, basketFlowRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, roadSegmentRes, roadProjectRes, templateRes, buildingRes, districtRes] = await Promise.all([
+    const [tileRes, cityRes, nodeRes, routeRes, tradeFlowRes, basketFlowRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, roadSegmentRes, roadProjectRes, templateRes, buildingRes, districtRes, hexPopulationRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction, coastal").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, city_id, controlled_by, production_output, wealth_output, food_value, parcel_index, upgrade_level, infrastructure_level").eq("session_id", sessionId).eq("is_active", true),
@@ -391,6 +393,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
       supabase.from("city_buildings").select("id, name, category, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
+      supabase.from("hex_population").select("q, r, carrying_capacity, rural_population, mobile_population, last_resolved_turn").eq("session_id", sessionId).limit(4000),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
     // One animated line per physical corridor, but every movement along it stays
@@ -432,6 +435,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       ...((buildingRes.data || []) as ConstructionEntity[]),
       ...((districtRes.data || []).filter((item: any) => item.parcel_id).map((item: any) => ({ ...item, build_duration: item.build_turns, category: item.district_type === "residential" ? "residential" : "economic" })) as ConstructionEntity[]),
     ]);
+    setHexPopulation((hexPopulationRes.data || []) as HexPopulation[]);
 
     setTreasury({ gold: Number(realmRes.data?.gold_reserve || 0), production: Number(realmRes.data?.production_reserve || 0) });
   }, [sessionId, playerName, currentTurn]);
@@ -795,6 +799,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const a = tileCell(left); const b = tileCell(right); return (a.a + a.b) - (b.a + b.b);
   }), [tiles, tileCell]);
   const selectedCell = selected ? tileCell(selected) : null;
+  const selectedHexPopulation = selected ? hexPopulation.find(row => row.q === selected.q && row.r === selected.r) : undefined;
   const selectedParcel = tileParcels.find(parcel => parcel.id === selectedParcelId) || null;
   const selectedParcelContents = selectedParcel ? parcelContents.filter(item => item.parcel_id === selectedParcel.id) : [];
   const selectedNode = nodes.find(node => node.id === selectedNodeId) || null;
@@ -1748,6 +1753,27 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <h2 className="mt-1 text-xl capitalize">{selected.biome_family.replace("_", " ")}</h2>
           <p className="mt-1 text-xs text-muted-foreground">{selected.owner_player || "Neutrální území"} · {selected.is_passable === false ? "Neprůchodné" : "Průchodné"}{selected.has_river ? " · Řeka" : ""}</p>
         </div>
+
+        <section className="mt-4 border border-border/70 bg-muted/20 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium">Obyvatelstvo pole</h3>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Venkov mimo města · deterministický odhad Fáze B</p>
+            </div>
+            {selectedHexPopulation && <span className="text-[10px] text-muted-foreground">výpočet kola {selectedHexPopulation.last_resolved_turn}</span>}
+          </div>
+          {selectedHexPopulation ? <>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              <div className="border border-border/60 p-2"><p className="text-[9px] uppercase text-muted-foreground">Na venkově</p><p className="mt-1 font-mono text-sm font-semibold">{selectedHexPopulation.rural_population.toLocaleString("cs-CZ")}</p></div>
+              <div className="border border-border/60 p-2"><p className="text-[9px] uppercase text-muted-foreground">Pole uživí</p><p className="mt-1 font-mono text-sm font-semibold">{selectedHexPopulation.carrying_capacity.toLocaleString("cs-CZ")}</p></div>
+              <div className="border border-border/60 p-2"><p className="text-[9px] uppercase text-muted-foreground">Mobilní</p><p className="mt-1 font-mono text-sm font-semibold">{selectedHexPopulation.mobile_population.toLocaleString("cs-CZ")}</p></div>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden bg-muted"><div className="h-full bg-primary" style={{ width: `${Math.min(100, selectedHexPopulation.carrying_capacity > 0 ? selectedHexPopulation.rural_population / selectedHexPopulation.carrying_capacity * 100 : 0)}%` }} /></div>
+            <p className="mt-1 text-[10px] text-muted-foreground">Obsazenost {selectedHexPopulation.carrying_capacity > 0 ? Math.round(selectedHexPopulation.rural_population / selectedHexPopulation.carrying_capacity * 100) : 0} %</p>
+          </> : <p className="mt-3 text-xs text-muted-foreground">Pro toto pole zatím nebyla venkovská populace vypočtena.</p>}
+          {selectedCity && <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2 text-xs"><span>Městská populace · {selectedCity.name}</span><span className="font-mono font-semibold">{selectedCity.population_total.toLocaleString("cs-CZ")}</span></div>}
+          <p className="mt-2 text-[10px] text-muted-foreground">Venkovský odhad je zatím informativní a nesčítá se s kanonickou populací města.</p>
+        </section>
 
         <section className="mt-5 border-y border-border/70 py-4">
           <div className="mb-2 flex items-baseline justify-between">
