@@ -6,6 +6,7 @@ import DeclarationsPanel from "@/components/DeclarationsPanel";
 import SecretObjectivesPanel from "@/components/SecretObjectivesPanel";
 import TurnProgressionPanel from "@/components/TurnProgressionPanel";
 import RealmDashboard from "@/components/RealmDashboard";
+import TradeFlowExplorer from "@/components/economy/TradeFlowExplorer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shield, Swords, Feather, Megaphone, Target, Sparkles, Clock, Crown } from "lucide-react";
 
@@ -78,6 +79,7 @@ const RealmTab = ({
             sessionId={sessionId} currentPlayerName={currentPlayerName}
             currentTurn={currentTurn} myRole={myRole} cities={cities} realm={realm} onRefetch={onRefetch}
           />
+          <TradeFlowExplorer sessionId={sessionId} currentTurn={currentTurn} cities={cities} playerName={currentPlayerName} />
         </TabsContent>
 
         <TabsContent value="turn" className="mt-3">
