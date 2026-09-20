@@ -1,5 +1,10 @@
 # Map-first square-grid roadmap
 
+- [ ] Restore reliable Test01 turn closure after stale prior-turn execution guard
+- [ ] Verify canonical Test01 economy twice without fiscal or history drift
+- [ ] Make module tabs close map details and use the full workspace width
+- [ ] Compact the world header, resource strip, and module navigation
+
 - [x] Introduce shared grid geometry contract
 - [x] Add grid geometry regression tests
 - [x] Add per-world grid version and additive square coordinates

@@ -174,13 +174,13 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
   return (
     <>
       <TooltipProvider delayDuration={300}>
-        <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+        <div className="h-8 bg-secondary/80 backdrop-blur-sm border-b border-border px-2 sm:px-3 flex items-center gap-1 overflow-x-auto scrollbar-hide">
           {/* Macro chips with derivation tooltips */}
           {chips.map(chip => (
             <Tooltip key={chip.label}>
               <TooltipTrigger asChild>
                 <div
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border transition-colors cursor-help ${
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold shrink-0 border transition-colors cursor-help ${
                     chip.warning
                       ? "border-destructive/30 bg-destructive/10 text-destructive"
                       : "border-border bg-card/60 text-foreground hover:border-primary/30 hover:bg-card/80"
@@ -202,14 +202,14 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
 
         {/* Strategic resource badges */}
         {strats.map(s => (
-          <div key={s.key} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-border bg-card/60" title={`${STRATEGIC_TIER_LABELS[s.tier]}`}>
+          <div key={s.key} className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold shrink-0 border border-border bg-card/60" title={`${STRATEGIC_TIER_LABELS[s.tier]}`}>
             <span>{STRATEGIC_RESOURCE_ICONS[s.key]}</span>
             <span className="text-muted-foreground hidden sm:inline">{s.tier}</span>
           </div>
         ))}
 
         {/* Mobilization chip */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-border bg-card/60 hover:border-primary/30 hover:bg-card/80 transition-colors">
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold shrink-0 border border-border bg-card/60 hover:border-primary/30 hover:bg-card/80 transition-colors">
           <Gauge className="h-3 w-3 text-primary" />
           <span className="hidden sm:inline text-muted-foreground">Mob</span>
           <span>{currentMobPct}%</span>
@@ -217,7 +217,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
 
         {/* Famine indicator */}
         {famineCities.length > 0 && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-destructive/25 bg-destructive/8 text-destructive animate-pulse">
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold shrink-0 border border-destructive/25 bg-destructive/8 text-destructive animate-pulse">
             <Skull className="h-3 w-3" />
             <span>{famineCities.length}× hlad</span>
           </div>

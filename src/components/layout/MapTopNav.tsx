@@ -41,7 +41,7 @@ export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPers
 
   return (
     <nav className="map-command-nav" aria-label="Herní moduly">
-      <div className="flex h-11 items-center gap-1 overflow-x-auto px-2 scrollbar-hide md:px-4">
+      <div className="flex h-9 items-center gap-1 overflow-x-auto px-2 scrollbar-hide md:px-3">
         {items.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id;
           return (
@@ -54,7 +54,7 @@ export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPers
               aria-pressed={active}
               title={active && id !== "worldmap" ? `Zavřít ${label}` : `Otevřít ${label}`}
               className={cn(
-                "group relative h-8 shrink-0 gap-1.5 rounded-md border px-2.5 text-[11px] font-medium tracking-normal transition-all",
+                "group relative h-7 shrink-0 gap-1.5 rounded-md border px-2 text-[10px] font-medium tracking-normal transition-all",
                 active
                   ? "border-primary/55 bg-primary/15 text-primary shadow-[inset_0_-2px_0_hsl(var(--primary))]"
                   : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground",
@@ -76,7 +76,7 @@ export default function MapTopNav({ activeTab, onTabChange, showDevTab, showPers
               ? "Testovací režim je zapnutý: stavby a úpravy nic nestojí a dokončí se hned"
               : "Zapnout testovací režim: stavby a úpravy bez nákladů a čekání"}
             className={cn(
-              "h-8 shrink-0 gap-1.5 rounded-md border px-2.5 text-[11px] font-medium transition-all",
+              "h-7 shrink-0 gap-1.5 rounded-md border px-2 text-[10px] font-medium transition-all",
               sandbox
                 ? "border-amber-400/60 bg-amber-400/15 text-amber-300"
                 : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground",

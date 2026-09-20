@@ -171,6 +171,7 @@ interface Props {
   onCityClick?: (cityId: string) => void;
   gridKind?: "hex6" | "square4";
   onDetailOpenChange?: (open: boolean) => void;
+  resetSignal?: number;
 }
 
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; province_id: string | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null; coastal: boolean | null };
@@ -285,7 +286,7 @@ function useMapLayer(key: string, initial = true) {
   return [visible, setVisible] as const;
 }
 
-export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange }: Props) {
+export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange, resetSignal = 0 }: Props) {
   const isMobile = useIsMobile();
   const viewportRef = useRef<HTMLDivElement>(null);
   const pinchRef = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -390,6 +391,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [sessionId, playerName, currentTurn]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (resetSignal === 0) return;
+    setSelected(null);
+    setSelectedArmyId(null);
+    setSelectedParcelId(null);
+    setSelectedNodeId(null);
+    setCityLayerCityId(null);
+    setRoadDraft([]);
+    setBuildingAction(null);
+  }, [resetSignal]);
   // Every city must own a footprint on the 32-parcel grid; this tops up anything missing.
   useEffect(() => {
     let cancelled = false;
