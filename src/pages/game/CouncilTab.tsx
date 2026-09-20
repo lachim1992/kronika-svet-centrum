@@ -518,33 +518,16 @@ const CouncilTab = ({
         }).catch(() => {});
       }
 
-      // Apply immediate one-time effects (gold, grain, stability, etc.)
-      await applyImmediateEffects(decreeEffects);
+      // Immediate effects, faction reactions and the council backlash all go
+      // through the single APPLY_DECREE_EFFECTS command (no direct UI writes).
+      const votingResult = factionVotes.length > 0 ? computeVotingResult(factionVotes) : null;
+      const factionImpacts = factionVotes.length > 0 ? computeDecreeImpacts(factionVotes) : {};
+      const stabilityPenalty = votingResult && !votingResult.approved ? votingResult.stabilityPenalty : 0;
 
-      // Apply faction impacts (mechanical effects on satisfaction & loyalty)
-      if (factionVotes.length > 0) {
-        const impacts = computeDecreeImpacts(factionVotes);
-        const votingResult = computeVotingResult(factionVotes);
+      await applyImmediateEffects(decreeEffects, { factionImpacts, stabilityPenalty });
 
-        for (const faction of allFactions) {
-          const impact = impacts[faction.faction_type];
-          if (!impact) continue;
-          const newSatisfaction = Math.max(0, Math.min(100, faction.satisfaction + impact.satisfaction));
-          const newLoyalty = Math.max(0, Math.min(100, faction.loyalty + impact.loyalty));
-          await supabase.from("city_factions").update({
-            satisfaction: newSatisfaction,
-            loyalty: newLoyalty,
-          }).eq("id", faction.id);
-        }
-
-        // If forced against council will, apply stability penalty
-        if (!votingResult.approved && votingResult.stabilityPenalty > 0) {
-          for (const city of myCities) {
-            const newStability = Math.max(0, (city.city_stability || 70) - votingResult.stabilityPenalty);
-            await supabase.from("cities").update({ city_stability: newStability } as any).eq("id", city.id);
-          }
-          toast.warning(`⚠ Dekret vynucen proti vůli rady! Stabilita snížena o ${votingResult.stabilityPenalty}.`);
-        }
+      if (stabilityPenalty > 0) {
+        toast.warning(`⚠ Dekret vynucen proti vůli rady! Stabilita snížena o ${stabilityPenalty}.`);
       }
 
       // Write to world action log
