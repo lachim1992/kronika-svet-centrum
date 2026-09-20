@@ -756,7 +756,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       ((allTensionData as any[]) || []).some((t: any) => t.crisis_triggered);
     const factionModel = highStakes ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
 
-    const aiResult = await invokeAI(aiCtx, {
+    const aiRequest = {
       model: factionModel,
       functionName: "ai-faction-turn",
       purpose: highStakes ? "war-decision" : "peace-decision",
@@ -858,7 +858,15 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         },
       }],
       toolChoice: { type: "function", function: { name: "faction_turn" } },
-    });
+    };
+
+    // Phase 6 — one deterministic retry on transient provider failures (rate limit / 5xx).
+    let aiResult = await invokeAI(aiCtx, aiRequest);
+    if (!aiResult.ok && (aiResult.status === 429 || (aiResult.status ?? 0) >= 500)) {
+      console.warn(`[ai-faction-turn] provider ${aiResult.status} for ${factionName} — retrying once`);
+      await new Promise((r) => setTimeout(r, 2000));
+      aiResult = await invokeAI(aiCtx, aiRequest);
+    }
 
     // ── Wave 2 SHADOW telemetry — does NOT affect AI behavior. ──
     try {
@@ -930,9 +938,32 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
     }
 
     if (!aiResult.ok) {
-      if (aiResult.status === 429) return json({ error: "Rate limit" }, 429);
-      if (aiResult.status === 402) return json({ error: "Credits exhausted" }, 402);
-      throw new Error(aiResult.error || "AI error");
+      // Phase 6 — no silent skip. The faction explicitly holds position and the hold is recorded,
+      // so players and the AI Lab see why nothing happened this turn.
+      const reason = aiResult.status === 402
+        ? "Vyčerpaný kredit AI"
+        : aiResult.status === 429
+        ? "Poskytovatel AI přetížen"
+        : (aiResult.error || "Chyba AI");
+      await supabase.from("ai_faction_turn_summary").upsert({
+        session_id: sessionId, faction_name: factionName, turn_number: turn,
+        war_state: milMetrics.warState,
+        actions_planned: 0, actions_executed: 0, actions_failed: 0,
+        recruits_attempted: 0, builds_attempted: 0, attacks_attempted: 0,
+        internal_thought: `FALLBACK: ${reason} — frakce drží pozici, žádné akce nebyly vymyšleny.`,
+        failure_reasons: [`provider_unavailable: ${reason}`],
+      }, { onConflict: "session_id,faction_name,turn_number" })
+        .then(() => {}, (e: any) => console.warn("fallback summary upsert:", e?.message));
+      await supabase.from("world_action_log").insert({
+        session_id: sessionId, turn_number: turn, player_name: factionName,
+        action_type: "ai_faction_fallback",
+        description: `AI frakce ${factionName} drží pozici: ${reason}.`,
+        metadata: { status: aiResult.status ?? null, fallback: true },
+      }).then(() => {}, (e: any) => console.warn("fallback log insert:", e?.message));
+      return json({
+        success: true, fallback: true, reason,
+        factionName, turn, executedActions: [], actionsExecuted: 0,
+      }, 200);
     }
 
     const result = aiResult.data;

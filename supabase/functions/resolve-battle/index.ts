@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cellDistance, loadGridKind, neighborOffsets } from "../_shared/topology.ts";
 import { applyPopulationLoss } from "../_shared/demographics.ts";
+import { deterministicSeed } from "../_shared/diplomacyEnforcement.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -181,8 +182,13 @@ Deno.serve(async (req) => {
     const defenderFormation = inputDefenderFormation || "DEFENSIVE";
     const speechMorale = speech_morale_modifier || 0;
     const defenderSpeechMorale = defender_speech_morale_modifier || 0;
-    const battleSeed = seed || Date.now();
     const turnNumber = current_turn || 1;
+    // Phase 6 — the battle roll is server-derived and replayable: the same battle always
+    // resolves the same way. A client-supplied seed is ignored.
+    const battleSeed = deterministicSeed(
+      session_id, turnNumber, lobby_id ?? "", attacker_stack_id,
+      defender_stack_id ?? "", defender_city_id ?? "",
+    );
 
     // Load attacker stack with compositions
     const { data: attackerStack } = await supabase

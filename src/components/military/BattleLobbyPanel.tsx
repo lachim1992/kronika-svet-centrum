@@ -325,7 +325,7 @@ export default function BattleLobbyPanel({ lobby: initialLobby, currentPlayerNam
           defender_speech_morale_modifier: lobby.defender_speech_modifier || 0,
           attacker_formation: lobby.attacker_formation,
           defender_formation: lobby.defender_formation,
-          seed: Date.now() + Math.floor(Math.random() * 100000),
+          // Seed is derived deterministically on the server from the lobby and turn.
           lobby_id: lobby.id,
         },
       });

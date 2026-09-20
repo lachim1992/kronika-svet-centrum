@@ -136,7 +136,13 @@
   - commit-turn si drží jediné cílené `compute-hex-flows` ve fázi 5b (dirty routes po dokončení projektů) — není to druhý řetězec
   - smazány duplicitní UI stavby cest: WorldMapBuildPanel, RouteDetailSheet, RoadNetworkOverlay; cesty se staví jen na fyzické vrstvě (road_projects/road_segments), province_routes = interní vojenská topologie
   - testy: src/test/phase5-unification.test.ts
-- [ ] Fáze 6: aliance blokují válku, open borders řídí mírový pohyb, AI fallback, serverová náhoda
+- [x] Fáze 6: aliance blokují válku, open borders řídí mírový pohyb, AI fallback, serverová náhoda
+  - `_shared/diplomacyEnforcement.ts` = jediné místo pravidel (WAR_BLOCKING_PACTS, PASSAGE_PACTS, checkWarDeclaration, checkTerritoryAccess, deterministicSeed)
+  - command-dispatch: DECLARE_WAR blokován platným spojenectvím/paktem o obraně/vazalstvím; pohyb (hexový i po cestě) blokován v míru bez otevřených hranic
+  - ai-faction-turn: retry při 429/5xx + čestný fallback (frakce drží pozici, důvod zapsán do summary i world_action_log) místo pádu
+  - resolve-battle: seed bitvy deterministicky ze session/tahu/stacků, klientský seed ignorován; DiplomacyPanel a BattleLobbyPanel už negenerují náhodu
+  - pracovní místa přeškálována na hlavy (ECONOMY.workersPerLaborUnit = 20), Test01 populace srovnána s bytovou kapacitou
+  - testy: src/test/phase6-systems-depth.test.ts
 - [ ] Rozhodnuto: persistentní real-time režim opuštěn — world-tick/process-tick/action_queue/time_pools k odstranění
 - [ ] Rozhodnuto: Sphaera/ligy zamrazit za beta flag
 

@@ -12,6 +12,7 @@ import {
   type RivalRow,
 } from "../_shared/nodeInfluence.ts";
 import { applyStackMove } from "../_shared/stackMovementCommand.ts";
+import { checkTerritoryAccess, checkWarDeclaration, loadDiplomacyState } from "../_shared/diplomacyEnforcement.ts";
 import {
   parcelClaimCost,
   POPULATION_PER_SLOT,
@@ -1446,6 +1447,14 @@ async function executeDeclareWar(
     return { events: [], error: "War already active between these players", status: 409 };
   }
 
+  // Phase 6 — an active alliance / defense pact / vassalage blocks the declaration.
+  const { pacts } = await loadDiplomacyState(supabase, sessionId);
+  const warCheck = checkWarDeclaration(pacts, actor.name, targetPlayer);
+  if (warCheck.ok === false) {
+    return { events: [], error: warCheck.error, status: 409 };
+  }
+
+
   // Create war declaration record
   const { data: warRecord, error: warErr } = await supabase.from("war_declarations").insert({
     session_id: sessionId,
@@ -2042,7 +2051,16 @@ async function executeMoveStackRoute(
 
   // Get target node name for narrative
   const { data: targetNode } = await supabase.from("province_nodes")
-    .select("name, hex_q, hex_r").eq("id", targetNodeId).single();
+    .select("name, hex_q, hex_r, owner_player").eq("id", targetNodeId).single();
+
+  // Phase 6 — strategic march into foreign territory needs war, open borders or an alliance.
+  const { pacts: routePacts, wars: routeWars } = await loadDiplomacyState(supabase, sessionId);
+  const routeAccess = checkTerritoryAccess(routePacts, routeWars, actor.name, [targetNode?.owner_player]);
+  if (routeAccess.ok === false) {
+    return { events: [], error: routeAccess.error, status: 409 };
+  }
+
+
 
   // Update stack: set travel state + stance
   await supabase.from("military_stacks").update({
