@@ -1434,16 +1434,37 @@ Deno.serve(async (req) => {
         }
 
 
+        // CRITICAL NEED CONSEQUENCE. Water is the only basket besides food with mortality.
+        // The loss goes through the shared helper so population_total stays equal to the sum
+        // of the four classes, and the row is re-read so an earlier famine write is not lost.
+        if (water.deaths > 0) {
+          const { data: fresh } = await supabase.from("cities")
+            .select("population_total, population_peasants, population_burghers, population_clerics, population_warriors")
+            .eq("id", city.id).maybeSingle();
+          if (fresh) {
+            const loss = applyPopulationLoss(fresh as any, water.deaths);
+            await supabase.from("cities").update({
+              population_total: loss.population_total,
+              population_peasants: loss.population_peasants,
+              population_burghers: loss.population_burghers,
+              population_clerics: loss.population_clerics,
+              population_warriors: loss.population_warriors,
+            }).eq("id", city.id);
+            logEntries.push(`⚠️ Nedostatek pitné vody v ${city.name}! Ztráta ${water.deaths} obyvatel.`);
+          }
+        }
+
         // Generate events for critical shortages
         if (water.band === 'severe' || water.band === 'critical') {
           newEvents.push({
             event_type: "goods_shortage_crisis",
-            note: `${city.name}: Nedostatek pitné vody — pokrytí ${Math.round(waterCoverage * 100)} %. Zdraví a stabilita pod tlakem.`,
+            note: `${city.name}: Nedostatek pitné vody — pokrytí ${Math.round(waterCoverage * 100)} %.${water.deaths > 0 ? ` Zemřelo ${water.deaths} obyvatel.` : " Zdraví a stabilita pod tlakem."}`,
             importance: water.band === 'critical' ? "critical" : "warning",
             city_id: city.id,
-            reference: { basket: 'drinking_water', coverage: waterCoverage, band: water.band, stability_drift: -water.stabilityLoss },
+            reference: { basket: 'drinking_water', coverage: waterCoverage, band: water.band, stability_drift: -water.stabilityLoss, death_toll: water.deaths },
           });
         }
+
         if (avgSat < 0.3) {
           newEvents.push({
             event_type: "goods_shortage_crisis",
