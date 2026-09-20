@@ -55,27 +55,53 @@ export const STARTER_STORAGE: StarterContract = {
 export const starterBundle = (nearWater: boolean): StarterContract[] =>
   [nearWater ? STARTER_FISHERY : STARTER_FARM, STARTER_WELL, STARTER_STORAGE];
 
-const effectsOf = (c: StarterContract) => ({
-  recipe_keys: c.recipeKeys, production_roles: c.roles, capability_tags: c.tags,
-  basket_outputs: c.basketOutputs, jobs_capacity: c.jobsCapacity, starter_economy: true,
-});
+/**
+ * A seeded settlement must actually be able to feed and water itself with the people it has.
+ * Throughput therefore scales with population (one "unit" of the bundle per ~150 souls), while
+ * the declared crew stays inside the settlement's own workforce — a hamlet of 100 cannot staff
+ * a 100-job production centre, and an unstaffable structure produces nothing.
+ */
+export const starterUnitsFor = (population: number): number =>
+  Math.max(1, Math.round((Number(population) || 0) / 150));
 
-export type StarterReport = { city: string; city_name: string; added: string[]; existing: string[] };
+/** Crew a settlement of this size can really field for one starter structure. */
+export const starterJobsFor = (population: number): number =>
+  Math.max(10, Math.round((Number(population) || 0) * 0.12));
+
+const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE;
+
+const effectsOf = (c: StarterContract, population: number) => {
+  const units = scalesWithPopulation(c) ? starterUnitsFor(population) : 1;
+  const outputs = Object.fromEntries(
+    Object.entries(c.basketOutputs).map(([k, v]) => [k, v * units]),
+  );
+  return {
+    recipe_keys: c.recipeKeys, production_roles: c.roles, capability_tags: c.tags,
+    basket_outputs: outputs, jobs_capacity: starterJobsFor(population) * units,
+    starter_economy: true,
+  };
+};
+
+
+export type StarterReport = {
+  city: string; city_name: string; added: string[]; existing: string[]; resized: string[]; units: number;
+};
 
 /**
- * Ensures every listed city owns the minimal explicit production bundle.
- * Returns what was added (or, with dryRun, what would be added).
+ * Ensures every listed city owns the minimal explicit production bundle, sized to its
+ * population. Returns what was added or resized (or, with dryRun, what would change).
  */
 export async function ensureStarterEconomy(
   sb: any,
   sessionId: string,
   options: { cityId?: string; turnNumber?: number; dryRun?: boolean } = {},
 ): Promise<StarterReport[]> {
-  let cityQuery = sb.from('cities').select('id, name, grid_x, grid_y').eq('session_id', sessionId);
+  let cityQuery = sb.from('cities')
+    .select('id, name, grid_x, grid_y, population_total').eq('session_id', sessionId);
   if (options.cityId) cityQuery = cityQuery.eq('id', options.cityId);
   const [{ data: cities }, { data: buildings }, { data: hexes }] = await Promise.all([
     cityQuery,
-    sb.from('city_buildings').select('id, city_id, name, effects').eq('session_id', sessionId),
+    sb.from('city_buildings').select('id, city_id, name, effects, current_level').eq('session_id', sessionId),
     sb.from('province_hexes').select('q, r, has_river, biome_family').eq('session_id', sessionId),
   ]);
   const water = new Set((hexes || [])
@@ -86,25 +112,47 @@ export async function ensureStarterEconomy(
     return false;
   };
   const rows: any[] = [];
+  const resizes: { id: string; effects: any }[] = [];
   const reports: StarterReport[] = [];
   for (const city of (cities || []).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)))) {
     const own = (buildings || []).filter((b: any) => b.city_id === city.id);
+    const population = Number(city.population_total) || 0;
     const bundle = starterBundle(near(Number(city.grid_x) || 0, Number(city.grid_y) || 0));
-    const added: string[] = [], existing: string[] = [];
+    const added: string[] = [], existing: string[] = [], resized: string[] = [];
     for (const contract of bundle) {
-      const has = own.some((b: any) => b.name === contract.name ||
+      const effects = effectsOf(contract, population);
+      const match = own.find((b: any) => b.name === contract.name ||
         (b.effects?.recipe_keys || []).some((k: string) => contract.recipeKeys.includes(k)));
-      if (has) { existing.push(contract.name); continue; }
+      if (match) {
+        existing.push(contract.name);
+        // Only ever resize a structure this helper itself created — never a player's building.
+        const sameSize = JSON.stringify(match.effects?.basket_outputs || {}) === JSON.stringify(effects.basket_outputs)
+          && Number(match.effects?.jobs_capacity) === effects.jobs_capacity;
+        if (match.effects?.starter_economy && !sameSize) {
+          resizes.push({ id: match.id, effects: { ...match.effects, ...effects } });
+          resized.push(contract.name);
+        }
+        continue;
+      }
       added.push(contract.name);
       rows.push({
         session_id: sessionId, city_id: city.id, name: contract.name, category: contract.category,
-        description: contract.description, effects: effectsOf(contract), status: 'completed',
+        description: contract.description, effects, status: 'completed',
         current_level: 1, max_level: 3, build_duration: 1,
         build_started_turn: options.turnNumber ?? 1, completed_turn: options.turnNumber ?? 1,
       });
     }
-    reports.push({ city: city.id, city_name: city.name, added, existing });
+    reports.push({
+      city: city.id, city_name: city.name, added, existing, resized, units: starterUnitsFor(population),
+    });
   }
-  if (rows.length && !options.dryRun) await sb.from('city_buildings').insert(rows);
+  if (!options.dryRun) {
+    if (rows.length) await sb.from('city_buildings').insert(rows);
+    for (const u of resizes) {
+      await sb.from('city_buildings').update({ effects: u.effects }).eq('id', u.id);
+    }
+  }
   return reports;
+
+
 }

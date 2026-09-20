@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { selectCapital } from "../../supabase/functions/_shared/capital";
 import { planRouteMaintenance, type RouteStateRow } from "../../supabase/functions/_shared/routeUpkeep";
-import { starterBundle } from "../../supabase/functions/_shared/starterEconomy";
+import { starterBundle, starterUnitsFor, starterJobsFor } from "../../supabase/functions/_shared/starterEconomy";
 
 const fn = (name: string) => readFileSync(`supabase/functions/${name}/index.ts`, "utf8");
 
@@ -46,6 +46,28 @@ describe("new-world bootstrap reaches a playable economy", () => {
     expect(starterBundle(true).some((c) => c.recipeKeys.includes("catch_fish"))).toBe(true);
     expect(starterBundle(false).some((c) => c.recipeKeys.includes("harvest_wheat"))).toBe(true);
   });
+
+  it("scales the starter economy to settlement population", () => {
+    expect(starterUnitsFor(100)).toBe(1);
+    expect(starterUnitsFor(450)).toBe(3);
+    // monotonic: a bigger settlement never gets a smaller starter economy
+    let previous = 0;
+    for (const pop of [0, 50, 100, 300, 450, 900]) {
+      const units = starterUnitsFor(pop);
+      expect(units).toBeGreaterThanOrEqual(previous);
+      previous = units;
+    }
+    // the declared crew must stay inside the settlement's own workforce
+    for (const pop of [100, 300, 450]) {
+      expect(starterJobsFor(pop) * starterUnitsFor(pop)).toBeLessThan(pop * 0.5);
+    }
+  });
+
+  it("narrative settlements also get the starter economy", () => {
+    const init = fn("world-generate-init");
+    expect(init).toContain("ensureStarterEconomy(supabase, sessionId");
+  });
+
 
   it("household auto-production stays off (population is not a goods producer)", () => {
     const cfg = readFileSync("supabase/functions/_shared/economyConfig.ts", "utf8");

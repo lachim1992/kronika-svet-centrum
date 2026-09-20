@@ -162,7 +162,15 @@
       deprecate legacy node wealth fields, testy A–O, read-only diagnostika Test01 turn 64.
 
 
+## Testovací hra Test02 (hotovo, tah 1)
+- [x] Nová session TEST02 (31×31, 13 osad, 76 uzlů, 3 AI frakce) s kompletním bootstrapem
+- [x] `world-generate-init` na konci volá `ensureStarterEconomy` — osady z narativní fáze už nevznikají bez ekonomiky
+- [x] Startovní ekonomika se dimenzuje podle populace (výroba ~1 jednotka na 150 lidí, posádka uvnitř vlastní pracovní síly)
+- [x] `backfill-starter-economy` dorovná velikost jen u staveb, které sám vytvořil (hráčovy stavby nikdy nemění)
+- [x] Test02: pitná voda 87 %, základní potraviny 63 % (zbytek se řeší stavěním, ne přepočtem)
+
 ## Pracovní místa a přehled výroby (hotovo, tah 65)
+
 - [x] Každá vyrábějící stavba zaměstnává 100 lidí na lvl 1 a zdvojnásobuje s úrovní (100/200/400)
 - [x] Uzly dostávají stejný kanonický počet míst jako budovy a čtvrti
 - [x] Budovy ve městě napojeném na dokončenou cestu dědí napojení celého města
