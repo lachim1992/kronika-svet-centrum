@@ -230,6 +230,11 @@ const CityEconomyAnalytics = ({
   }, [citySummaries, selectedCityId]);
 
   const selected = citySummaries.find(summary => summary.city.id === selectedCityId) || citySummaries[0];
+  // Structures physically present in the selected city — used to name the blocking chain step.
+  const cityStructureNames = useMemo(
+    () => (selected ? sources.filter(source => source.cityId === selected.city.id).map(source => source.name) : []),
+    [selected, sources],
+  );
 
   const selectedBaskets = useMemo(() => {
     if (!selected) return [];
