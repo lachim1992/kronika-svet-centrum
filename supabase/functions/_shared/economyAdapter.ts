@@ -153,7 +153,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const name=`${template?.key||''} ${template?.name||''} ${b.name||''}`;
     const tags=effect.capability_tags||facilityTags(name);
     structure(b.id,b.city_id,'facility',effect.basket_outputs||{},true,tags,
-      {recipeKeys:effect.recipe_keys,roles:effect.production_roles,
+      {recipeKeys:effect.recipe_keys,roles:effect.production_roles,level:b.current_level,
        allowSource:!!effect.recipe_keys||/well|aqueduct|studn|akvad|woodcut|lumber|dřev/i.test(name)});
   }
   for(const c of cities){const districts=db.city_districts.filter(d=>d.city_id===c.id&&d.status==='completed').sort((a,b)=>a.id.localeCompare(b.id));
@@ -162,7 +162,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       const farm=/hospodářský pás|farm_belt/i.test(d.name||'');
       structure(d.id,c.id,'district',{[basket(d.basket_key)]:nonnegative(d.basket_output)},staffed-->0,
         farm?['farming','herding','gathering']:['weaving','smithing','armoring','construction','crafting','baking','spinning','smelting','stonecutting','sawing'],
-        {allowSource:farm});
+        {allowSource:farm,level:d.level??d.current_level});
     }
   }
   const edges:Edge[]=db.road_segments.filter(r=>r.status==='completed').map(r=>({id:r.id,from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`,
