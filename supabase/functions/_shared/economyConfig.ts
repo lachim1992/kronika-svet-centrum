@@ -19,7 +19,7 @@ export const ECONOMY = {
   famePrestige: 0.1,
   sectors: { farming: 0.4, crafting: 0.3, administration: 0.1, logistics: 0.2 },
   householdBaskets: ['staple_food', 'basic_clothing', 'tools', 'fuel', 'drinking_water', 'construction'],
-  capexGoods: ['timber', 'stone_blocks', 'bricks', 'lumber'],
+  capexGoods: ['stone_blocks', 'lumber', 'construction_materials'],
 } as const;
 /** Existing city allocations use percentages and the historical scribes/canal keys. */
 export function normalizeLabor(value: Record<string, number> = {}) {

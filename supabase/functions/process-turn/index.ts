@@ -2,6 +2,7 @@ import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.t
 import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demographics.ts";
 import { TAX_MAX, laffer, governance, taxRevenue, sportFundingExpense as computeSportFunding } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { foodShortageImpact } from '../_shared/foodShortage.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -704,12 +705,13 @@ Deno.serve(async (req) => {
       // Per-city food balance — staple_food only (post-trade, imports already included)
       const cityBalance = cityFoodSupply - cityDemand;
       // Unreachable stock in another city cannot cure a local shortage.
-      const cityFamine = cityFoodDeficit > 0;
+      const shortage = foodShortageImpact(city.population_total || 0, cityDemand, cityFoodDeficit);
+      const cityFamine = shortage.famine;
 
       if (cityFamine) {
         famineCityCount++;
-        const newStability = Math.max(0, (city.city_stability || 50) - 5);
-        const deathToll = Math.floor((city.population_total || 0) * 0.05);
+        const newStability = Math.max(0, (city.city_stability ?? 50) - shortage.stabilityLoss);
+        const deathToll = shortage.deaths;
         // Losses go through the shared helper so population_total always equals
         // the sum of the four classes (Phase A invariant).
         const loss = applyPopulationLoss(city, deathToll);

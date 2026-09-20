@@ -4,6 +4,7 @@ import { staffingCapacity } from './cityDistricts.ts';
 import { BASKET_TIER, ECONOMY, normalizeLabor, INDUSTRIAL_INPUTS, HOUSEHOLD_GOODS, GOOD_FINAL_USE, GOOD_HOUSEHOLD } from './economyConfig.ts';
 import { buildManagementReport } from './management.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
+import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
 
 const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
 /** Baseline market/granary capability that any inhabited settlement has by its size alone. */
@@ -92,7 +93,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const weights=eligible.map(r=>order?.mode==='prefer'&&goodMap.get(r.output_good_key)?.basket===basket(order.target_basket_key)?3:1),total=weights.reduce((s,n)=>s+n,0);
     eligible.forEach((r,i)=>producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity:nonnegative(node.production_output),
       recipe:recipe(r),allocation:weights[i]/total,staffing:1,logistics:nonnegative(node.route_access_factor??1),mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
-      source:node.production_role==='source',distinctive:(r.input_items||[]).some((i:any)=>/silk|dye|gold|spice|gem/.test(i.key||''))}));
+      source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)}));
   }
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
   /**
@@ -109,7 +110,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       if(!candidates.length||capacity<=0)return;
       for(const r of candidates)producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),
         allocation:1/candidates.length,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
-        distinctive:(r.input_items||[]).some((i:any)=>/silk|dye|gold|spice|gem/.test(i.key||''))});
+        distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});
     };
     if(options.recipeKeys?.length){
       // Exact whitelist: unknown keys are a contract error, roles/tags must still match.

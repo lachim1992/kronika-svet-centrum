@@ -191,8 +191,32 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       source_price:sourcePrice,destination_price:destinationPrice,expected_margin:margin*delivered});return delivered;
 
   };
-  const producers=[...snapshot.producers].sort((a,b)=>Number(b.source)-Number(a.source)||a.id.localeCompare(b.id));
+  // Resolve upstream recipes before their customers, independently of database UUIDs.
+  // Repeated passes still handle alternative/cyclic recipes with opening inventories.
+  const depths=new Map<string,number>();
+  const depth=(good:string,seen=new Set<string>()):number=>{
+    if(depths.has(good))return depths.get(good)!;
+    if(seen.has(good))return Infinity;
+    const next=new Set(seen).add(good),recipes=snapshot.producers.filter(p=>p.recipe.good===good);
+    const value=recipes.length?Math.min(...recipes.map(p=>p.recipe.inputs.length?
+      1+Math.max(...p.recipe.inputs.map(i=>depth(i.good,next))):0)):0;
+    if(Number.isFinite(value))depths.set(good,value);
+    return value;
+  };
+  const producers=[...snapshot.producers].sort((a,b)=>Number(b.source)-Number(a.source)||
+    depth(a.recipe.good)-depth(b.recipe.good)||a.id.localeCompare(b.id));
   const pending=new Map(producers.map(p=>[p.id,p]));
+  const realized=new Map<string,number>();
+  // Factories may use food surplus, never the last edible stock needed by residents.
+  // The same rule applies to local processing and to industrial exports.
+  const foodReserve=(c:City,g:Good)=>{
+    if(g.basket!=='staple_food'||!(g.finalUse??g.stage!=='intermediate'))return 0;
+    const edible=goods.filter(s=>s.basket==='staple_food'&&(s.finalUse??s.stage!=='intermediate'));
+    const own=stock(c.id,g.key),ownNeed=Math.max(0,own.demand-own.consumed_household-own.consumed_state);
+    const need=edible.filter(s=>s.key!==g.key).reduce((sum,s)=>{const b=stock(c.id,s.key);return sum+Math.max(0,b.demand-b.consumed_household-b.consumed_state);},0);
+    const other=edible.filter(s=>s.key!==g.key).reduce((sum,s)=>sum+available(stock(c.id,s.key))*Math.min(1,s.substitutability),0);
+    return ownNeed+Math.max(0,need-other)/Math.max(C.epsilon,Math.min(1,g.substitutability));
+  };
   const inputSources=(c:City,g:Good)=>{
     const hub=hubs.get(key(c.id,g.key));
     // Only direct hinterland siblings/parent/children are considered in local clearing.
@@ -217,13 +241,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     for(const [id,p] of pending){const c=cityById.get(p.city),g=goodByKey.get(p.recipe.good);if(!c||!g)throw Error(`Invalid producer ${id}`);
       const remote=!!p.cell&&p.cell!==c.cell,delivery=remote?route(p.cell!,c.cell,g):null;
       if(remote&&(!delivery||delivery.loss>=1||delivery.capacity<=0)){
-        diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors:{logistics:0},blocked:'missing_local_delivery_route'});pending.delete(id);continue;
+        if(!realized.has(id))diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors:{logistics:0},blocked:'missing_local_delivery_route'});
+        pending.delete(id);continue;
       }
       const sector=BASKET_SECTOR[g.basket]||'crafting',lk=key(c.id,sector);
       const factors={staffing:clamp(p.staffing),workforce:workforce.get(c.id)!.workforceRatio,sector:sectorFactor(c,sector),
         stability:clamp(c.stability),logistics:clamp(p.logistics),mastery:n(p.mastery),
         infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1};
-      const desired=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
+      const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
+      const desired=Math.max(0,target-(realized.get(id)||0));
       const laborPool=workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
       let qty=Math.min(desired,Math.max(0,laborPool-(laborUsed.get(lk)||0))*p.recipe.qty/Math.max(C.epsilon,p.recipe.labor));
       const inputPaths=new Map<string,Path>();
@@ -239,15 +265,16 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         const deliveryRatio=1-(inputPaths.get(i.good)?.loss||0);
         const b=stock(c.id,i.good),required=qty*i.qty/Math.max(C.epsilon,p.recipe.qty)/deliveryRatio;
         if(b.quality<p.recipe.minQuality&&available(b)>0){qty=0;break;}
-        let missing=Math.max(0,required-available(b));
+        const usable=()=>Math.max(0,available(b)-foodReserve(c,ig));
+        let missing=Math.max(0,required-usable());
         const pull=(suppliers:City[])=>{
           for(const s of suppliers){if(missing<C.minLot)break;
             const sb=stock(s.id,ig.key);if(sb.quality<p.recipe.minQuality)continue;
-            missing-=transfer(s,c,ig,missing,'production_input',hubs.has(key(s.id,ig.key))?[hubs.get(key(s.id,ig.key))!]:[],Math.max(0,sb.demand-sb.consumed_household-sb.consumed_state));}
+            missing-=transfer(s,c,ig,missing,'production_input',hubs.has(key(s.id,ig.key))?[hubs.get(key(s.id,ig.key))!]:[],Math.max(foodReserve(s,ig),sb.demand-sb.consumed_household-sb.consumed_state,0));}
         };
         pull(inputSources(c,ig));
         if(missing>=C.minLot)pull(distantInputSources(c,ig));
-        qty=Math.min(qty,available(b)*p.recipe.qty/Math.max(C.epsilon,i.qty)*deliveryRatio);
+        qty=Math.min(qty,usable()*p.recipe.qty/Math.max(C.epsilon,i.qty)*deliveryRatio);
       }
       // Input imports above may reserve the same road as the local delivery.
       for(const [edge,load] of loadByEdge){const e=snapshot.edges.find(e=>e.id===edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
@@ -262,21 +289,33 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       b.lost_spoilage+=qty*(delivery?.loss||0);
       for(const [edge,load] of loadByEdge)reserved.set(edge,(reserved.get(edge)||0)+qty*load);
       laborUsed.set(lk,(laborUsed.get(lk)||0)+qty*p.recipe.labor/p.recipe.qty);
-      diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:qty,factors:{...factors,inputs:desired?qty/desired:0},delivery_path:delivery?.cells,blocked:null});pending.delete(id);progress=true;
+      const total=(realized.get(id)||0)+qty;realized.set(id,total);
+      const diagnostic={producer:id,good:g.key,capacity:p.capacity,realized:total,factors:{...factors,inputs:target?total/target:0},delivery_path:delivery?.cells,blocked:null};
+      const index=diagnostics.findIndex(d=>d.producer===id);
+      if(index>=0)diagnostics[index]=diagnostic;else diagnostics.push(diagnostic);
+      if(total>=target-C.epsilon)pending.delete(id);
+      progress=true;
     }
     if(!progress)break;
   }
-  for(const [id,p] of pending)diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},blocked:'missing_inputs_or_route'});
+  for(const [id,p] of pending)if(!realized.has(id))diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},blocked:'missing_inputs_or_route'});
   const consume=(c:City,g:Good)=>{const b=stock(c.id,g.key),missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     const qty=Math.min(available(b),missing),state=Math.min(qty,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
     b.consumed_state+=state;b.consumed_household+=qty-state;};
   for(const c of cities)for(const g of goods)consume(c,g);
   // Substitution debits actual goods, transfers unmet need, never creates physical units.
-  for(const c of cities)for(const g of goods){const b=stock(c.id,g.key);let missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
+  const substitute=()=>{for(const c of cities)for(const g of goods){const b=stock(c.id,g.key);let missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     for(const sub of goods.filter(s=>s.key!==g.key&&s.basket===g.basket&&s.substitutability>0&&(s.finalUse??s.stage!=='intermediate'))){
-      const sb=stock(c.id,sub.key),qty=Math.min(missing,available(sb));if(qty<=0)continue;
-      sb.consumed_household+=qty;sb.demand+=qty;b.demand-=qty;missing-=qty;}
-  }
+      const efficiency=Math.min(1,sub.substitutability/Math.max(C.epsilon,g.substitutability));
+      const sb=stock(c.id,sub.key),qty=Math.min(missing/efficiency,available(sb));if(qty<=0)continue;
+      const fulfilled=qty*efficiency,stateNeed=Math.min(fulfilled,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
+      const stateQty=stateNeed/efficiency;
+      sb.consumed_state+=stateQty;sb.consumed_household+=qty-stateQty;
+      stateDemand.set(key(c.id,g.key),Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-stateNeed));
+      stateDemand.set(key(c.id,sub.key),(stateDemand.get(key(c.id,sub.key))||0)+stateQty);
+      sb.demand+=qty;b.demand-=fulfilled;missing-=fulfilled;}
+  }};
+  substitute();
   // Aggregate only for reachable downstream demand, retaining local reserves first.
   for(const c of [...cities].sort((a,b)=>service(a)-service(b)||a.id.localeCompare(b.id)))for(const g of goods){
     const hubId=hubs.get(key(c.id,g.key));if(!hubId)continue;const h=cityById.get(hubId)!;
@@ -294,6 +333,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(c.market>0&&missing>C.minLot)for(const s of cities.filter(s=>s.market>0&&s.id!==c.id)){
       const sb=stock(s.id,g.key);missing-=transfer(s,c,g,missing,'household_consumption',[],sb.demand*C.reserveTurns);consume(c,g);if(missing<C.minLot)break;}
   }
+  // Imports can satisfy a different final good in the same basket too.
+  substitute();
   // Reputation creates origin-specific additional demand, fulfilled only by that brand.
   for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0)){
     const origin=cityById.get(f.city),g=goodByKey.get(f.good);if(!origin||!g)continue;
