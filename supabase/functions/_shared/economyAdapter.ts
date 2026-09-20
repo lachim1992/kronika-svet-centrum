@@ -107,6 +107,9 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     if(order.mode==='prefer')return match?auto*3:auto;
     return match?auto:0;
   };
+/** Physical throughput and headcount multiplier of a structure level. */
+  const levelScale=(level:unknown)=>{const scale=ECONOMY.levelCapacityScale;
+    return scale[Math.min(scale.length,Math.max(1,Math.round(Number(level)||1)))-1];};
 /**
    * ROUTE ACCESS. A settlement that touches the finished road network is connected, and every
    * structure and node anchored to it inherits that connection — a built road serves the whole
@@ -138,12 +141,9 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    * a licence to run unrelated extraction, processing or manufacturing recipes.
    *
    * CAPACITY / JOBS. Declared basket capacity is the level-1 rating; the level multiplier
-   * (ECONOMY.levelCapacityScale) makes upgrades raise real physical throughput. Jobs capacity
-   * is derived once, canonically, from capacity × recipe labour (see ECONOMY.workersPerLaborUnit),
-   * so the labour market and the production capacity never disagree.
+   * (ECONOMY.levelCapacityScale) raises real throughput and the crew together, so the labour
+   * market and the physical capacity never disagree.
    */
-  const levelScale=(level:unknown)=>{const scale=ECONOMY.levelCapacityScale;
-    return scale[Math.min(scale.length,Math.max(1,Math.round(Number(level)||1)))-1];};
   const structureOrder=(id:string)=>db.structure_production_orders.find((o:any)=>o.structure_id===id);
   const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,
     tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean;level?:unknown;order?:any;jobs?:unknown}={})=>{
