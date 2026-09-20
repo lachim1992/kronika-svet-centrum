@@ -127,16 +127,18 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     return scale[Math.min(scale.length,Math.max(1,Math.round(Number(level)||1)))-1];};
   const structureOrder=(id:string)=>db.structure_production_orders.find((o:any)=>o.structure_id===id);
   const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,
-    tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean;level?:unknown;order?:any}={})=>{
+    tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean;level?:unknown;order?:any;jobs?:unknown}={})=>{
     if(!cityMap.has(city))return;
     const scale=levelScale(options.level);
     const total=Object.values(outputs).reduce((s,v)=>s+nonnegative(v),0)*scale;
+    // Declared jobs_capacity wins; otherwise jobs are derived from capacity × recipe labour.
+    const jobs=Number(options.jobs)>0?nonnegative(options.jobs)*scale:undefined;
     const push=(candidates:any[],capacity:number)=>{
       if(!candidates.length||capacity<=0)return;
       const weights=candidates.map(r=>orderWeight(r,options.order)),sum=weights.reduce((s,w)=>s+w,0);
       if(sum<=0)return;
       candidates.forEach((r,i)=>{if(weights[i]<=0)return;
-        producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),
+        producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),jobs,
           allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
           distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
     };
