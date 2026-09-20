@@ -2051,7 +2051,16 @@ async function executeMoveStackRoute(
 
   // Get target node name for narrative
   const { data: targetNode } = await supabase.from("province_nodes")
-    .select("name, hex_q, hex_r").eq("id", targetNodeId).single();
+    .select("name, hex_q, hex_r, owner_player").eq("id", targetNodeId).single();
+
+  // Phase 6 — strategic march into foreign territory needs war, open borders or an alliance.
+  const { pacts: routePacts, wars: routeWars } = await loadDiplomacyState(supabase, sessionId);
+  const routeAccess = checkTerritoryAccess(routePacts, routeWars, actor.name, [targetNode?.owner_player]);
+  if (routeAccess.ok === false) {
+    return { events: [], error: routeAccess.error, status: 409 };
+  }
+
+
 
   // Update stack: set travel state + stance
   await supabase.from("military_stacks").update({
