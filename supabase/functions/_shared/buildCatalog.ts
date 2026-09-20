@@ -188,11 +188,9 @@ function templateItem(t: TemplateRow, recipesByKey: Map<string, RecipeRow>): Cat
   const levels: CatalogLevelView[] = [];
   for (let level = 1; level <= maxLevel; level++) {
     const keys = contractRecipes(contract, level);
-    const rows = keys.map(k => recipesByKey.get(k)).filter(Boolean) as RecipeRow[];
     const capacity = capacityBase * levelCapacityScale(level);
     levels.push({
       level, capacity, jobs: jobsFor(capacityBase, num(effects.jobs_capacity), level), recipes: keys,
-
       unlocks: contract?.levels[level - 1] || [],
     });
   }
