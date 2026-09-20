@@ -17,7 +17,14 @@ export interface City {
 }
 export interface Recipe { key: string; good: string; qty: number; inputs: { good: string; qty: number }[]; labor: number; quality: number; minQuality: number }
 export interface Producer { id: string; city: string; node?: string; cell?: string; channel: Channel; capacity: number;
-  recipe: Recipe; allocation: number; staffing: number; logistics: number; mastery: number; source: boolean; distinctive: boolean }
+  recipe: Recipe; allocation: number; staffing: number; logistics: number; mastery: number; source: boolean; distinctive: boolean;
+  /** Workers this facility can employ at full capacity. Derived from capacity × recipe labour when absent. */
+  jobs?: number }
+/** Canonical labour-market readout of one city. Derived, never a second population writer. */
+export interface CityLabor { city: string; population: number; economically_active: number; available_workforce: number;
+  employed_total: number; unemployed_total: number; jobs_capacity: number; vacancies_total: number;
+  employment_rate: number; unemployment_rate: number;
+  sectors: Record<string, { labor_supply: number; jobs_capacity: number; employed: number; vacancies: number; labor_shortage: number }> }
 export interface Edge { id: string; from: string; to: string; cost: number; capacity: number;
   mode: 'road'|'river'|'sea'|'spur'; risk: number; toll: number; border: number }
 export interface Fame { city: string; good: string; name: string; streak: number; fame: number; quality: number; created: number|null; turn: number }
