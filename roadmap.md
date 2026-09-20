@@ -131,7 +131,11 @@
       turnová část tiku (pohyb armád, léčky, obléhání, projekty uzlů) extrahována do _shared/turnProgress.ts a volána z commit-turn;
       legacy wealth_output už není vidět hráči (zůstává jen v dev panelech)
 - [ ] Fáze 4 zbytek: povýšení/stavby platit kanonickými fyzickými zbožími místo production_reserve (souvisí s parkovaným ekonomickým zadáním)
-- [ ] Fáze 5: jeden společný derived chain pro commit-turn i refresh-economy, jeden model cest
+- [x] Fáze 5: jeden společný derived chain pro commit-turn i refresh-economy, jeden model cest
+  - `_shared/derivedChain.ts` = jediná definice pořadí kroků; refresh-economy = current turn + plain aggregation, commit-turn = goodsTurn+1, emitEvents, aggregatePhase physical
+  - commit-turn si drží jediné cílené `compute-hex-flows` ve fázi 5b (dirty routes po dokončení projektů) — není to druhý řetězec
+  - smazány duplicitní UI stavby cest: WorldMapBuildPanel, RouteDetailSheet, RoadNetworkOverlay; cesty se staví jen na fyzické vrstvě (road_projects/road_segments), province_routes = interní vojenská topologie
+  - testy: src/test/phase5-unification.test.ts
 - [ ] Fáze 6: aliance blokují válku, open borders řídí mírový pohyb, AI fallback, serverová náhoda
 - [ ] Rozhodnuto: persistentní real-time režim opuštěn — world-tick/process-tick/action_queue/time_pools k odstranění
 - [ ] Rozhodnuto: Sphaera/ligy zamrazit za beta flag

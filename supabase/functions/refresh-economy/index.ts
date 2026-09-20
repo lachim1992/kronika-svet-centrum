@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
+import { derivedChainSteps } from "../_shared/derivedChain.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -122,17 +123,11 @@ Deno.serve(async (req) => {
 
     // Legacy province routes stay only for military/older overlays; economic
     // connectivity and goods movement derive from roads and rivers.
-    const steps: { name: string; fn: string; body: Record<string, unknown> }[] = [
-      { name: "compute-province-routes", fn: "compute-province-routes", body: { session_id } },
-      { name: "compute-hex-flows", fn: "compute-hex-flows", body: { session_id, force_all: true } },
-      { name: "compute-trade-systems", fn: "compute-trade-systems", body: { session_id } },
-      { name: "compute-trade-flows", fn: "compute-trade-flows", body: { session_id } },
-      { name: "compute-basket-trade-flows", fn: "compute-basket-trade-flows", body: { session_id } },
-      // Physical/derived node state (no history, no realm aggregation)
-      { name: "compute-economy-flow", fn: "compute-economy-flow", body: { session_id } },
-      // FINAL AGGREGATION: read + sum only, never fiscal
-      { name: "aggregate-realm-totals", fn: "aggregate-realm-totals", body: { session_id } },
-    ];
+    //
+    // Phase 5: the chain is defined once in _shared/derivedChain.ts and shared
+    // with commit-turn. refresh-economy emits no events and never touches fiscal
+    // state; the final aggregation here is read + sum only.
+    const steps = derivedChainSteps({ sessionId: session_id });
 
     const results: StepResult[] = [];
     const warnings: string[] = [];

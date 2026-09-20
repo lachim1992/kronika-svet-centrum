@@ -1,7 +1,5 @@
 import { useIsMobile } from "@/hooks/use-mobile";
 import ManpowerHUDCard from "@/components/map/ManpowerHUDCard";
-import WorldMapBuildPanel from "@/components/map/WorldMapBuildPanel";
-import RouteDetailSheet from "@/components/map/RouteDetailSheet";
 import IsometricSquareMap from "@/components/map/IsometricSquareMap";
 
 interface Props {
@@ -32,10 +30,10 @@ const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentT
         resetSignal={resetSignal}
       />
 
-      {/* Stage 8 floating overlays */}
+      {/* Phase 5: roads are built on the physical map layer (road_projects /
+          road_segments) only. The abstract province_routes graph stays internal
+          (military topology), so its duplicate build panel was removed. */}
       {!backgroundMode && <ManpowerHUDCard sessionId={sessionId} playerName={currentPlayerName} />}
-      {!backgroundMode && <WorldMapBuildPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />}
-      {!backgroundMode && <RouteDetailSheet sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />}
 
       {/* Overlay: world name badge */}
       {worldName && (

@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Coins, Crown, Swords, Flag, Shield, AlertTriangle, Eye, Network, Hammer, Handshake, Link2, ShieldCheck, Anchor } from "lucide-react";
 import { toast } from "sonner";
-import { emitFocusBuild } from "@/lib/worldMapBus";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 interface NeutralNodePanelProps {
@@ -228,11 +227,9 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
     } finally { setLoadingSystems(false); }
   };
 
-  const BuildRouteButton = (node.hex_q != null && node.hex_r != null) && (
-    <Button size="sm" variant="outline" className="w-full text-xs gap-2" onClick={() => { emitFocusBuild(node.id); toast.message("Vyber cílový hex pro cestu"); }}>
-      <Hammer className="h-3 w-3" /> Postavit cestu odsud
-    </Button>
-  );
+  // Phase 5: roads are drawn on the physical map layer; this panel no longer
+  // starts an abstract province_routes build.
+  const BuildRouteButton = null;
 
   const JoinSystemButton = !node.trade_system_id && (
     <Button size="sm" variant="outline" className="w-full text-xs gap-2" onClick={openJoinDialog}>
@@ -262,9 +259,7 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
                   setJoinDialogOpen(false);
                 }}>Připojit</Button>
               ) : (
-                <Button size="sm" variant="outline" onClick={() => { setJoinDialogOpen(false); emitFocusBuild(node.id); toast.message("Vyber uzel ze systému jako cíl cesty"); }}>
-                  <Hammer className="h-3 w-3 mr-1" /> Postavit
-                </Button>
+                <span className="text-[10px] text-muted-foreground">Postav cestu na mapě</span>
               )}
             </div>
           ))}
