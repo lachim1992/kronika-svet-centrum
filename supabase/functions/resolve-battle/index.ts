@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cellDistance, loadGridKind, neighborOffsets } from "../_shared/topology.ts";
 import { applyPopulationLoss } from "../_shared/demographics.ts";
+import { deterministicSeed } from "../_shared/diplomacyEnforcement.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
