@@ -4,7 +4,7 @@ import { actualSoldiers } from '../../../supabase/functions/_shared/manpower';
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
-import { UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
+import { UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, UNIT_PROD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
 import { computeWorkforceBreakdown, DEFAULT_MAX_MOBILIZATION } from "@/lib/economyConstants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -102,6 +102,7 @@ interface RealmRes {
   gold_reserve: number;
   mobilization_rate: number;
   grain_reserve: number;
+  production_reserve: number;
   granary_capacity: number;
   last_turn_grain_prod: number;
   last_turn_grain_cons: number;
@@ -1116,11 +1117,12 @@ function RecruitDialog({
   const preset = selectedPreset ? FORMATION_PRESETS[selectedPreset] : null;
   const presetBaseline = preset ? preset.composition.reduce((s, c) => s + c.manpower, 0) : 400;
   const scale = preset ? manpowerCount / presetBaseline : 1;
+  const scaledComposition = preset?.composition.map(c => ({ ...c, manpower: Math.max(1, Math.round(c.manpower * scale)) })) || [];
   const scaledGold = preset
-    ? Math.round((preset.gold_override ?? preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0)) * scale)
+    ? Math.round(preset.gold_override != null ? preset.gold_override * scale : scaledComposition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0))
     : 0;
   const scaledProd = preset
-    ? Math.round((preset.composition.reduce((s, c) => s + c.manpower * 0.5, 0)) * scale)
+    ? Math.round(scaledComposition.reduce((s, c) => s + c.manpower * (UNIT_PROD_FACTOR[c.unit_type] || 0.5), 0))
     : 0;
 
   const handleCreate = async () => {
@@ -1129,6 +1131,7 @@ function RecruitDialog({
     if (manpowerCount <= 0) { toast.error("Vyberte počet mužů"); return; }
     if (manpowerCount > truePool) { toast.error(`Nedostatek mužů (${manpowerCount} potřeba, ${truePool} v poolu)`); return; }
     if (scaledGold > (realm?.gold_reserve || 0)) { toast.error(`Nedostatek zlata (${scaledGold} potřeba)`); return; }
+    if (scaledProd > (realm?.production_reserve || 0)) { toast.error(`Nedostatek produkční zásoby (${scaledProd} potřeba)`); return; }
 
     setSaving(true);
     try {
@@ -1246,10 +1249,10 @@ function RecruitDialog({
           })()}
 
           <div className="text-xs text-muted-foreground">
-            Manpower pool: {truePool.toLocaleString()} · Zlato: {realm?.gold_reserve || 0}
+            Dostupní muži: {truePool.toLocaleString()} · Zlato: {realm?.gold_reserve || 0} · Produkční zásoba: {Math.floor(realm?.production_reserve || 0)}
           </div>
 
-          <Button onClick={handleCreate} disabled={saving || !name.trim() || !selectedPreset || manpowerCount <= 0 || manpowerCount > truePool} className="w-full font-display">
+          <Button onClick={handleCreate} disabled={saving || !name.trim() || !selectedPreset || manpowerCount <= 0 || manpowerCount > truePool || scaledGold > (realm?.gold_reserve || 0) || scaledProd > (realm?.production_reserve || 0)} className="w-full font-display">
             <Swords className="h-4 w-4 mr-1" />Zřídit jednotku ({manpowerCount.toLocaleString()} mužů)
           </Button>
         </div>

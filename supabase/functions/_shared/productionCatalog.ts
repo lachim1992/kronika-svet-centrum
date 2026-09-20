@@ -117,8 +117,8 @@ export const RECIPES: CatalogRecipe[] = [
   // producer (root or light crafts)
   r('cut_peat', 'producer', ['gathering'], 'peat', 2),
   r('draw_water', 'producer', ['farming'], 'well_water', 4),
-  r('burn_charcoal', 'producer', ['logging'], 'charcoal', 3),
-  r('build_granary', 'producer', ['construction'], 'granary_storage', 2),
+  r('burn_charcoal', 'producer', ['logging'], 'charcoal', 3, [['raw_timber', 2]]),
+  r('build_granary', 'producer', ['construction'], 'granary_storage', 2, [['lumber', 2]]),
   r('scribe_documents', 'producer', ['crafting'], 'scribed_documents', 1, [['raw_hide', 1]]),
   // processing (raw -> intermediate)
   r('mill_grain', 'processing', ['milling'], 'flour', 2, [['raw_grain', 3]]),
@@ -219,6 +219,9 @@ export const PRODUCTION_BUILDINGS: BuildingContract[] = [
 
 export const recipeByKey = new Map(RECIPES.map((x) => [x.key, x]));
 export const goodByKey = new Map(GOODS.map((g) => [g.key, g]));
+
+/** Master recipes are eligible for an origin brand; no dependence on input-name substrings. */
+export const DISTINCTIVE_RECIPE_KEYS = new Set(RECIPES.filter(r => r.role === 'guild').map(r => r.key));
 
 /** Cumulative recipe whitelist a structure runs at the given level (1-based). */
 export function recipesForLevel(contract: BuildingContract, level: number): string[] {

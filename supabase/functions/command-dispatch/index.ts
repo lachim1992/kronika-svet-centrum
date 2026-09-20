@@ -1627,9 +1627,11 @@ async function executeRecruitStack(
   if (totalGold > (realm.gold_reserve || 0)) {
     return { events: [], error: `Nedostatek zlata: potřeba ${totalGold}, dostupno ${realm.gold_reserve || 0}` };
   }
-  const grainReserve = realm.grain_reserve || 0;
-  if (totalProdCost > grainReserve) {
-    return { events: [], error: `Nedostatek produkce: potřeba ${totalProdCost}, dostupno ${Math.round(grainReserve)} (zásoby obilí)` };
+  // Recruitment is a one-off capital expense. grain_reserve is a derived projection
+  // of the goods ledger and must never be spent independently of its physical stock.
+  const productionReserve = realm.production_reserve || 0;
+  if (totalProdCost > productionReserve) {
+    return { events: [], error: `Nedostatek produkční zásoby: potřeba ${totalProdCost}, dostupno ${Math.round(productionReserve)}` };
   }
 
   // ── Faith morale bonus ──
@@ -1669,16 +1671,16 @@ async function executeRecruitStack(
     }));
   }
 
-  // ── 3. Update realm: drain pool, bump mobilized + committed, drain gold/grain ──
+  // ── 3. Update realm: drain pool, bump mobilized + committed, drain gold/CAPEX ──
   const newPool = Math.max(0, manpowerPool - totalManpower);
   const newGold = (realm.gold_reserve || 0) - totalGold;
-  const newGrain = Math.max(0, grainReserve - totalProdCost);
+  const newProduction = Math.max(0, productionReserve - totalProdCost);
   await supabase.from("realm_resources").update({
     manpower_pool: newPool,
     manpower_committed: currentWorkforce.mobilized + totalManpower,
     manpower_mobilized: currentWorkforce.mobilized + totalManpower,
     gold_reserve: newGold,
-    grain_reserve: newGrain,
+    production_reserve: newProduction,
   }).eq("id", realm.id);
 
   // ── 4. Chronicle ──
