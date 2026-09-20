@@ -143,8 +143,9 @@ describe('Phase A residue — conserving transfers and guarded paths', () => {
   it('the time-based world-tick / process-tick loop no longer exists', () => {
     // Phase 4: persistent real-time mode abandoned. Turn resolution has exactly
     // one population writer (commit-turn).
-    expect(existsSync(resolve(FN, 'world-tick/index.ts'))).toBe(false);
-    expect(existsSync(resolve(FN, 'process-tick/index.ts'))).toBe(false);
+    const fnDir = path.resolve(__dirname, '../../supabase/functions');
+    expect(fs.existsSync(path.join(fnDir, 'world-tick/index.ts'))).toBe(false);
+    expect(fs.existsSync(path.join(fnDir, 'process-tick/index.ts'))).toBe(false);
     const src = fn('commit-turn/index.ts');
     expect(src).toContain('normalizePopulationClasses');
     expect(src).toContain('computeIntercityMigration');

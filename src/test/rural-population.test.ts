@@ -123,7 +123,7 @@ describe("Phase B — deterministic rural population (shadow)", () => {
   });
 
   it("stays out of the canonical turn pipeline", () => {
-    for (const f of ["commit-turn/index.ts", "process-turn/index.ts", "refresh-economy/index.ts", "world-tick/index.ts"]) {
+    for (const f of ["commit-turn/index.ts", "process-turn/index.ts", "refresh-economy/index.ts"]) {
       expect(fn(f)).not.toContain("compute-rural-population");
     }
   });
