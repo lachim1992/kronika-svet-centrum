@@ -1909,90 +1909,41 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             Vykoupit parcelu · {parcelClaimCost(Number(selectedParcel.build_cost_multiplier || 1), claimedForCity).gold} zlata / {parcelClaimCost(Number(selectedParcel.build_cost_multiplier || 1), claimedForCity).production} produkce
           </Button>}
 
-          <>
-            <div>
-              <p className="mb-2 text-xs font-medium">Obytné čtvrti</p>
-              <div className="grid grid-cols-2 gap-2">{RESIDENTIAL_DISTRICTS.map(district => (
-                <Button key={district.key} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction || !!parcelBlock || !selectedCity || selectedCity.owner_player !== playerName} onClick={() => void buildDistrict(district)}>
+          <BuildCatalogPanel
+            templates={buildingTemplates as any}
+            busyKey={buildingAction}
+            parcelBlock={parcelBlock}
+            ownCity={!!selectedCity && selectedCity.owner_player === playerName}
+            cityName={selectedCity?.name}
+            freeDistrictSlots={labour.free}
+            hasWater={!!selected?.has_river || !!selected?.coastal}
+            treasury={{ gold: treasury.gold, production: treasury.production }}
+            subnodeBlockReason={key => subnodeBlockReason({ key } as SubnodeOption)}
+            basketOptions={districtKey => {
+              const blueprint = PRODUCTION_DISTRICTS.find(d => d.key === districtKey);
+              const choices = blueprint?.baskets?.length ? blueprint.baskets : DEMAND_BASKETS.map(b => b.key);
+              return choices.map(key => ({ key, label: DEMAND_BASKETS.find(b => b.key === key)?.label || key }));
+            }}
+            spriteFor={item => item.kind === "subnode"
+              ? (NODE_SPRITE[item.refId] || spriteHamlet)
+              : item.kind === "district"
+                ? (item.category === "housing" ? buildResidential : (DISTRICT_SPRITE[item.refId] || buildInfrastructure))
+                : buildSprite(item.name, item.category)}
+            onBuild={(item, basketKey) => {
+              setBuildingAction(item.key);
+              if (item.kind === "building") {
+                const template = buildingTemplates.find(t => t.id === item.refId);
+                if (template) void buildOnParcel(template); else setBuildingAction(null);
+              } else if (item.kind === "district") {
+                const blueprint = [...RESIDENTIAL_DISTRICTS, ...PRODUCTION_DISTRICTS].find(d => d.key === item.refId);
+                if (blueprint) void buildDistrict(blueprint, blueprint.district_type === "production" ? basketKey : undefined);
+                else setBuildingAction(null);
+              } else {
+                void buildSubnode(item.refId, item.name);
+              }
+            }}
+          />
 
-                  <span className="flex w-full items-center gap-2">
-                    {buildingAction === `district-${district.key}`
-                      ? <Loader2 className="h-4 w-4 animate-spin" />
-                      : <img src={buildResidential} alt="" className="h-7 w-7 object-contain" />}
-                    <span className="flex-1 leading-tight">{district.name}</span>
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">+{district.population_capacity} obyvatel · {district.build_cost_wealth} zlata · {district.build_turns} t.</span>
-                </Button>
-              ))}</div>
-              {(!selectedCity || selectedCity.owner_player !== playerName) && <p className="mt-1 text-[10px] text-muted-foreground">Čtvrti lze zakládat jen na parcele vlastního města.</p>}
-            </div>
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs font-medium">Produkční čtvrti</p>
-                <span className="text-[10px] text-muted-foreground">{labour.production.length}/{labour.slots} obsazeno</span>
-              </div>
-              <p className="mb-2 text-[10px] text-muted-foreground">Jedna obytná čtvrť uživí {PRODUCTION_PER_RESIDENTIAL} produkční. {labour.free > 0 ? `Volná pracovní síla: ${labour.free}.` : "Bez další obytné čtvrti nové dílny nikdo neobsadí."}</p>
-              <div className="space-y-2">{PRODUCTION_DISTRICTS.map(district => {
-                const choices = district.baskets?.length ? district.baskets : DEMAND_BASKETS.map(b => b.key);
-                const picked = productionPick[district.key] || choices[0];
-                return <div key={district.key} className="rounded border border-border/60 p-2">
-                  <div className="flex items-center gap-2">
-                    <img src={DISTRICT_SPRITE[district.key] || buildInfrastructure} alt="" className="h-7 w-7 object-contain" />
-                    <div className="flex-1 leading-tight">
-                      <p className="text-xs font-medium">{district.name}</p>
-                      <p className="text-[10px] text-muted-foreground">+{district.basket_output} do koše · {district.build_cost_wealth} zlata · {district.build_turns} t.</p>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex gap-2">
-                    <select className="h-7 flex-1 rounded border border-input bg-background px-1 text-[11px]" value={picked}
-                      onChange={event => setProductionPick(current => ({ ...current, [district.key]: event.target.value }))}>
-                      {choices.map(key => <option key={key} value={key}>{DEMAND_BASKETS.find(b => b.key === key)?.label || key}</option>)}
-                    </select>
-                    <Button size="sm" className="h-7 px-2 text-[11px]" disabled={!!buildingAction || !!parcelBlock || !selectedCity || selectedCity.owner_player !== playerName || labour.free <= 0}
-                      onClick={() => void buildDistrict(district, picked)}>
-                      {buildingAction === `district-${district.key}` ? <Loader2 className="h-3 w-3 animate-spin" /> : "Postavit"}
-                    </Button>
-                  </div>
-                </div>;
-              })}</div>
-            </div>
-
-            <div>
-              <div className="mb-2 flex items-center justify-between"><p className="text-xs font-medium">Postavit budovu</p><span className="text-[10px] text-muted-foreground">{buildingTemplates.length} možností</span></div>
-              <div className="max-h-72 space-y-3 overflow-y-auto pr-1">{Object.entries(buildingTemplates.reduce<Record<string, BuildingTemplate[]>>((groups, template) => {
-                const key = template.category || "ostatní"; (groups[key] ||= []).push(template); return groups;
-              }, {})).map(([category, templates]) => (
-                <div key={category}>
-                  <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{BUILD_CATEGORY_LABEL[category] || category}</p>
-                  <div className="grid grid-cols-2 gap-2">{templates.map(template => (
-                    <Button key={template.id} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction || !!parcelBlock} onClick={() => void buildOnParcel(template)}>
-                      <span className="flex w-full items-center gap-2">
-                        {buildingAction === `building-${template.id}`
-                          ? <Loader2 className="h-4 w-4 animate-spin" />
-                          : <img src={buildSprite(template.name, template.category)} alt="" className="h-7 w-7 object-contain" />}
-                        <span className="flex-1 leading-tight">{template.name}</span>
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">{template.cost_wealth} zlata · {template.build_turns} t.</span>
-                    </Button>
-                  ))}</div>
-                </div>
-              ))}</div>
-            </div>
-            <div>
-              <p className="mb-2 text-xs font-medium">Vytvořit subuzel</p>
-              <div className="grid grid-cols-2 gap-2">{SUBNODE_OPTIONS.map(option => {
-                const reason = subnodeBlockReason(option);
-                return <Button key={option.key} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs"
-                  disabled={!!buildingAction || !!reason} title={reason || undefined}
-                  onClick={() => void buildSubnode(option.key, option.label)}>
-                  <span className="flex w-full items-center gap-2">
-                    {buildingAction === `node-${option.key}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={NODE_SPRITE[option.key] || spriteHamlet} alt="" className="h-7 w-7 object-contain" />}
-                    <span className="flex-1 leading-tight">{option.label}</span>
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">{reason || `${option.gold} zlata · ${option.production} produkce`}</span>
-                </Button>;
-              })}</div>
-            </div>
 
             {!selectedCity && !foreignOwner && <div className="rounded border border-border/60 p-2">
               <p className="text-xs font-medium">Založit osadu na této parcele</p>
