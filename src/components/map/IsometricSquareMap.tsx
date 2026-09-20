@@ -335,6 +335,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
   const [treasury, setTreasury] = useState({ gold: 0, production: 0 });
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
+  const [flowRows, setFlowRows] = useState<FlowRow[]>([]);
+  const [openCorridor, setOpenCorridor] = useState<string | null>(null);
   const [showRoutes, setShowRoutes] = useMapLayer("routes");
   const [showNodes, setShowNodes] = useMapLayer("nodes");
   const [showLabels, setShowLabels] = useMapLayer("labels");
@@ -736,7 +738,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const routePolylines = useMemo(() => routes.flatMap(route => {
     const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path;
     if (!Array.isArray(path) || path.length < 2) return [];
-    const cells = path.map(cell => ({ a: cell.x ?? cell.q ?? 0, b: cell.y ?? cell.r ?? 0 }));
+    const cells = path.map(parsePathCell).filter(Boolean) as Array<{ a: number; b: number }>;
+    if (cells.length < 2) return [];
     const points: Array<{ x: number; y: number }> = [];
     const pushSubPoint = (sub: SubRoadCell) => {
       const point = subPoint(sub.gridX, sub.gridY, sub.parcelX, sub.parcelY);
