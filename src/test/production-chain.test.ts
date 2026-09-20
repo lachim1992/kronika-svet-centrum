@@ -11,7 +11,7 @@ import {
   recipesForLevel, producersOfRecipe, goodReachability, auditProductionCatalog,
 } from '../../supabase/functions/_shared/productionCatalog';
 import { GOOD_FINAL_USE, GOOD_HOUSEHOLD } from '../../supabase/functions/_shared/economyConfig';
-import { runGoodsEconomy } from '../../supabase/functions/_shared/goodsEconomy';
+import { resolveGoodsEconomy, produced, type Good, type City, type Producer, type Snapshot } from '../../supabase/functions/_shared/goodsEconomy';
 
 describe('production catalog contract', () => {
   it('passes the static audit (known recipes, matching roles/tags, no orphan structures)', () => {
