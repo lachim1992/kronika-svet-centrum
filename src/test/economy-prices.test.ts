@@ -16,7 +16,7 @@ const producer = (id: string, c: string, g: string, capacity: number): Producer 
 
 /** One producing town, one large consuming town, one road between them. */
 const pair = (cost = 1, capacity = 1000, goods: Good[] = [good('grain', 'staple_food', 10)]): Snapshot => ({
-  turn: 2, goods, cities: [city('surplus', 0, 10000), city('deficit', 1, 8000)],
+  turn: 2, goods, cities: [city('surplus', 0, 500), city('deficit', 1, 8000)],
   producers: goods.map(g => producer(g.key, 'surplus', g.key, 60)),
   edges: [{ id: 'road', from: '0,0', to: '1,0', cost, capacity, mode: 'road', risk: 0, toll: 0, border: 0 }],
   opening: [], fame: [],

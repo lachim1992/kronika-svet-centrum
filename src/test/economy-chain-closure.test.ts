@@ -3,7 +3,7 @@ import { resolveGoodsEconomy, produced, type City, type Good, type Producer, typ
 import { GOODS, RECIPES, DISTINCTIVE_RECIPE_KEYS } from '../../supabase/functions/_shared/productionCatalog';
 import { foodShortageImpact } from '../../supabase/functions/_shared/foodShortage';
 
-const city:City={id:'c',owner:'p',name:'C',cell:'0,0',population:20000,classes:{peasants:20000},soldiers:0,
+const city:City={id:'c',owner:'p',name:'C',cell:'0,0',population:1000,classes:{peasants:1000},soldiers:0,
   stability:1,irrigation:0,labor:{},market:1,storage:100,admin:0,security:1,guild:0,ideology:'open_merchant',coastal:false};
 const good=(key:string,basket='tools',finalUse=false):Good=>({key,basket,price:10,stage:'processed',storable:true,
   bulk:1,density:30,perishability:0,storageLoss:0,storageCost:0,substitutability:1,strategic:0,prestige:0,transshipment:0,finalUse,household:false});
