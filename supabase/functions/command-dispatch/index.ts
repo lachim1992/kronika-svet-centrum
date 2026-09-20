@@ -1001,6 +1001,10 @@ async function executeFoundCity(
   // never on population emitting goods out of nothing (idempotent).
   await ensureStarterEconomy(supabase, sessionId, { cityId, turnNumber });
 
+  // ── 1e. Capital invariant: a realm's first city becomes its capital; an
+  // existing capital is never displaced by a newly founded settlement.
+  await ensureSingleCapital(supabase, sessionId, { owners: [actor.name] });
+
 
   // ── 2. World event ──
   const slug = `founding-${cityName.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;

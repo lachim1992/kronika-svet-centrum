@@ -6,6 +6,7 @@
 // - Idempotent: a second run adds nothing. Use { dryRun: true } to report without writing.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
+import { ensureSingleCapital } from "../_shared/capital.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,8 +27,12 @@ Deno.serve(async (req) => {
       cityId: city_id, turnNumber: turn_number, dryRun: dryRun !== false,
     });
     const added = reports.reduce((n, r) => n + r.added.length, 0);
+    // Deterministic capital repair for legacy saves without a capital. Same
+    // dryRun switch: nothing is written unless the caller passes dryRun: false.
+    const capitals = await ensureSingleCapital(supabase, session_id, { dryRun: dryRun !== false });
     return new Response(JSON.stringify({
       success: true, dry_run: dryRun !== false, cities: reports.length, structures_added: added, reports,
+      capitals,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     return new Response(JSON.stringify({ success: false, error: String((error as Error).message || error) }),
