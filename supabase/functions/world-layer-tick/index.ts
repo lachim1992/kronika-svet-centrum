@@ -30,45 +30,13 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-interface RouteStateRow {
-  route_id: string;
-  session_id: string;
-  lifecycle_state: string;
-  maintenance_level: number;
-  quality_level: number;
-  last_maintained_turn: number;
-  upkeep_cost: number;
-}
+import { planRouteMaintenance, type RouteStateRow } from "../_shared/routeUpkeep.ts";
 
 interface RouteRow {
   id: string;
   controlled_by: string | null;
   node_a: string;
   node_b: string;
-}
-
-function deriveLifecycle(maintenance: number, prev: string): string {
-  // 'planned' / 'under_construction' are externally driven, leave them alone.
-  if (prev === "planned" || prev === "under_construction") return prev;
-  if (maintenance >= 80) return "maintained";
-  if (maintenance >= 30) return "usable";
-  if (maintenance >= 10) return "degraded";
-  return "blocked";
-}
-
-function lifecycleToCacheControl(lifecycle: string): string {
-  // Map authoritative lifecycle to legacy control_state cache field.
-  switch (lifecycle) {
-    case "blocked":
-      return "blocked";
-    case "degraded":
-      return "contested";
-    case "under_construction":
-    case "planned":
-      return "constructing";
-    default:
-      return "open";
-  }
 }
 
 Deno.serve(async (req) => {
@@ -109,136 +77,39 @@ Deno.serve(async (req) => {
     const routeMap = new Map<string, RouteRow>();
     for (const r of (routes as RouteRow[]) || []) routeMap.set(r.id, r);
 
+    // ── Per-turn idempotency guard ───────────────────────────────────────
+    // A retried turn must neither decay routes twice nor charge upkeep twice.
+    const { data: guard } = await sb
+      .from("world_layer_tick_guards")
+      .select("result")
+      .eq("session_id", sessionId)
+      .eq("turn_number", turnNumber)
+      .maybeSingle();
+    if (guard) {
+      return new Response(JSON.stringify({ ok: true, replayed: true, ...(guard.result || {}) }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ── Phase 4: maintenance + lifecycle transitions ─────────────────────
-    let maintained = 0;
-    let degraded = 0;
-    let blocked = 0;
-    let goldSpent = 0;
-    const events: Array<Record<string, unknown>> = [];
-    const stateUpdates: Array<Record<string, unknown>> = [];
-    const cacheUpdates: Array<{ id: string; control: string }> = [];
+    // FISCAL BOUNDARY: this phase never writes gold. It stamps the routes it
+    // serviced; process-turn charges that upkeep inside the turn ledger.
+    const goldByOwner = new Map<string, number>();
+    const { data: realms } = await sb
+      .from("realm_resources")
+      .select("player_name, gold_reserve")
+      .eq("session_id", sessionId);
+    for (const r of realms || []) goldByOwner.set((r as any).player_name, Number((r as any).gold_reserve ?? 0));
 
-    // Group routes by owner for efficient gold debit
-    const ownerToRoutes = new Map<string, RouteStateRow[]>();
-    const orphan: RouteStateRow[] = [];
-    for (const s of states as RouteStateRow[]) {
-      const route = routeMap.get(s.route_id);
-      const owner = route?.controlled_by;
-      if (!owner) {
-        orphan.push(s);
-        continue;
-      }
-      if (!ownerToRoutes.has(owner)) ownerToRoutes.set(owner, []);
-      ownerToRoutes.get(owner)!.push(s);
-    }
-
-    for (const [owner, ownerStates] of ownerToRoutes.entries()) {
-      // Read realm_resources for owner
-      const { data: rr } = await sb
-        .from("realm_resources")
-        .select("gold_reserve")
-        .eq("session_id", sessionId)
-        .eq("player_name", owner)
-        .maybeSingle();
-
-      let goldAvail = Number(rr?.gold_reserve ?? 0);
-
-      for (const s of ownerStates) {
-        // Decay
-        let nextMaint = Math.max(0, s.maintenance_level - 5);
-        let lastMaintTurn = s.last_maintained_turn;
-        let nextUnpaid = (s as any).turns_unpaid ?? 0;
-
-        // Pay upkeep if affordable
-        if (goldAvail >= s.upkeep_cost && nextMaint < 100) {
-          goldAvail -= s.upkeep_cost;
-          goldSpent += s.upkeep_cost;
-          nextMaint = Math.min(100, nextMaint + 15);
-          lastMaintTurn = turnNumber;
-          nextUnpaid = 0;
-        } else if (s.upkeep_cost > 0) {
-          nextUnpaid += 1;
-        }
-
-        const prevLifecycle = s.lifecycle_state;
-        let nextLifecycle = deriveLifecycle(nextMaint, prevLifecycle);
-        // Hard transition: 3+ turns unpaid + degraded → blocked
-        if (nextUnpaid >= 3 && nextLifecycle === "degraded") nextLifecycle = "blocked";
-
-        stateUpdates.push({
-          route_id: s.route_id,
-          session_id: sessionId,
-          lifecycle_state: nextLifecycle,
-          maintenance_level: nextMaint,
-          quality_level: s.quality_level,
-          last_maintained_turn: lastMaintTurn,
-          upkeep_cost: s.upkeep_cost,
-          turns_unpaid: nextUnpaid,
-          updated_at: new Date().toISOString(),
-        });
-
-        cacheUpdates.push({
-          id: s.route_id,
-          control: lifecycleToCacheControl(nextLifecycle),
-        });
-
-        if (prevLifecycle !== nextLifecycle) {
-          if (nextLifecycle === "blocked") {
-            blocked++;
-            events.push({
-              session_id: sessionId,
-              turn_number: turnNumber,
-              event_type: "route_blocked",
-              severity: "warning",
-              title: "Trasa zablokována",
-              description: `Trasa ${s.route_id.slice(0, 8)} zkolabovala kvůli zanedbané údržbě (${nextUnpaid} tahů bez platby).`,
-              metadata: { route_id: s.route_id, owner, maintenance: nextMaint, turns_unpaid: nextUnpaid },
-            });
-          } else if (nextLifecycle === "degraded") {
-            degraded++;
-            events.push({
-              session_id: sessionId,
-              turn_number: turnNumber,
-              event_type: "route_decay",
-              severity: "info",
-              title: "Trasa chátrá",
-              description: `Trasa ${s.route_id.slice(0, 8)} potřebuje opravu.`,
-              metadata: { route_id: s.route_id, owner, maintenance: nextMaint },
-            });
-          } else if (nextLifecycle === "maintained") {
-            maintained++;
-          }
-        }
-      }
-
-      if (goldSpent > 0 && rr) {
-        await sb
-          .from("realm_resources")
-          .update({ gold_reserve: goldAvail })
-          .eq("session_id", sessionId)
-          .eq("player_name", owner);
-      }
-    }
-
-    // Orphan routes (no owner) just decay, no upkeep
-    for (const s of orphan) {
-      const nextMaint = Math.max(0, s.maintenance_level - 5);
-      const nextLifecycle = deriveLifecycle(nextMaint, s.lifecycle_state);
-      stateUpdates.push({
-        route_id: s.route_id,
-        session_id: sessionId,
-        lifecycle_state: nextLifecycle,
-        maintenance_level: nextMaint,
-        quality_level: s.quality_level,
-        last_maintained_turn: s.last_maintained_turn,
-        upkeep_cost: s.upkeep_cost,
-        updated_at: new Date().toISOString(),
-      });
-      cacheUpdates.push({
-        id: s.route_id,
-        control: lifecycleToCacheControl(nextLifecycle),
-      });
-    }
+    const plan = planRouteMaintenance({
+      sessionId,
+      turnNumber,
+      states: states as RouteStateRow[],
+      ownerOf: (routeId) => routeMap.get(routeId)?.controlled_by ?? null,
+      goldOf: (owner) => goldByOwner.get(owner) ?? 0,
+    });
+    const { stateUpdates, cacheUpdates, events, upkeepByOwner, maintained, degraded, blocked } = plan;
+    const upkeepDue = Object.values(upkeepByOwner).reduce((a, b) => a + b, 0);
 
     // Bulk upsert state
     if (stateUpdates.length > 0) {
@@ -324,14 +195,18 @@ Deno.serve(async (req) => {
       phase9Deleted = count ?? 0;
     }
 
+    const result = {
+      // upkeepDue is charged by process-turn (single turn-fiscal writer), not here.
+      phase4: { processed: stateUpdates.length, maintained, degraded, blocked, upkeepDue, upkeepByOwner },
+      phase7: { migrations: migrationsCreated, populationMoved: migrationPopMoved },
+      phase8: { mythicPrestige },
+      phase9: { deleted: phase9Deleted },
+    };
+    await sb.from("world_layer_tick_guards")
+      .upsert({ session_id: sessionId, turn_number: turnNumber, result }, { onConflict: "session_id,turn_number" });
+
     return new Response(
-      JSON.stringify({
-        ok: true,
-        phase4: { processed: stateUpdates.length, maintained, degraded, blocked, goldSpent },
-        phase7: { migrations: migrationsCreated, populationMoved: migrationPopMoved },
-        phase8: { mythicPrestige },
-        phase9: { deleted: phase9Deleted },
-      }),
+      JSON.stringify({ ok: true, ...result }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {

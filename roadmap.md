@@ -119,3 +119,16 @@
 - [ ] Fáze F: derived transit_service_value → daňový základ (nikdy přímo zlato)
 - [ ] Fáze G: deterministická základní AI neutrálních sídel (bez LLM v kanonu)
 - [ ] Fáze H: finální demografické UI + odstranění legacy kódu
+
+## Celoherní audit — uzavírací práce (Fáze 1–6)
+- [x] Fáze 1a: nový svět dostane startovní ekonomiku, hlavní město a jeden derived průchod
+- [x] Fáze 1b: právě jedno hlavní město na říši (vznik, zakládání, dobytí, oprava starých her)
+- [x] Fáze 1c: údržba cest účtovaná v kanonické fiskální uzávěrce + pojistka proti dvojímu účtování
+- [x] Fáze 1d: akceptační test nové hry (vytvoření → stavba → uzávěrka → čtení)
+- [ ] Fáze 2: kanonické zápisy jen přes command-dispatch + RLS podle vlastnictví
+- [ ] Fáze 3: migrace město↔město (venkovský převod zůstává Fáze C)
+- [ ] Fáze 4: odstranit legacy (world-tick, wealth_output v UI, production_reserve u upgradů, CitiesTab)
+- [ ] Fáze 5: jeden společný derived chain pro commit-turn i refresh-economy, jeden model cest
+- [ ] Fáze 6: aliance blokují válku, open borders řídí mírový pohyb, AI fallback, serverová náhoda
+- [ ] Rozhodnuto: persistentní real-time režim opuštěn — world-tick/process-tick/action_queue/time_pools k odstranění
+- [ ] Rozhodnuto: Sphaera/ligy zamrazit za beta flag

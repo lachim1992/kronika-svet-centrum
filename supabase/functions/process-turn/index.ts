@@ -3,6 +3,7 @@ import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demograp
 import { TAX_MAX, laffer, governance, taxRevenue, sportFundingExpense as computeSportFunding } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { foodShortageImpact } from '../_shared/foodShortage.ts';
+import { routeUpkeepDueThisTurn } from '../_shared/routeUpkeep.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1005,6 +1006,13 @@ Deno.serve(async (req) => {
     if (tradeGoldDelta !== 0) logEntries.push(`Obchod: ${tradeGoldDelta >= 0 ? "+" : ""}${tradeGoldDelta} zlata`);
     if (totalTollsPaid > 0) logEntries.push(`🏛️ Mýtné: -${totalTollsPaid} zlata`);
 
+    // ROUTE MAINTENANCE — physical lifecycle is decided by world-layer-tick (which
+    // runs before this fiscal pass and never touches gold); the charge belongs to
+    // the turn ledger here so the treasury delta and the snapshot agree.
+    const routeUpkeepExpense = await routeUpkeepDueThisTurn(supabase, sessionId, playerName, currentTurn);
+    newGoldReserve -= routeUpkeepExpense;
+    if (routeUpkeepExpense > 0) logEntries.push(`🛣️ Údržba cest: -${routeUpkeepExpense} zlata`);
+
     // Sport Funding — share of recurring fiscal income, NOT of the treasury stock.
     const sportFundingExpense = computeSportFunding(wealthIncome, sportFundingPct, Math.max(0, newGoldReserve));
     newGoldReserve -= sportFundingExpense;
@@ -1603,11 +1611,12 @@ Deno.serve(async (req) => {
           // fiscal_revenue = income components only (expenses listed separately)
           fiscal_revenue: Math.round(totalWealthIncome * 10) / 10,
           total_income: Math.round(totalWealthIncome * 10) / 10,
-          recurring_expenses: Math.round((armyWealthUpkeep + sportFundingExpense) * 10) / 10,
-          turn_fiscal_delta: Math.round((totalWealthIncome - armyWealthUpkeep - sportFundingExpense - totalTollsPaid) * 10) / 10,
+          recurring_expenses: Math.round((armyWealthUpkeep + sportFundingExpense + routeUpkeepExpense) * 10) / 10,
+          turn_fiscal_delta: Math.round((totalWealthIncome - armyWealthUpkeep - sportFundingExpense - routeUpkeepExpense - totalTollsPaid) * 10) / 10,
           army_upkeep: armyWealthUpkeep,
           tolls: totalTollsPaid,
           sport_funding: sportFundingExpense,
+          route_upkeep: routeUpkeepExpense,
         },
 
       },

@@ -17,6 +17,7 @@ import {
 } from "../_shared/demographics.ts";
 
 import { logAISkip } from "../_shared/ai-context.ts";
+import { ensureSingleCapital } from "../_shared/capital.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -240,6 +241,7 @@ Deno.serve(async (req) => {
         .lte("liberation_deadline_turn", turnNumber);
 
       let annexed = 0;
+      const affectedCapitalOwners = new Set<string>();
       for (const city of (dueOccupations || [])) {
         const newOwner = city.occupied_by;
         // Treasury bonus: attacker gets 30% of city wealth
@@ -263,7 +265,12 @@ Deno.serve(async (req) => {
           liberation_deadline_turn: null,
           occupation_loyalty: 100, // resets to neutral after annexation
           city_stability: 30, // freshly conquered = unstable
+          // A conquered city never arrives as the conqueror's capital; the losing
+          // realm gets a new capital via ensureSingleCapital below.
+          is_capital: false,
         }).eq("id", city.id);
+        affectedCapitalOwners.add(newOwner);
+        if (city.owner_player) affectedCapitalOwners.add(city.owner_player);
 
         // Transfer territory ownership: province + all its hexes follow the annexed city.
         try {
@@ -301,6 +308,12 @@ Deno.serve(async (req) => {
           importance: "critical",
         });
         annexed++;
+      }
+      // CAPITAL INVARIANT — exactly one capital per realm after ownership changes.
+      if (affectedCapitalOwners.size) {
+        results.capitalRepairs = await ensureSingleCapital(supabase, sessionId, {
+          owners: Array.from(affectedCapitalOwners),
+        });
       }
       results.cityAnnexations = { count: annexed };
     } catch (e) {
@@ -891,6 +904,25 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 4c. WORLD LAYER TICK (v9.1 — Phase 4 + Phase 9)
+    // Route maintenance lifecycle + retention cleanup. Runs BEFORE the fiscal
+    // pass: it owns the physical lifecycle and stamps serviced routes, while
+    // process-turn charges the upkeep inside the turn ledger (so the treasury
+    // delta and the fiscal snapshot agree). Guarded per (session, turn).
+    // ═══════════════════════════════════════════
+    try {
+      const { data: wlRes, error: wlErr } = await supabase.functions.invoke("world-layer-tick", {
+        body: { sessionId, turnNumber: turnNumber + 1 },
+      });
+      if (wlErr) console.warn("world-layer-tick warning:", wlErr.message);
+      results.worldLayer = wlRes || { error: wlErr?.message };
+    } catch (e) {
+      console.warn("world-layer-tick error (non-fatal):", (e as Error).message);
+      results.worldLayer = { error: (e as Error).message };
+    }
+
+
+    // ═══════════════════════════════════════════
     // 5. PROCESS TURN (economy for all players + AI factions)
     // PARALLEL — entities are isolated (each has own balance/resources).
     // ═══════════════════════════════════════════
@@ -1043,20 +1075,8 @@ Deno.serve(async (req) => {
       results.strategicGraph = { error: (e as Error).message };
     }
 
-    // ═══════════════════════════════════════════
-    // 5c. WORLD LAYER TICK (v9.1 — Phase 4 + Phase 9)
-    // Route maintenance lifecycle + retention cleanup.
-    // ═══════════════════════════════════════════
-    try {
-      const { data: wlRes, error: wlErr } = await supabase.functions.invoke("world-layer-tick", {
-        body: { sessionId, turnNumber: turnNumber + 1 },
-      });
-      if (wlErr) console.warn("world-layer-tick warning:", wlErr.message);
-      results.worldLayer = wlRes || { error: wlErr?.message };
-    } catch (e) {
-      console.warn("world-layer-tick error (non-fatal):", (e as Error).message);
-      results.worldLayer = { error: (e as Error).message };
-    }
+    // 5c. (moved) world-layer-tick now runs in phase 4c, before the fiscal pass,
+    // so route maintenance is charged inside the turn ledger. See phase 4c.
 
     // ═══════════════════════════════════════════
     // 6. NON-CRITICAL BACKGROUND TASKS

@@ -27,6 +27,7 @@ import {
 } from "../_shared/citySeat.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
+import { ensureSingleCapital } from "../_shared/capital.ts";
 import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
@@ -1000,6 +1001,10 @@ async function executeFoundCity(
   // ── 1d. Starter production bundle: a settlement subsists on real structures,
   // never on population emitting goods out of nothing (idempotent).
   await ensureStarterEconomy(supabase, sessionId, { cityId, turnNumber });
+
+  // ── 1e. Capital invariant: a realm's first city becomes its capital; an
+  // existing capital is never displaced by a newly founded settlement.
+  await ensureSingleCapital(supabase, sessionId, { owners: [actor.name] });
 
 
   // ── 2. World event ──
