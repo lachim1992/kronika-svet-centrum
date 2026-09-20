@@ -368,22 +368,11 @@ const CouncilTab = ({
         }).catch(() => {});
       }
 
-      // Apply immediate one-time effects (gold, grain, stability, etc.)
-      await applyImmediateEffects(decree.effects || []);
-
-      // Apply faction impacts
+      // Immediate effects + faction reactions in one canonical command.
       const votes = computeFactionReactions(allFactions, decree.decreeType, decree.effects);
-      if (votes.length > 0) {
-        const impacts = computeDecreeImpacts(votes);
-        for (const faction of allFactions) {
-          const impact = impacts[faction.faction_type];
-          if (!impact) continue;
-          await supabase.from("city_factions").update({
-            satisfaction: Math.max(0, Math.min(100, faction.satisfaction + impact.satisfaction)),
-            loyalty: Math.max(0, Math.min(100, faction.loyalty + impact.loyalty)),
-          }).eq("id", faction.id);
-        }
-      }
+      await applyImmediateEffects(decree.effects || [], {
+        factionImpacts: votes.length > 0 ? computeDecreeImpacts(votes) : {},
+      });
 
       // Log
       await supabase.from("world_action_log").insert({
