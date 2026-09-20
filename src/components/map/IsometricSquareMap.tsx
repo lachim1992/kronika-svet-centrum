@@ -180,8 +180,15 @@ type StoredSubBiome = { grid_x: number; grid_y: number; parcel_index: number; pa
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
 type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; city_id: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null; upgrade_level: number | null; infrastructure_level: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
-type PathCell = { x?: number; y?: number; q?: number; r?: number };
+/** Stored paths come as "x,y" strings, [x,y] pairs or objects — all three are valid. */
+type PathCell = string | [number, number] | { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null; transport_modes?: string[] | null };
+/** One economic movement along a corridor, kept for the click-through detail. */
+type FlowRow = {
+  id: string; corridor: string; layer: "goods" | "baskets"; label: string;
+  sourceCityId: string | null; targetCityId: string | null; sourcePlayer: string | null; targetPlayer: string | null;
+  volume: number; value: number; modes: string[];
+};
 type ParcelContent = { id: string; parcel_id: string; entity_type: string; entity_id: string; slots_used: number };
 type TileInfrastructure = { id: string; grid_x: number; grid_y: number; owner_player: string; level: number; target_level: number | null; status: string; progress: number };
 type RoadSegment = { id: string; project_id: string | null; owner_player: string; from_x: number; from_y: number; to_x: number; to_y: number; level: number; status: string; progress: number; capacity: number; utilization: number; maintenance: number; bridge_count: number; sub_path_cells: SubRoadCell[] };
@@ -260,6 +267,24 @@ const LAND_USE_COLOR: Record<string, string> = {
 };
 
 const cellKey = (a: number, b: number) => `${a},${b}`;
+/** Normalises every stored path-cell shape into map coordinates. */
+const parsePathCell = (cell: PathCell): { a: number; b: number } | null => {
+  if (typeof cell === "string") {
+    const [a, b] = cell.split(",").map(Number);
+    return Number.isFinite(a) && Number.isFinite(b) ? { a, b } : null;
+  }
+  if (Array.isArray(cell)) {
+    const [a, b] = cell.map(Number);
+    return Number.isFinite(a) && Number.isFinite(b) ? { a, b } : null;
+  }
+  if (cell && typeof cell === "object") {
+    const a = cell.x ?? cell.q;
+    const b = cell.y ?? cell.r;
+    if (Number.isFinite(Number(a)) && Number.isFinite(Number(b))) return { a: Number(a), b: Number(b) };
+  }
+  return null;
+};
+const corridorKeyOf = (cells: Array<{ a: number; b: number }>) => cells.map(cell => `${cell.a},${cell.b}`).join(">");
 const ROAD_TRACE_CENTER = { x: Math.floor(TILE_PARCEL_COLS / 2), y: Math.floor(TILE_PARCEL_ROWS / 2) };
 const roadEdgeKey = (from: { a: number; b: number }, to: { a: number; b: number }) => (
   from.a < to.a || (from.a === to.a && from.b <= to.b)
