@@ -40,6 +40,14 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
   add('workforce','Civilní pracovní síla','lidí','Potenciální aktivní populace minus skuteční aktivní vojáci.',cities.map(c=>({id:c.id,label:c.name,city:c.id,value:ledger.workforce[c.id].workforce})));
   add('soldiers','Aktivní vojáci','lidí','Skutečný stav aktivních armád; nastavená mobilizační sazba není počet vojáků.',cities.map(c=>({id:c.id,label:c.name,city:c.id,value:ledger.workforce[c.id].mobilized})));
   add('population','Obyvatelstvo','lidí','Součet obyvatel vlastních měst.',cities.map(c=>({id:c.id,label:c.name,city:c.id,value:c.population})));
+  // LABOR MARKET. Obyvatelstvo nevyrábí zboží; dodává práci do míst, která zaměstnávají.
+  const labor=(ledger.labor||[]).filter((l:any)=>owned.has(l.city));
+  add('jobs_capacity','Pracovní místa','míst','Součet pracovních míst, která vytvářejí budovy, čtvrti a uzly.',labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.jobs_capacity})));
+  add('employed','Zaměstnaní','lidí','Skutečně obsazená pracovní místa; nikdo není zaměstnán dvakrát.',labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.employed_total})));
+  add('unemployed','Nezaměstnaní','lidí','Nabídka práce, pro kterou ve městě nejsou pracovní místa.',labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.unemployed_total})));
+  add('vacancies','Neobsazená místa','míst','Pracovní místa, pro která chybí lidé.',labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.vacancies_total})));
+  const laborSupplyTotal=labor.reduce((s:number,l:any)=>s+l.available_workforce,0),employedTotal=labor.reduce((s:number,l:any)=>s+l.employed_total,0);
+  add('employment_rate','Zaměstnanost','%','Podíl zaměstnané pracovní síly říše.',[],laborSupplyTotal?employedTotal/laborSupplyTotal*100:null);
   const fiscal=fiscalSummary(realm);
   add('treasury','Pokladnice','zlata','Aktuální zůstatek státní pokladny.',[{id:player,label:'realm_resources.gold_reserve',value:Number(realm.gold_reserve||0)}]);
   add('net_fiscal','Čistý fiskální tok','zlata/tah','Zveřejněné daňové příjmy minus vykázané průběžné výdaje. Jednorázové stavební náklady nejsou zahrnuty.',[{id:'tax',label:'Daňové příjmy',value:fiscal.income},{id:'expenses',label:'Průběžné výdaje',value:-fiscal.expenses}],fiscal.net,`Poslední fiskální vyúčtování: tah ${realm.last_processed_turn??'nezjištěn'}.`);
