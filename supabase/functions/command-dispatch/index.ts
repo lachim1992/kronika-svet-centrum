@@ -996,6 +996,10 @@ async function executeFoundCity(
   // ── 1c. Settlement node in the physical graph (structural, idempotent) ──
   await ensureCitySettlementNodes(supabase, sessionId);
 
+  // ── 1d. Starter production bundle: a settlement subsists on real structures,
+  // never on population emitting goods out of nothing (idempotent).
+  await ensureStarterEconomy(supabase, sessionId, { cityId, turnNumber });
+
 
   // ── 2. World event ──
   const slug = `founding-${cityName.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
