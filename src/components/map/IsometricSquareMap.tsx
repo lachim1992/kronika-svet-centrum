@@ -741,7 +741,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return [...reach.values()];
   }, [roadDraft.length, cities, nodes, playerName, cityCellOf, entityCell]);
 
-  /** Trade flows ride the exact road trace instead of cutting a second visual corridor beside it. */
+  /**
+   * A route is only drawn where a road was actually built: every macro step must own a stored
+   * road trace. Routes without a finished road are internal topology only — never invented on the map.
+   */
   const routePolylines = useMemo(() => routes.flatMap(route => {
     const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path;
     if (!Array.isArray(path) || path.length < 2) return [];
@@ -757,19 +760,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       const from = cells[index];
       const to = cells[index + 1];
       const storedTrace = roadTraceByEdge.get(roadEdgeKey(from, to));
-      if (storedTrace?.length) {
-        const first = storedTrace[0];
-        const last = storedTrace[storedTrace.length - 1];
-        const oriented = sameMacroCell(first, from) || !sameMacroCell(last, from)
-          ? storedTrace
-          : [...storedTrace].reverse();
-        oriented.forEach(pushSubPoint);
-        continue;
-      }
-      const start: SubRoadCell = { gridX: from.a, gridY: from.b, parcelX: ROAD_TRACE_CENTER.x, parcelY: ROAD_TRACE_CENTER.y };
-      const end: SubRoadCell = { gridX: to.a, gridY: to.b, parcelX: ROAD_TRACE_CENTER.x, parcelY: ROAD_TRACE_CENTER.y };
-      [start, ...subRoadPathBetween(start, end)].forEach(pushSubPoint);
+      if (!storedTrace?.length) return [];
+      const first = storedTrace[0];
+      const last = storedTrace[storedTrace.length - 1];
+      const oriented = sameMacroCell(first, from) || !sameMacroCell(last, from)
+        ? storedTrace
+        : [...storedTrace].reverse();
+      oriented.forEach(pushSubPoint);
     }
+    if (points.length < 2) return [];
     return [{ id: route.route_id || JSON.stringify(path), points }];
   }), [routes, gridKind, subPoint, roadTraceByEdge]);
 
