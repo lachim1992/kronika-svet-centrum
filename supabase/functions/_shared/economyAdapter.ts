@@ -182,7 +182,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       const farm=/hospodářský pás|farm_belt/i.test(d.name||'');
       structure(d.id,c.id,'district',{[basket(d.basket_key)]:nonnegative(d.basket_output)},staffed-->0,
         farm?['farming','herding','gathering']:['weaving','smithing','armoring','construction','crafting','baking','spinning','smelting','stonecutting','sawing'],
-        {allowSource:farm,level:d.level??d.current_level});
+        {allowSource:farm,level:d.level??d.current_level,order:structureOrder(d.id)});
     }
   }
   const edges:Edge[]=db.road_segments.filter(r=>r.status==='completed').map(r=>({id:r.id,from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`,
