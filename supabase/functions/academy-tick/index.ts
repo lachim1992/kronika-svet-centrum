@@ -222,12 +222,13 @@ Deno.serve(async (req) => {
     // 2. SPORT FUNDING — DEDUCT FROM GOLD
     // ═══════════════════════════════════════════
     const { data: realm } = await sb.from("realm_resources")
-      .select("id, gold_reserve, sport_funding_pct")
+      .select("id, gold_reserve, sport_funding_pct, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal")
       .eq("session_id", session_id).eq("player_name", player_name).maybeSingle();
 
     if (realm && realm.sport_funding_pct > 0 && realm.gold_reserve > 0) {
-      // Gold deduction is handled by process-turn; here we only compute boost amount
-      const fundingAmount = Math.floor(realm.gold_reserve * realm.sport_funding_pct / 100);
+      // Gold deduction is handled by process-turn; here we only mirror the same amount (income share, not treasury share).
+      const fiscalIncome = Number(realm.wealth_pop_tax || 0) + Number(realm.wealth_domestic_market || 0) + Number(realm.goods_wealth_fiscal || 0);
+      const fundingAmount = sportFundingExpense(fiscalIncome, realm.sport_funding_pct, realm.gold_reserve);
       if (fundingAmount > 0) {
         results.funding_deducted = fundingAmount;
 
