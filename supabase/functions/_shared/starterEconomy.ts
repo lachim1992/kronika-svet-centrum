@@ -72,22 +72,25 @@ const effectsOf = (c: StarterContract) => ({
   basket_outputs: c.basketOutputs, jobs_capacity: c.jobsCapacity, starter_economy: true,
 });
 
-export type StarterReport = { city: string; city_name: string; added: string[]; existing: string[] };
+export type StarterReport = {
+  city: string; city_name: string; added: string[]; existing: string[]; upgraded: string[]; level: number;
+};
 
 /**
- * Ensures every listed city owns the minimal explicit production bundle.
- * Returns what was added (or, with dryRun, what would be added).
+ * Ensures every listed city owns the minimal explicit production bundle, sized to its
+ * population. Returns what was added or upgraded (or, with dryRun, what would change).
  */
 export async function ensureStarterEconomy(
   sb: any,
   sessionId: string,
   options: { cityId?: string; turnNumber?: number; dryRun?: boolean } = {},
 ): Promise<StarterReport[]> {
-  let cityQuery = sb.from('cities').select('id, name, grid_x, grid_y').eq('session_id', sessionId);
+  let cityQuery = sb.from('cities')
+    .select('id, name, grid_x, grid_y, population_total').eq('session_id', sessionId);
   if (options.cityId) cityQuery = cityQuery.eq('id', options.cityId);
   const [{ data: cities }, { data: buildings }, { data: hexes }] = await Promise.all([
     cityQuery,
-    sb.from('city_buildings').select('id, city_id, name, effects').eq('session_id', sessionId),
+    sb.from('city_buildings').select('id, city_id, name, effects, current_level').eq('session_id', sessionId),
     sb.from('province_hexes').select('q, r, has_river, biome_family').eq('session_id', sessionId),
   ]);
   const water = new Set((hexes || [])
@@ -98,25 +101,42 @@ export async function ensureStarterEconomy(
     return false;
   };
   const rows: any[] = [];
+  const upgrades: { id: string; level: number }[] = [];
   const reports: StarterReport[] = [];
   for (const city of (cities || []).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)))) {
     const own = (buildings || []).filter((b: any) => b.city_id === city.id);
     const bundle = starterBundle(near(Number(city.grid_x) || 0, Number(city.grid_y) || 0));
-    const added: string[] = [], existing: string[] = [];
+    const level = starterLevelFor(Number(city.population_total) || 0);
+    const added: string[] = [], existing: string[] = [], upgraded: string[] = [];
     for (const contract of bundle) {
-      const has = own.some((b: any) => b.name === contract.name ||
+      const target = scalesWithPopulation(contract) ? level : 1;
+      const match = own.find((b: any) => b.name === contract.name ||
         (b.effects?.recipe_keys || []).some((k: string) => contract.recipeKeys.includes(k)));
-      if (has) { existing.push(contract.name); continue; }
+      if (match) {
+        existing.push(contract.name);
+        // Only ever raise a starter structure — a player upgrade must never be reverted.
+        if ((Number(match.current_level) || 1) < target) {
+          upgrades.push({ id: match.id, level: target });
+          upgraded.push(contract.name);
+        }
+        continue;
+      }
       added.push(contract.name);
       rows.push({
         session_id: sessionId, city_id: city.id, name: contract.name, category: contract.category,
         description: contract.description, effects: effectsOf(contract), status: 'completed',
-        current_level: 1, max_level: 3, build_duration: 1,
+        current_level: target, max_level: 3, build_duration: 1,
         build_started_turn: options.turnNumber ?? 1, completed_turn: options.turnNumber ?? 1,
       });
     }
-    reports.push({ city: city.id, city_name: city.name, added, existing });
+    reports.push({ city: city.id, city_name: city.name, added, existing, upgraded, level });
   }
-  if (rows.length && !options.dryRun) await sb.from('city_buildings').insert(rows);
+  if (!options.dryRun) {
+    if (rows.length) await sb.from('city_buildings').insert(rows);
+    for (const u of upgrades) {
+      await sb.from('city_buildings').update({ current_level: u.level }).eq('id', u.id);
+    }
+  }
   return reports;
+
 }
