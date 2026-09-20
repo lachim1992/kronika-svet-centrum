@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { ECONOMY } from "../../supabase/functions/_shared/economyConfig";
 import { buildCatalog, matchesQuery, BUILD_CATEGORY_ORDER, BUILD_CATEGORY_LABELS, levelCapacityScale, type TemplateRow, type RecipeRow } from "@/lib/buildCatalog";
 import { RESIDENTIAL_DISTRICTS, PRODUCTION_DISTRICTS } from "@/lib/cityDistricts";
 import { SUBNODE_DEFS } from "@/lib/buildCatalog";
