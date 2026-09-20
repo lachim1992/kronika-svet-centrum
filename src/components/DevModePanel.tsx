@@ -95,8 +95,12 @@ const DevModePanel = ({
               <WorldIntegritySection sessionId={sessionId} onRefetch={onRefetch} />
             </div>
             <div className="border-t border-border/50 pt-3">
+              <RuralPopulationShadowPanel sessionId={sessionId} />
+            </div>
+            <div className="border-t border-border/50 pt-3">
               <DevConsolePanel sessionId={sessionId} currentTurn={currentTurn} />
             </div>
+
           </div>
         </DevSection>
       )}
