@@ -84,12 +84,12 @@ const effectsOf = (c: StarterContract, population: number) => {
 
 
 export type StarterReport = {
-  city: string; city_name: string; added: string[]; existing: string[]; upgraded: string[]; level: number;
+  city: string; city_name: string; added: string[]; existing: string[]; resized: string[]; units: number;
 };
 
 /**
  * Ensures every listed city owns the minimal explicit production bundle, sized to its
- * population. Returns what was added or upgraded (or, with dryRun, what would change).
+ * population. Returns what was added or resized (or, with dryRun, what would change).
  */
 export async function ensureStarterEconomy(
   sb: any,
@@ -112,42 +112,46 @@ export async function ensureStarterEconomy(
     return false;
   };
   const rows: any[] = [];
-  const upgrades: { id: string; level: number }[] = [];
+  const resizes: { id: string; effects: any }[] = [];
   const reports: StarterReport[] = [];
   for (const city of (cities || []).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)))) {
     const own = (buildings || []).filter((b: any) => b.city_id === city.id);
+    const population = Number(city.population_total) || 0;
     const bundle = starterBundle(near(Number(city.grid_x) || 0, Number(city.grid_y) || 0));
-    const level = starterLevelFor(Number(city.population_total) || 0);
-    const added: string[] = [], existing: string[] = [], upgraded: string[] = [];
+    const added: string[] = [], existing: string[] = [], resized: string[] = [];
     for (const contract of bundle) {
-      const target = scalesWithPopulation(contract) ? level : 1;
+      const effects = effectsOf(contract, population);
       const match = own.find((b: any) => b.name === contract.name ||
         (b.effects?.recipe_keys || []).some((k: string) => contract.recipeKeys.includes(k)));
       if (match) {
         existing.push(contract.name);
-        // Only ever raise a starter structure — a player upgrade must never be reverted.
-        if ((Number(match.current_level) || 1) < target) {
-          upgrades.push({ id: match.id, level: target });
-          upgraded.push(contract.name);
+        // Only ever resize a structure this helper itself created — never a player's building.
+        if (match.effects?.starter_economy &&
+            JSON.stringify(match.effects?.basket_outputs || {}) !== JSON.stringify(effects.basket_outputs)) {
+          resizes.push({ id: match.id, effects: { ...match.effects, ...effects } });
+          resized.push(contract.name);
         }
         continue;
       }
       added.push(contract.name);
       rows.push({
         session_id: sessionId, city_id: city.id, name: contract.name, category: contract.category,
-        description: contract.description, effects: effectsOf(contract), status: 'completed',
-        current_level: target, max_level: 3, build_duration: 1,
+        description: contract.description, effects, status: 'completed',
+        current_level: 1, max_level: 3, build_duration: 1,
         build_started_turn: options.turnNumber ?? 1, completed_turn: options.turnNumber ?? 1,
       });
     }
-    reports.push({ city: city.id, city_name: city.name, added, existing, upgraded, level });
+    reports.push({
+      city: city.id, city_name: city.name, added, existing, resized, units: starterUnitsFor(population),
+    });
   }
   if (!options.dryRun) {
     if (rows.length) await sb.from('city_buildings').insert(rows);
-    for (const u of upgrades) {
-      await sb.from('city_buildings').update({ current_level: u.level }).eq('id', u.id);
+    for (const u of resizes) {
+      await sb.from('city_buildings').update({ effects: u.effects }).eq('id', u.id);
     }
   }
   return reports;
+
 
 }
