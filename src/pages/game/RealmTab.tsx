@@ -7,8 +7,9 @@ import SecretObjectivesPanel from "@/components/SecretObjectivesPanel";
 import TurnProgressionPanel from "@/components/TurnProgressionPanel";
 import RealmDashboard from "@/components/RealmDashboard";
 import TradeFlowExplorer from "@/components/economy/TradeFlowExplorer";
+import RealmPopulationAnalytics from "@/components/realm/RealmPopulationAnalytics";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, Swords, Feather, Megaphone, Target, Sparkles, Clock, Crown } from "lucide-react";
+import { Shield, Swords, Feather, Megaphone, Target, Sparkles, Clock, Crown, Users } from "lucide-react";
 
 interface Props {
   sessionId: string;
@@ -57,6 +58,9 @@ const RealmTab = ({
           <TabsTrigger value="turn" className="font-display text-xs gap-1">
             <Clock className="h-3 w-3" />Kolo
           </TabsTrigger>
+          <TabsTrigger value="population" className="font-display text-xs gap-1">
+            <Users className="h-3 w-3" />Populace
+          </TabsTrigger>
           <TabsTrigger value="diplomacy" className="font-display text-xs gap-1">
             <Feather className="h-3 w-3" />Diplomacie
           </TabsTrigger>
@@ -80,6 +84,10 @@ const RealmTab = ({
             currentTurn={currentTurn} myRole={myRole} cities={cities} realm={realm} onRefetch={onRefetch}
           />
           <TradeFlowExplorer sessionId={sessionId} currentTurn={currentTurn} cities={cities} playerName={currentPlayerName} />
+        </TabsContent>
+
+        <TabsContent value="population" className="mt-3">
+          <RealmPopulationAnalytics sessionId={sessionId} currentTurn={currentTurn} currentPlayerName={currentPlayerName} cities={cities} realm={realm} />
         </TabsContent>
 
         <TabsContent value="turn" className="mt-3">
