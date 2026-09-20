@@ -1911,7 +1911,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
           <BuildCatalogPanel
             templates={buildingTemplates as any}
-            busyKey={buildingAction}
+            busyKey={buildingAction?.startsWith("building-") ? `building:${buildingAction.slice(9)}`
+              : buildingAction?.startsWith("district-") ? `district:${buildingAction.slice(9)}`
+              : buildingAction?.startsWith("node-") ? `subnode:${buildingAction.slice(5)}`
+              : buildingAction}
+
             parcelBlock={parcelBlock}
             ownCity={!!selectedCity && selectedCity.owner_player === playerName}
             cityName={selectedCity?.name}
