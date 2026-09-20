@@ -214,7 +214,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
             className="w-full"
           />
           <p className="text-[10px] text-muted-foreground">
-            Každé kolo se strhne {sportFunding}% ze zlaté rezervy na rozvoj akademií a šanci na vznik nových asociací.
+            Každé kolo se odvede {sportFunding}% z daňových příjmů (nikdy z celé pokladnice) na rozvoj akademií a šanci na vznik nových asociací.
           </p>
         </CardContent>
       </Card>
