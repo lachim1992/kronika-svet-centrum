@@ -64,6 +64,101 @@ export function computeOvercrowdingRatio(population: number, housingCapacity: nu
 }
 
 // ═══════════════════════════════════════════
+// POPULATION INVARIANTS (Phase A — canonical)
+//
+// HARD INVARIANT:
+//   population_total === peasants + burghers + clerics + warriors
+//
+// Every population write in turn resolution must go through
+// normalizePopulationClasses() or applyPopulationLoss(). No caller may write a
+// subset of the class columns.
+// ═══════════════════════════════════════════
+
+/** Absolute floor for an inhabited settlement. */
+export const POPULATION_FLOOR = 50;
+
+export interface PopulationSnapshot {
+  population_total: number;
+  population_peasants: number;
+  population_burghers: number;
+  population_clerics: number;
+  population_warriors: number;
+}
+
+const int = (v: unknown) => {
+  const n = Math.round(Number(v ?? 0));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+/**
+ * Distribute `total` across the four classes keeping the current proportions
+ * and guaranteeing total === sum(classes). Peasants absorb the rounding
+ * remainder (they are the largest class in practice, and can never go below 0).
+ */
+export function normalizePopulationClasses(
+  total: number,
+  current: Partial<PopulationSnapshot>,
+  floor = POPULATION_FLOOR,
+): PopulationSnapshot {
+  const target = Math.max(floor, int(total));
+  const peas = int(current.population_peasants);
+  const burg = int(current.population_burghers);
+  const cler = int(current.population_clerics);
+  const warr = int(current.population_warriors);
+  const base = peas + burg + cler + warr;
+
+  if (base <= 0) {
+    return {
+      population_total: target,
+      population_peasants: target,
+      population_burghers: 0,
+      population_clerics: 0,
+      population_warriors: 0,
+    };
+  }
+
+  const scaled = {
+    population_burghers: Math.min(target, Math.round(target * (burg / base))),
+    population_clerics: Math.min(target, Math.round(target * (cler / base))),
+    population_warriors: Math.min(target, Math.round(target * (warr / base))),
+  };
+  let rest = scaled.population_burghers + scaled.population_clerics + scaled.population_warriors;
+  // Guard against rounding pushing the non-peasant classes over the target.
+  if (rest > target) {
+    const order: Array<keyof typeof scaled> = ["population_warriors", "population_clerics", "population_burghers"];
+    for (const key of order) {
+      if (rest <= target) break;
+      const cut = Math.min(scaled[key], rest - target);
+      scaled[key] -= cut;
+      rest -= cut;
+    }
+  }
+  return {
+    population_total: target,
+    population_peasants: Math.max(0, target - rest),
+    ...scaled,
+  };
+}
+
+/**
+ * Proportional population loss (famine, rebellion, epidemic, war).
+ * Returns a complete, invariant-safe update payload.
+ */
+export function applyPopulationLoss(
+  current: Partial<PopulationSnapshot>,
+  loss: number,
+  floor = POPULATION_FLOOR,
+): PopulationSnapshot & { actualLoss: number } {
+  const total = int(current.population_total);
+  const want = Math.max(0, Math.round(Number(loss) || 0));
+  const target = Math.max(floor, total - want);
+  const next = normalizePopulationClasses(target, current, floor);
+  return { ...next, actualLoss: Math.max(0, total - next.population_total) };
+}
+
+
+
+// ═══════════════════════════════════════════
 // SOCIAL MOBILITY
 // ═══════════════════════════════════════════
 
