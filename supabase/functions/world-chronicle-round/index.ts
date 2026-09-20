@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
         .eq("turn_number", round).eq("status", "published"),
       supabase.from("city_buildings").select("name, category, description, founding_myth, is_wonder")
         .eq("session_id", sessionId).eq("completed_turn", round),
-      supabase.from("city_rumors").select("city_name, text, tone_tag, player_name")
+      supabase.from("city_rumors").select("id, city_name, text, tone_tag, created_by")
         .eq("session_id", sessionId).eq("turn_number", round).eq("is_draft", false),
       supabase.from("feed_reactions").select("target_type, target_id, player_name, emoji, created_at")
         .eq("session_id", sessionId),
