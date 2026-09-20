@@ -55,6 +55,18 @@ export const STARTER_STORAGE: StarterContract = {
 export const starterBundle = (nearWater: boolean): StarterContract[] =>
   [nearWater ? STARTER_FISHERY : STARTER_FARM, STARTER_WELL, STARTER_STORAGE];
 
+/**
+ * A hamlet of 100 souls survives on one level-1 farm and one level-1 well. Larger seeded
+ * settlements need proportionally more real throughput, and capacity doubles per level
+ * (ECONOMY.levelCapacityScale) together with the crew, so population maps onto a level.
+ * Storage is logistics, not survival, and therefore stays at level 1.
+ */
+export const starterLevelFor = (population: number): number =>
+  population >= 350 ? 3 : population >= 175 ? 2 : 1;
+
+const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE;
+
+
 const effectsOf = (c: StarterContract) => ({
   recipe_keys: c.recipeKeys, production_roles: c.roles, capability_tags: c.tags,
   basket_outputs: c.basketOutputs, jobs_capacity: c.jobsCapacity, starter_economy: true,
