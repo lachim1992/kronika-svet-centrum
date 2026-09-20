@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { selectCapital } from "../../supabase/functions/_shared/capital";
 import { planRouteMaintenance, type RouteStateRow } from "../../supabase/functions/_shared/routeUpkeep";
-import { starterBundle } from "../../supabase/functions/_shared/starterEconomy";
+import { starterBundle, starterLevelFor } from "../../supabase/functions/_shared/starterEconomy";
 
 const fn = (name: string) => readFileSync(`supabase/functions/${name}/index.ts`, "utf8");
 
