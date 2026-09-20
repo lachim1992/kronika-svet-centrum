@@ -156,7 +156,7 @@ const GoodsProductionManager = ({
       a.unmet  += Number(r.unmet_demand) || Math.max(0, (Number(r.local_demand) || 0) - (Number(r.local_supply) || 0));
       a.cities.add(r.city_id);
       a.rows.push({ local_demand: Number(r.local_demand) || 0, domestic_satisfaction: Number(r.domestic_satisfaction) || 0 });
-      const d = r.demand_detail as DemandDetail | null | undefined;
+      const d = (r.demand_detail ?? null) as DemandDetail | null;
       if (d) {
         a.demandClass = d.demand_class ?? a.demandClass;
         a.group = d.group ?? a.group;

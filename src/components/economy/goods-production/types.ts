@@ -16,7 +16,7 @@ export interface CityBasketRow {
   domestic_satisfaction: number;
   unmet_demand?: number;
   export_surplus: number;
-  demand_detail?: DemandDetail | null;
+  demand_detail?: unknown;
 }
 
 export interface DemandDetail {
