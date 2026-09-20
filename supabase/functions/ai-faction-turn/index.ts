@@ -2338,12 +2338,12 @@ async function executeAction(
       // Create trade route
       await supabase.from("trade_routes").insert({
         session_id: sessionId,
-        player_a: factionName,
-        player_b: action.targetPlayer,
+        from_player: factionName,
+        to_player: action.targetPlayer,
         resource_type: resourceType,
-        amount: 5,
+        amount_per_turn: 5,
         route_safety: 80,
-        is_active: true,
+        status: "active",
       }).then(() => {}, () => {});
 
       // Diplomatic message
