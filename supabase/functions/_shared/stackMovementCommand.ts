@@ -9,6 +9,7 @@ import {
   computeAllowedMove,
   hexKey,
 } from "./movement.ts";
+import { checkTerritoryAccess, loadDiplomacyState, loadHexOwners } from "./diplomacyEnforcement.ts";
 
 export type ApplyStackMoveResult =
   | { ok: true; stackId: string; finalHex: Hex; allowedSteps: number; usedRoadBonus: boolean }
@@ -94,6 +95,20 @@ export async function applyStackMove(
       code: `BLOCKED_${(allowed.blockedReason ?? "unknown").toUpperCase()}`,
     };
   }
+
+  // Phase 6 — diplomatic passage. Foreign land in peacetime needs open borders or an alliance.
+  const traversed = plannedPath.slice(1, allowed.allowedSteps + 1);
+  if (traversed.length > 0) {
+    const [{ pacts, wars }, owners] = await Promise.all([
+      loadDiplomacyState(supabase, sessionId),
+      loadHexOwners(supabase, sessionId, traversed, gridKind),
+    ]);
+    const access = checkTerritoryAccess(pacts, wars, actorName, owners);
+    if (access.ok === false) {
+      return { ok: false, error: access.error, code: "BLOCKED_NO_PASSAGE" };
+    }
+  }
+
 
   // Atomic conditional update — guards against concurrent writers.
   const positionUpdate = gridKind === "square4"
