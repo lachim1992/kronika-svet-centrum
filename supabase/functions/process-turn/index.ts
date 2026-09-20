@@ -710,15 +710,20 @@ Deno.serve(async (req) => {
         famineCityCount++;
         const newStability = Math.max(0, (city.city_stability || 50) - 5);
         const deathToll = Math.floor((city.population_total || 0) * 0.05);
+        // Losses go through the shared helper so population_total always equals
+        // the sum of the four classes (Phase A invariant).
+        const loss = applyPopulationLoss(city, deathToll);
         await supabase.from("cities").update({
           city_stability: newStability,
-          population_peasants: Math.max(0, (city.population_peasants || 0) - Math.floor(deathToll * 0.7)),
-          population_burghers: Math.max(0, (city.population_burghers || 0) - Math.floor(deathToll * 0.15)),
-          population_warriors: Math.max(0, (city.population_warriors || 0) - Math.floor(deathToll * 0.1)),
-          population_clerics: Math.max(0, (city.population_clerics || 0) - Math.floor(deathToll * 0.05)),
+          population_total: loss.population_total,
+          population_peasants: loss.population_peasants,
+          population_burghers: loss.population_burghers,
+          population_clerics: loss.population_clerics,
+          population_warriors: loss.population_warriors,
           famine_turn: true,
           famine_consecutive_turns: (city.famine_consecutive_turns || 0) + 1,
         }).eq("id", city.id);
+
 
         logEntries.push(`⚠️ Hladomor v ${city.name}! Ztráta ${deathToll} obyvatel.`);
         newEvents.push({
