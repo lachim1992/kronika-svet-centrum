@@ -1582,11 +1582,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <line x1={point.x - 5} y1={point.y - 2.6} x2={point.x + 5} y2={point.y - 2.6} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity=".8" />
             </g>;
           })}
-          {!cityLayerCityId && showRoutes && routePolylines.map(route => (
-            <polyline key={route.id} points={route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ")}
-              fill="none" stroke="var(--map-focus)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"
-              opacity=".9" className="iso-active-route" pointerEvents="none" />
-          ))}
+          {!cityLayerCityId && showRoutes && routePolylines.map(route => {
+            const points = route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ");
+            const hasFlows = flowRows.some(row => row.corridor === route.id);
+            return <g key={route.id}>
+              <polyline points={points} fill="none" stroke="var(--map-focus)" strokeWidth="1.9" strokeLinecap="round"
+                strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />
+              {hasFlows && <polyline points={points} fill="none" stroke="transparent" strokeWidth="10"
+                strokeLinecap="round" style={{ cursor: "pointer" }}
+                onClick={event => { event.stopPropagation(); setOpenCorridor(route.id); }} />}
+            </g>;
+          })}
 
           {showNodes && nodes.map(node => {
             if (node.node_type === "primary_city" || node.node_type === "secondary_city") return null;
