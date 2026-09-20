@@ -1447,6 +1447,14 @@ async function executeDeclareWar(
     return { events: [], error: "War already active between these players", status: 409 };
   }
 
+  // Phase 6 — an active alliance / defense pact / vassalage blocks the declaration.
+  const { pacts } = await loadDiplomacyState(supabase, sessionId);
+  const warCheck = checkWarDeclaration(pacts, actor.name, targetPlayer);
+  if (warCheck.ok === false) {
+    return { events: [], error: warCheck.error, status: 409 };
+  }
+
+
   // Create war declaration record
   const { data: warRecord, error: warErr } = await supabase.from("war_declarations").insert({
     session_id: sessionId,
