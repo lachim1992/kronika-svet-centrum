@@ -2147,7 +2147,7 @@ async function projectDiplomaticRelations(
     supabase.from("diplomatic_pacts").select("*").eq("session_id", sessionId).eq("status", "active"),
     supabase.from("war_declarations").select("*").eq("session_id", sessionId).eq("status", "active"),
     supabase.from("diplomatic_memory").select("*").eq("session_id", sessionId).eq("is_active", true),
-    supabase.from("trade_routes").select("*").eq("session_id", sessionId).eq("is_active", true),
+    supabase.from("trade_routes").select("*").eq("session_id", sessionId).eq("status", "active"),
     supabase.from("diplomatic_relations").select("*").eq("session_id", sessionId),
     supabase.from("ai_factions").select("faction_name").eq("session_id", sessionId).eq("is_active", true),
   ]);
@@ -2203,7 +2203,7 @@ async function projectDiplomaticRelations(
 
       // ── Trade routes = dependency + cooperation ──
       const pairTrades = (tradeRoutes || []).filter((t: any) =>
-        (t.player_a === fA && t.player_b === fB) || (t.player_a === fB && t.player_b === fA)
+        (t.from_player === fA && t.to_player === fB) || (t.from_player === fB && t.to_player === fA)
       );
       dependency += pairTrades.length * 5;
       cooperation_score += pairTrades.length * 3;
@@ -2235,7 +2235,7 @@ async function projectDiplomaticRelations(
 
       // ── Tension effects on fear ──
       const tensionRec = tensionRecords.find((t: any) =>
-        (t.player_a === fA && t.player_b === fB) || (t.player_a === fB && t.player_b === fA)
+        (t.from_player === fA && t.to_player === fB) || (t.from_player === fB && t.to_player === fA)
       );
       if (tensionRec) {
         fear += Math.round((tensionRec.total_tension || 0) * 0.3);

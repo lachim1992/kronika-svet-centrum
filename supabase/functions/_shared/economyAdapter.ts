@@ -179,8 +179,11 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       local_supply:sum('consumed_household')+sum('consumed_state'),
       local_demand:demand,unmet_demand:unmet,domestic_satisfaction:demand?1-unmet/demand:1,export_surplus:sum('stored')+sum('exported'),quality_weight:1,
       market_access:1,monetization:1});}
+  // City columns carry cities.id; node columns carry the anchoring province_nodes.id. Never swap them.
   const tradeFlows=result.flows.filter(f=>cityNode.has(f.source)&&cityNode.has(f.destination)).map(f=>({session_id:session,good_key:f.good,
-    source_city_id:cityNode.get(f.source),target_city_id:cityNode.get(f.destination),source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,
+    source_city_id:f.source,target_city_id:f.destination,
+    source_node_id:cityNode.get(f.source),target_node_id:cityNode.get(f.destination),
+    source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,
     flow_type:f.reason,volume_per_turn:f.qty,quality_band:Math.floor(f.quality),effective_price:f.qty?f.gross_value/f.qty:0,status:'active',turn_created:turn,
     path_cells:f.path,transport_modes:f.edges.map((edgeId:string)=>edgeId.startsWith('river:')?'river':edgeId.startsWith('spur:')?'spur':'road'),
     provenance:f}));
@@ -220,7 +223,14 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       domestic_satisfaction:demand?1-unmet/demand:1,effective_export:ownExport,global_export:totalExport,
       global_demand:world.reduce((s,b)=>s+b.local_demand,0),market_share:totalExport?ownExport/totalExport:0,quality_weight:1,wealth_generated:0};
   }));
-  const payload={result,marketBaskets,tradeFlows,basketFlows,realms,summaries,marketShares};
+  // demand_baskets stays a pure compatibility projection of the canonical basket ledger
+  // (no second demand solver). FK: demand_baskets.city_id -> province_nodes.id.
+  const demandBaskets=marketBaskets.filter(b=>cityNode.has(b.city_id)).map(b=>({session_id:session,turn_number:turn,
+    city_id:cityNode.get(b.city_id),basket_key:b.basket_key,tier:BASKET_TIER[b.basket_key as keyof typeof BASKET_TIER]??1,
+    quantity_needed:b.local_demand,quantity_fulfilled:Math.max(0,b.local_demand-b.unmet_demand),
+    satisfaction_score:b.local_demand?Math.max(0,b.local_demand-b.unmet_demand)/b.local_demand:1,
+    fulfillment_type:'canonical',min_quality:0,preferred_quality:0}));
+  const payload={result,marketBaskets,demandBaskets,tradeFlows,basketFlows,realms,summaries,marketShares};
   const saved=await sb.rpc('replace_goods_economy_projection',{p_session:session,p_turn:turn,p_payload:payload});if(saved.error)throw saved.error;
   return {ok:true,turn,flows:result.flows.length,balances:result.balances.length,blocked:result.diagnostics.filter(d=>d.blocked).length};
 }

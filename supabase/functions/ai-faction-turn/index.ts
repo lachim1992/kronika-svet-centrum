@@ -240,8 +240,8 @@ Deno.serve(async (req) => {
       supabase.from("civ_tensions").select("player_a, player_b, total_tension, crisis_triggered")
         .eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(50),
       // Trade routes
-      supabase.from("trade_routes").select("player_a, player_b, resource_type, amount, route_safety, is_active")
-        .eq("session_id", sessionId).eq("is_active", true),
+      supabase.from("trade_routes").select("from_player, to_player, resource_type, amount_per_turn, route_safety, status")
+        .eq("session_id", sessionId).eq("status", "active"),
       // AI MEMORY: what did this faction do last turn?
       supabase.from("world_action_log").select("action_type, description, turn_number")
         .eq("session_id", sessionId).eq("player_name", factionName)
@@ -510,8 +510,8 @@ VOJENSKÁ PRAVIDLA:
         (t.player_a === f.faction_name && t.player_b === factionName)
       );
       const fTrade = (tradeRoutes || []).filter((tr: any) =>
-        (tr.player_a === factionName && tr.player_b === f.faction_name) ||
-        (tr.player_a === f.faction_name && tr.player_b === factionName)
+        (tr.from_player === factionName && tr.to_player === f.faction_name) ||
+        (tr.from_player === f.faction_name && tr.to_player === factionName)
       );
       const myDisposition = (faction.disposition || {})[f.faction_name] ?? 0;
       return `  ${f.faction_name} [${f.personality}]: Města: ${fCities.length}, Vliv: ${fInf?.total_influence || "?"}, Tenze s tebou: ${fTension?.total_tension?.toFixed(0) || 0}, Tvůj postoj: ${myDisposition}, Obch. trasy: ${fTrade.length}, Cíle: ${JSON.stringify(f.goals || [])}`;
@@ -571,7 +571,7 @@ ${otherFactionsContext || "žádné další frakce"}
 ${interFactionTensions || "žádné významné tenze mezi ostatními"}
 
 ═══ AKTIVNÍ OBCHODNÍ TRASY ═══
-${(tradeRoutes || []).filter((tr: any) => tr.player_a === factionName || tr.player_b === factionName).map((tr: any) => `  ${tr.player_a} ⟷ ${tr.player_b}: ${tr.resource_type} (${tr.amount}), bezpečnost: ${tr.route_safety}`).join("\n") || "žádné"}
+${(tradeRoutes || []).filter((tr: any) => tr.from_player === factionName || tr.to_player === factionName).map((tr: any) => `  ${tr.from_player} ⟷ ${tr.to_player}: ${tr.resource_type} (${tr.amount_per_turn}), bezpečnost: ${tr.route_safety}`).join("\n") || "žádné"}
 
 VLIV CIVILIZACÍ:
 ${JSON.stringify(influenceData || [], null, 2)}

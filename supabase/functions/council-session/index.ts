@@ -51,9 +51,9 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId)
         .or(`declaring_player.eq.${playerName},target_player.eq.${playerName}`)
         .in("status", ["active", "peace_offered"]),
-      sb.from("trade_routes").select("player_a, player_b, resource_type, amount, route_safety, is_active")
-        .eq("session_id", sessionId).eq("is_active", true)
-        .or(`player_a.eq.${playerName},player_b.eq.${playerName}`),
+      sb.from("trade_routes").select("from_player, to_player, resource_type, amount_per_turn, route_safety, status")
+        .eq("session_id", sessionId).eq("status", "active")
+        .or(`from_player.eq.${playerName},to_player.eq.${playerName}`),
       sb.from("declarations").select("player_name, declaration_type, original_text, turn_number")
         .eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(10),
       sb.from("laws").select("law_name, structured_effects, is_active")
@@ -147,7 +147,7 @@ ${(armies || []).slice(0, 8).map((a: any) => `- ${a.name}: síla ${a.power}, mor
 ${(warDeclarations || []).filter((w: any) => w.status === "active").map((w: any) => `- ${w.declaring_player} vs ${w.target_player}`).join("\n") || "Žádné."}
 
 === OBCHODNÍ TRASY ===
-${(tradeRoutes || []).map((tr: any) => `- ${tr.player_a} ⟷ ${tr.player_b}: ${tr.resource_type} (${tr.amount})`).join("\n") || "Žádné."}
+${(tradeRoutes || []).map((tr: any) => `- ${tr.from_player} ⟷ ${tr.to_player}: ${tr.resource_type} (${tr.amount_per_turn})`).join("\n") || "Žádné."}
 
 === DIPLOMATICKÉ TENZE ===
 ${tensionFiltered.length > 0 ? tensionFiltered.map(t => `- vs ${t.opponent}: tenze ${t.tension}${t.crisis ? " ⚠ KRIZE" : ""}`).join("\n") : "Žádné významné tenze."}
