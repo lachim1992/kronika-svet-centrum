@@ -47,6 +47,25 @@ describe("new-world bootstrap reaches a playable economy", () => {
     expect(starterBundle(false).some((c) => c.recipeKeys.includes("harvest_wheat"))).toBe(true);
   });
 
+  it("scales the starter economy to settlement population", () => {
+    expect(starterLevelFor(100)).toBe(1);
+    expect(starterLevelFor(200)).toBe(2);
+    expect(starterLevelFor(450)).toBe(3);
+    // monotonic: a bigger settlement never gets a smaller starter economy
+    let previous = 0;
+    for (const pop of [0, 50, 100, 174, 175, 349, 350, 900]) {
+      const level = starterLevelFor(pop);
+      expect(level).toBeGreaterThanOrEqual(previous);
+      previous = level;
+    }
+  });
+
+  it("narrative settlements also get the starter economy", () => {
+    const init = fn("world-generate-init");
+    expect(init).toContain("ensureStarterEconomy(supabase, sessionId");
+  });
+
+
   it("household auto-production stays off (population is not a goods producer)", () => {
     const cfg = readFileSync("supabase/functions/_shared/economyConfig.ts", "utf8");
     expect(cfg).toMatch(/householdProduction:\s*false/);
