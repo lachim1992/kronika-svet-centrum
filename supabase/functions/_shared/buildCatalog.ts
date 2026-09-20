@@ -236,7 +236,7 @@ function districtItem(d: DistrictBlueprint): CatalogItem {
     key: `district:${d.key}`, kind: 'district', category: residential ? 'housing' : 'district',
     name: d.name, purpose: residential
       ? `Bydlení pro ${num(d.population_capacity)} lidí — dodává pracovní sílu dílnám`
-      : `Výrobní zóna — ${num(d.basket_output)} jednotek do zvoleného koše, obsadí ji ${PRODUCTION_PER_RESIDENTIAL === 0 ? '—' : 'jedna dostupná obytná čtvrť'}`,
+      : `Výrobní zóna — ${num(d.basket_output)} jednotek do zvoleného koše; jedna obytná čtvrť obsadí ${PRODUCTION_PER_RESIDENTIAL} výrobní`,
     description: d.description, refId: d.key,
     cost: { gold: num(d.build_cost_wealth), wood: num(d.build_cost_wood), stone: num(d.build_cost_stone), iron: 0, production: 0 },
     buildTurns: Math.max(1, num(d.build_turns)), maxLevel: 1, productive: !residential,
