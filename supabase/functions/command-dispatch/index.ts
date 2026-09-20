@@ -25,6 +25,7 @@ import {
   seatCityOnParcels,
 } from "../_shared/citySeat.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
+import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
 import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
