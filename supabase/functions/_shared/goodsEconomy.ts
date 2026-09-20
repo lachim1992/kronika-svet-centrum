@@ -167,7 +167,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const branded=fame?.created!=null&&fame.fame>0;
     const premium=branded?C.famePremium*fame!.fame/100:0;
     const unit=g.price*(1+b.quality*C.qualityPremium)*(1+premium);
-    const reach=C.localReach+g.density+g.strategic*C.regionalReach+g.prestige*C.regionalReach+(branded?fame!.fame:0);
+    // Industrial inputs are pulled by factories, not by shoppers: they reach further.
+    const reach=(C.localReach+g.density+g.strategic*C.regionalReach+g.prestige*C.regionalReach+(branded?fame!.fame:0))
+      *(reason==='production_input'?C.inputReachBonus:1);
     const transport=p.cost*policy.merchantFriction;
     if(transport>unit||p.cost>reach*policy.reach)return 0;
     if ((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0) return 0;
@@ -197,6 +199,19 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     return cities.filter(s=>s.id!==c.id&&(s.id===hub||hubs.get(key(s.id,g.key))===c.id||
       (hub&&hubs.get(key(s.id,g.key))===hub))).sort((a,b)=>(route(a.cell,c.cell,g)?.cost??Infinity)-(route(b.cell,c.cell,g)?.cost??Infinity)||a.id.localeCompare(b.id));
   };
+  /**
+   * Stage two of industrial input sourcing: any reachable center on the same canonical route
+   * graph, ranked by delivered economics. Raw and processed goods therefore travel long
+   * distance to factories without needing household demand of their own.
+   */
+  const distantInputSources=(c:City,g:Good)=>{
+    const local=new Set(inputSources(c,g).map(s=>s.id));
+    return cities.filter(s=>s.id!==c.id&&!local.has(s.id)&&available(stock(s.id,g.key))>C.minLot&&!!route(s.cell,c.cell,g))
+      .map(s=>({city:s,path:route(s.cell,c.cell,g)!,surplus:available(stock(s.id,g.key))}))
+      .filter(x=>x.path.capacity>0&&x.path.loss<1)
+      .sort((a,b)=>(a.path.cost+a.path.tolls)-(b.path.cost+b.path.tolls)||b.surplus-a.surplus||a.city.id.localeCompare(b.city.id))
+      .map(x=>x.city);
+  };
   for(let pass=0;pending.size&&pass<C.maxProductionPasses;pass++){
     let progress=false;
     for(const [id,p] of pending){const c=cityById.get(p.city),g=goodByKey.get(p.recipe.good);if(!c||!g)throw Error(`Invalid producer ${id}`);
@@ -225,9 +240,13 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         const b=stock(c.id,i.good),required=qty*i.qty/Math.max(C.epsilon,p.recipe.qty)/deliveryRatio;
         if(b.quality<p.recipe.minQuality&&available(b)>0){qty=0;break;}
         let missing=Math.max(0,required-available(b));
-        for(const s of inputSources(c,ig)){if(missing<C.minLot)break;
-          const sb=stock(s.id,ig.key);if(sb.quality<p.recipe.minQuality)continue;
-          missing-=transfer(s,c,ig,missing,'production_input',hubs.has(key(s.id,ig.key))?[hubs.get(key(s.id,ig.key))!]:[],Math.max(0,sb.demand-sb.consumed_household-sb.consumed_state));}
+        const pull=(suppliers:City[])=>{
+          for(const s of suppliers){if(missing<C.minLot)break;
+            const sb=stock(s.id,ig.key);if(sb.quality<p.recipe.minQuality)continue;
+            missing-=transfer(s,c,ig,missing,'production_input',hubs.has(key(s.id,ig.key))?[hubs.get(key(s.id,ig.key))!]:[],Math.max(0,sb.demand-sb.consumed_household-sb.consumed_state));}
+        };
+        pull(inputSources(c,ig));
+        if(missing>=C.minLot)pull(distantInputSources(c,ig));
         qty=Math.min(qty,available(b)*p.recipe.qty/Math.max(C.epsilon,i.qty)*deliveryRatio);
       }
       // Input imports above may reserve the same road as the local delivery.
