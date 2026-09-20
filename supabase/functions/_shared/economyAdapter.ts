@@ -32,7 +32,7 @@ export async function finalizeManagementReports(sb:any,session:string,turn:numbe
   if(saved.error)throw saved.error;
 }
 export async function computeCanonicalEconomy(sb:any,session:string){
-  const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','laws','war_declarations'];
+  const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
   const sess=await sb.from('game_sessions').select('current_turn').eq('id',session).single();if(sess.error)throw sess.error;
