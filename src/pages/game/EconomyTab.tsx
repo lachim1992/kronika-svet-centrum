@@ -1,6 +1,7 @@
 import ManagementCockpit from '@/components/management/ManagementCockpit';
 import EconomyScenarioPreview from '@/components/management/EconomyScenarioPreview';
 import PhysicalEconomyPanel from "@/components/economy/PhysicalEconomyPanel";
+import LaborProductionPanel from "@/components/economy/LaborProductionPanel";
 import { useState, useCallback, useMemo, Suspense, lazy } from "react";
 import { useDevMode } from "@/hooks/useDevMode";
 import { Badge } from "@/components/ui/badge";
