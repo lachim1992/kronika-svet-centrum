@@ -756,7 +756,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       ((allTensionData as any[]) || []).some((t: any) => t.crisis_triggered);
     const factionModel = highStakes ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
 
-    const aiResult = await invokeAI(aiCtx, {
+    const aiRequest = {
       model: factionModel,
       functionName: "ai-faction-turn",
       purpose: highStakes ? "war-decision" : "peace-decision",
