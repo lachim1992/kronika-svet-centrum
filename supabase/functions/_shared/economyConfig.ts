@@ -39,8 +39,11 @@ export const ECONOMY = {
    * physical throughput (Lv1 ≈ 100, Lv2 ≈ 200, Lv3 ≈ 400 workers) through levelCapacityScale.
    */
   workersPerLaborUnit: 40,
+  /** Headcount of a producing structure at level 1 (doubles per level with the throughput). */
+  structureJobsBase: 100,
   /** Capacity multiplier per structure level: každá úroveň zdvojnásobuje kapacitu i práci. */
   levelCapacityScale: [1, 2, 4, 8, 16],
+
 
   /**
    * Households no longer emit tradeable market goods. Population creates labour and demand;
