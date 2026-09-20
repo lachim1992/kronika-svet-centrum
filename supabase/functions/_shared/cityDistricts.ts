@@ -36,18 +36,22 @@ export interface DistrictBlueprint {
   description: string;
 }
 
-/** Housing — population, demand and the labour that staffs production districts. */
+/**
+ * Housing — population, demand and the labour that staffs production districts.
+ * CALIBRATION: one residential quarter must carry two level-1 production centres
+ * (2 × 100 jobs at the default active share of inhabitants).
+ */
 export const RESIDENTIAL_DISTRICTS: DistrictBlueprint[] = [
-  { key: "quarter", name: "Obytná čtvrť", district_type: "residential", population_capacity: 250, demand_bonus: 2.5,
+  { key: "quarter", name: "Obytná čtvrť", district_type: "residential", population_capacity: 400, demand_bonus: 2.5,
     build_cost_wealth: 25, build_cost_wood: 25, build_cost_stone: 10, build_turns: 2, stability_modifier: 1, peasant_attraction: 6,
     description: "Hustá zástavba domů pro rodiny řemeslníků a rolníků." },
-  { key: "tenements", name: "Nájemní domy", district_type: "residential", population_capacity: 400, demand_bonus: 4,
+  { key: "tenements", name: "Nájemní domy", district_type: "residential", population_capacity: 640, demand_bonus: 4,
     build_cost_wealth: 45, build_cost_wood: 30, build_cost_stone: 25, build_turns: 3, stability_modifier: -1, burgher_attraction: 8,
     description: "Vysoké nájemní domy — mnoho lidí, méně klidu." },
-  { key: "colony", name: "Dělnická kolonie", district_type: "residential", population_capacity: 300, demand_bonus: 2.8,
+  { key: "colony", name: "Dělnická kolonie", district_type: "residential", population_capacity: 480, demand_bonus: 2.8,
     build_cost_wealth: 30, build_cost_wood: 35, build_cost_stone: 5, build_turns: 2, production_modifier: 3, peasant_attraction: 10,
     description: "Kolonie u dílen a polí, láká pracovní sílu." },
-  { key: "suburb", name: "Předměstí", district_type: "residential", population_capacity: 200, demand_bonus: 1.8,
+  { key: "suburb", name: "Předměstí", district_type: "residential", population_capacity: 320, demand_bonus: 1.8,
     build_cost_wealth: 20, build_cost_wood: 20, build_cost_stone: 5, build_turns: 1, stability_modifier: 2, peasant_attraction: 4,
     description: "Rozvolněné domky na okraji města." },
 ];

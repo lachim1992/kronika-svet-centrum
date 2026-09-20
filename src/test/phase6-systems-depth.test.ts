@@ -85,19 +85,20 @@ describe("Jobs are real headcounts", () => {
     expect(ECONOMY.workersPerLaborUnit).toBeGreaterThanOrEqual(15);
   });
 
-  it("puts a level-1 production centre in the tens of workers", () => {
-    // Typical level-1 recipe: ~2.2 labour units per unit of output at full capacity.
-    const jobs = 2.2 * ECONOMY.workersPerLaborUnit;
-    expect(jobs).toBeGreaterThanOrEqual(30);
-    expect(jobs).toBeLessThanOrEqual(80);
+  it("employs 100 people in a level-1 production centre and doubles per level", () => {
+    expect(ECONOMY.structureJobsBase).toBe(100);
+    const jobs = (level: number) => ECONOMY.structureJobsBase * ECONOMY.levelCapacityScale[level - 1];
+    expect(jobs(1)).toBe(100);
+    expect(jobs(2)).toBe(200);
+    expect(jobs(3)).toBe(400);
   });
 
   it("lets one residential quarter staff about two production centres", () => {
-    const quarterInhabitants = 250; // cityDistricts: residential quarter population_capacity
+    const quarterInhabitants = 400; // cityDistricts: residential quarter population_capacity
     const activeShare = 0.5; // manpower.DEFAULT_ACTIVE_POP_RATIO
-    const centres = (quarterInhabitants * activeShare) / (2.2 * ECONOMY.workersPerLaborUnit);
-    expect(centres).toBeGreaterThanOrEqual(1.5);
-    expect(centres).toBeLessThanOrEqual(3.5);
+    const centres = (quarterInhabitants * activeShare) / ECONOMY.structureJobsBase;
+    expect(centres).toBeGreaterThanOrEqual(1.8);
+    expect(centres).toBeLessThanOrEqual(3);
   });
 
   it("keeps settlement housing tiers monotonic", () => {

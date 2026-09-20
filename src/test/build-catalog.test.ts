@@ -45,8 +45,10 @@ describe("build catalog", () => {
   it("derives capacity and jobs from canonical level scaling", () => {
     const mill = catalog.find(i => i.name === "Mlýn")!;
     expect(mill.levels.map(l => l.capacity)).toEqual([4, 4 * levelCapacityScale(2), 4 * levelCapacityScale(3)]);
-    // jobs = capacity × labor/qty (single recipe, one allocation) = 4 × 1/2
-    expect(mill.levels[0].jobs).toBeCloseTo(2 * ECONOMY.workersPerLaborUnit, 6);
+    // A producing structure employs the canonical headcount, doubling with every level.
+    expect(mill.levels[0].jobs).toBe(ECONOMY.structureJobsBase);
+    expect(mill.levels[1].jobs).toBe(ECONOMY.structureJobsBase * levelCapacityScale(2));
+    expect(mill.levels[2].jobs).toBe(ECONOMY.structureJobsBase * levelCapacityScale(3));
   });
 
   it("shows recipe unlocks per level as alternatives", () => {
