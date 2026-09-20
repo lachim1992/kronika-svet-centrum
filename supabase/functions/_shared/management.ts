@@ -4,7 +4,7 @@ import {fiscalSummary} from './fiscal.ts';
 export interface Contribution {id:string;label:string;value:number;city?:string;good?:string;route?:string}
 export interface Metric {key:string;label:string;value:number|null;previous:number|null;unit:string;definition:string;sources:Contribution[];assumption?:string}
 export interface ManagementAlert {id:string;severity:'critical'|'warning'|'opportunity'|'info';category:string;entity_type:string;entity_id:string;metric:string;current_value:number;threshold:number;reason:string;destination:string;levers:string[]}
-export interface ManagementReport {turn:number;player:string;metrics:Metric[];alerts:ManagementAlert[];cities:any[];producers:any[];flows:any[];goods:any[];famous:any[];routes:any[];prices:any[];history:{turn:number;metrics:Record<string,number|null>}[]}
+export interface ManagementReport {turn:number;player:string;metrics:Metric[];alerts:ManagementAlert[];cities:any[];producers:any[];labor:any[];flows:any[];goods:any[];famous:any[];routes:any[];prices:any[];history:{turn:number;metrics:Record<string,number|null>}[]}
 type Ledger=ReturnType<typeof resolveGoodsEconomy>;
 const sum=<T>(rows:T[],f:(row:T)=>number)=>rows.reduce((n,row)=>n+f(row),0);
 
