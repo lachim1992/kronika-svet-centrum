@@ -607,3 +607,155 @@ export function promotedSettlementTier(current: unknown, population: unknown): S
   if (currentIndex < 0) return target;
   return targetIndex > currentIndex ? target : null;
 }
+
+// ═══════════════════════════════════════════
+// INTERCITY MIGRATION (Phase 3 — canonical)
+// ═══════════════════════════════════════════
+
+export interface IntercityCity {
+  id: string;
+  name: string;
+  owner_player: string;
+  population_total: number;
+  city_stability: number;
+  famine_turn: boolean;
+  housing_capacity: number;
+  /** Optional canonical opportunity signal (jobs vacancies). Undefined = unknown. */
+  vacancies?: number;
+  demo_policy?: string;
+}
+
+export interface IntercityFlow {
+  from_city_id: string;
+  to_city_id: string;
+  from_city_name: string;
+  to_city_name: string;
+  migrants: number;
+  reason: string;
+}
+
+export interface IntercityResult {
+  flows: IntercityFlow[];
+  emigration: Record<string, number>;
+  immigration: Record<string, number>;
+}
+
+/** Push pressure 0..1: instability, famine and overcrowding make people leave. */
+function pushScore(c: IntercityCity): { rate: number; reason: string } {
+  let rate = 0;
+  const reasons: string[] = [];
+  if (c.famine_turn) { rate += MIGRATION_FAMINE_PUSH; reasons.push("hladomor"); }
+  if (c.city_stability < MIGRATION_STABILITY_THRESHOLD) {
+    rate += (MIGRATION_STABILITY_THRESHOLD - c.city_stability) / 1000;
+    reasons.push("nestabilita");
+  }
+  const crowding = computeOvercrowdingRatio(c.population_total, c.housing_capacity);
+  if (crowding > EPIDEMIC_OVERCROWDING_THRESHOLD) {
+    rate += (crowding - 1) * 0.01;
+    reasons.push("přelidnění");
+  }
+  if (c.demo_policy === "closed_gates") rate *= 0.3;
+  else if (c.demo_policy === "open_gates") rate *= 1.3;
+  return { rate: Math.min(MIGRATION_MAX_RATE, rate), reason: reasons.join(" + ") || "hledání lepšího života" };
+}
+
+/** Pull attractiveness (>0 attracts): housing headroom, stability, job vacancies. */
+function pullScore(c: IntercityCity): number {
+  const open = c.demo_policy === "open_gates";
+  const stabThreshold = open ? MIGRATION_ATTRACT_THRESHOLD - 10 : MIGRATION_ATTRACT_THRESHOLD;
+  if (c.famine_turn) return 0;
+  const headroom = Math.max(0, c.housing_capacity - c.population_total);
+  if (headroom <= 0) return 0;
+  const stabilityPull = Math.max(0, c.city_stability - stabThreshold + 10);
+  const vacancyPull = Math.max(0, Number(c.vacancies ?? 0)) * 0.05;
+  return stabilityPull + vacancyPull;
+}
+
+/**
+ * Canonical city↔city migration (Phase 3).
+ *
+ * INVARIANT 1: migration only MOVES people. sum(emigration) === sum(immigration)
+ * and every destination is capped by its housing headroom, so the realm total is
+ * unchanged. Deterministic: no randomness, order-independent results.
+ * Only cities of the same owner exchange population in this pass.
+ */
+export function computeIntercityMigration(
+  cities: IntercityCity[],
+  floor = POPULATION_FLOOR,
+): IntercityResult {
+  const flows: IntercityFlow[] = [];
+  const emigration: Record<string, number> = {};
+  const immigration: Record<string, number> = {};
+
+  const byOwner: Record<string, IntercityCity[]> = {};
+  for (const c of cities) {
+    if (!c.owner_player) continue;
+    (byOwner[c.owner_player] = byOwner[c.owner_player] || []).push(c);
+  }
+
+  for (const owned of Object.values(byOwner)) {
+    if (owned.length < 2) continue;
+    const sorted = [...owned].sort((a, b) => (a.id < b.id ? -1 : 1));
+
+    // Remaining housing headroom per destination, consumed as flows are booked.
+    const headroom: Record<string, number> = {};
+    for (const c of sorted) headroom[c.id] = Math.max(0, c.housing_capacity - c.population_total);
+
+    for (const src of sorted) {
+      const push = pushScore(src);
+      if (push.rate <= 0) continue;
+      let budget = Math.min(
+        Math.round(src.population_total * push.rate),
+        Math.max(0, src.population_total - floor),
+      );
+      if (budget < 1) continue;
+
+      const targets = sorted
+        .filter((d) => d.id !== src.id && headroom[d.id] > 0)
+        .map((d) => ({ city: d, pull: pullScore(d) }))
+        .filter((t) => t.pull > 0)
+        .sort((a, b) => (b.pull - a.pull) || (a.city.id < b.city.id ? -1 : 1));
+      const totalPull = targets.reduce((s, t) => s + t.pull, 0);
+      if (totalPull <= 0) continue;
+
+      for (const t of targets) {
+        if (budget < 1) break;
+        const share = Math.floor(budget * (t.pull / totalPull));
+        const migrants = Math.min(Math.max(share, 0), headroom[t.city.id], budget);
+        if (migrants < 1) continue;
+        headroom[t.city.id] -= migrants;
+        budget -= migrants;
+        flows.push({
+          from_city_id: src.id, to_city_id: t.city.id,
+          from_city_name: src.name, to_city_name: t.city.name,
+          migrants, reason: push.reason,
+        });
+        emigration[src.id] = (emigration[src.id] || 0) + migrants;
+        immigration[t.city.id] = (immigration[t.city.id] || 0) + migrants;
+      }
+    }
+  }
+
+  return { flows, emigration, immigration };
+}
+
+/**
+ * Split a net natural population change into births and deaths so that
+ * births - deaths === netDelta exactly (ledger honesty, no invented people).
+ */
+export function splitNaturalChange(
+  netDelta: number,
+  city: { population_total: number; city_stability?: number; famine_turn?: boolean; overcrowding_ratio?: number; epidemic_active?: boolean },
+): { births: number; deaths: number } {
+  const rates = computeBirthDeathRate({
+    population_total: Math.max(0, int(city.population_total)),
+    city_stability: Number(city.city_stability ?? 50),
+    famine_turn: !!city.famine_turn,
+    overcrowding_ratio: Number(city.overcrowding_ratio ?? 1),
+    epidemic_active: !!city.epidemic_active,
+  });
+  const deaths = Math.max(0, Math.round(Math.max(0, int(city.population_total)) * rates.deathRate));
+  const net = Math.round(Number(netDelta) || 0);
+  const births = Math.max(0, deaths + net);
+  return { births, deaths: births - net };
+}

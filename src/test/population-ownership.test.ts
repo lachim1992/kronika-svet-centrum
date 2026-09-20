@@ -140,13 +140,16 @@ describe('Phase A residue — conserving transfers and guarded paths', () => {
     expect(t.source.population_total).toBe(POPULATION_FLOOR);
   });
 
-  it('world-tick losses and migration use the shared helpers', () => {
-    const src = fn('world-tick/index.ts');
-    expect(src).toContain('applyPopulationLoss');
-    expect(src).toContain('applyPopulationTransfer');
+  it('the time-based world-tick / process-tick loop no longer exists', () => {
+    // Phase 4: persistent real-time mode abandoned. Turn resolution has exactly
+    // one population writer (commit-turn).
+    const fnDir = path.resolve(__dirname, '../../supabase/functions');
+    expect(fs.existsSync(path.join(fnDir, 'world-tick/index.ts'))).toBe(false);
+    expect(fs.existsSync(path.join(fnDir, 'process-tick/index.ts'))).toBe(false);
+    const src = fn('commit-turn/index.ts');
     expect(src).toContain('normalizePopulationClasses');
+    expect(src).toContain('computeIntercityMigration');
     expect(src).not.toContain('distributePopLayers');
-    expect(src).not.toMatch(/population_peasants: Math\.max\(0, \(migrationCitiesData/);
   });
 
   it('resolve-battle and command-dispatch losses use the shared helper', () => {

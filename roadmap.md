@@ -126,8 +126,11 @@
 - [x] Fáze 1c: údržba cest účtovaná v kanonické fiskální uzávěrce + pojistka proti dvojímu účtování
 - [x] Fáze 1d: akceptační test nové hry (vytvoření → stavba → uzávěrka → čtení)
 - [ ] Fáze 2: kanonické zápisy jen přes command-dispatch + RLS podle vlastnictví
-- [ ] Fáze 3: migrace město↔město (venkovský převod zůstává Fáze C)
-- [ ] Fáze 4: odstranit legacy (world-tick, wealth_output v UI, production_reserve u upgradů, CitiesTab)
+- [x] Fáze 3: migrace město↔město (computeIntercityMigration, ledger v úspěšné uzávěrce; venkovský převod zůstává Fáze C)
+- [x] Fáze 4: odstraněn druhý herní cyklus (world-tick, process-tick), PersistentTab/ActionQueue/TimePool, mrtvé CitiesTab a EmpireManagement;
+      turnová část tiku (pohyb armád, léčky, obléhání, projekty uzlů) extrahována do _shared/turnProgress.ts a volána z commit-turn;
+      legacy wealth_output už není vidět hráči (zůstává jen v dev panelech)
+- [ ] Fáze 4 zbytek: povýšení/stavby platit kanonickými fyzickými zbožími místo production_reserve (souvisí s parkovaným ekonomickým zadáním)
 - [ ] Fáze 5: jeden společný derived chain pro commit-turn i refresh-economy, jeden model cest
 - [ ] Fáze 6: aliance blokují válku, open borders řídí mírový pohyb, AI fallback, serverová náhoda
 - [ ] Rozhodnuto: persistentní real-time režim opuštěn — world-tick/process-tick/action_queue/time_pools k odstranění
@@ -140,3 +143,11 @@
 - [x] APPLY_DECREE_EFFECTS: rozšířeno o reakce frakcí a penalizaci stability rady
 - [x] Klient (ArmyTab, CouncilTab, UprisingDialog, CityActionsPopover) už nepíše do pokladnice ani kanonických tabulek
 - [x] Statické kontrakty: src/test/phase2-command-authority.test.ts
+
+### Nový požadavek (zaparkováno, po dokončení fází 3–6)
+- [ ] Sjednotit městské bohatství / prosperitu / obchodní služby (CHRONICLE — UNIFY CITY WEALTH):
+      zrušit populační wealth formuli v process-turn, kanonická city_value_added,
+      obchod jako služební sektor s kapacitou a prací, city_capital_stock (jen process-turn),
+      prosperita jako index, oprava záložky „Kde se hromadí bohatství", rework TRADE_BOOM,
+      deprecate legacy node wealth fields, testy A–O, read-only diagnostika Test01 turn 64.
+

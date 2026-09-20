@@ -36,7 +36,6 @@ import ChroWikiTab from "@/pages/game/ChroWikiTab";
 import CouncilTab from "@/pages/game/CouncilTab";
 import ArmyTab from "@/pages/game/ArmyTab";
 import EconomyTab from "@/pages/game/EconomyTab";
-import PersistentTab from "@/pages/game/PersistentTab";
 import WorldMapTab from "@/pages/game/WorldMapTab";
 import EngineTab from "@/pages/game/EngineTab";
 import GamesTab from "@/pages/game/GamesTab";
@@ -55,7 +54,7 @@ const Dashboard = () => {
     civilizations, greatPersons, declarations, worldCrises, secretObjectives,
     loading, refetch,
   } = gameSession;
-  // Legacy data — opt-in for allowlisted consumers (GameHubFAB, CouncilTab, PersistentTab)
+  // Legacy data — opt-in for allowlisted consumers (GameHubFAB, CouncilTab)
   const { resources, armies, trades } = useGameSessionLegacy(gameSession);
 
   const entityIndex = useEntityIndex(sessionId);
@@ -358,7 +357,6 @@ const Dashboard = () => {
       activeTab={activeTab}
       onTabChange={handleTabChange}
       showDevTab={myRole === "admin"}
-      showPersistentTab={session?.game_mode === "time_persistent"}
       worldName={worldFoundation?.world_name}
       mapBackground={
         <WorldMapTab
@@ -594,19 +592,6 @@ const Dashboard = () => {
       )}
       {activeTab === "ailab" && (
         <AILabTab sessionId={session.id} myRole={myRole} onRefetch={refetch} />
-      )}
-      {activeTab === "persistent" && (
-        <PersistentTab
-          sessionId={session.id}
-          currentPlayerName={myPlayerName}
-          myRole={myRole}
-          cities={cities}
-          armies={armies as any}
-          players={players}
-          resources={resources}
-          events={events}
-          worldCrises={worldCrises}
-        />
       )}
       </div>
       <CityActionsPopover
