@@ -17,6 +17,7 @@ import {
 } from "../_shared/demographics.ts";
 
 import { logAISkip } from "../_shared/ai-context.ts";
+import { ensureSingleCapital } from "../_shared/capital.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -263,7 +264,12 @@ Deno.serve(async (req) => {
           liberation_deadline_turn: null,
           occupation_loyalty: 100, // resets to neutral after annexation
           city_stability: 30, // freshly conquered = unstable
+          // A conquered city never arrives as the conqueror's capital; the losing
+          // realm gets a new capital via ensureSingleCapital below.
+          is_capital: false,
         }).eq("id", city.id);
+        affectedCapitalOwners.add(newOwner);
+        if (city.owner_player) affectedCapitalOwners.add(city.owner_player);
 
         // Transfer territory ownership: province + all its hexes follow the annexed city.
         try {
@@ -301,6 +307,12 @@ Deno.serve(async (req) => {
           importance: "critical",
         });
         annexed++;
+      }
+      // CAPITAL INVARIANT — exactly one capital per realm after ownership changes.
+      if (affectedCapitalOwners.size) {
+        results.capitalRepairs = await ensureSingleCapital(supabase, sessionId, {
+          owners: Array.from(affectedCapitalOwners),
+        });
       }
       results.cityAnnexations = { count: annexed };
     } catch (e) {
