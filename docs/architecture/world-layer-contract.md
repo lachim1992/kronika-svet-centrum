@@ -173,9 +173,20 @@ interface AncientLayerSpec {
 
 | Category | Examples | Belongs in |
 |---|---|---|
-| Runtime counters | `population`, `gold_reserve` | `realm_resources`, `cities` |
+| Runtime counters | `population_total`, `gold_reserve` | `realm_resources`, `cities` |
 | Control state | `controlled_by`, `integration_progress` | `node_control_relations` (T2) |
 | Route state | `lifecycle_state`, `maintenance_level` | `route_state` (T2) |
+
+> **Population naming (Phase A).** The canonical column is `cities.population_total`
+> (plus the four class columns). `cities.population` does not exist and must never
+> be read or written. `city_market_baskets` uses `basket_key` and
+> `domestic_satisfaction` — the names `basket_kind` / `fulfillment_ratio` are stale.
+>
+> **Single population writer.** `world-layer-tick` must not write population.
+> Its former Phase 7 node migration was removed in Phase A because it targeted the
+> non-existent schema above and never executed. Network migration returns in
+> Phase E as a single conserving writer inside turn resolution.
+
 | Migration state | `migration_pull`, `flow_volume` | `node_turn_state`, `node_migrations` (T2) |
 | Per-turn projections | anything mutated per `commit-turn` | dedicated projection tables (T2) |
 | Long AI narrative outputs | chronicle entries | `chronicle_entries`, `world_events` |
