@@ -164,6 +164,8 @@ const DISTRICT_SPRITE: Record<string, string> = {
 /** District families live in a shared catalogue so the server validates the same numbers. */
 import { RESIDENTIAL_DISTRICTS, PRODUCTION_DISTRICTS, PRODUCTION_PER_RESIDENTIAL, type DistrictBlueprint } from "@/lib/cityDistricts";
 import { DEMAND_BASKETS } from "@/lib/goodsCatalog";
+import { BuildCatalogPanel } from "@/components/map/BuildCatalogPanel";
+
 
 
 interface Props {
