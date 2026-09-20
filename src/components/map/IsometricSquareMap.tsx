@@ -775,6 +775,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [selected, selectedCell, roadStepsOf, sessionId, tileByCell, terrainOf, selectedInfrastructure]);
 
   const constructionByParcel = useMemo(() => new Map(constructionEntities.map(entity => [entity.parcel_id, entity])), [constructionEntities]);
+  const constructionById = useMemo(() => new Map(constructionEntities.map(entity => [entity.id, entity])), [constructionEntities]);
+  /** Opening a built sub-parcel inspects its structure instead of only selecting the land. */
+  const openStructureOnParcel = useCallback((parcelId: string) => {
+    const content = parcelContents.find(item => item.parcel_id === parcelId && (item.entity_type === "building" || item.entity_type === "district"));
+    if (content) setBuildingTarget({ type: content.entity_type as "building" | "district", id: content.entity_id });
+  }, [parcelContents]);
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
