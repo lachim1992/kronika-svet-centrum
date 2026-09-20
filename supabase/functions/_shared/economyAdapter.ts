@@ -135,7 +135,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       const candidates=db.production_recipes.filter(r=>goodMap.get(r.output_good_key)?.basket===basket(bk)&&
         (role(r)!=='source'||options.allowSource)&&(!options.roles?.length||options.roles.includes(role(r))||options.roles.includes(r.required_role))&&
         (r.required_tags||[]).length>0&&(r.required_tags||[]).every((tag:string)=>tags.includes(tag)));
-      push(candidates,nonnegative(capacity));
+      push(candidates,nonnegative(capacity)*scale);
     }
   };
   // Legacy compatibility only: buildings saved before explicit metadata existed.
