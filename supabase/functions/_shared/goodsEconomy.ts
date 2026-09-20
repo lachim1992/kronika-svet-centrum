@@ -289,14 +289,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         if(!realized.has(id))diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors:{logistics:0},blocked:'missing_local_delivery_route'});
         pending.delete(id);continue;
       }
-      const sector=BASKET_SECTOR[g.basket]||'crafting',lk=key(c.id,sector);
-      const factors={staffing:clamp(p.staffing),workforce:workforce.get(c.id)!.workforceRatio,sector:sectorFactor(c,sector),
-        stability:clamp(c.stability),logistics:clamp(p.logistics),mastery:n(p.mastery),
+      const sector=BASKET_SECTOR[g.basket]||'crafting';
+      const jobs=jobsOf(p),staffed=staffingRatio(p);
+      // POTENTIAL OUTPUT: what the staffed facility could make if supplied with its inputs.
+      const factors={staffing:staffed,stability:clamp(c.stability),logistics:clamp(p.logistics),mastery:n(p.mastery),
         infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1};
       const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
       const desired=Math.max(0,target-(realized.get(id)||0));
-      const laborPool=workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
-      let qty=Math.min(desired,Math.max(0,laborPool-(laborUsed.get(lk)||0))*p.recipe.qty/Math.max(C.epsilon,p.recipe.labor));
+      const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target};
+      let qty=desired;
       const inputPaths=new Map<string,Path>();
       const loadByEdge=new Map<string,number>();
       if(delivery)for(const edge of delivery.edges)loadByEdge.set(edge.id,Math.max(1,g.bulk));
@@ -305,11 +306,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         for(const e of path.edges)loadByEdge.set(e.id,(loadByEdge.get(e.id)||0)+i.qty/Math.max(C.epsilon,p.recipe.qty)*Math.max(1,ig.bulk)/(1-path.loss));
       }
       for(const [edge,load] of loadByEdge){const e=snapshot.edges.find(e=>e.id===edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
-      if(!p.source&&!p.recipe.inputs.length){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,blocked:'missing_recipe_inputs'});pending.delete(id);continue;}
+      if(!p.source&&!p.recipe.inputs.length){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,...labor,inputs:[],blocked:'missing_recipe_inputs'});pending.delete(id);continue;}
+      // INDUSTRIAL INPUT DEMAND scales from potential output, not from realized output: a staffed
+      // mill demands grain before the grain arrives, through the canonical route engine.
+      const inputs:{good:string;required:number;supplied:number}[]=[];
+      let bottleneck:string|null=null;
       for(const i of p.recipe.inputs){const ig=goodByKey.get(i.good);if(!ig)throw Error(`Unknown input ${i.good}`);
         const deliveryRatio=1-(inputPaths.get(i.good)?.loss||0);
-        const b=stock(c.id,i.good),required=qty*i.qty/Math.max(C.epsilon,p.recipe.qty)/deliveryRatio;
-        if(b.quality<p.recipe.minQuality&&available(b)>0){qty=0;break;}
+        const b=stock(c.id,i.good),required=desired*i.qty/Math.max(C.epsilon,p.recipe.qty)/deliveryRatio;
+        if(b.quality<p.recipe.minQuality&&available(b)>0){qty=0;bottleneck=i.good;inputs.push({good:i.good,required,supplied:0});break;}
         const usable=()=>Math.max(0,available(b)-foodReserve(c,ig));
         let missing=Math.max(0,required-usable());
         const pull=(suppliers:City[])=>{
@@ -319,11 +324,16 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         };
         pull(inputSources(c,ig));
         if(missing>=C.minLot)pull(distantInputSources(c,ig));
-        qty=Math.min(qty,usable()*p.recipe.qty/Math.max(C.epsilon,i.qty)*deliveryRatio);
+        const supplied=Math.min(required,usable());
+        inputs.push({good:i.good,required,supplied});
+        const allowed=usable()*p.recipe.qty/Math.max(C.epsilon,i.qty)*deliveryRatio;
+        if(allowed<qty-C.epsilon)bottleneck=i.good;
+        qty=Math.min(qty,allowed);
       }
       // Input imports above may reserve the same road as the local delivery.
       for(const [edge,load] of loadByEdge){const e=snapshot.edges.find(e=>e.id===edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
-      if(qty<=C.epsilon){if(desired<=C.epsilon){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,blocked:'capacity_labor_or_staffing'});pending.delete(id);}continue;}
+      if(qty<=C.epsilon){if(desired<=C.epsilon){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,...labor,inputs,
+        blocked:jobs>C.epsilon&&staffed<=C.epsilon?'no_workers':'capacity_labor_or_staffing'});pending.delete(id);}continue;}
       let inputValue=0,minQuality=Infinity;
       for(const i of p.recipe.inputs){const b=stock(c.id,i.good),amount=qty*i.qty/p.recipe.qty;
         const shipped=amount/(1-(inputPaths.get(i.good)?.loss||0));
@@ -333,9 +343,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const b=stock(c.id,g.key);add(b,qty,quality,p.channel,p.source);b.intermediate_value+=inputValue;
       b.lost_spoilage+=qty*(delivery?.loss||0);
       for(const [edge,load] of loadByEdge)reserved.set(edge,(reserved.get(edge)||0)+qty*load);
-      laborUsed.set(lk,(laborUsed.get(lk)||0)+qty*p.recipe.labor/p.recipe.qty);
       const total=(realized.get(id)||0)+qty;realized.set(id,total);
-      const diagnostic={producer:id,good:g.key,capacity:p.capacity,realized:total,factors:{...factors,inputs:target?total/target:0},delivery_path:delivery?.cells,blocked:null};
+      const diagnostic={producer:id,good:g.key,capacity:p.capacity,realized:total,factors:{...factors,inputs:target?total/target:0},
+        ...labor,inputs,bottleneck:total>=target-C.epsilon?null:bottleneck,delivery_path:delivery?.cells,blocked:null};
       const index=diagnostics.findIndex(d=>d.producer===id);
       if(index>=0)diagnostics[index]=diagnostic;else diagnostics.push(diagnostic);
       if(total>=target-C.epsilon)pending.delete(id);
