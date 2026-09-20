@@ -56,21 +56,32 @@ export const starterBundle = (nearWater: boolean): StarterContract[] =>
   [nearWater ? STARTER_FISHERY : STARTER_FARM, STARTER_WELL, STARTER_STORAGE];
 
 /**
- * A hamlet of 100 souls survives on one level-1 farm and one level-1 well. Larger seeded
- * settlements need proportionally more real throughput, and capacity doubles per level
- * (ECONOMY.levelCapacityScale) together with the crew, so population maps onto a level.
- * Storage is logistics, not survival, and therefore stays at level 1.
+ * A seeded settlement must actually be able to feed and water itself with the people it has.
+ * Throughput therefore scales with population (one "unit" of the bundle per ~150 souls), while
+ * the declared crew stays inside the settlement's own workforce — a hamlet of 100 cannot staff
+ * a 100-job production centre, and an unstaffable structure produces nothing.
  */
-export const starterLevelFor = (population: number): number =>
-  population >= 350 ? 3 : population >= 175 ? 2 : 1;
+export const starterUnitsFor = (population: number): number =>
+  Math.max(1, Math.round((Number(population) || 0) / 150));
+
+/** Crew a settlement of this size can really field for one starter structure. */
+export const starterJobsFor = (population: number): number =>
+  Math.max(10, Math.round((Number(population) || 0) * 0.12));
 
 const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE;
 
+const effectsOf = (c: StarterContract, population: number) => {
+  const units = scalesWithPopulation(c) ? starterUnitsFor(population) : 1;
+  const outputs = Object.fromEntries(
+    Object.entries(c.basketOutputs).map(([k, v]) => [k, v * units]),
+  );
+  return {
+    recipe_keys: c.recipeKeys, production_roles: c.roles, capability_tags: c.tags,
+    basket_outputs: outputs, jobs_capacity: starterJobsFor(population) * units,
+    starter_economy: true,
+  };
+};
 
-const effectsOf = (c: StarterContract) => ({
-  recipe_keys: c.recipeKeys, production_roles: c.roles, capability_tags: c.tags,
-  basket_outputs: c.basketOutputs, jobs_capacity: c.jobsCapacity, starter_economy: true,
-});
 
 export type StarterReport = {
   city: string; city_name: string; added: string[]; existing: string[]; upgraded: string[]; level: number;
