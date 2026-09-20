@@ -5,6 +5,7 @@ import {
   normalizePopulationClasses,
   applyPopulationLoss,
   POPULATION_FLOOR,
+  applyPopulationTransfer,
 } from '../../supabase/functions/_shared/demographics.ts';
 import { computeSettlementGrowth } from '../../supabase/functions/_shared/physics.ts';
 
@@ -113,5 +114,52 @@ describe('Phase A — single canonical population writer', () => {
       expect(src).not.toMatch(/population_total\s*[:=]/);
       expect(src).not.toMatch(/gold_reserve\s*:/);
     }
+  });
+});
+
+describe('Phase A residue — conserving transfers and guarded paths', () => {
+  it('transfer moves exactly as many people as it removes', () => {
+    const src = city(5000);
+    const dst = city(2000);
+    for (const req of [0, 1, 250, 100000]) {
+      const t = applyPopulationTransfer(src, dst, req);
+      const before = src.population_total + dst.population_total;
+      const after = t.source.population_total + t.destination.population_total;
+      expect(after).toBe(before);
+      expect(t.source.population_total).toBe(src.population_total - t.moved);
+      expect(t.destination.population_total).toBe(dst.population_total + t.moved);
+      expect(sum(t.source)).toBe(t.source.population_total);
+      expect(sum(t.destination)).toBe(t.destination.population_total);
+      expect(t.source.population_total).toBeGreaterThanOrEqual(POPULATION_FLOOR);
+    }
+  });
+
+  it('transfer is capped by the source population above the floor', () => {
+    const t = applyPopulationTransfer(city(60), city(1000), 10_000);
+    expect(t.moved).toBe(10);
+    expect(t.source.population_total).toBe(POPULATION_FLOOR);
+  });
+
+  it('world-tick losses and migration use the shared helpers', () => {
+    const src = fn('world-tick/index.ts');
+    expect(src).toContain('applyPopulationLoss');
+    expect(src).toContain('applyPopulationTransfer');
+    expect(src).toContain('normalizePopulationClasses');
+    expect(src).not.toContain('distributePopLayers');
+    expect(src).not.toMatch(/population_peasants: Math\.max\(0, \(migrationCitiesData/);
+  });
+
+  it('resolve-battle and command-dispatch losses use the shared helper', () => {
+    for (const f of ['resolve-battle/index.ts', 'command-dispatch/index.ts']) {
+      const src = fn(f);
+      expect(src).toContain('applyPopulationLoss');
+      expect(src).not.toMatch(/population_peasants: Math\.max\(\d+,/);
+    }
+  });
+
+  it('founding still carries the explicit Phase C conservation TODO', () => {
+    const src = fn('command-dispatch/index.ts');
+    expect(src).toContain('PHASE C TODO');
+    expect(src).toMatch(/rural population/i);
   });
 });

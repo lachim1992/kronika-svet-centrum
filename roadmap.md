@@ -103,3 +103,18 @@
 - [ ] P0: trade_flows — city ID do *_city_id, node ID do *_node_id + regresní test
 - [ ] P0: current-turn demand_baskets jako atomická kompatibilní projekce canonical ledgeru
 - [ ] Živý akceptační test Test01: kapacity, toky, idempotence, nezměněný fiskál a tah
+
+## Populace, migrace a prosperita tras (master)
+- [x] Fáze A: jediný kanonický writer populace, třídní invariant, mrtvý kód
+- [ ] Fáze A residue: world-tick ztráty i migrace přes shared helpery
+- [ ] Fáze A residue: resolve-battle ztráty drží total == součet vrstev
+- [ ] Fáze A residue: command-dispatch destruktivní ztráty přes shared helper
+- [ ] Fáze A residue: zakládání města — TODO + testovací pojistka (převod až ve Fázi C)
+- [ ] Fáze A residue: zrušit klientské volání process-turn mimo commit-turn
+- [ ] Fáze B: deterministická venkovská populace a únosná kapacita na buňkách (shadow)
+- [ ] Fáze C: zakládání a místní migrace jako atomický převod lidí
+- [ ] Fáze D: jeden model narozených/zemřelých + pracovní příležitost za feature flagem
+- [ ] Fáze E: dálková migrace po stejném fyzickém grafu tras
+- [ ] Fáze F: derived transit_service_value → daňový základ (nikdy přímo zlato)
+- [ ] Fáze G: deterministická základní AI neutrálních sídel (bez LLM v kanonu)
+- [ ] Fáze H: finální demografické UI + odstranění legacy kódu

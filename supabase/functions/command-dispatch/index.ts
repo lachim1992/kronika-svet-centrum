@@ -25,6 +25,7 @@ import {
   seatCityOnParcels,
 } from "../_shared/citySeat.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
+import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
@@ -964,6 +965,10 @@ async function executeFoundCity(
     grid_x: freeQ,
     grid_y: freeR,
     founded_parcel_index: foundedParcelIndex,
+    // PHASE C TODO (do not remove): founding must transfer these inhabitants
+    // atomically out of the rural population pool of the surrounding cells
+    // instead of creating them ex nihilo. INVARIANT 2 becomes active then.
+    // Guarded by src/test/population-ownership.test.ts.
     population_total: 1000,
     population_peasants: 800,
     population_burghers: 150,
@@ -1239,14 +1244,13 @@ async function executePostBattleDecision(
       const popLoss = Math.floor((city.population_total || 1000) * 0.25);
 
       // Devastate the city
+      // INVARIANT 3: destructive losses go through the shared helper.
+      const { actualLoss: _sacked, ...sackedPop } = applyPopulationLoss(city, popLoss);
       await supabase.from("cities").update({
         status: "devastated",
         devastated_round: turnNumber,
         ruins_note: `Zpustošeno armádou ${actor.name} v roce ${turnNumber}.`,
-        population_total: Math.max(100, (city.population_total || 1000) - popLoss),
-        population_peasants: Math.max(50, (city.population_peasants || 500) - Math.floor(popLoss * 0.6)),
-        population_burghers: Math.max(20, (city.population_burghers || 200) - Math.floor(popLoss * 0.3)),
-        population_clerics: Math.max(10, (city.population_clerics || 100) - Math.floor(popLoss * 0.1)),
+        ...sackedPop,
         city_stability: Math.max(0, (city.city_stability || 50) - 30),
         local_grain_reserve: Math.max(0, (city.local_grain_reserve || 0) - lootGrain),
         development_level: Math.max(0, (city.development_level || 1) - 1),

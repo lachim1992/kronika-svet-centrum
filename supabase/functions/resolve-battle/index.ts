@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cellDistance, loadGridKind, neighborOffsets } from "../_shared/topology.ts";
+import { applyPopulationLoss } from "../_shared/demographics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -429,9 +430,11 @@ Deno.serve(async (req) => {
       const garrisonLoss = Math.min(defenderCity.military_garrison || 0, Math.round(casualtiesDefender * 0.3));
       const popLoss = Math.round(casualtiesDefender * 0.1);
       const stabLoss = result.includes("victory") ? Math.min(30, Math.round(casualtiesDefender / 10)) : 5;
+      // INVARIANT 3: war losses go through the shared helper (total === sum(classes)).
+      const { actualLoss: _lostDefenders, ...nextPop } = applyPopulationLoss(defenderCity, popLoss);
       await supabase.from("cities").update({
         military_garrison: Math.max(0, (defenderCity.military_garrison || 0) - garrisonLoss),
-        population_total: Math.max(100, (defenderCity.population_total || 0) - popLoss),
+        ...nextPop,
         city_stability: Math.max(0, (defenderCity.city_stability || 50) - stabLoss),
       }).eq("id", defenderCity.id);
     }
@@ -570,14 +573,12 @@ Deno.serve(async (req) => {
         const lootGrain = Math.floor((defenderCity.local_grain_reserve || 0) * (isRaze ? 0.8 : 0.6));
         const popLossRatio = isRaze ? 0.4 : 0.25;
         const popLoss = Math.floor((defenderCity.population_total || 1000) * popLossRatio);
+        const { actualLoss: _razed, ...razedPop } = applyPopulationLoss(defenderCity, popLoss);
         await supabase.from("cities").update({
           status: "devastated",
           devastated_round: turnNumber,
           ruins_note: `${isRaze ? "Vypáleno" : "Vypleněno"} armádou ${attackerPlayer} v roce ${turnNumber}.`,
-          population_total: Math.max(50, (defenderCity.population_total || 1000) - popLoss),
-          population_peasants: Math.max(20, (defenderCity.population_peasants || 500) - Math.floor(popLoss * 0.6)),
-          population_burghers: Math.max(10, (defenderCity.population_burghers || 200) - Math.floor(popLoss * 0.3)),
-          population_clerics: Math.max(5, (defenderCity.population_clerics || 100) - Math.floor(popLoss * 0.1)),
+          ...razedPop,
           city_stability: Math.max(0, (defenderCity.city_stability || 50) - (isRaze ? 50 : 30)),
           local_grain_reserve: Math.max(0, (defenderCity.local_grain_reserve || 0) - lootGrain),
           development_level: Math.max(0, (defenderCity.development_level || 1) - (isRaze ? 2 : 1)),

@@ -27,31 +27,29 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
 
+  // Turn resolution runs exclusively through commit-turn (canonical pipeline
+  // ordering: physical recompute → aggregates → process-turn → aggregates →
+  // world layer → snapshot). No client may invoke process-turn directly.
   const handleProcessTurn = async () => {
     setProcessing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("process-turn", {
+      const { data, error } = await supabase.functions.invoke("commit-turn", {
         body: { sessionId, playerName: currentPlayerName },
       });
       if (error) throw error;
       if (data?.skipped) {
-        toast.info(`Kolo ${currentTurn} již bylo zpracováno`);
+        toast.info(`Kolo ${currentTurn} již bylo uzavřeno`);
       } else {
-        const s = data?.summary;
-        const famineNote = s?.famineCities > 0 ? ` | ⚠️ ${s.famineCities} měst hladoví` : "";
-        const tollNote = s?.tollsPaid > 0 ? ` | 🏛️ Mýtné: -${s.tollsPaid}` : "";
-        const evtNote = s?.eventsGenerated > 0 ? ` | 📜 ${s.eventsGenerated} událostí` : "";
-        toast.success(`Kolo ${currentTurn} zpracováno`, {
-          description: `⚒️ ${s?.totalProduction?.toFixed(0) || 0} | 💰 ${s?.totalWealth?.toFixed(0) || 0} | 🏛️ ${s?.totalCapacity?.toFixed(0) || 0} | Rezerva: ${s?.grainReserve || 0}/${s?.granaryCapacity || 0}${famineNote}${tollNote}${evtNote}`,
-        });
+        toast.success(`Kolo ${currentTurn} uzavřeno`);
       }
       onRefetch();
     } catch (e: any) {
-      toast.error("Chyba zpracování kola", { description: e.message });
+      toast.error("Chyba uzávěrky kola", { description: e.message });
     } finally {
       setProcessing(false);
     }
   };
+
 
   const handleMigrateLegacy = async () => {
     const res = await migrateLegacyMilitary(sessionId);
@@ -74,7 +72,7 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
         {(myRole === "admin" || myRole === "moderator") && (
           <Button onClick={handleProcessTurn} disabled={processing} size="sm" variant="outline" className="font-display text-xs">
             {processing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Play className="h-3 w-3 mr-1" />}
-            Zpracovat kolo (dev)
+            Uzavřít kolo (dev)
           </Button>
         )}
       </div>

@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  computeSettlementGrowth, distributePopLayers,
+  computeSettlementGrowth,
   computeInfluence, computeTension, evaluateRebellion,
   clampReputation, REPUTATION_DELTAS, REPUTATION_DECAY,
   CRISIS_THRESHOLD, WAR_THRESHOLD, SETTLEMENT_LEVEL_THRESHOLDS,
@@ -15,7 +15,10 @@ import {
   type FlowNode, type FlowRoute, type FlowCity,
   type SupplyChainInput,
 } from "../_shared/physics.ts";
-import { computeSocialMobility, computeLaborModifiers } from "../_shared/demographics.ts";
+import {
+  computeSocialMobility, computeLaborModifiers,
+  normalizePopulationClasses, applyPopulationLoss, applyPopulationTransfer,
+} from "../_shared/demographics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -166,17 +169,13 @@ Deno.serve(async (req) => {
     for (const city of (cities || [])) {
       const result = computeSettlementGrowth(city as CityForGrowth);
       if (result.delta !== 0 || result.settlementUpgrade) {
-        const layers = distributePopLayers(
-          result.newPop, city.population_total,
-          city.population_peasants, city.population_burghers, city.population_clerics,
-          city.population_warriors
-        );
+        const layers = normalizePopulationClasses(result.newPop, city);
         const updatePayload: any = {
-          population_total: result.newPop,
-          population_peasants: layers.peasants,
-          population_burghers: layers.burghers,
-          population_clerics: layers.clerics,
-          population_warriors: layers.warriors,
+          population_total: layers.population_total,
+          population_peasants: layers.population_peasants,
+          population_burghers: layers.population_burghers,
+          population_clerics: layers.population_clerics,
+          population_warriors: layers.population_warriors,
           city_stability: result.newStability,
           development_level: result.newDev,
         };
@@ -601,11 +600,17 @@ Deno.serve(async (req) => {
           // Rebellion!
           const popLoss = Math.round(city.population_total * 0.1);
           const newStability = Math.max(5, stability - 15);
+          const rebelPop = applyPopulationLoss(city, popLoss);
 
           await supabase.from("cities").update({
             city_stability: newStability,
-            population_total: Math.max(50, city.population_total - popLoss),
+            population_total: rebelPop.population_total,
+            population_peasants: rebelPop.population_peasants,
+            population_burghers: rebelPop.population_burghers,
+            population_clerics: rebelPop.population_clerics,
+            population_warriors: rebelPop.population_warriors,
           }).eq("id", city.id);
+
 
           const faithNote = ownerFaith > 50 ? " Víra lidu pomáhá tlumit nepokoje." : ownerFaith < 20 ? " Slabá víra přiživuje vzpouru." : "";
           const { data: rebelEvt } = await supabase.from("game_events").insert({
@@ -719,6 +724,7 @@ Deno.serve(async (req) => {
     const migrationCitiesData: Array<{
       id: string; name: string; owner_player: string;
       population_total: number; population_peasants: number;
+      population_burghers: number; population_clerics: number; population_warriors: number;
       migration_pressure: number; housing_capacity: number;
     }> = [];
 
@@ -743,26 +749,34 @@ Deno.serve(async (req) => {
       migrationCitiesData.push({
         id: city.id, name: city.name, owner_player: city.owner_player,
         population_total: city.population_total, population_peasants: city.population_peasants,
+        population_burghers: city.population_burghers, population_clerics: city.population_clerics,
+        population_warriors: city.population_warriors,
         migration_pressure: mp.pressure, housing_capacity: city.housing_capacity || 500,
       });
     }
 
-    // Resolve actual migration flows
+    // Resolve actual migration flows.
+    // INVARIANT 1: migration only transfers people — applyPopulationTransfer
+    // removes from the source exactly what it adds to the destination and keeps
+    // total === sum(classes) on both sides.
     const migrationFlows = resolveMigration(migrationCitiesData);
+    const migrationState = new Map(migrationCitiesData.map((c) => [c.id, { ...c }]));
     for (const flow of migrationFlows) {
-      // Deduct from source
-      await supabase.from("cities").update({
-        population_total: Math.max(50, (migrationCitiesData.find(c => c.id === flow.from_city_id)?.population_total || 0) - flow.migrants),
-        population_peasants: Math.max(0, (migrationCitiesData.find(c => c.id === flow.from_city_id)?.population_peasants || 0) - flow.migrants),
-        last_migration_out: flow.migrants,
-      }).eq("id", flow.from_city_id);
+      const src = migrationState.get(flow.from_city_id);
+      const dst = migrationState.get(flow.to_city_id);
+      if (!src || !dst) continue;
 
-      // Add to destination
-      await supabase.from("cities").update({
-        population_total: (migrationCitiesData.find(c => c.id === flow.to_city_id)?.population_total || 0) + flow.migrants,
-        population_peasants: (migrationCitiesData.find(c => c.id === flow.to_city_id)?.population_peasants || 0) + flow.migrants,
-        last_migration_in: flow.migrants,
-      }).eq("id", flow.to_city_id);
+      const t = applyPopulationTransfer(src, dst, flow.migrants);
+      (flow as any).migrants = t.moved;
+      Object.assign(src, t.source);
+      Object.assign(dst, t.destination);
+      if (t.moved <= 0) continue;
+
+      await supabase.from("cities").update({ ...t.source, last_migration_out: t.moved })
+        .eq("id", flow.from_city_id);
+      await supabase.from("cities").update({ ...t.destination, last_migration_in: t.moved })
+        .eq("id", flow.to_city_id);
+
 
       // Generate event for significant migration
       if (flow.migrants > 50) {
