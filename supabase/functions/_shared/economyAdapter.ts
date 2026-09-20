@@ -125,21 +125,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    */
   const levelScale=(level:unknown)=>{const scale=ECONOMY.levelCapacityScale;
     return scale[Math.min(scale.length,Math.max(1,Math.round(Number(level)||1)))-1];};
-  /**
-   * PRODUCTION ORDERS (structures and districts, mirroring node_production_orders):
-   *  AUTO   — legal recipes weighted by basket necessity (1/tier); never a blind even split.
-   *  PREFER — the chosen good/basket gets triple weight, the rest still runs.
-   *  LOCK   — only the chosen good/basket runs, if it is legal for this structure.
-   */
-  const orderWeight=(r:any,order:any)=>{
-    const g=goodMap.get(r.output_good_key);
-    const tier=BASKET_TIER[g?.basket||'']||1,auto=1/tier;
-    if(!order||order.mode==='auto')return auto;
-    const match=(order.target_good_key&&r.output_good_key===order.target_good_key)||
-      (order.target_basket_key&&g?.basket===basket(order.target_basket_key));
-    if(order.mode==='prefer')return match?auto*3:auto;
-    return match?auto:0;
-  };
+  const structureOrder=(id:string)=>db.structure_production_orders.find((o:any)=>o.structure_id===id);
   const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,
     tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean;level?:unknown;order?:any}={})=>{
     if(!cityMap.has(city))return;
