@@ -115,7 +115,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const demand=weightedPop*C.populationDemand/BASKET_TIER[basket];
       const state=(basket==='military_supply'||basket==='staple_food')?c.soldiers*C.armyDemand:basket==='admin_supplies'?c.admin:0;
       for(const g of options){const b=stock(c.id,g.key);b.demand=(demand+state)*weight(g)/sum;stateDemand.set(key(c.id,g.key),state*weight(g)/sum);}
-      if((C.householdBaskets as readonly string[]).includes(basket)){
+      // Population is NOT a goods producer. It supplies labour and demand only. The legacy
+      // household emission stays behind an explicit flag for regression comparisons.
+      if(C.householdProduction&&(C.householdBaskets as readonly string[]).includes(basket)){
         const baseline=options.find(g=>g.household===true)||options.find(g=>g.household===undefined&&g.stage==='household');
         if(baseline){let qty=c.population*C.householdRate/BASKET_TIER[basket]*workforce.get(c.id)!.workforceRatio*
           sectorFactor(c,BASKET_SECTOR[basket]||'crafting')*clamp(c.stability)*
