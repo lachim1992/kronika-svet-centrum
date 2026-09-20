@@ -1858,8 +1858,21 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
       }
     }
 
+    /**
+     * Cities born here appear AFTER create-world-bootstrap already ran the starter economy,
+     * so without this pass every narrative settlement starts with no producing structure and
+     * no jobs. ensureStarterEconomy is idempotent and touches city_buildings only.
+     */
+    try {
+      const starter = await ensureStarterEconomy(supabase, sessionId, { turnNumber: 1 });
+      (counters as any).starterStructures = starter.reduce((n, r) => n + r.added.length, 0);
+    } catch (e) {
+      console.warn("starter economy backfill failed:", e);
+    }
+
     // Set session ready
     await supabase.from("game_sessions").update({ current_turn: 1, init_status: "ready" }).eq("id", sessionId);
+
 
     // Logging
     await supabase.from("world_action_log").insert({
