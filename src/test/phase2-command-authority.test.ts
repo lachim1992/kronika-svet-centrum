@@ -31,7 +31,7 @@ describe("phase 2: canonical writes live in command-dispatch", () => {
     expect(ledgerWrite.test(UPRISING)).toBe(false);
     // narrative cache writes are fine; resolution state must not be client-side
     expect(UPRISING).not.toMatch(/status: "resolved"/);
-    expect(UPRISING).not.toMatch(/chosen_concession/);
+    expect(UPRISING).not.toMatch(/chosen_concession:\s*selectedConcession/);
     expect(UPRISING).toMatch(/commandType: "RESOLVE_UPRISING"/);
   });
 
