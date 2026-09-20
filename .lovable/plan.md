@@ -1,43 +1,43 @@
-# Chronicle integration and rollout
+# Oprava ovládání mapy, rozložení a tahu 55
 
-The repository now contains one physical goods solver, server-derived management
-reports and a read-only scenario preview. Do not run a second basket solver or
-restore the old player-turn call from a manual refresh.
+## Výsledek
+- Kliknutí na libovolnou horní záložku vždy zavře detail políčka, subčtverce i režim stavby a otevře požadovanou část.
+- Běžné části hry se na počítači otevřou přes celou dostupnou šířku; mapa zůstane pod nimi. Kontextový detail mapy zůstane užší pouze při práci přímo s mapou.
+- Horní pruh světa a řádek surovin budou výrazně nižší a úspornější, bez ztráty ovládacích prvků.
+- Test01 půjde bezpečně uzavřít z tahu 55 a ekonomika zůstane na kanonických fyzických tocích.
 
-## Coordinated deployment
+## Postup
+1. **Ovládání záložek a detailů mapy**
+   - Sjednotit změnu horní záložky do jednoho handleru.
+   - Při změně záložky zavřít mapový detail a zrušit lokální výběr/režim stavby, aby překryv mapy nemohl skrýt otevřený obsah.
+   - Zachovat návrat na mapu a opětovné otevření detailu kliknutím.
 
-The frontend alone is not this deployment. The backend project from config.toml
-is `kvzzfthrefdisuohzfws`. Before enabling the new handlers on that project:
+2. **Šířka pracovního prostoru**
+   - Změnit modulové záložky z pravého 40% panelu na plnou šířku dostupné obrazovky.
+   - Úzký pravý panel ponechat jen pro detail mapového objektu a stavění.
+   - Zachovat samostatné rolování obsahu a ovladatelnost mapy v mapovém režimu.
 
-1. Apply `20260919120000_canonical_goods_economy.sql` and
-   `20260919121000_turn_execution_guard.sql` in order. Preserve existing sessions.
-2. Deploy all functions listed in `docs/deployment/chronicle-integration.json`,
-   including shared module dependencies. Do not mix old fiscal and new goods code.
-3. Run the live idempotence test against the designated test world only. It must
-   compare fiscal state before the first refresh, as well as after two refreshes.
-4. Verify the management RPC returns only the authenticated player's report and
-   scenario previews do not mutate stocks, history, construction or turn number.
-5. Publish the frontend and verify the Home, Economy, City and Army views on the
-   actual hosted URL. Git synchronization and a local build are not deployment proof.
+3. **Kompaktní horní část**
+   - Zmenšit výšku názvu světa, roku, tlačítka tahu a uživatelských ikon.
+   - Suroviny převést na tenčí jednořádkový přehled s menšími štítky; podrobnosti zůstanou v nápovědě a rozbalovacím přehledu.
 
-The requested test game is `eba99766-9046-4daf-a367-9f31380cbba1` (user calls it
-`test01`). No production turn has been advanced by the integration work.
+4. **Test01: tah 55**
+   - Zjistit konkrétní neúspěšnou fázi a stav zámku uzávěrky.
+   - Opravit životní cyklus zámku tak, aby po chybě nezůstal svět trvale ve stavu „zpracování běží“, včetně bezpečného převzetí prokazatelně zastaralého pokusu.
+   - Opravit původní chybu pipeline, ne obcházet ji ručním posunem tahu.
 
-## Runtime invariants
+5. **Ekonomická kontrola Test01**
+   - Bez posunu tahu spustit kanonický refresh dvakrát.
+   - Porovnat výrobní uzly, kapacitu, goods produkci, poptávku, fyzické i košové toky, osiřelé odkazy a fiskální hodnoty.
+   - Ověřit, že oba refreshy vrátí stejný stav a nemění zlato, daně, historii ani číslo tahu.
 
-- Physical stock has one ledger; inputs, deliveries, consumption, spoilage,
-  storage and CAPEX reconcile for each good and city.
-- Refresh never collects taxes, increments reserves or commits history.
-- Fiscal application is guarded atomically by player and turn; world execution
-  also has a session guard. A failed or crashed turn must be inspected and repaired
-  before clearing its guard, since it may have partially applied world effects.
-- Active soldiers reduce civilian workers once; population classes are not armies.
-- Zero rated capacity and unstaffed production stay zero. Disconnected producers
-  have explicit diagnostics instead of invented deliveries.
-- Full solver snapshots are service-only. Player views use an owner-scoped RPC.
+6. **Ověření uzávěrky a obrazovky**
+   - Spustit skutečnou uzávěrku tahu 55 až po úspěšné kontrole pipeline.
+   - Ověřit, že tah přejde právě na 56, historie vznikne nejvýše jednou a ekonomický stav je označen jako dokončený.
+   - Prověřit záložky, mapový detail a kompaktní horní pruh na aktuální desktopové velikosti i menším displeji.
 
-## Acceptance boundary
-
-See `docs/architecture/integration-2026-09-19.md` for tests and remaining scope.
-Do not label the complete management redesign or live rollout finished without
-checking that acceptance list and the hosted backend.
+## Technické pojistky
+- Žádná fallback produkce při nulové kapacitě.
+- Refresh zůstane čistý derived recompute bez fiskálních zápisů a historie.
+- `commit-turn` zůstane jediným místem pro turnový fiskál a snapshot po úspěchu celé pipeline.
+- Městská a uzlová ID v obchodních tocích zůstanou ve správných sloupcích.
