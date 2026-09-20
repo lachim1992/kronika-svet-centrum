@@ -1,5 +1,7 @@
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { computeWorkforceBreakdown } from './manpower.ts';
+import { BASKET_KEYS, DEMAND_CHANNELS, basketDemandChannels, basketSpec, channelTotal, emptyChannels,
+  toolIntensityOf, toolProductivityMultiplier, type DemandChannel, type DemandInput } from './demandModel.ts';
 
 export type Channel = 'household' | 'node' | 'facility' | 'district';
 export interface Good {
@@ -12,7 +14,8 @@ export interface City {
   id: string; owner: string; name: string; cell: string; population: number;
   classes: Record<string, number>; soldiers: number; stability: number; irrigation: number;
   labor: Partial<Record<Sector, number>>; market: number; storage: number; admin: number;
-  security: number; guild: number; ideology: keyof typeof IDEOLOGIES; coastal: boolean;
+  security: number; guild: number; /** Active building sites / projects: the only driver of construction demand. */
+  constructionProjects?: number; ideology: keyof typeof IDEOLOGIES; coastal: boolean;
   activePopModifier?: number; maxMobModifier?: number;
 }
 export interface Recipe { key: string; good: string; qty: number; inputs: { good: string; qty: number }[]; labor: number; quality: number; minQuality: number }
@@ -356,7 +359,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const jobs=jobsOf(p),staffed=staffingRatio(p);
       // POTENTIAL OUTPUT: what the staffed facility could make if supplied with its inputs.
       const factors={staffing:staffed,stability:clamp(c.stability),logistics:clamp(p.logistics),mastery:n(p.mastery),
-        infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1};
+        infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1,tools:toolFactor(p)};
       const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
       const desired=Math.max(0,target-(realized.get(id)||0));
       const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target};
@@ -432,7 +435,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       sb.consumed_state+=stateQty;sb.consumed_household+=qty-stateQty;
       stateDemand.set(key(c.id,g.key),Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-stateNeed));
       stateDemand.set(key(c.id,sub.key),(stateDemand.get(key(c.id,sub.key))||0)+stateQty);
-      sb.demand+=qty;b.demand-=fulfilled;missing-=fulfilled;}
+      sb.demand+=qty;b.demand-=fulfilled;shiftChannels(c.id,g.key,sub.key,fulfilled,qty);missing-=fulfilled;}
   }};
   substitute();
   // Aggregate only for reachable downstream demand, retaining local reserves first.
@@ -459,7 +462,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const origin=cityById.get(f.city),g=goodByKey.get(f.good);if(!origin||!g)continue;
     for(const c of cities.filter(c=>c.id!==origin.id&&c.market>0)){
       const wanted=c.population*C.fameDemand*f.fame/100;
-      const b=stock(c.id,g.key);b.demand+=wanted;
+      const b=stock(c.id,g.key);b.demand+=wanted;addChannel(c.id,g.key,'fame',wanted);
       const delivered=transfer(origin,c,g,wanted,'famous_good_demand',[],stock(origin.id,g.key).demand*C.reserveTurns);
       b.consumed_household+=delivered;
     }
@@ -497,9 +500,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     b.lost_spoilage+=Math.max(0,remaining-b.stored);
     const residual=b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage-b.stored-b.capex;
     if(Math.abs(residual)>1e-6)throw Error(`Goods conservation failed ${key(c.id,g.key)}: ${residual}`);
+    // Provenance must always add up to the canonical demand: no demand without a driver.
+    const provenance=channelTotal(componentsOf(c.id,g.key));
+    if(Math.abs(provenance-b.demand)>1e-6)throw Error(`Demand provenance mismatch ${key(c.id,g.key)}: ${provenance} vs ${b.demand}`);
   }}
   const prices:PriceRow[]=cities.flatMap(c=>goods.map(g=>priceDetail(c.id,g.key)));
+  const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
+    channels:{...channels},total:channelTotal(channels)}));
   return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
-    workforce:Object.fromEntries(workforce),labor:laborMetrics};
+    workforce:Object.fromEntries(workforce),labor:laborMetrics,demand,
+    toolCoverage:Object.fromEntries(toolCoverage)};
 
 }
