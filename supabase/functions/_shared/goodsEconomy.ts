@@ -245,6 +245,76 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   /** employed / jobs_capacity, clamped. Automated producers without declared labour run at their own staffing. */
   const staffingRatio=(p:Producer)=>{const jobs=jobsOf(p);
     return jobs>C.epsilon?clamp((employed.get(p.id)||0)/jobs):clamp(p.staffing)*(n(p.recipe.labor)>0?0:1);};
+  // ── DEMAND PASS ──────────────────────────────────────────────────────────────────────
+  // ONE canonical demand solver. Population creates NEEDS (and a little discretionary
+  // consumption); everything else is demanded because the settlement actually does something:
+  // staffed industry wears tools, building sites consume construction goods, institutions need
+  // supplies, soldiers need military supply. Demand is a need budget per basket, not one full
+  // demand for every substitute inside it.
+  const toolWearOf=(c:City)=>producers.filter(p=>p.city===c.id).reduce((sum,p)=>{
+    const basket=goodByKey.get(p.recipe.good)?.basket||'';
+    return sum+n(p.capacity)*clamp(p.allocation)*staffingRatio(p)*toolIntensityOf(basket);},0);
+  const stockVolumeOf=(c:City)=>goods.reduce((sum,g)=>sum+stock(c.id,g.key).opening*Math.max(1,g.bulk),0);
+  for(const c of cities){
+    const labor=laborMetrics.find(l=>l.city===c.id);
+    const input:DemandInput={
+      weightedPop:0,populationRate:C.populationDemand,
+      affluentShare:c.population>0?(n(c.classes.burghers)+n(c.classes.clerics))/c.population:0,
+      market:n(c.market),toolWear:toolWearOf(c),
+      adminWorkers:labor?.sectors.administration?.employed??0,adminInstitutions:n(c.admin),
+      logisticsWorkers:labor?.sectors.logistics?.employed??0,
+      stockVolume:stockVolumeOf(c),constructionProjects:n(c.constructionProjects),soldiers:n(c.soldiers),
+    };
+    for(const basket of BASKET_KEYS){
+      const spec=basketSpec(basket)!;
+      // Industrial intermediates receive demand from downstream recipes only.
+      if(spec.class==='intermediate_only')continue;
+      const options=goods.filter(g=>g.basket===basket&&(g.finalUse??g.stage!=='intermediate'));if(!options.length)continue;
+      const weight=(g:Good)=> (g.key.includes('fish')?(c.coastal?3:0.2):1) *
+        (g.key.includes('bread')?(1+n(c.classes.burghers)/Math.max(1,c.population)):1)*Math.max(0.01,g.substitutability);
+      const sum=options.reduce((a,g)=>a+weight(g),0);
+      const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
+      const channels=basketDemandChannels(basket,{...input,weightedPop});
+      const total=channelTotal(channels);
+      if(total<=0)continue;
+      // Non-household channels (industry, institutions, construction, army) are state-side
+      // consumption in the ledger; households consume needs and discretionary goods.
+      const household=channels.household_need+channels.household_discretionary;
+      for(const g of options){const share=weight(g)/sum,b=stock(c.id,g.key);
+        b.demand=total*share;
+        stateDemand.set(key(c.id,g.key),(total-household)*share);
+        for(const channel of DEMAND_CHANNELS)addChannel(c.id,g.key,channel,channels[channel]*share);
+      }
+      // Population is NOT a goods producer. It supplies labour and demand only. The legacy
+      // household emission stays behind an explicit flag for regression comparisons.
+      if(C.householdProduction&&(C.householdBaskets as readonly string[]).includes(basket)){
+        const baseline=options.find(g=>g.household===true)||options.find(g=>g.household===undefined&&g.stage==='household');
+        if(baseline){let qty=c.population*C.householdRate*spec.intensity*workforce.get(c.id)!.workforceRatio*
+          sectorFactor(c,BASKET_SECTOR[basket]||'crafting')*clamp(c.stability)*
+          (BASKET_SECTOR[basket]==='farming'?1+c.irrigation*C.irrigationGain:1);
+          const sector=BASKET_SECTOR[basket]||'crafting',lk=key(c.id,sector);
+          const pool=workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
+          qty=Math.min(qty,Math.max(0,pool-(laborUsed.get(lk)||0)));
+          add(stock(c.id,baseline.key),qty,0,'household');
+          laborUsed.set(lk,(laborUsed.get(lk)||0)+qty);}
+      }
+    }
+  }
+  /**
+   * TOOL COVERAGE. Tools are durable operational support, not a hard recipe input: coverage
+   * scales productivity softly between the configured floor and 1, so zero tools never means
+   * zero production and no settlement can enter a tool death spiral.
+   */
+  const toolCoverage=new Map<string,number>();
+  for(const c of cities){
+    const toolGoods=goods.filter(g=>g.basket==='tools'&&(g.finalUse??g.stage!=='intermediate'));
+    const demand=toolGoods.reduce((s,g)=>s+stock(c.id,g.key).demand,0);
+    const supply=toolGoods.reduce((s,g)=>s+available(stock(c.id,g.key)),0);
+    toolCoverage.set(c.id,demand>C.epsilon?Math.min(1,supply/demand):1);
+  }
+  const toolFactor=(p:Producer)=>toolIntensityOf(goodByKey.get(p.recipe.good)?.basket||'')>0
+    ?toolProductivityMultiplier(toolCoverage.get(p.city)??1):1;
+
   // Factories may use food surplus, never the last edible stock needed by residents.
   // The same rule applies to local processing and to industrial exports.
   const foodReserve=(c:City,g:Good)=>{
