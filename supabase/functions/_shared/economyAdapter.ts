@@ -86,14 +86,30 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     inputs:(r.input_items||[]).map((i:any)=>({good:i.key??i.good_key,qty:nonnegative(i.qty??i.quantity)})),
     labor:nonnegative(r.labor_cost),quality:nonnegative(r.quality_output_bonus),minQuality:nonnegative(r.min_quality_input)});
   const producers:Producer[]=[];
+  /**
+   * PRODUCTION ORDERS (nodes, buildings and districts share one interpretation):
+   *  AUTO   — legal recipes weighted by basket necessity (1/tier); never a blind even split.
+   *  PREFER — the chosen good/basket gets triple weight, the rest still runs.
+   *  LOCK   — only the chosen good/basket runs, if it is legal for this structure.
+   */
+  const orderWeight=(r:any,order:any)=>{
+    const g=goodMap.get(r.output_good_key);
+    const tier=BASKET_TIER[g?.basket||'']||1,auto=1/tier;
+    if(!order||order.mode==='auto')return auto;
+    const match=(order.target_good_key&&r.output_good_key===order.target_good_key)||
+      (order.target_basket_key&&g?.basket===basket(order.target_basket_key));
+    if(order.mode==='prefer')return match?auto*3:auto;
+    return match?auto:0;
+  };
   for(const node of db.province_nodes){if(node.is_active===false)continue;const c=anchor(node);if(!c)continue;
     const order=db.node_production_orders.find(o=>o.node_id===node.id);
-    let eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
-    if(order?.mode==='lock')eligible=eligible.filter(r=>(!order.target_good_key||r.output_good_key===order.target_good_key)&&goodMap.get(r.output_good_key)?.basket===basket(order.target_basket_key));
-    const weights=eligible.map(r=>order?.mode==='prefer'&&goodMap.get(r.output_good_key)?.basket===basket(order.target_basket_key)?3:1),total=weights.reduce((s,n)=>s+n,0);
-    eligible.forEach((r,i)=>producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity:nonnegative(node.production_output),
-      recipe:recipe(r),allocation:weights[i]/total,staffing:1,logistics:nonnegative(node.route_access_factor??1),mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
-      source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)}));
+    const eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
+    const weights=eligible.map(r=>orderWeight(r,order)),total=weights.reduce((s,n)=>s+n,0);
+    if(total<=0)continue;
+    eligible.forEach((r,i)=>{if(weights[i]<=0)return;
+      producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity:nonnegative(node.production_output),
+        recipe:recipe(r),allocation:weights[i]/total,staffing:1,logistics:nonnegative(node.route_access_factor??1),mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
+        source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
   }
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
   /**
