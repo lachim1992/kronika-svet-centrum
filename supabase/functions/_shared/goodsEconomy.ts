@@ -216,6 +216,42 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     depth(a.recipe.good)-depth(b.recipe.good)||a.id.localeCompare(b.id));
   const pending=new Map(producers.map(p=>[p.id,p]));
   const realized=new Map<string,number>();
+  // ── LABOUR MARKET ────────────────────────────────────────────────────────────────────
+  // Structures declare jobs; the city fills them from the civilian workforce of the sector.
+  // No worker is counted twice, employment never exceeds supply nor declared jobs.
+  const producerSector=(p:Producer)=>BASKET_SECTOR[goodByKey.get(p.recipe.good)?.basket||'']||'crafting';
+  const jobsOf=(p:Producer)=>{
+    if(p.jobs!==undefined)return n(p.jobs)*clamp(p.allocation)*clamp(p.staffing);
+    const perUnit=n(p.recipe.labor)/Math.max(C.epsilon,n(p.recipe.qty));
+    return n(p.capacity)*clamp(p.allocation)*perUnit*C.workersPerLaborUnit*clamp(p.staffing);
+  };
+  const laborSupply=(c:City,sector:Sector)=>workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
+  const employed=new Map<string,number>();
+  const laborMetrics:CityLabor[]=[];
+  for(const c of cities){
+    const sectors:CityLabor['sectors']={};let jobsTotal=0,employedTotal=0,supplyTotal=0;
+    for(const sector of Object.keys(C.sectors) as Sector[]){
+      const supply=laborSupply(c,sector);
+      const own=producers.filter(p=>p.city===c.id&&producerSector(p)===sector);
+      const jobs=own.reduce((s,p)=>s+jobsOf(p),0);
+      const fill=jobs>C.epsilon?Math.min(1,supply/jobs):0;
+      for(const p of own)employed.set(p.id,jobsOf(p)*fill);
+      const filled=jobs*fill;
+      sectors[sector]={labor_supply:supply,jobs_capacity:jobs,employed:filled,
+        vacancies:Math.max(0,jobs-filled),labor_shortage:Math.max(0,jobs-supply)};
+      jobsTotal+=jobs;employedTotal+=filled;supplyTotal+=supply;
+    }
+    const active=workforce.get(c.id)!.effectiveActivePop;
+    laborMetrics.push({city:c.id,population:c.population,economically_active:active,
+      available_workforce:workforce.get(c.id)!.workforce,employed_total:employedTotal,
+      unemployed_total:Math.max(0,supplyTotal-employedTotal),jobs_capacity:jobsTotal,
+      vacancies_total:Math.max(0,jobsTotal-employedTotal),
+      employment_rate:supplyTotal>C.epsilon?employedTotal/supplyTotal:0,
+      unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors});
+  }
+  /** employed / jobs_capacity, clamped. Automated producers without declared labour run at their own staffing. */
+  const staffingRatio=(p:Producer)=>{const jobs=jobsOf(p);
+    return jobs>C.epsilon?clamp((employed.get(p.id)||0)/jobs):clamp(p.staffing)*(n(p.recipe.labor)>0?0:1);};
   // Factories may use food surplus, never the last edible stock needed by residents.
   // The same rule applies to local processing and to industrial exports.
   const foodReserve=(c:City,g:Good)=>{
