@@ -98,33 +98,5 @@ export async function extractEventsFromText(
   return data;
 }
 
-export async function runWorldTick(
-  sessionId: string,
-  turnNumber: number
-): Promise<{ ok: boolean; alreadyProcessed?: boolean; tickId?: string; results?: any; error?: string }> {
-  const { data, error } = await supabase.functions.invoke("world-tick", {
-    body: { sessionId, turnNumber },
-  });
-
-  if (error) {
-    // Try to read response body from FunctionsHttpError context
-    try {
-      let body: any = null;
-      if (error.context && typeof error.context === "object" && "json" in error.context) {
-        body = await (error.context as Response).json();
-      } else {
-        // Fallback: try regex on message
-        const msg = error.message || "";
-        const jsonMatch = msg.match(/\{[\s\S]*\}/);
-        if (jsonMatch) body = JSON.parse(jsonMatch[0]);
-      }
-      if (body?.error === "Tick already processed") {
-        return { ok: false, alreadyProcessed: true, tickId: body.tickId };
-      }
-    } catch { /* parsing failed, fall through */ }
-    console.error("World tick error:", error);
-    return { ok: false, error: error.message || "Unknown error" };
-  }
-
-  return data;
-}
+// Phase 4: runWorldTick() removed together with the `world-tick` edge function.
+// Turn resolution runs through commit-turn only.

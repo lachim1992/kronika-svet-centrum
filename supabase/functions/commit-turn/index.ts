@@ -14,10 +14,13 @@ import {
 } from "../_shared/physics.ts";
 import {
   normalizePopulationClasses, applyPopulationLoss, POPULATION_FLOOR,
+  computeIntercityMigration, splitNaturalChange,
+  computeHousingCapacity, computeOvercrowdingRatio,
 } from "../_shared/demographics.ts";
 
 import { logAISkip } from "../_shared/ai-context.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
+import { advanceTurnProgress } from "../_shared/turnProgress.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,13 +91,18 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════
     const { data: existingTick } = await supabase
       .from("world_tick_log")
-      .select("id")
+      .select("id, results")
       .eq("session_id", sessionId)
       .eq("turn_number", turnNumber)
       .maybeSingle();
 
     if (existingTick) {
-      results.worldTick = { skipped: true, reason: "already_processed", tickId: existingTick.id };
+      // Replay: reuse the population ledger computed by the original tick so the
+      // history write below stays idempotent instead of recomputing demographics.
+      results.worldTick = {
+        skipped: true, reason: "already_processed", tickId: existingTick.id,
+        populationLedger: (existingTick.results as any)?.populationLedger || [],
+      };
     } else {
       // Create tick lock
       const { data: tickLog } = await supabase
@@ -143,16 +151,14 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 2. PROCESS-TICK (housekeeping)
+    // 2. TURN PROGRESS — army traversal, ambush, sieges, node projects
+    // Phase 4: extracted from the removed time-based `process-tick`.
     // ═══════════════════════════════════════════
     try {
-      await supabase.functions.invoke("process-tick", {
-        body: { sessionId },
-      });
-      results.processTick = { ok: true };
+      results.turnProgress = await advanceTurnProgress(supabase, sessionId, turnNumber);
     } catch (e) {
-      console.error("process-tick error:", e);
-      results.processTick = { error: (e as Error).message };
+      console.error("turn progress error:", e);
+      results.turnProgress = { error: (e as Error).message };
     }
 
     // ═══════════════════════════════════════════
@@ -1034,6 +1040,20 @@ Deno.serve(async (req) => {
           const { error: hErr } = await supabase.from("node_economy_history").insert(histRows.slice(i, i + 50));
           if (hErr) console.warn("node_economy_history insert warning:", hErr.message);
         }
+        // POPULATION HISTORY — written only on a successful pipeline, idempotent
+        // per (session, turn). Source: the canonical population writer above.
+        const popLedger = ((results.worldTick as any)?.populationLedger || []) as any[];
+        if (popLedger.length > 0) {
+          await supabase.from("city_population_ledger")
+            .delete().eq("session_id", sessionId).eq("turn_number", turnNumber);
+          for (let i = 0; i < popLedger.length; i += 50) {
+            const { error: pErr } = await supabase.from("city_population_ledger")
+              .insert(popLedger.slice(i, i + 50));
+            if (pErr) console.warn("city_population_ledger insert warning:", pErr.message);
+          }
+        }
+        results.populationHistory = { turn_number: turnNumber, rows: popLedger.length };
+
         results.economySnapshot = { status: "done", turn_number: historyTurn, rows: histRows.length };
       } catch (e) {
         console.error("economy snapshot error:", e);
@@ -1700,11 +1720,31 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
   const aiFactionNames = (aiFactions || []).map((f: any) => f.faction_name);
   const allActorNames = [...new Set([...playerNames, ...aiFactionNames])];
 
-  // ═══ SETTLEMENT GROWTH → emit events ═══
+  // ═══ SETTLEMENT GROWTH + CITY↔CITY MIGRATION → emit events ═══
   // CANONICAL POPULATION WRITER (turn-based resolution). See
   // docs/architecture/economy-contract.md — INVARIANT 4.
+  //
+  // Order matters: natural change first, then migration redistributes the
+  // post-growth population. Migration only MOVES people (INVARIANT 1), so the
+  // realm total after this block equals total after natural change.
   const cityEvents: any[] = [];
   const postGrowthPop: Record<string, number> = {};
+  const growthInfo: Record<string, {
+    city: any; beforePop: number; afterGrowth: number; delta: number;
+    stability: number; legitimacy: number; dev: number; housing: number;
+    growthModifier: number;
+  }> = {};
+
+  // Housing capacity per city (districts + buildings) for migration headroom.
+  const [{ data: allDistricts }, { data: allBuildings }] = await Promise.all([
+    supabase.from("city_districts").select("city_id, population_capacity, status").eq("session_id", sessionId),
+    supabase.from("city_buildings").select("city_id, effects, status").eq("session_id", sessionId),
+  ]);
+  const districtsByCity: Record<string, any[]> = {};
+  for (const d of (allDistricts || [])) (districtsByCity[d.city_id] = districtsByCity[d.city_id] || []).push(d);
+  const buildingsByCity: Record<string, any[]> = {};
+  for (const b of (allBuildings || [])) (buildingsByCity[b.city_id] = buildingsByCity[b.city_id] || []).push(b);
+
   for (const city of (cities || [])) {
     // Civ DNA growth bonus is now an EXPLICIT growth-rate modifier.
     const ownerBonuses = civBonusMap[city.owner_player] || {};
@@ -1727,33 +1767,127 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     const currentLegitimacy = city.legitimacy || 50;
     const adjustedLegitimacy = Math.max(0, Math.min(100, currentLegitimacy + Math.round(civLegitBonus * 0.1)));
 
-    if (adjustedDelta !== 0 || civStabBonus !== 0 || civLegitBonus !== 0) {
-      const layers = normalizePopulationClasses(adjustedNewPop, city);
-      cityEvents.push({
-        cityId: city.id,
-        updates: {
-          ...layers,
-          city_stability: adjustedStability,
-          legitimacy: adjustedLegitimacy,
-          development_level: growth.newDev,
+    growthInfo[city.id] = {
+      city,
+      beforePop: city.population_total,
+      afterGrowth: adjustedNewPop,
+      delta: adjustedDelta,
+      stability: adjustedStability,
+      legitimacy: adjustedLegitimacy,
+      dev: growth.newDev,
+      housing: computeHousingCapacity({
+        settlement_level: city.settlement_level || "HAMLET",
+        districts: districtsByCity[city.id] || [],
+        buildings: buildingsByCity[city.id] || [],
+      }),
+      growthModifier: growthBonus,
+    };
+  }
+
+  // ── City↔city migration over post-growth populations ──
+  const migration = computeIntercityMigration(
+    (cities || []).map((c: any) => {
+      const info = growthInfo[c.id];
+      return {
+        id: c.id,
+        name: c.name,
+        owner_player: c.owner_player,
+        population_total: info?.afterGrowth ?? c.population_total,
+        city_stability: info?.stability ?? (c.city_stability || 70),
+        famine_turn: !!c.famine_turn,
+        housing_capacity: info?.housing ?? 400,
+        // TODO(Phase E): wire demographic policies (open/closed gates) from
+        // city_policies once they have a canonical owner. No column today.
+        demo_policy: undefined,
+      };
+    }),
+  );
+  results.migrationFlows = migration.flows;
+
+  const populationLedger: any[] = [];
+  for (const city of (cities || [])) {
+    const info = growthInfo[city.id];
+    if (!info) continue;
+    const emigration = migration.emigration[city.id] || 0;
+    const immigration = migration.immigration[city.id] || 0;
+    const finalPop = Math.max(POPULATION_FLOOR, info.afterGrowth - emigration + immigration);
+    const natural = splitNaturalChange(info.delta, {
+      population_total: info.beforePop,
+      city_stability: city.city_stability,
+      famine_turn: !!city.famine_turn,
+      overcrowding_ratio: computeOvercrowdingRatio(info.beforePop, info.housing),
+      epidemic_active: !!city.epidemic_active,
+    });
+
+    populationLedger.push({
+      session_id: sessionId,
+      city_id: city.id,
+      turn_number: turnNumber,
+      population_before: info.beforePop,
+      population_after: finalPop,
+      births: natural.births,
+      deaths: natural.deaths,
+      local_immigration: 0, // rural → city transfer is Phase C
+      intercity_immigration: immigration,
+      emigration,
+      extraordinary_losses: 0, // famine/battle losses are applied by their own paths
+    });
+
+    const changed = finalPop !== info.beforePop
+      || info.stability !== (city.city_stability || 70)
+      || info.legitimacy !== (city.legitimacy || 50)
+      || emigration > 0 || immigration > 0;
+    if (!changed) continue;
+
+    const layers = normalizePopulationClasses(finalPop, city);
+    cityEvents.push({
+      cityId: city.id,
+      updates: {
+        ...layers,
+        city_stability: info.stability,
+        legitimacy: info.legitimacy,
+        development_level: info.dev,
+        last_migration_in: immigration,
+        last_migration_out: emigration,
+      },
+    });
+
+    if (finalPop !== info.beforePop) {
+      const delta = finalPop - info.beforePop;
+      emittedEvents.push({
+        session_id: sessionId, turn_number: turnNumber,
+        player: "Systém", actor_type: "system",
+        event_type: "city_growth", confirmed: true, truth_state: "canon",
+        city_id: city.id,
+        note: `Populace ${city.name}: ${info.beforePop} → ${finalPop} (${delta > 0 ? "+" : ""}${delta}).`
+          + (immigration || emigration ? ` Přistěhovalo ${immigration}, odešlo ${emigration}.` : ""),
+        importance: "normal",
+        reference: {
+          cityId: city.id, cityName: city.name,
+          oldPop: info.beforePop, newPop: finalPop, delta,
+          births: natural.births, deaths: natural.deaths,
+          intercity_immigration: immigration, emigration,
+          growthModifier: info.growthModifier,
         },
       });
-
-      if (adjustedDelta !== 0) {
-        emittedEvents.push({
-          session_id: sessionId, turn_number: turnNumber,
-          player: "Systém", actor_type: "system",
-          event_type: "city_growth", confirmed: true, truth_state: "canon",
-          city_id: city.id,
-          note: `Populace ${city.name}: ${city.population_total} → ${adjustedNewPop} (${adjustedDelta > 0 ? "+" : ""}${adjustedDelta}).`,
-          importance: "normal",
-          reference: { cityId: city.id, cityName: city.name, oldPop: city.population_total, newPop: adjustedNewPop, delta: adjustedDelta, growthModifier: growthBonus },
-        });
-      }
     }
   }
+
+  for (const flow of migration.flows) {
+    emittedEvents.push({
+      session_id: sessionId, turn_number: turnNumber,
+      player: "Systém", actor_type: "system",
+      event_type: "migration", confirmed: true, truth_state: "canon",
+      city_id: flow.to_city_id,
+      note: `${flow.migrants} obyvatel se přestěhovalo z ${flow.from_city_name} do ${flow.to_city_name} (${flow.reason}).`,
+      importance: "normal",
+      reference: flow,
+    });
+  }
+
   results.cityEvents = cityEvents;
   results.growthCount = cityEvents.length;
+  results.populationLedger = populationLedger;
 
 
   // ═══ INFLUENCE → compute with trait + civ DNA modifiers ═══
