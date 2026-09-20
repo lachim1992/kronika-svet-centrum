@@ -1,7 +1,7 @@
 import { resolveGoodsEconomy, produced, type Snapshot, type City, type Good, type Producer, type Edge } from './goodsEconomy.ts';
 import { actualSoldiers, workforceLawModifiers } from './manpower.ts';
 import { staffingCapacity } from './cityDistricts.ts';
-import { BASKET_TIER, ECONOMY, normalizeLabor, INDUSTRIAL_INPUTS, HOUSEHOLD_GOODS } from './economyConfig.ts';
+import { BASKET_TIER, ECONOMY, normalizeLabor, INDUSTRIAL_INPUTS, HOUSEHOLD_GOODS, GOOD_FINAL_USE, GOOD_HOUSEHOLD } from './economyConfig.ts';
 import { buildManagementReport } from './management.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
 
@@ -46,7 +46,8 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const profile=g.friction_profile||{};
     const luxury=['luxury_clothing','feast'].includes(bk),stone=/stone|marble|brick/.test(g.key),food=bk==='staple_food'||bk==='feast';
     return {key:g.key,basket:bk,price:nonnegative(g.base_price_numeric),stage:g.production_stage,storable:g.storable,
-      finalUse:profile.final_use??!INDUSTRIAL_INPUTS.includes(g.key),household:profile.household??(HOUSEHOLD_GOODS[bk]||[]).includes(g.key),
+      finalUse:profile.final_use??GOOD_FINAL_USE[g.key]??!INDUSTRIAL_INPUTS.includes(g.key),
+      household:profile.household??GOOD_HOUSEHOLD[g.key]??(HOUSEHOLD_GOODS[bk]||[]).includes(g.key),
       bulk:profile.bulk_factor??(stone?12:luxury?0.2:1),density:profile.value_density??(luxury?30:stone?0.1:3),
       perishability:profile.perishability??(food?0.01:0),storageLoss:profile.storage_loss??(food?0.03:0.001),
       storageCost:profile.storage_cost??0,substitutability:profile.substitutability??1,strategic:profile.strategic_priority??(bk==='military_supply'?1:0),
@@ -93,21 +94,42 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       recipe:recipe(r),allocation:weights[i]/total,staffing:1,logistics:nonnegative(node.route_access_factor??1),mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
       source:node.production_role==='source',distinctive:(r.input_items||[]).some((i:any)=>/silk|dye|gold|spice|gem/.test(i.key||''))}));
   }
-  const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,tags:string[],allowSource=false)=>{
+  const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
+  /**
+   * Explicit production contract. A structure runs either an exact recipe whitelist
+   * (effects.recipe_keys) or the recipes matching its declared capability tags and roles.
+   * A structure without any declared craft produces nothing — basket capacity alone is not
+   * a licence to run unrelated extraction, processing or manufacturing recipes.
+   */
+  const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,
+    tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean}={})=>{
     if(!cityMap.has(city))return;
-    for(const [bk,capacity] of Object.entries(outputs)){
-      // A structure that explicitly declares an output basket brings its own craft with it;
-      // only structures with declared capability tags are restricted to matching recipes.
-      const gated=tags.length>0;
-      const candidates=db.production_recipes.filter(r=>goodMap.get(r.output_good_key)?.basket===basket(bk)&&
-        (role(r)!=='source'||allowSource)&&(!gated||(r.required_tags||[]).every((tag:string)=>tags.includes(tag))));
-      if(!candidates.length)continue;
-      for(const r of candidates)producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity:nonnegative(capacity),recipe:recipe(r),
+    const total=Object.values(outputs).reduce((s,v)=>s+nonnegative(v),0);
+    const push=(candidates:any[],capacity:number)=>{
+      if(!candidates.length||capacity<=0)return;
+      for(const r of candidates)producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),
         allocation:1/candidates.length,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
         distinctive:(r.input_items||[]).some((i:any)=>/silk|dye|gold|spice|gem/.test(i.key||''))});
+    };
+    if(options.recipeKeys?.length){
+      // Exact whitelist: unknown keys are a contract error, roles/tags must still match.
+      const candidates=options.recipeKeys.map(key=>{const r=recipeByKey.get(key);
+        if(!r)throw Error(`Structure ${id} references unknown recipe ${key}`);return r;});
+      const roles=options.roles||[];
+      const legal=candidates.filter((r:any)=>(!roles.length||roles.includes(role(r))||roles.includes(r.required_role))&&
+        (r.required_tags||[]).every((tag:string)=>tags.includes(tag)));
+      push(legal,total);
+      return;
+    }
+    if(!tags.length)return;
+    for(const [bk,capacity] of Object.entries(outputs)){
+      const candidates=db.production_recipes.filter(r=>goodMap.get(r.output_good_key)?.basket===basket(bk)&&
+        (role(r)!=='source'||options.allowSource)&&(!options.roles?.length||options.roles.includes(role(r))||options.roles.includes(r.required_role))&&
+        (r.required_tags||[]).length>0&&(r.required_tags||[]).every((tag:string)=>tags.includes(tag)));
+      push(candidates,nonnegative(capacity));
     }
   };
-  // Basket capacity is not a license to run unrelated extraction/processing recipes.
+  // Legacy compatibility only: buildings saved before explicit metadata existed.
   const facilityTags=(name:string):string[]=>{
     const rules:[RegExp,string[]][]=[[/bakery|pekár/i,['baking']],[/mill|mlýn/i,['milling']],
       [/weav|tkal|silk|hedváb/i,['weaving']],[/forge|smith|ková|armory|arsenal|zbroj/i,['smithing','armoring']],
@@ -121,14 +143,17 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const effect={...template?.effects,...b.effects};
     const name=`${template?.key||''} ${template?.name||''} ${b.name||''}`;
     const tags=effect.capability_tags||facilityTags(name);
-    structure(b.id,b.city_id,'facility',effect.basket_outputs||{},true,tags,/well|aqueduct|studn|akvad|woodcut|lumber|dřev/i.test(name));
+    structure(b.id,b.city_id,'facility',effect.basket_outputs||{},true,tags,
+      {recipeKeys:effect.recipe_keys,roles:effect.production_roles,
+       allowSource:!!effect.recipe_keys||/well|aqueduct|studn|akvad|woodcut|lumber|dřev/i.test(name)});
   }
   for(const c of cities){const districts=db.city_districts.filter(d=>d.city_id===c.id&&d.status==='completed').sort((a,b)=>a.id.localeCompare(b.id));
     let staffed=staffingCapacity(districts.filter(d=>d.district_type==='residential'||d.type==='residential').length);
     for(const d of districts.filter(d=>d.district_type==='production')){
       const farm=/hospodářský pás|farm_belt/i.test(d.name||'');
       structure(d.id,c.id,'district',{[basket(d.basket_key)]:nonnegative(d.basket_output)},staffed-->0,
-        farm?['farming','herding','gathering']:['weaving','smithing','armoring','construction','crafting','baking','spinning','smelting','stonecutting','sawing'],farm);
+        farm?['farming','herding','gathering']:['weaving','smithing','armoring','construction','crafting','baking','spinning','smelting','stonecutting','sawing'],
+        {allowSource:farm});
     }
   }
   const edges:Edge[]=db.road_segments.filter(r=>r.status==='completed').map(r=>({id:r.id,from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`,

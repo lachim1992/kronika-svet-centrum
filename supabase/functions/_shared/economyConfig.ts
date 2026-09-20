@@ -1,3 +1,5 @@
+import { GOODS } from './productionCatalog.ts';
+
 /** All new economy coefficients live here. Quantities and monetary values stay separate. */
 export const ECONOMY = {
   epsilon: 1e-8, minLot: 0.01, transportUnitCost: 0.12, waterBulkEfficiency: 0.18,
@@ -12,6 +14,8 @@ export const ECONOMY = {
   priceScarcityGain: 1.4, priceGlutRelief: 0.35, priceFloor: 0.45, priceCeiling: 3.2,
   priceStorageRelief: 0.05, priceRiskCost: 0.04, arbitrageMargin: 0.03,
 
+  /** Industrial inputs travel further than household shopping: factories pay for reach. */
+  inputReachBonus: 2.5,
   famePrestige: 0.1,
   sectors: { farming: 0.4, crafting: 0.3, administration: 0.1, logistics: 0.2 },
   householdBaskets: ['staple_food', 'basic_clothing', 'tools', 'fuel', 'drinking_water', 'construction'],
@@ -26,12 +30,20 @@ export function normalizeLabor(value: Record<string, number> = {}) {
   const total = Object.values(values).reduce((s, n) => s + Math.max(0, Number(n) || 0), 0);
   return Object.fromEntries(Object.entries(values).map(([k, n]) => [k, total ? Math.max(0, Number(n) || 0) / total : 0]));
 }
-export const INDUSTRIAL_INPUTS = ['raw_ore', 'raw_fiber', 'raw_hide', 'yarn', 'iron_ingot', 'copper_ingot', 'flour'];
-export const HOUSEHOLD_GOODS: Record<string, string[]> = {
-  staple_food: ['grain', 'raw_grain', 'fish'], basic_clothing: ['textile_basic'],
-  tools: ['basic_tools'], fuel: ['firewood', 'timber', 'peat'],
-  drinking_water: ['well_water'], construction: ['timber', 'raw_stone'],
-};
+/**
+ * Explicit final-use metadata comes from goods.friction_profile.final_use; the catalog mirror
+ * is the canonical fallback and this legacy list is only the last resort for unknown keys.
+ */
+export const INDUSTRIAL_INPUTS = [
+  'raw_ore', 'raw_fiber', 'raw_hide', 'raw_stone', 'raw_timber', 'raw_olives', 'raw_grapes',
+  'raw_incense', 'yarn', 'leather', 'iron_ingot', 'copper_ingot', 'flour',
+];
+/** Catalog-derived final-use / household classification (no stale aliases). */
+export const GOOD_FINAL_USE: Record<string, boolean> = Object.fromEntries(GOODS.map((g) => [g.key, g.finalUse]));
+export const GOOD_HOUSEHOLD: Record<string, boolean> = Object.fromEntries(GOODS.map((g) => [g.key, g.household]));
+/** Household subsistence baseline per basket, derived from the catalog. */
+export const HOUSEHOLD_GOODS: Record<string, string[]> = GOODS.filter((g) => g.household)
+  .reduce((acc: Record<string, string[]>, g) => { (acc[g.basket] ||= []).push(g.key); return acc; }, {});
 export const DEMAND_WEIGHTS: Record<string, Record<string,number>> = {
   staple_food:{peasants:1,burghers:0.6,clerics:0.3,warriors:0.8},
   basic_clothing:{peasants:0.4,burghers:0.7,clerics:0.5,warriors:0.3},
