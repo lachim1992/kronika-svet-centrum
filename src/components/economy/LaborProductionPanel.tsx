@@ -26,6 +26,31 @@ export default function LaborProductionPanel({ sessionId, cities, playerName, cu
   const name = (id: string) => cities.find(c => c.id === id)?.name || report.cities?.find((c: any) => c.id === id)?.name || id;
   const labor: any[] = (report.labor || []).filter((l: any) => !cityId || l.city === cityId);
   const producers: any[] = (report.producers || []).filter((p: any) => !cityId || p.city === cityId);
+  /**
+   * One row per structure, not per recipe line. Producer ids are `structure:recipe`, so a mill
+   * running four recipes is one building with one crew — summing the lines keeps the headcount,
+   * capacity and output honest instead of showing fractional crews.
+   */
+  const structures = Object.values(producers.reduce((acc: Record<string, any>, p: any) => {
+    const id = String(p.producer).split(':')[0];
+    const s = acc[id] ||= { id, city: p.city, goods: [] as string[], jobs_capacity: 0, employed: 0,
+      capacity: 0, potential_output: 0, realized: 0, inputs: [] as any[], reasons: [] as string[] };
+    if (!s.goods.includes(p.good)) s.goods.push(p.good);
+    s.jobs_capacity += Number(p.jobs_capacity || 0);
+    s.employed += Number(p.employed || 0);
+    s.capacity = Math.max(s.capacity, Number(p.capacity || 0));
+    s.potential_output += Number(p.potential_output || 0);
+    s.realized += Number(p.realized || 0);
+    for (const i of p.inputs || []) {
+      const found = s.inputs.find((x: any) => x.good === i.good);
+      if (found) { found.required += Number(i.required || 0); found.supplied += Number(i.supplied || 0); }
+      else s.inputs.push({ good: i.good, required: Number(i.required || 0), supplied: Number(i.supplied || 0) });
+    }
+    const reason = p.bottleneck ? `úzké místo: ${p.bottleneck}` : BLOCKED[p.blocked] || p.blocked || '';
+    if (reason && !s.reasons.includes(reason)) s.reasons.push(reason);
+    return acc;
+  }, {})) as any[];
+
   const realm = (report.labor || []).reduce((acc: any, l: any) => ({
     workforce: acc.workforce + l.available_workforce, employed: acc.employed + l.employed_total,
     unemployed: acc.unemployed + l.unemployed_total, jobs: acc.jobs + l.jobs_capacity, vacancies: acc.vacancies + l.vacancies_total,
