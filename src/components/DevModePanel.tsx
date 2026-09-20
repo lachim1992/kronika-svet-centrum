@@ -19,6 +19,7 @@ import DevConsolePanel from "@/components/dev/DevConsolePanel";
 import ProvinceGraphPanel from "@/components/dev/ProvinceGraphPanel";
 import HexNodeMechanicsPanel from "@/components/dev/HexNodeMechanicsPanel";
 import DevRoadSpeedupPanel from "@/components/dev/DevRoadSpeedupPanel";
+import RuralPopulationShadowPanel from "@/components/dev/RuralPopulationShadowPanel";
 import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
