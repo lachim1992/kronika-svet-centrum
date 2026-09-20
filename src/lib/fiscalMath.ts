@@ -27,8 +27,10 @@ export const PILLAR_META: Record<PillarKey, { label: string; icon: string; softT
     rateColumn: "tax_rate_poll",
     revenueColumn: "wealth_pop_tax",
   },
+  // POZOR: last_turn_gdp_* nejsou složky HDP, ale překrývající se daňové základy
+  // (zdanitelná aktivita). Nesčítají se do HDP a nesmí se tak zobrazovat.
   domestic: {
-    label: "Domácí spotřeba", icon: "🏛️", softThreshold: 0.30,
+    label: "Základ: domácí spotřeba", icon: "🏛️", softThreshold: 0.30,
     gdpColumn: "last_turn_gdp_domestic",
     rateColumn: "tax_rate_domestic",
     revenueColumn: "wealth_domestic_market",
