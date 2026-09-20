@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveGoodsEconomy, produced, type Good, type City, type Producer, type Snapshot } from '../../supabase/functions/_shared/goodsEconomy';
 import { ECONOMY } from '../../supabase/functions/_shared/economyConfig';
-import { ECONOMY } from "../../supabase/functions/_shared/economyConfig";
 // Fixture crews are one person per output unit; the engine measures labour in crews of ECONOMY.workersPerLaborUnit.
 const FIXTURE_LABOR = 1 / ECONOMY.workersPerLaborUnit;
 
