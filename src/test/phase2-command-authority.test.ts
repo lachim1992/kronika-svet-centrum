@@ -17,18 +17,21 @@ const CITY_ACTIONS = read("src/components/map/CityActionsPopover.tsx");
  * write to a canonical table.
  */
 describe("phase 2: canonical writes live in command-dispatch", () => {
-  const goldWrite = /from\("realm_resources"\)[\s\S]{0,200}?\.update\(/;
+  // Any UI update touching a fiscal/ledger column of realm_resources.
+  const ledgerWrite = /\.update\(\{[^}]*(gold_reserve|grain_reserve|production_reserve|manpower_pool)/;
 
   it("ArmyTab no longer writes the treasury or inserts generals", () => {
-    expect(goldWrite.test(ARMY)).toBe(false);
+    expect(ledgerWrite.test(ARMY)).toBe(false);
     expect(ARMY).not.toMatch(/from\("generals"\)\s*\.insert/);
     expect(ARMY).not.toMatch(/Math\.random\(\)\s*\*\s*30/);
     expect(ARMY).toMatch(/commandType: "RECRUIT_GENERAL"/);
   });
 
   it("UprisingDialog resolves through RESOLVE_UPRISING only", () => {
-    expect(goldWrite.test(UPRISING)).toBe(false);
-    expect(UPRISING).not.toMatch(/from\("city_uprisings"\)\s*\.update\(/);
+    expect(ledgerWrite.test(UPRISING)).toBe(false);
+    // narrative cache writes are fine; resolution state must not be client-side
+    expect(UPRISING).not.toMatch(/status: "resolved"/);
+    expect(UPRISING).not.toMatch(/chosen_concession/);
     expect(UPRISING).toMatch(/commandType: "RESOLVE_UPRISING"/);
   });
 
@@ -41,7 +44,7 @@ describe("phase 2: canonical writes live in command-dispatch", () => {
   });
 
   it("neutral pacts are signed server-side", () => {
-    expect(goldWrite.test(CITY_ACTIONS)).toBe(false);
+    expect(ledgerWrite.test(CITY_ACTIONS)).toBe(false);
     expect(CITY_ACTIONS).not.toMatch(/from\("neutral_trade_pacts" as any\)\s*\.insert/);
     expect(CITY_ACTIONS).toMatch(/commandType: "SIGN_NEUTRAL_PACT"/);
   });
