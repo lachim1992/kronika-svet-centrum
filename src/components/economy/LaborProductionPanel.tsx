@@ -74,23 +74,24 @@ export default function LaborProductionPanel({ sessionId, cities, playerName, cu
     </div>)}
 
     <div className="overflow-auto"><table className="w-full text-xs">
-      <caption className="text-left mb-1">Jednotliví výrobci: obsazenost, možná výroba, vstupy a skutečná výroba</caption>
-      <thead><tr>{['Město', 'Zboží', 'Místa obsazená / celkem', 'Obsazenost', 'Kapacita', 'Možná výroba', 'Vstupy (dodáno / potřeba)', 'Skutečná výroba', 'Co brání'].map(h =>
+      <caption className="text-left mb-1">Jednotlivé stavby: obsazenost, možná výroba, vstupy a skutečná výroba</caption>
+      <thead><tr>{['Město', 'Stavba vyrábí', 'Místa obsazená / celkem', 'Obsazenost', 'Kapacita', 'Možná výroba', 'Vstupy (dodáno / potřeba)', 'Skutečná výroba', 'Co brání'].map(h =>
         <th key={h} className="p-2 text-right first:text-left">{h}</th>)}</tr></thead>
-      <tbody>{producers.map((p: any) => <tr key={p.producer} className="border-t align-top">
-        <td className="p-2">{name(p.city)}</td>
-        <td className="p-2">{p.good}</td>
-        <td className="p-2 text-right">{fmt(p.employed)} / {fmt(p.jobs_capacity)}</td>
-        <td className="p-2 text-right">{pct(p.staffing_ratio)}</td>
-        <td className="p-2 text-right">{fmt(p.capacity, 2)}</td>
-        <td className="p-2 text-right">{fmt(p.potential_output, 2)}</td>
-        <td className="p-2 text-right">{(p.inputs || []).length
-          ? (p.inputs || []).map((i: any) => <div key={i.good}>{i.good}: {fmt(i.supplied, 2)} / {fmt(i.required, 2)}</div>)
+      <tbody>{structures.map(s => <tr key={s.id} className="border-t align-top">
+        <td className="p-2">{name(s.city)}</td>
+        <td className="p-2">{s.goods.join(', ')}</td>
+        <td className="p-2 text-right">{fmt(s.employed)} / {fmt(s.jobs_capacity)}</td>
+        <td className="p-2 text-right">{pct(s.jobs_capacity > 0 ? s.employed / s.jobs_capacity : 0)}</td>
+        <td className="p-2 text-right">{fmt(s.capacity, 2)}</td>
+        <td className="p-2 text-right">{fmt(s.potential_output, 2)}</td>
+        <td className="p-2 text-right">{s.inputs.length
+          ? s.inputs.map(i => <div key={i.good}>{i.good}: {fmt(i.supplied, 2)} / {fmt(i.required, 2)}</div>)
           : '—'}</td>
-        <td className="p-2 text-right">{fmt(p.realized, 2)}</td>
-        <td className="p-2 text-right">{p.bottleneck ? `úzké místo: ${p.bottleneck}` : BLOCKED[p.blocked] || p.blocked || '—'}</td>
+        <td className="p-2 text-right">{fmt(s.realized, 2)}</td>
+        <td className="p-2 text-right">{s.reasons.length ? s.reasons.join(', ') : '—'}</td>
       </tr>)}</tbody>
     </table></div>
-    {!producers.length && <p className="text-sm text-muted-foreground">Žádné výrobní stavby — bez nich nevzniká žádné zboží, jen poptávka.</p>}
+    {!structures.length && <p className="text-sm text-muted-foreground">Žádné výrobní stavby — bez nich nevzniká žádné zboží, jen poptávka.</p>}
+
   </section>;
 }
