@@ -216,11 +216,16 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // Structures declare jobs; the city fills them from the civilian workforce of the sector.
   // No worker is counted twice, employment never exceeds supply nor declared jobs.
   const producerSector=(p:Producer)=>BASKET_SECTOR[goodByKey.get(p.recipe.good)?.basket||'']||'crafting';
+  /**
+   * HEADCOUNT. A producing structure declares its crew (ECONOMY.structureJobsBase at level 1,
+   * doubling per level). Jobs are split between its recipe lines by allocation, so a structure
+   * never employs more people than it declares, whatever recipes it happens to run.
+   */
   const jobsOf=(p:Producer)=>{
-    if(p.jobs!==undefined)return n(p.jobs)*clamp(p.allocation)*clamp(p.staffing);
-    const perUnit=n(p.recipe.labor)/Math.max(C.epsilon,n(p.recipe.qty));
-    return n(p.capacity)*clamp(p.allocation)*perUnit*C.workersPerLaborUnit*clamp(p.staffing);
+    const declared=p.jobs!==undefined?n(p.jobs):(n(p.capacity)>0?C.structureJobsBase:0);
+    return declared*clamp(p.allocation)*clamp(p.staffing);
   };
+
   const laborSupply=(c:City,sector:Sector)=>workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
   const employed=new Map<string,number>();
   const laborMetrics:CityLabor[]=[];
