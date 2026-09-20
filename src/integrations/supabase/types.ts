@@ -11904,6 +11904,35 @@ export type Database = {
           },
         ]
       }
+      world_layer_tick_guards: {
+        Row: {
+          created_at: string
+          result: Json
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          result?: Json
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          created_at?: string
+          result?: Json
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_layer_tick_guards_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       world_memories: {
         Row: {
           approved: boolean
