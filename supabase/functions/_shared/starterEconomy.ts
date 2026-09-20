@@ -18,7 +18,11 @@ type StarterContract = {
   roles: string[];
   tags: string[];
   basketOutputs: Record<string, number>;
-  /** Jobs the structure offers at level 1; level scaling is ECONOMY.levelCapacityScale. */
+  /**
+   * Jobs the structure offers at level 1. Canonical calibration: a producing structure employs
+   * ~100 people at level 1 and doubles per level (ECONOMY.levelCapacityScale), together with
+   * its physical throughput.
+   */
   jobsCapacity: number;
 };
 
@@ -26,26 +30,27 @@ export const STARTER_FARM: StarterContract = {
   name: 'Záhumenkové hospodářství', category: 'economic',
   description: 'Základní obživa osady: pole a pastvina s vlastní pracovní silou.',
   recipeKeys: ['harvest_wheat'], roles: ['source'], tags: ['farming', 'herding'],
-  basketOutputs: { staple_food: 3 }, jobsCapacity: 80,
+  basketOutputs: { staple_food: 3 }, jobsCapacity: 100,
 };
 export const STARTER_FISHERY: StarterContract = {
   name: 'Osadní rybářství', category: 'economic',
   description: 'Základní obživa osady u vody: rybářské pruty, sítě a sušárna.',
   recipeKeys: ['catch_fish'], roles: ['source'], tags: ['fishing'],
-  basketOutputs: { staple_food: 3 }, jobsCapacity: 60,
+  basketOutputs: { staple_food: 3 }, jobsCapacity: 100,
 };
 export const STARTER_WELL: StarterContract = {
   name: 'Osadní studna', category: 'infrastructure',
   description: 'Zdroj pitné vody pro obyvatele osady.',
   recipeKeys: ['draw_water'], roles: ['producer'], tags: ['farming'],
-  basketOutputs: { drinking_water: 2 }, jobsCapacity: 10,
+  basketOutputs: { drinking_water: 2 }, jobsCapacity: 100,
 };
 export const STARTER_STORAGE: StarterContract = {
   name: 'Osadní sklad', category: 'economic',
   description: 'Sýpka a sklad, kde osada uchová úrodu a zásoby.',
   recipeKeys: ['build_granary'], roles: ['producer'], tags: ['construction'],
-  basketOutputs: { storage_logistics: 1 }, jobsCapacity: 15,
+  basketOutputs: { storage_logistics: 1 }, jobsCapacity: 100,
 };
+
 
 export const starterBundle = (nearWater: boolean): StarterContract[] =>
   [nearWater ? STARTER_FISHERY : STARTER_FARM, STARTER_WELL, STARTER_STORAGE];
