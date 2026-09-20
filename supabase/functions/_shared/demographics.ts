@@ -250,8 +250,13 @@ export interface MigrationFlow {
 /**
  * Compute migration flows between cities of the same player.
  * Unstable/overcrowded/famine cities push population to stable ones.
+ *
+ * @deprecated Phase A: no callers. Superseded by the network migration model
+ * planned for Phase E. Do not wire this up — `resolveMigration` in physics.ts is
+ * the only migration implementation currently executed (time-based world-tick).
  */
 export function computeMigrationFlows(cities: MigrationCity[]): MigrationFlow[] {
+
   const flows: MigrationFlow[] = [];
 
   // Group by owner
