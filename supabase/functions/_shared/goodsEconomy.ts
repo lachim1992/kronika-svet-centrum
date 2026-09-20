@@ -1,5 +1,7 @@
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { computeWorkforceBreakdown } from './manpower.ts';
+import { BASKET_KEYS, DEMAND_CHANNELS, basketDemandChannels, basketSpec, channelTotal, emptyChannels,
+  toolIntensityOf, toolProductivityMultiplier, type DemandChannel, type DemandInput } from './demandModel.ts';
 
 export type Channel = 'household' | 'node' | 'facility' | 'district';
 export interface Good {
@@ -12,7 +14,8 @@ export interface City {
   id: string; owner: string; name: string; cell: string; population: number;
   classes: Record<string, number>; soldiers: number; stability: number; irrigation: number;
   labor: Partial<Record<Sector, number>>; market: number; storage: number; admin: number;
-  security: number; guild: number; ideology: keyof typeof IDEOLOGIES; coastal: boolean;
+  security: number; guild: number; /** Active building sites / projects: the only driver of construction demand. */
+  constructionProjects?: number; ideology: keyof typeof IDEOLOGIES; coastal: boolean;
   activePopModifier?: number; maxMobModifier?: number;
 }
 export interface Recipe { key: string; good: string; qty: number; inputs: { good: string; qty: number }[]; labor: number; quality: number; minQuality: number }
@@ -107,32 +110,22 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   };
   const stateDemand=new Map<string,number>();
   const laborUsed=new Map<string,number>();
-  // Demand is a need budget, not one full demand for every substitute.
-  for(const c of cities){
-    for(const basket of Object.keys(BASKET_TIER)){
-      const options=goods.filter(g=>g.basket===basket&&(g.finalUse??g.stage!=='intermediate'));if(!options.length)continue;
-      const weight=(g:Good)=> (g.key.includes('fish')?(c.coastal?3:0.2):1) *
-        (g.key.includes('bread')?(1+n(c.classes.burghers)/Math.max(1,c.population)):1)*Math.max(0.01,g.substitutability);
-      const sum=options.reduce((a,g)=>a+weight(g),0);
-      const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]).reduce((sum,[k,w])=>sum+n(c.classes[k])*w,0);
-      const demand=weightedPop*C.populationDemand/BASKET_TIER[basket];
-      const state=(basket==='military_supply'||basket==='staple_food')?c.soldiers*C.armyDemand:basket==='admin_supplies'?c.admin:0;
-      for(const g of options){const b=stock(c.id,g.key);b.demand=(demand+state)*weight(g)/sum;stateDemand.set(key(c.id,g.key),state*weight(g)/sum);}
-      // Population is NOT a goods producer. It supplies labour and demand only. The legacy
-      // household emission stays behind an explicit flag for regression comparisons.
-      if(C.householdProduction&&(C.householdBaskets as readonly string[]).includes(basket)){
-        const baseline=options.find(g=>g.household===true)||options.find(g=>g.household===undefined&&g.stage==='household');
-        if(baseline){let qty=c.population*C.householdRate/BASKET_TIER[basket]*workforce.get(c.id)!.workforceRatio*
-          sectorFactor(c,BASKET_SECTOR[basket]||'crafting')*clamp(c.stability)*
-          (BASKET_SECTOR[basket]==='farming'?1+c.irrigation*C.irrigationGain:1);
-          const sector=BASKET_SECTOR[basket]||'crafting',lk=key(c.id,sector);
-          const pool=workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
-          qty=Math.min(qty,Math.max(0,pool-(laborUsed.get(lk)||0)));
-          add(stock(c.id,baseline.key),qty,0,'household');
-          laborUsed.set(lk,(laborUsed.get(lk)||0)+qty);}
-      }
-    }
-  }
+  // Demand components are filled after the labour market, because operational and civic demand
+  // depend on how many jobs are actually staffed. See the DEMAND PASS below.
+  const demandComponents=new Map<string,Record<DemandChannel,number>>();
+  const componentsOf=(city:string,good:string)=>{const k=key(city,good);let c=demandComponents.get(k);
+    if(!c){c=emptyChannels();demandComponents.set(k,c);}return c;};
+  const addChannel=(city:string,good:string,channel:DemandChannel,qty:number)=>{
+    if(!(qty>0))return;const c=componentsOf(city,good);c[channel]+=qty;};
+  /** Move demand (with its provenance mix) from one good to a substitute in the same basket. */
+  const shiftChannels=(city:string,from:string,to:string,removed:number,added:number)=>{
+    const src=componentsOf(city,from),total=channelTotal(src);
+    if(total<=C.epsilon)return;
+    const dst=componentsOf(city,to);
+    for(const channel of DEMAND_CHANNELS){const share=src[channel]/total;
+      src[channel]=Math.max(0,src[channel]-removed*share);dst[channel]+=added*share;}
+  };
+
   const graph=new Map<string,Edge[]>();const reserved=new Map<string,number>();
   for(const e of [...snapshot.edges].sort((a,b)=>a.id.localeCompare(b.id))){if(e.capacity<=0)continue;
     graph.set(e.from,[...(graph.get(e.from)||[]),e]);graph.set(e.to,[...(graph.get(e.to)||[]),{...e,from:e.to,to:e.from}]);}
@@ -255,6 +248,76 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   /** employed / jobs_capacity, clamped. Automated producers without declared labour run at their own staffing. */
   const staffingRatio=(p:Producer)=>{const jobs=jobsOf(p);
     return jobs>C.epsilon?clamp((employed.get(p.id)||0)/jobs):clamp(p.staffing)*(n(p.recipe.labor)>0?0:1);};
+  // ── DEMAND PASS ──────────────────────────────────────────────────────────────────────
+  // ONE canonical demand solver. Population creates NEEDS (and a little discretionary
+  // consumption); everything else is demanded because the settlement actually does something:
+  // staffed industry wears tools, building sites consume construction goods, institutions need
+  // supplies, soldiers need military supply. Demand is a need budget per basket, not one full
+  // demand for every substitute inside it.
+  const toolWearOf=(c:City)=>producers.filter(p=>p.city===c.id).reduce((sum,p)=>{
+    const basket=goodByKey.get(p.recipe.good)?.basket||'';
+    return sum+n(p.capacity)*clamp(p.allocation)*staffingRatio(p)*toolIntensityOf(basket);},0);
+  const stockVolumeOf=(c:City)=>goods.reduce((sum,g)=>sum+stock(c.id,g.key).opening*Math.max(1,g.bulk),0);
+  for(const c of cities){
+    const labor=laborMetrics.find(l=>l.city===c.id);
+    const input:DemandInput={
+      weightedPop:0,populationRate:C.populationDemand,
+      affluentShare:c.population>0?(n(c.classes.burghers)+n(c.classes.clerics))/c.population:0,
+      market:n(c.market),toolWear:toolWearOf(c),
+      adminWorkers:labor?.sectors.administration?.employed??0,adminInstitutions:n(c.admin),
+      logisticsWorkers:labor?.sectors.logistics?.employed??0,
+      stockVolume:stockVolumeOf(c),constructionProjects:n(c.constructionProjects),soldiers:n(c.soldiers),
+    };
+    for(const basket of BASKET_KEYS){
+      const spec=basketSpec(basket)!;
+      // Industrial intermediates receive demand from downstream recipes only.
+      if(spec.class==='intermediate_only')continue;
+      const options=goods.filter(g=>g.basket===basket&&(g.finalUse??g.stage!=='intermediate'));if(!options.length)continue;
+      const weight=(g:Good)=> (g.key.includes('fish')?(c.coastal?3:0.2):1) *
+        (g.key.includes('bread')?(1+n(c.classes.burghers)/Math.max(1,c.population)):1)*Math.max(0.01,g.substitutability);
+      const sum=options.reduce((a,g)=>a+weight(g),0);
+      const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
+      const channels=basketDemandChannels(basket,{...input,weightedPop});
+      const total=channelTotal(channels);
+      if(total<=0)continue;
+      // Non-household channels (industry, institutions, construction, army) are state-side
+      // consumption in the ledger; households consume needs and discretionary goods.
+      const household=channels.household_need+channels.household_discretionary;
+      for(const g of options){const share=weight(g)/sum,b=stock(c.id,g.key);
+        b.demand=total*share;
+        stateDemand.set(key(c.id,g.key),(total-household)*share);
+        for(const channel of DEMAND_CHANNELS)addChannel(c.id,g.key,channel,channels[channel]*share);
+      }
+      // Population is NOT a goods producer. It supplies labour and demand only. The legacy
+      // household emission stays behind an explicit flag for regression comparisons.
+      if(C.householdProduction&&(C.householdBaskets as readonly string[]).includes(basket)){
+        const baseline=options.find(g=>g.household===true)||options.find(g=>g.household===undefined&&g.stage==='household');
+        if(baseline){let qty=c.population*C.householdRate*spec.intensity*workforce.get(c.id)!.workforceRatio*
+          sectorFactor(c,BASKET_SECTOR[basket]||'crafting')*clamp(c.stability)*
+          (BASKET_SECTOR[basket]==='farming'?1+c.irrigation*C.irrigationGain:1);
+          const sector=BASKET_SECTOR[basket]||'crafting',lk=key(c.id,sector);
+          const pool=workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
+          qty=Math.min(qty,Math.max(0,pool-(laborUsed.get(lk)||0)));
+          add(stock(c.id,baseline.key),qty,0,'household');
+          laborUsed.set(lk,(laborUsed.get(lk)||0)+qty);}
+      }
+    }
+  }
+  /**
+   * TOOL COVERAGE. Tools are durable operational support, not a hard recipe input: coverage
+   * scales productivity softly between the configured floor and 1, so zero tools never means
+   * zero production and no settlement can enter a tool death spiral.
+   */
+  const toolCoverage=new Map<string,number>();
+  for(const c of cities){
+    const toolGoods=goods.filter(g=>g.basket==='tools'&&(g.finalUse??g.stage!=='intermediate'));
+    const demand=toolGoods.reduce((s,g)=>s+stock(c.id,g.key).demand,0);
+    const supply=toolGoods.reduce((s,g)=>s+available(stock(c.id,g.key)),0);
+    toolCoverage.set(c.id,demand>C.epsilon?Math.min(1,supply/demand):1);
+  }
+  const toolFactor=(p:Producer)=>toolIntensityOf(goodByKey.get(p.recipe.good)?.basket||'')>0
+    ?toolProductivityMultiplier(toolCoverage.get(p.city)??1):1;
+
   // Factories may use food surplus, never the last edible stock needed by residents.
   // The same rule applies to local processing and to industrial exports.
   const foodReserve=(c:City,g:Good)=>{
@@ -296,7 +359,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const jobs=jobsOf(p),staffed=staffingRatio(p);
       // POTENTIAL OUTPUT: what the staffed facility could make if supplied with its inputs.
       const factors={staffing:staffed,stability:clamp(c.stability),logistics:clamp(p.logistics),mastery:n(p.mastery),
-        infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1};
+        infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1,tools:toolFactor(p)};
       const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
       const desired=Math.max(0,target-(realized.get(id)||0));
       const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target};
@@ -372,7 +435,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       sb.consumed_state+=stateQty;sb.consumed_household+=qty-stateQty;
       stateDemand.set(key(c.id,g.key),Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-stateNeed));
       stateDemand.set(key(c.id,sub.key),(stateDemand.get(key(c.id,sub.key))||0)+stateQty);
-      sb.demand+=qty;b.demand-=fulfilled;missing-=fulfilled;}
+      sb.demand+=qty;b.demand-=fulfilled;shiftChannels(c.id,g.key,sub.key,fulfilled,qty);missing-=fulfilled;}
   }};
   substitute();
   // Aggregate only for reachable downstream demand, retaining local reserves first.
@@ -399,7 +462,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const origin=cityById.get(f.city),g=goodByKey.get(f.good);if(!origin||!g)continue;
     for(const c of cities.filter(c=>c.id!==origin.id&&c.market>0)){
       const wanted=c.population*C.fameDemand*f.fame/100;
-      const b=stock(c.id,g.key);b.demand+=wanted;
+      const b=stock(c.id,g.key);b.demand+=wanted;addChannel(c.id,g.key,'fame',wanted);
       const delivered=transfer(origin,c,g,wanted,'famous_good_demand',[],stock(origin.id,g.key).demand*C.reserveTurns);
       b.consumed_household+=delivered;
     }
@@ -437,9 +500,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     b.lost_spoilage+=Math.max(0,remaining-b.stored);
     const residual=b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage-b.stored-b.capex;
     if(Math.abs(residual)>1e-6)throw Error(`Goods conservation failed ${key(c.id,g.key)}: ${residual}`);
+    // Provenance must always add up to the canonical demand: no demand without a driver.
+    const provenance=channelTotal(componentsOf(c.id,g.key));
+    if(Math.abs(provenance-b.demand)>1e-6)throw Error(`Demand provenance mismatch ${key(c.id,g.key)}: ${provenance} vs ${b.demand}`);
   }}
   const prices:PriceRow[]=cities.flatMap(c=>goods.map(g=>priceDetail(c.id,g.key)));
+  const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
+    channels:{...channels},total:channelTotal(channels)}));
   return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
-    workforce:Object.fromEntries(workforce),labor:laborMetrics};
+    workforce:Object.fromEntries(workforce),labor:laborMetrics,demand,
+    toolCoverage:Object.fromEntries(toolCoverage)};
 
 }
