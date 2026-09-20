@@ -29,6 +29,18 @@ export async function ensureCitySettlementNodes(
   if (cityErr) throw cityErr;
   const cities = (cityRows || []).filter((c: any) => c.owner_player);
 
+  // Priority node per realm: the flagged capital, or — when no city carries the flag —
+  // the largest settlement. Purely a weighting choice, never a structural difference.
+  const priority = new Map<string, string>();
+  for (const c of cities) {
+    const held = priority.get(c.owner_player);
+    if (c.is_capital === true) { priority.set(c.owner_player, c.id); continue; }
+    if (held && cities.find((x: any) => x.id === held)?.is_capital === true) continue;
+    const bestPop = held ? Number(cities.find((x: any) => x.id === held)?.population_total) || 0 : -1;
+    if ((Number(c.population_total) || 0) > bestPop) priority.set(c.owner_player, c.id);
+  }
+
+
   const { data: nodeRows, error: nodeErr } = await sb.from("province_nodes")
     .select("id, city_id, hex_q, hex_r, grid_x, grid_y, node_tier, node_subtype, node_type, name, controlled_by, capability_tags, province_id, is_major, flow_role, production_role, strategic_value, economic_value")
     .eq("session_id", sessionId);
