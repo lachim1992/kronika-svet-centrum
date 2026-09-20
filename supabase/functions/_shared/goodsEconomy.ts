@@ -55,7 +55,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const goods=[...snapshot.goods].sort((a,b)=>a.key.localeCompare(b.key));
   const cityById=new Map(cities.map(c=>[c.id,c])); const goodByKey=new Map(goods.map(g=>[g.key,g]));
   const balances=new Map<string,Balance>(); const flows: Flow[]=[];
-  const diagnostics: {producer:string; good:string; capacity:number; realized:number; factors:Record<string,number>; blocked:string|null; delivery_path?:string[]}[]=[];
+  const diagnostics: {producer:string; good:string; capacity:number; realized:number; factors:Record<string,number>;
+    jobs_capacity?:number; employed?:number; staffing_ratio?:number; potential_output?:number;
+    inputs?:{good:string;required:number;supplied:number}[]; bottleneck?:string|null;
+    blocked:string|null; delivery_path?:string[]}[]=[];
   const priorFame=new Map(snapshot.fame.map(f=>[key(f.city,f.good),f]));
   const stock=(city:string,good:string):Balance=>{
     if(!cityById.has(city)||!goodByKey.has(good)) throw Error(`Invalid economy reference ${city}/${good}`);
