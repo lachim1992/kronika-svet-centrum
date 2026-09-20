@@ -1395,24 +1395,19 @@ Deno.serve(async (req) => {
         else if (avgSat > 0.3) stabilityDrift = -2;  // Under-supplied
         else stabilityDrift = -5;                      // Critical shortage
 
-        // Population growth modifier from staple fulfillment
-        let popGrowthMod = 0;
-        if (stapleSat > 0.8) popGrowthMod = 0.002;   // +0.2% bonus growth
-        else if (stapleSat < 0.3) popGrowthMod = -0.003; // -0.3% growth penalty
+        // PHASE A: process-turn is NOT a population writer. The staple-based
+        // growth mutation was removed — commit-turn (turn-based) / world-tick
+        // (time-based) own population. Staple satisfaction only drives stability
+        // here; demand-driven growth returns in Phase D via the canonical
+        // births/deaths model.
 
         // Apply stability drift
         const newStability = Math.max(0, Math.min(100, (city.city_stability || 50) + stabilityDrift));
-        const popDelta = Math.round((city.population_total || 0) * popGrowthMod);
 
-        if (stabilityDrift !== 0 || popDelta !== 0) {
-          const updates: any = {};
-          if (stabilityDrift !== 0) updates.city_stability = newStability;
-          if (popDelta !== 0) {
-            updates.population_total = Math.max(10, (city.population_total || 0) + popDelta);
-            updates.population_peasants = Math.max(5, (city.population_peasants || 0) + Math.round(popDelta * 0.6));
-          }
-          await supabase.from("cities").update(updates).eq("id", city.id);
+        if (stabilityDrift !== 0) {
+          await supabase.from("cities").update({ city_stability: newStability }).eq("id", city.id);
         }
+
 
         // Generate events for critical shortages
         if (avgSat < 0.3) {
