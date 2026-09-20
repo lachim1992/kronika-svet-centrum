@@ -1937,13 +1937,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               if (item.kind === "building") {
                 const template = buildingTemplates.find(t => t.id === item.refId);
                 if (template) void buildOnParcel(template);
-
-                const template = buildingTemplates.find(t => t.id === item.refId);
-                if (template) void buildOnParcel(template); else setBuildingAction(null);
               } else if (item.kind === "district") {
                 const blueprint = [...RESIDENTIAL_DISTRICTS, ...PRODUCTION_DISTRICTS].find(d => d.key === item.refId);
                 if (blueprint) void buildDistrict(blueprint, blueprint.district_type === "production" ? basketKey : undefined);
-                else setBuildingAction(null);
+
               } else {
                 void buildSubnode(item.refId, item.name);
               }
