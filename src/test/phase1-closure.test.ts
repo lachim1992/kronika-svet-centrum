@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { selectCapital } from "../../supabase/functions/_shared/capital";
 import { planRouteMaintenance, type RouteStateRow } from "../../supabase/functions/_shared/routeUpkeep";
-import { starterBundle, starterLevelFor } from "../../supabase/functions/_shared/starterEconomy";
+import { starterBundle, starterUnitsFor, starterJobsFor } from "../../supabase/functions/_shared/starterEconomy";
 
 const fn = (name: string) => readFileSync(`supabase/functions/${name}/index.ts`, "utf8");
 
@@ -48,15 +48,18 @@ describe("new-world bootstrap reaches a playable economy", () => {
   });
 
   it("scales the starter economy to settlement population", () => {
-    expect(starterLevelFor(100)).toBe(1);
-    expect(starterLevelFor(200)).toBe(2);
-    expect(starterLevelFor(450)).toBe(3);
+    expect(starterUnitsFor(100)).toBe(1);
+    expect(starterUnitsFor(450)).toBe(3);
     // monotonic: a bigger settlement never gets a smaller starter economy
     let previous = 0;
-    for (const pop of [0, 50, 100, 174, 175, 349, 350, 900]) {
-      const level = starterLevelFor(pop);
-      expect(level).toBeGreaterThanOrEqual(previous);
-      previous = level;
+    for (const pop of [0, 50, 100, 300, 450, 900]) {
+      const units = starterUnitsFor(pop);
+      expect(units).toBeGreaterThanOrEqual(previous);
+      previous = units;
+    }
+    // the declared crew must stay inside the settlement's own workforce
+    for (const pop of [100, 300, 450]) {
+      expect(starterJobsFor(pop) * starterUnitsFor(pop)).toBeLessThan(pop * 0.5);
     }
   });
 
