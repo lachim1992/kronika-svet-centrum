@@ -50,12 +50,13 @@ export function aggregatePopulationTurns(rows: PopulationLedgerRow[]): Populatio
 }
 
 export function populationCauseSummary(turn: PopulationTurn): Array<{ label: string; value: number }> {
+  const loss = (value: number) => value > 0 ? -value : 0;
   return [
     { label: "Narození", value: turn.births },
-    { label: "Úmrtí", value: -turn.deaths },
+    { label: "Úmrtí", value: loss(turn.deaths) },
     { label: "Místní přistěhování", value: turn.localImmigration },
     { label: "Přistěhování mezi městy", value: turn.intercityImmigration },
-    { label: "Vystěhování", value: -turn.emigration },
-    { label: "Mimořádné ztráty", value: -turn.extraordinaryLosses },
+    { label: "Vystěhování", value: loss(turn.emigration) },
+    { label: "Mimořádné ztráty", value: loss(turn.extraordinaryLosses) },
   ];
 }
