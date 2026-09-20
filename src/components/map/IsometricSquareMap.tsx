@@ -1934,8 +1934,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 ? (item.category === "housing" ? buildResidential : (DISTRICT_SPRITE[item.refId] || buildInfrastructure))
                 : buildSprite(item.name, item.category)}
             onBuild={(item, basketKey) => {
-              setBuildingAction(item.key);
               if (item.kind === "building") {
+                const template = buildingTemplates.find(t => t.id === item.refId);
+                if (template) void buildOnParcel(template);
+
                 const template = buildingTemplates.find(t => t.id === item.refId);
                 if (template) void buildOnParcel(template); else setBuildingAction(null);
               } else if (item.kind === "district") {
