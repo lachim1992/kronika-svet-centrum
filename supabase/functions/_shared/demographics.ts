@@ -156,6 +156,29 @@ export function applyPopulationLoss(
   return { ...next, actualLoss: Math.max(0, total - next.population_total) };
 }
 
+/**
+ * INVARIANT 1 (migration never creates population).
+ * Conserving transfer of inhabitants between two settlements. The number of
+ * people removed from the source is exactly the number added to the
+ * destination; both sides are re-normalized so total === sum(classes).
+ * The transfer is capped by the source population above the floor.
+ */
+export function applyPopulationTransfer(
+  source: Partial<PopulationSnapshot>,
+  destination: Partial<PopulationSnapshot>,
+  requested: number,
+  floor = POPULATION_FLOOR,
+): { source: PopulationSnapshot; destination: PopulationSnapshot; moved: number } {
+  const srcTotal = int(source.population_total);
+  const dstTotal = int(destination.population_total);
+  const want = Math.max(0, Math.round(Number(requested) || 0));
+  const moved = Math.min(want, Math.max(0, srcTotal - floor));
+  return {
+    source: normalizePopulationClasses(srcTotal - moved, source, floor),
+    destination: normalizePopulationClasses(dstTotal + moved, destination, floor),
+    moved,
+  };
+}
 
 
 // ═══════════════════════════════════════════

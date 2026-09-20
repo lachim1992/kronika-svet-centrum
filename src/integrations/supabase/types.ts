@@ -2025,6 +2025,72 @@ export type Database = {
           },
         ]
       }
+      city_population_ledger: {
+        Row: {
+          births: number
+          city_id: string
+          created_at: string
+          deaths: number
+          emigration: number
+          extraordinary_losses: number
+          id: string
+          intercity_immigration: number
+          local_immigration: number
+          population_after: number
+          population_before: number
+          session_id: string
+          turn_number: number
+          updated_at: string
+        }
+        Insert: {
+          births?: number
+          city_id: string
+          created_at?: string
+          deaths?: number
+          emigration?: number
+          extraordinary_losses?: number
+          id?: string
+          intercity_immigration?: number
+          local_immigration?: number
+          population_after?: number
+          population_before?: number
+          session_id: string
+          turn_number: number
+          updated_at?: string
+        }
+        Update: {
+          births?: number
+          city_id?: string
+          created_at?: string
+          deaths?: number
+          emigration?: number
+          extraordinary_losses?: number
+          id?: string
+          intercity_immigration?: number
+          local_immigration?: number
+          population_after?: number
+          population_before?: number
+          session_id?: string
+          turn_number?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_population_ledger_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_population_ledger_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city_rumors: {
         Row: {
           city_id: string
@@ -5644,6 +5710,53 @@ export type Database = {
           session_id?: string
         }
         Relationships: []
+      }
+      hex_population: {
+        Row: {
+          carrying_capacity: number
+          created_at: string
+          id: string
+          last_resolved_turn: number
+          mobile_population: number
+          q: number
+          r: number
+          rural_population: number
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          carrying_capacity?: number
+          created_at?: string
+          id?: string
+          last_resolved_turn?: number
+          mobile_population?: number
+          q: number
+          r: number
+          rural_population?: number
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          carrying_capacity?: number
+          created_at?: string
+          id?: string
+          last_resolved_turn?: number
+          mobile_population?: number
+          q?: number
+          r?: number
+          rural_population?: number
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hex_population_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       import_sources: {
         Row: {
