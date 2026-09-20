@@ -241,6 +241,7 @@ Deno.serve(async (req) => {
         .lte("liberation_deadline_turn", turnNumber);
 
       let annexed = 0;
+      const affectedCapitalOwners = new Set<string>();
       for (const city of (dueOccupations || [])) {
         const newOwner = city.occupied_by;
         // Treasury bonus: attacker gets 30% of city wealth
