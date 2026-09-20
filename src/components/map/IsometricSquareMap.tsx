@@ -390,16 +390,31 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
-    // One animated line per physical corridor. Goods flows are per basket, so many
-    // rows share the same path — drawing each would stack identical lines on top of
-    // one another. Baskets (Layer 2) win over the legacy trade_flows rows.
-    const flowRows: any[] = (basketFlowRes.data || []).length ? (basketFlowRes.data || []) : (tradeFlowRes.data || []);
-    const corridors = new Map<string, any>();
-    flowRows.forEach((flow: any) => {
-      if (!Array.isArray(flow.path_cells) || flow.path_cells.length < 2) return;
-      const key = flow.path_cells.map((cell: any) => `${cell.x},${cell.y}`).join(">");
-      if (!corridors.has(key)) corridors.set(key, { route_id: key, path_cells: flow.path_cells, hex_path: null, transport_modes: flow.transport_modes });
-    });
+    // One animated line per physical corridor, but every movement along it stays
+    // readable, so a click can list what actually travels there.
+    const corridors = new Map<string, Route>();
+    const rows: FlowRow[] = [];
+    const collect = (raw: any[], layer: "goods" | "baskets") => {
+      raw.forEach(flow => {
+        const cells = (Array.isArray(flow.path_cells) ? flow.path_cells : []).map(parsePathCell).filter(Boolean) as Array<{ a: number; b: number }>;
+        if (cells.length < 2) return;
+        const corridor = corridorKeyOf(cells);
+        if (!corridors.has(corridor)) corridors.set(corridor, { route_id: corridor, path_cells: flow.path_cells, hex_path: null, transport_modes: flow.transport_modes });
+        const volume = Number(layer === "baskets" ? flow.volume : flow.volume_per_turn) || 0;
+        rows.push({
+          id: `${layer}:${flow.id}`, corridor, layer,
+          label: String(layer === "baskets" ? flow.basket_key : flow.good_key || "—"),
+          sourceCityId: flow.source_city_id ?? null, targetCityId: flow.target_city_id ?? null,
+          sourcePlayer: flow.source_player ?? null, targetPlayer: flow.target_player ?? null,
+          volume,
+          value: Number(layer === "baskets" ? flow.gross_value : volume * (Number(flow.effective_price) || 0)) || 0,
+          modes: Array.isArray(flow.transport_modes) ? flow.transport_modes.map(String) : [],
+        });
+      });
+    };
+    collect((basketFlowRes.data || []) as any[], "baskets");
+    collect((tradeFlowRes.data || []) as any[], "goods");
+    setFlowRows(rows);
     const economicRoutes = [...corridors.values()];
     setRoutes((economicRoutes.length ? economicRoutes : (routeRes.data || [])) as unknown as Route[]); setArmies((armyRes.data || []) as Army[]);
     setCityParcels((parcelRes.data || []) as TileParcel[]);
