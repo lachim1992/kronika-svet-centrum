@@ -108,6 +108,12 @@ Deno.serve(async (req) => {
     }
     lockedSession = session_id;
 
+    // ── PHYSICAL PREREQUISITE: every city is a settlement node ─────────────
+    // Purely structural (no fiscal, no history). Cities without a node used to
+    // vanish from trade flows, demand baskets and market summaries.
+    const settlementNodes = await ensureCitySettlementNodes(sb, session_id);
+
+
     // ── Fiscal guard snapshot: these must be identical after the refresh ──
     const FISCAL_COLUMNS = "player_name, gold_reserve, production_reserve, legitimacy, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal";
     const { data: fiscalBefore } = await sb.from("realm_resources")
