@@ -445,13 +445,13 @@ async function executeCommand(
       return await executeSetMobilization(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "RECRUIT_GENERAL":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} jmenoval nového generála.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeRecruitGeneral(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SIGN_NEUTRAL_PACT":
+      return await executeSignNeutralPact(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "RESOLVE_UPRISING":
+      return await executeResolveUprising(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "DEPLOY_STACK":
       return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
