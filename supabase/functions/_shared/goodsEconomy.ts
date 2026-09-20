@@ -424,8 +424,22 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     }
     if(!progress)break;
   }
-  for(const [id,p] of pending)if(!realized.has(id))diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},
-    jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),blocked:'missing_inputs_or_route'});
+  /**
+   * A producer left pending never got its inputs. Say which reason honestly: the goods do not
+   * exist anywhere in reach ("missing_inputs"), or they exist but no route carries them
+   * ("missing_input_route"). Guessing "inputs or route" hides which problem to solve.
+   */
+  for(const [id,p] of pending)if(!realized.has(id)){
+    const c=cityById.get(p.city)!;
+    const unreachable=p.recipe.inputs.some(i=>{const ig=goodByKey.get(i.good);if(!ig)return false;
+      const holders=cities.filter(s=>available(stock(s.id,ig.key))>C.minLot);
+      return holders.length>0&&!holders.some(s=>s.id===c.id||!!route(s.cell,c.cell,ig));});
+    diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},
+      jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),
+      inputs:p.recipe.inputs.map(i=>({good:i.good,required:i.qty,supplied:available(stock(p.city,i.good))})),
+      blocked:unreachable?'missing_input_route':'missing_inputs'});
+  }
+
   const consume=(c:City,g:Good)=>{const b=stock(c.id,g.key),missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     const qty=Math.min(available(b),missing),state=Math.min(qty,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
     b.consumed_state+=state;b.consumed_household+=qty-state;};
