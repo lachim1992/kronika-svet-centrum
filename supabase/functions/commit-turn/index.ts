@@ -21,6 +21,8 @@ import {
 import { logAISkip } from "../_shared/ai-context.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
 import { advanceTurnProgress } from "../_shared/turnProgress.ts";
+import { derivedChainSteps } from "../_shared/derivedChain.ts";
+import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -813,75 +815,36 @@ Deno.serve(async (req) => {
       }
     };
     try {
-      // Always recompute routes to pick up any new nodes
-      const { data: routesRes, error: routesErr } = await supabase.functions.invoke("compute-province-routes", {
-        body: { session_id: sessionId },
+      // PHYSICAL PREREQUISITE — every owned city is anchored to a settlement
+      // node before the chain runs (same helper refresh-economy uses).
+      results.settlementNodes = await ensureCitySettlementNodes(supabase, sessionId);
+
+      // ONE canonical chain definition, shared with refresh-economy.
+      const chain = derivedChainSteps({
+        sessionId,
+        goodsTurn: turnNumber + 1,
+        emitEvents: true,
+        aggregatePhase: "physical",
       });
-      noteStepFailure("compute-province-routes", economyFailure(routesRes, routesErr));
-      results.routes = routesRes || { error: routesErr?.message };
+      const resultKey: Record<string, string> = {
+        "compute-province-routes": "routes",
+        "compute-hex-flows": "preHexFlows",
+        "compute-trade-systems": "tradeSystems",
+        "compute-trade-flows": "tradeFlows",
+        "compute-basket-trade-flows": "basketTradeFlows",
+        "compute-economy-flow": "economyFlow",
+        "aggregate-realm-totals(physical)": "physicalAggregates",
+      };
 
-      // Recompute hex flows (force_all since routes were rebuilt)
-      const { data: preFlowRes, error: preFlowErr } = await supabase.functions.invoke("compute-hex-flows", {
-        body: { session_id: sessionId, force_all: true },
-      });
-      noteStepFailure("compute-hex-flows", economyFailure(preFlowRes, preFlowErr));
-      results.preHexFlows = preFlowRes || { error: preFlowErr?.message };
-
-      // Node-Trade v1: project trade systems & player access from current treaties
-      try {
-        const { data: tsRes, error: tsErr } = await supabase.functions.invoke("compute-trade-systems", {
-          body: { session_id: sessionId, emit_events: true },
-        });
-        noteStepFailure("compute-trade-systems", economyFailure(tsRes, tsErr));
-        results.tradeSystems = tsRes || { error: tsErr?.message };
-      } catch (tsE) {
-        noteStepFailure("compute-trade-systems", (tsE as Error).message);
-        results.tradeSystems = { error: (tsE as Error).message };
-      }
-
-      // Goods economy: compute trade flows (recipes → inventory → market → flows)
-      try {
-        const { data: tfRes, error: tfErr } = await supabase.functions.invoke("compute-trade-flows", {
-          body: { session_id: sessionId, turn_number: turnNumber + 1 },
-        });
-        noteStepFailure("compute-trade-flows", economyFailure(tfRes, tfErr));
-        results.tradeFlows = tfRes || { error: tfErr?.message };
-      } catch (tfE) {
-        noteStepFailure("compute-trade-flows", (tfE as Error).message);
-        results.tradeFlows = { error: (tfE as Error).message };
-      }
-
-      // Basket imports share physical road/river capacity and must run after goods supply.
-      try {
-        const { data: basketRes, error: basketErr } = await supabase.functions.invoke("compute-basket-trade-flows", {
-          body: { session_id: sessionId },
-        });
-        noteStepFailure("compute-basket-trade-flows", economyFailure(basketRes, basketErr));
-        results.basketTradeFlows = basketRes || { error: basketErr?.message };
-      } catch (basketE) {
-        noteStepFailure("compute-basket-trade-flows", (basketE as Error).message);
-        results.basketTradeFlows = { error: (basketE as Error).message };
-      }
-
-      // Physical/derived node state only. Fiscal aliases are aggregated AFTER
-      // process-turn (Economy Integrity Pass, Krok 2 — fiscal writer first).
-      const { data: economyRes, error: economyErr } = await supabase.functions.invoke("compute-economy-flow", {
-        body: { session_id: sessionId },
-      });
-      noteStepFailure("compute-economy-flow", economyFailure(economyRes, economyErr));
-      results.economyFlow = economyRes || { error: economyErr?.message };
-
-      // PHYSICAL AGGREGATES — must be fresh before the fiscal writer runs, so
-      // process-turn never resolves the turn against last turn's physical totals.
-      try {
-        const { data: physAgg, error: physErr } = await supabase.functions.invoke("aggregate-realm-totals", {
-          body: { session_id: sessionId, phase: "physical" },
-        });
-        noteStepFailure("aggregate-realm-totals(physical)", economyFailure(physAgg, physErr));
-        results.physicalAggregates = physAgg || { error: physErr?.message };
-      } catch (paE) {
-        noteStepFailure("aggregate-realm-totals(physical)", (paE as Error).message);
-        results.physicalAggregates = { error: (paE as Error).message };
+      for (const step of chain) {
+        try {
+          const { data, error } = await supabase.functions.invoke(step.fn, { body: step.body });
+          noteStepFailure(step.name, economyFailure(data, error));
+          results[resultKey[step.name] || step.name] = data || { error: error?.message };
+        } catch (stepErr) {
+          noteStepFailure(step.name, (stepErr as Error).message);
+          results[resultKey[step.name] || step.name] = { error: (stepErr as Error).message };
+        }
       }
     } catch (e) {
       noteStepFailure("economy-chain", (e as Error).message);

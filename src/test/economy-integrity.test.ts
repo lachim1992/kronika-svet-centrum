@@ -53,7 +53,10 @@ describe("HISTORY GUARD — derived recompute never appends event logs", () => {
   });
 
   it("commit-turn enables event emission for trade systems", () => {
-    expect(fn("commit-turn")).toMatch(/compute-trade-systems[\s\S]{0,200}emit_events:\s*true/);
+    // Phase 5: the chain lives in _shared/derivedChain.ts; commit-turn opts in.
+    expect(fn("commit-turn")).toMatch(/emitEvents:\s*true/);
+    const chain = readFileSync("supabase/functions/_shared/derivedChain.ts", "utf8");
+    expect(chain).toMatch(/opts\.emitEvents \? \{ emit_events: true \}/);
   });
 });
 
@@ -76,6 +79,9 @@ describe("INVARIANT 2 — refresh-economy is a pure derived recompute", () => {
   });
 
   it("runs the canonical step order ending in aggregation", () => {
+    // Order is defined once, in the shared chain module.
+    const src = readFileSync("supabase/functions/_shared/derivedChain.ts", "utf8");
+    expect(fn("refresh-economy")).toMatch(/derivedChainSteps\(\{ sessionId: session_id \}\)/);
     const order = [
       "compute-province-routes",
       "compute-hex-flows",
@@ -208,7 +214,7 @@ describe("UI data contract", () => {
     const src = readFileSync("supabase/functions/commit-turn/index.ts", "utf8");
     expect(src).toContain("economyStepFailures");
     expect(src).toContain("pipelineFailed");
-    expect(src).toMatch(/phase:\s*"physical"/);
+    expect(src).toMatch(/aggregatePhase:\s*"physical"/);
     expect(src).toMatch(/phase:\s*"final"/);
   });
 

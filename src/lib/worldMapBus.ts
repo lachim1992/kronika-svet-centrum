@@ -5,9 +5,10 @@
  *
  * Events:
  *   - "worldmap:hex-click"      detail: { q, r }   (emitted by WorldHexMap when build mode is active)
- *   - "worldmap:route-click"    detail: { routeId } (emitted by RoadNetworkOverlay)
- *   - "worldmap:build-mode"     detail: { active }  (emitted by WorldMapBuildPanel)
- *   - "worldmap:focus-build"    detail: { nodeId }  (emitted by RouteDetailSheet → "Stavět odsud")
+ *
+ * Phase 5: the abstract province_routes build UI was removed, so only the
+ * hex-click channel is still in use. The remaining event names are kept for the
+ * physical road drafting flow on the map layer.
  */
 
 export type HexCoord = { q: number; r: number };
