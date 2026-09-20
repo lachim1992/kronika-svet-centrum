@@ -126,7 +126,9 @@ export const DEMAND_BASKETS: DemandBasketDef[] = [
   { key: "metalwork", label: "Kovovýroba", icon: "⚒️", tier: 3, description: "Ingoty, kované díly, kovové výrobky", socialWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 } },
   // MILITARY tier (4)
   { key: "military_supply", label: "Vojenské zásoby", icon: "⚔️", tier: 4, description: "Zbraně, výzbroj, munice", socialWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 } },
-  // LUXURY tier (6) — tier 5 (prestige) reserved for Phase 2
+  // DISCRETIONARY tier (5) — canonical own basket, never folded into feast
+  { key: "variety", label: "Rozmanitost", icon: "🧺", tier: 5, description: "Pestrost běžné spotřeby — koření, keramika, olej", socialWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.3, warriors: 0.3 } },
+  // LUXURY tier (6)
   { key: "luxury_clothing", label: "Luxusní oděvy", icon: "👑", tier: 6, description: "Hedvábí, brokát, jemné textilie", socialWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 } },
   { key: "feast", label: "Slavnostní hostiny", icon: "🥂", tier: 6, description: "Lahůdky, kvalitní víno, slavnosti", socialWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 } },
 ];
@@ -143,7 +145,6 @@ export const DEMAND_BASKETS: DemandBasketDef[] = [
 export const LEGACY_BASKET_MAP: Record<string, string> = {
   basic_material: "metalwork",
   textile: "basic_clothing",
-  variety: "feast",
   ritual: "luxury_clothing",
   prestige: "luxury_clothing",
 };
@@ -154,6 +155,7 @@ export const LEGACY_BASKET_MAP: Record<string, string> = {
  */
 export function resolveBasketKey(raw: string, warnings?: string[]): string {
   if (BASKET_CONFIG[raw]) return raw;
+  if ((VALID_BASKETS as readonly string[]).includes(raw)) return raw;
   const mapped = LEGACY_BASKET_MAP[raw];
   if (mapped) {
     if (warnings) warnings.push(`Legacy remap: ${raw} → ${mapped}`);
@@ -542,7 +544,7 @@ export const PILLAR2_MARKET_SHARE_WEIGHT = 0.6;
 export const VALID_BASKETS = [
   "staple_food","basic_clothing","tools","fuel","drinking_water",
   "storage_logistics","admin_supplies","construction","metalwork",
-  "military_supply","luxury_clothing","feast",
+  "military_supply","variety","luxury_clothing","feast",
 ] as const;
 
 export type BasketSource = "none" | "template" | "instance_override" | "instance_suppress";
