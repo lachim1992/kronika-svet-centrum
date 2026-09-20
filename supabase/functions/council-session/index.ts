@@ -147,7 +147,7 @@ ${(armies || []).slice(0, 8).map((a: any) => `- ${a.name}: síla ${a.power}, mor
 ${(warDeclarations || []).filter((w: any) => w.status === "active").map((w: any) => `- ${w.declaring_player} vs ${w.target_player}`).join("\n") || "Žádné."}
 
 === OBCHODNÍ TRASY ===
-${(tradeRoutes || []).map((tr: any) => `- ${tr.player_a} ⟷ ${tr.player_b}: ${tr.resource_type} (${tr.amount})`).join("\n") || "Žádné."}
+${(tradeRoutes || []).map((tr: any) => `- ${tr.from_player} ⟷ ${tr.to_player}: ${tr.resource_type} (${tr.amount_per_turn})`).join("\n") || "Žádné."}
 
 === DIPLOMATICKÉ TENZE ===
 ${tensionFiltered.length > 0 ? tensionFiltered.map(t => `- vs ${t.opponent}: tenze ${t.tension}${t.crisis ? " ⚠ KRIZE" : ""}`).join("\n") : "Žádné významné tenze."}

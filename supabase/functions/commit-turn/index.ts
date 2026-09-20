@@ -2203,7 +2203,7 @@ async function projectDiplomaticRelations(
 
       // ── Trade routes = dependency + cooperation ──
       const pairTrades = (tradeRoutes || []).filter((t: any) =>
-        (t.player_a === fA && t.player_b === fB) || (t.player_a === fB && t.player_b === fA)
+        (t.from_player === fA && t.to_player === fB) || (t.from_player === fB && t.to_player === fA)
       );
       dependency += pairTrades.length * 5;
       cooperation_score += pairTrades.length * 3;
@@ -2235,7 +2235,7 @@ async function projectDiplomaticRelations(
 
       // ── Tension effects on fear ──
       const tensionRec = tensionRecords.find((t: any) =>
-        (t.player_a === fA && t.player_b === fB) || (t.player_a === fB && t.player_b === fA)
+        (t.from_player === fA && t.to_player === fB) || (t.from_player === fB && t.to_player === fA)
       );
       if (tensionRec) {
         fear += Math.round((tensionRec.total_tension || 0) * 0.3);

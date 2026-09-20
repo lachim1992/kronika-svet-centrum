@@ -510,8 +510,8 @@ VOJENSKÁ PRAVIDLA:
         (t.player_a === f.faction_name && t.player_b === factionName)
       );
       const fTrade = (tradeRoutes || []).filter((tr: any) =>
-        (tr.player_a === factionName && tr.player_b === f.faction_name) ||
-        (tr.player_a === f.faction_name && tr.player_b === factionName)
+        (tr.from_player === factionName && tr.to_player === f.faction_name) ||
+        (tr.from_player === f.faction_name && tr.to_player === factionName)
       );
       const myDisposition = (faction.disposition || {})[f.faction_name] ?? 0;
       return `  ${f.faction_name} [${f.personality}]: Města: ${fCities.length}, Vliv: ${fInf?.total_influence || "?"}, Tenze s tebou: ${fTension?.total_tension?.toFixed(0) || 0}, Tvůj postoj: ${myDisposition}, Obch. trasy: ${fTrade.length}, Cíle: ${JSON.stringify(f.goals || [])}`;
@@ -571,7 +571,7 @@ ${otherFactionsContext || "žádné další frakce"}
 ${interFactionTensions || "žádné významné tenze mezi ostatními"}
 
 ═══ AKTIVNÍ OBCHODNÍ TRASY ═══
-${(tradeRoutes || []).filter((tr: any) => tr.player_a === factionName || tr.player_b === factionName).map((tr: any) => `  ${tr.player_a} ⟷ ${tr.player_b}: ${tr.resource_type} (${tr.amount}), bezpečnost: ${tr.route_safety}`).join("\n") || "žádné"}
+${(tradeRoutes || []).filter((tr: any) => tr.from_player === factionName || tr.to_player === factionName).map((tr: any) => `  ${tr.from_player} ⟷ ${tr.to_player}: ${tr.resource_type} (${tr.amount_per_turn}), bezpečnost: ${tr.route_safety}`).join("\n") || "žádné"}
 
 VLIV CIVILIZACÍ:
 ${JSON.stringify(influenceData || [], null, 2)}
