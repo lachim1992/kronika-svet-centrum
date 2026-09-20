@@ -36,19 +36,19 @@ export const PILLAR_META: Record<PillarKey, { label: string; icon: string; softT
     revenueColumn: "wealth_domestic_market",
   },
   market: {
-    label: "Tržní obrat", icon: "💱", softThreshold: 0.25,
+    label: "Základ: tržní obrat", icon: "💱", softThreshold: 0.25,
     gdpColumn: "last_turn_gdp_market",
     rateColumn: "tax_rate_market",
     revenueColumn: "goods_wealth_fiscal",
   },
   transit: {
-    label: "Tranzitní mýto", icon: "🛤️", softThreshold: 0.18,
+    label: "Základ: tranzitní mýto", icon: "🛤️", softThreshold: 0.18,
     gdpColumn: "last_turn_gdp_transit",
     rateColumn: "tax_rate_transit",
     revenueColumn: "wealth_route_commerce",
   },
   extraction: {
-    label: "Těžba", icon: "⛏️", softThreshold: 0.30,
+    label: "Základ: těžba", icon: "⛏️", softThreshold: 0.30,
     gdpColumn: "last_turn_gdp_extraction",
     rateColumn: "tax_rate_extraction",
     revenueColumn: "", // bundled into goods_wealth_fiscal
