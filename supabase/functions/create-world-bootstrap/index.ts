@@ -20,6 +20,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { resolveMapSize, type WorldSize } from "../_shared/world-sizes.ts";
 import { seedRealmSkeleton } from "../_shared/seed-realm-skeleton.ts";
+import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
+import { ensureSingleCapital } from "../_shared/capital.ts";
 import type {
   BootstrapStepRecord,
   CreateWorldBootstrapRequest,
@@ -510,6 +512,44 @@ Deno.serve(async (req) => {
       steps.push({ step: "world-layer-projection", ok: r.ok, durationMs: performance.now() - t7c, detail: r.ok ? "ok" : `status=${r.status}` });
     } catch (e) {
       warnings.push(`world-layer-bootstrap: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    // Step 7c-bis: CAPITAL INVARIANT + STARTER ECONOMY + one derived economy pass.
+    // A new world must be economically playable immediately: population supplies
+    // labor, so every starting settlement needs real producer/storage structures
+    // with explicit recipes (never a household goods fallback). ensureStarterEconomy
+    // is idempotent; refresh-economy is the canonical side-effect-free derived pass
+    // (it writes no fiscal state and no history).
+    const t7cb = performance.now();
+    try {
+      const capitals = await ensureSingleCapital(sb, normalized.sessionId);
+      const starter = await ensureStarterEconomy(sb, normalized.sessionId, { turnNumber: 1 });
+      const added = starter.reduce((n, r) => n + r.added.length, 0);
+      steps.push({
+        step: "starter-economy",
+        ok: true,
+        durationMs: performance.now() - t7cb,
+        detail: `capitals=${capitals.length} cities=${starter.length} structures=${added}`,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      warnings.push(`starter-economy: ${msg}`);
+      steps.push({ step: "starter-economy", ok: false, durationMs: performance.now() - t7cb, detail: msg });
+    }
+
+    const t7cc = performance.now();
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/refresh-economy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ session_id: normalized.sessionId }),
+      });
+      steps.push({ step: "initial-economy-pass", ok: r.ok, durationMs: performance.now() - t7cc, detail: r.ok ? "ok" : `status=${r.status}` });
+      if (!r.ok) warnings.push(`initial-economy-pass: status=${r.status}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      warnings.push(`initial-economy-pass: ${msg}`);
+      steps.push({ step: "initial-economy-pass", ok: false, durationMs: performance.now() - t7cc, detail: msg });
     }
 
     // Step 7d: detached AI narrative (persons, wonders, chronicle, wiki images)
