@@ -223,7 +223,14 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       domestic_satisfaction:demand?1-unmet/demand:1,effective_export:ownExport,global_export:totalExport,
       global_demand:world.reduce((s,b)=>s+b.local_demand,0),market_share:totalExport?ownExport/totalExport:0,quality_weight:1,wealth_generated:0};
   }));
-  const payload={result,marketBaskets,tradeFlows,basketFlows,realms,summaries,marketShares};
+  // demand_baskets stays a pure compatibility projection of the canonical basket ledger
+  // (no second demand solver). FK: demand_baskets.city_id -> province_nodes.id.
+  const demandBaskets=marketBaskets.filter(b=>cityNode.has(b.city_id)).map(b=>({session_id:session,turn_number:turn,
+    city_id:cityNode.get(b.city_id),basket_key:b.basket_key,tier:BASKET_TIER[b.basket_key as keyof typeof BASKET_TIER]??1,
+    quantity_needed:b.local_demand,quantity_fulfilled:Math.max(0,b.local_demand-b.unmet_demand),
+    satisfaction_score:b.local_demand?Math.max(0,b.local_demand-b.unmet_demand)/b.local_demand:1,
+    fulfillment_type:'canonical',min_quality:0,preferred_quality:0}));
+  const payload={result,marketBaskets,demandBaskets,tradeFlows,basketFlows,realms,summaries,marketShares};
   const saved=await sb.rpc('replace_goods_economy_projection',{p_session:session,p_turn:turn,p_payload:payload});if(saved.error)throw saved.error;
   return {ok:true,turn,flows:result.flows.length,balances:result.balances.length,blocked:result.diagnostics.filter(d=>d.blocked).length};
 }
