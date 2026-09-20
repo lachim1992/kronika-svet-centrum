@@ -986,6 +986,10 @@ async function executeFoundCity(
     await supabase.from("cities").update({ founded_parcel_index: seatResult.seatIndex }).eq("id", cityId);
   }
 
+  // ── 1c. Settlement node in the physical graph (structural, idempotent) ──
+  await ensureCitySettlementNodes(supabase, sessionId);
+
+
   // ── 2. World event ──
   const slug = `founding-${cityName.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
   const legendText = legend?.trim()
