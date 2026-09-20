@@ -90,3 +90,11 @@
 - [x] Nasadit všech 13 serverových funkcí z deployment manifestu
 - [x] Publikovat frontend na kronika-svet-centrum.lovable.app
 - [x] Ověřit Test01 / eba99766-9046-4daf-a367-9f31380cbba1 bez posunu tahu
+
+## Sphaera reset + ekonomická regrese (Test01)
+- [ ] Reset Sphaery v Test01: smazat sezóny, zápasy, tabulky; zachovat týmy, hráče, akademie
+- [ ] Snížit strop 1. ligy a rozdělit týmy mezi ligy (20 týmů = 38 kol se nikdy nedohraje)
+- [ ] P0: backfill canonical production_output z production_base/resource_output (idempotentní, bez fallbacku)
+- [ ] P0: trade_flows — city ID do *_city_id, node ID do *_node_id + regresní test
+- [ ] P0: current-turn demand_baskets jako atomická kompatibilní projekce canonical ledgeru
+- [ ] Živý akceptační test Test01: kapacity, toky, idempotence, nezměněný fiskál a tah
