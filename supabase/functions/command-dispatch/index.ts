@@ -4758,3 +4758,228 @@ async function executeCancelRouteConstruction(
     reference: { routeId, routeType: route.route_type, refund },
   }], payload.chronicleText);
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// CANONICAL WRITES MOVED OFF THE CLIENT (audit Phase 2)
+//
+// These used to be UI-side writes into realm_resources / cities / generals,
+// which bypassed command idempotency and the gold_reserve ownership rule.
+// They are ONE-OFF TRANSACTIONS (command-dispatch's documented exception to
+// "process-turn owns the turn fiscal"), never turn fiscal and never history.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Deterministic 0..1 draw from a command id — no Math.random in canonical writes. */
+function commandRandom(commandId: string, salt = ""): number {
+  let h = 2166136261;
+  const s = `${commandId}:${salt}`;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 100000) / 100000;
+}
+
+/**
+ * RECRUIT_GENERAL — insert the general and charge the fee atomically.
+ * Payload: { generalName, cost?, flavorTrait?, chronicleText? }
+ * Skill is rolled server-side from the command id, so a retry of the same
+ * command can never produce a different general.
+ */
+async function executeRecruitGeneral(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const name = String(payload?.generalName || payload?.name || "").trim();
+  if (!name) return { events: [], error: "Jméno generála je povinné", status: 400 };
+  const cost = Math.max(0, Math.round(Number(payload?.cost ?? 100)));
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+  const gold = Number(realm.gold_reserve || 0);
+  if (gold < cost) return { events: [], error: `Nedostatek zlata (potřeba ${cost}, máš ${Math.floor(gold)})` };
+
+  const skill = 40 + Math.floor(commandRandom(commandId, "skill") * 30); // 40-69
+  const { error: insErr } = await supabase.from("generals").insert({
+    session_id: sessionId,
+    player_name: actor.name,
+    name,
+    skill,
+    flavor_trait: String(payload?.flavorTrait || "").trim() || null,
+  });
+  if (insErr) return { events: [], error: `Generála nelze jmenovat: ${insErr.message}` };
+
+  if (cost > 0) {
+    await supabase.from("realm_resources").update({ gold_reserve: gold - cost }).eq("id", realm.id);
+  }
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "military",
+    note: payload.note || `${actor.name} jmenoval generála ${name} (schopnost ${skill}). Náklady: ${cost} zlata.`,
+    importance: "normal",
+    reference: { general_name: name, skill, cost },
+  }], payload.chronicleText || `${actor.name} jmenoval generála **${name}** (schopnost ${skill}). Náklady: ${cost} zlata.`);
+}
+
+const NEUTRAL_TRIBUTE: Record<string, number> = {
+  HAMLET: 50, TOWNSHIP: 100, CITY: 200, POLIS: 300,
+};
+
+/**
+ * SIGN_NEUTRAL_PACT — pay tribute to a neutral settlement for trade access.
+ * Payload: { city_id, node_id }. The tribute is derived server-side from the
+ * settlement level, so the client cannot choose its own price.
+ */
+async function executeSignNeutralPact(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const cityId = String(payload?.city_id || "");
+  if (!cityId) return { events: [], error: "city_id required", status: 400 };
+
+  const { data: city } = await supabase.from("cities")
+    .select("id, name, node_id, settlement_level, owner_player")
+    .eq("session_id", sessionId).eq("id", cityId).maybeSingle();
+  if (!city) return { events: [], error: "Město nenalezeno", status: 404 };
+  const nodeId = city.node_id || payload?.node_id || null;
+  if (!nodeId) return { events: [], error: "Město není v dopravní síti" };
+
+  const { data: existing } = await supabase.from("neutral_trade_pacts")
+    .select("id").eq("session_id", sessionId).eq("neutral_node_id", nodeId)
+    .eq("player_name", actor.name).eq("status", "active").maybeSingle();
+  if (existing) return { events: [], error: "Pakt s tímto městem už máš" };
+
+  const level = String(city.settlement_level ?? "HAMLET").toUpperCase();
+  const tribute = NEUTRAL_TRIBUTE[level] ?? 50;
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+  const gold = Number(realm.gold_reserve || 0);
+  if (gold < tribute) return { events: [], error: `Nedostatek zlata (potřeba ${tribute}, máš ${Math.floor(gold)})` };
+
+  const { error: pactErr } = await supabase.from("neutral_trade_pacts").insert({
+    session_id: sessionId,
+    neutral_node_id: nodeId,
+    player_name: actor.name,
+    tribute_paid: tribute,
+    signed_turn: turnNumber,
+    status: "active",
+    metadata: { city_id: cityId, settlement_level: level },
+  });
+  if (pactErr) return { events: [], error: `Pakt nelze uzavřít: ${pactErr.message}` };
+
+  await supabase.from("realm_resources").update({ gold_reserve: gold - tribute }).eq("id", realm.id);
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "neutral_pact_signed",
+    note: `${actor.name} uzavřel obchodní pakt s neutrálním ${city.name} (tribut ${tribute} zlata).`,
+    importance: "important",
+    city_id: cityId,
+    reference: { city_id: cityId, node_id: nodeId, tribute, settlement_level: level },
+  }], payload.chronicleText);
+}
+
+/**
+ * RESOLVE_UPRISING — apply the chosen concession atomically.
+ * Payload: { uprisingId, concession, responseText? }
+ * Concession costs are derived from the stored uprising demands, never from
+ * client-supplied numbers. Population is not modified here.
+ */
+async function executeResolveUprising(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const uprisingId = String(payload?.uprisingId || "");
+  const concession = String(payload?.concession || "");
+  if (!uprisingId || !concession) return { events: [], error: "uprisingId a concession jsou povinné", status: 400 };
+
+  const { data: uprising } = await supabase.from("city_uprisings")
+    .select("id, session_id, city_id, city_name, status, demands, city_stability")
+    .eq("session_id", sessionId).eq("id", uprisingId).maybeSingle();
+  if (!uprising) return { events: [], error: "Vzpoura nenalezena", status: 404 };
+  if (uprising.status === "resolved") return { events: [], error: "Vzpoura už je vyřešena" };
+
+  const { data: city } = await supabase.from("cities")
+    .select("id, name, owner_player, city_stability").eq("id", uprising.city_id).maybeSingle();
+  if (!city || city.owner_player !== actor.name) {
+    return { events: [], error: "Toto město nepatří tvé říši", status: 403 };
+  }
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  const demands = Array.isArray(uprising.demands) ? uprising.demands : [];
+  const stability = Number(uprising.city_stability ?? city.city_stability ?? 30);
+  const effects: Record<string, any> = {};
+  const extraEvents: any[] = [];
+
+  if (concession === "pay_wealth") {
+    const pct = Number(demands.find((d: any) => d.type === "pay_wealth")?.cost_percent ?? 30);
+    const gold = Number(realm.gold_reserve || 0);
+    const loss = Math.round(gold * pct / 100);
+    await supabase.from("realm_resources").update({ gold_reserve: Math.max(0, gold - loss) }).eq("id", realm.id);
+    effects.wealth_lost = loss;
+    effects.cooldown_until = turnNumber + 3;
+    await supabase.from("cities").update({
+      famine_consecutive_turns: 0, famine_turn: false, famine_severity: 0,
+      city_stability: Math.min(100, stability + 20),
+      uprising_cooldown_until: effects.cooldown_until,
+    }).eq("id", uprising.city_id);
+  } else if (concession === "open_stores") {
+    await supabase.from("realm_resources")
+      .update({ grain_reserve: 0, production_reserve: 0 }).eq("id", realm.id);
+    effects.stores_emptied = true;
+    effects.cooldown_until = turnNumber + 5;
+    await supabase.from("cities").update({
+      famine_consecutive_turns: 0, famine_turn: false, famine_severity: 0,
+      city_stability: Math.min(100, stability + 30),
+      uprising_cooldown_until: effects.cooldown_until,
+    }).eq("id", uprising.city_id);
+  } else if (concession === "cede_city") {
+    await supabase.from("cities").update({
+      owner_player: "Nezávislé",
+      famine_turn: false, famine_severity: 0, famine_consecutive_turns: 0,
+      city_stability: 60, is_capital: false,
+      uprising_cooldown_until: turnNumber + 99,
+    }).eq("id", uprising.city_id);
+    effects.city_ceded = true;
+    await ensureSingleCapital(supabase, sessionId, { owners: [actor.name] });
+    extraEvents.push({
+      ...base, event_type: "crisis",
+      note: `${actor.name} se vzdal města ${uprising.city_name} po vzpouře lidu.`,
+      importance: "critical", city_id: uprising.city_id,
+    });
+  } else if (concession === "abdicate") {
+    await supabase.from("cities")
+      .update({ owner_player: "Nezávislé", is_capital: false })
+      .eq("session_id", sessionId).eq("owner_player", actor.name);
+    effects.abdicated = true;
+    extraEvents.push({
+      ...base, event_type: "abdication",
+      note: `${actor.name} odstoupil z trůnu pod tlakem hladovějícího lidu.`,
+      importance: "critical",
+    });
+  } else {
+    return { events: [], error: `Neznámé ústupky: ${concession}`, status: 400 };
+  }
+
+  await supabase.from("city_uprisings").update({
+    status: "resolved",
+    chosen_concession: concession,
+    player_response_text: String(payload?.responseText || "").trim() || null,
+    resolved_turn: turnNumber,
+    effects_applied: effects,
+  }).eq("id", uprisingId);
+
+  const label = demands.find((d: any) => d.type === concession)?.label || concession;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "uprising_resolved",
+    note: `Vzpoura v ${uprising.city_name} ukončena: ${label}.`,
+    importance: "important",
+    city_id: uprising.city_id,
+    reference: { uprising_id: uprisingId, concession, effects },
+  }, ...extraEvents], payload.chronicleText
+    || `**Vzpoura v ${uprising.city_name} ukončena (rok ${turnNumber}):** Vládce ${actor.name} zvolil: "${label}".`);
+}
