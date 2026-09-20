@@ -34,10 +34,14 @@ const PopulationPanel = ({ cities, realm }: Props) => {
     total: myCities.reduce((s, c) => s + (c[`population_${cls.key}`] || 0), 0),
   }));
 
-  const avgBirth = myCities.length > 0 ? myCities.reduce((s, c) => s + (c.birth_rate || 0), 0) / myCities.length : 0;
-  const avgDeath = myCities.length > 0 ? myCities.reduce((s, c) => s + (c.death_rate || 0), 0) / myCities.length : 0;
-  const growthRate = avgBirth - avgDeath;
-  const growthPerTurn = Math.round(totalPop * growthRate);
+  // Canonical engine values only (Phase A). The engine currently reports a single
+  // net change per closed turn; the births/deaths/migration decomposition arrives
+  // with the demographic model in a later phase.
+  const lastNetChange = myCities.reduce(
+    (s, c) => s + ((c.last_migration_in || 0) - (c.last_migration_out || 0)),
+    0,
+  );
+  const classSum = classTotals.reduce((s, c) => s + c.total, 0);
 
   // Settlement level counts and progress
   const settlementCounts = SETTLEMENT_THRESHOLDS.map(s => ({
@@ -53,31 +57,27 @@ const PopulationPanel = ({ cities, realm }: Props) => {
           <Users className="h-4 w-4" />
           Populace & demografie
           <span className="ml-auto font-mono font-bold text-lg">{totalPop.toLocaleString()}</span>
-          <InfoTip>Populace je základ všeho. Růst = base_rate (1.2%) × food_surplus_mult × stability_mult × housing_mult. Třídní rozložení závisí na infrastruktuře města. Počítáno v process-turn.</InfoTip>
+          <InfoTip>Počty obyvatel a jejich rozdělení do vrstev pochází z uzávěrky kola. Podrobný rozpad na narozené, zemřelé a přistěhované se doplní v další fázi.</InfoTip>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 pt-1 space-y-4">
-        {/* Growth */}
+        {/* Migration balance — measured values only */}
         <div className="flex items-center gap-3 text-xs">
-          <span className="text-muted-foreground">Růst/kolo:</span>
-          {growthPerTurn > 0 ? (
-            <span className="text-accent flex items-center gap-0.5 font-bold"><TrendingUp className="h-3 w-3" />+{growthPerTurn}</span>
-          ) : growthPerTurn < 0 ? (
-            <span className="text-destructive flex items-center gap-0.5 font-bold"><TrendingDown className="h-3 w-3" />{growthPerTurn}</span>
+          <span className="text-muted-foreground">Saldo stěhování (poslední kolo):</span>
+          {lastNetChange > 0 ? (
+            <span className="text-accent flex items-center gap-0.5 font-bold"><TrendingUp className="h-3 w-3" />+{lastNetChange.toLocaleString()}</span>
+          ) : lastNetChange < 0 ? (
+            <span className="text-destructive flex items-center gap-0.5 font-bold"><TrendingDown className="h-3 w-3" />{lastNetChange.toLocaleString()}</span>
           ) : (
-            <span className="text-muted-foreground flex items-center gap-0.5"><Minus className="h-3 w-3" />stagnace</span>
+            <span className="text-muted-foreground flex items-center gap-0.5"><Minus className="h-3 w-3" />bez pohybu</span>
           )}
-          <span className="text-muted-foreground ml-2">({(growthRate * 100).toFixed(2)}%)</span>
         </div>
+        {classSum !== totalPop && (
+          <div className="text-[10px] text-destructive">
+            Nesoulad vrstev: součet vrstev {classSum.toLocaleString()} ≠ celková populace {totalPop.toLocaleString()}.
+          </div>
+        )}
 
-        {/* Growth formula */}
-        <div className="bg-muted/40 rounded-lg p-3 text-[10px] text-muted-foreground space-y-0.5">
-          <div className="font-semibold text-foreground text-[11px]">Vzorec růstu populace:</div>
-          <div>Růst = base_rate (1.2%) × food_surplus × stability × housing</div>
-          <div>• food_surplus: 1.0 pokud zásoby {">"} 0, klesá při deficitu</div>
-          <div>• stability: city_stability / 100 (pod 30% = silný pokles)</div>
-          <div>• housing: min(1.0, housing_capacity / population)</div>
-        </div>
 
         {/* Class breakdown */}
         <div className="space-y-2">
