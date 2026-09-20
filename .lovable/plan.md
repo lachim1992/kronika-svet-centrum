@@ -1,106 +1,112 @@
-# Population, Migration & Route Prosperity — Audit + Staged Plan
+# Population, Migration & Route Prosperity — Audit + Next Phase
 
-Everything in sections A–D and G below was read in code or queried in the live database this turn. Sections E, F, H, I are proposed design.
+Phase A of this rework was implemented and deployed in the previous turn. This document re-states the audit against the **current** code (verified now, post-Phase-A) and plans the remaining work: a short Phase A-residue cleanup, then Phase B.
 
-## A. Verified population writers and call graph
+---
 
-Writers of `cities.population_*` (backend, verified by search):
+## A. Current population writers + call graph (verified)
 
-| Where | What it writes | Trigger |
-| --- | --- | --- |
-| `commit-turn/index.ts:1713` | all 4 classes + total + stability + legitimacy + development_level, via `computeSettlementGrowth` + `distributePopLayers` | every closed turn (turn-based) |
-| `commit-turn/index.ts:1965` | total only, rebellion loss (`max(50, total - popLoss)`) | rebellion |
-| `process-turn/index.ts:1405-1412` | `population_total` **and** `population_peasants` only, from `stapleSat` (+0.2% / -0.3%) | every processed turn |
-| `process-turn/index.ts:712-718` | 4 class columns for a 5% death toll, total not written | famine/disaster path |
-| `world-tick/index.ts:175` | full growth write, same `computeSettlementGrowth` | time-based tick |
-| `world-tick/index.ts:607` | total only, loss | crisis |
-| `world-tick/index.ts:755-763` | total + peasants, migration in/out via `resolveMigration` | time-based tick |
-| `world-layer-tick/index.ts:327-328` | writes column `population` (does not exist) | Phase 7 — dead, see C |
-| `resolve-battle/index.ts:434,577` | total only, war losses | battle |
-| `command-dispatch/index.ts:967` | total 1000 at founding (from nothing) | founding |
-| `command-dispatch/index.ts:1246` | total only, loss | destructive action |
-| `mp-world-generate`, `world-generate-init`, `generate-civ-start`, `seed-realm-skeleton` | initial seeding | world creation |
+Turn-based chain (verified in code):
 
-Confirmed consequences:
+```text
+useNextTurn / DevTab  →  commit-turn
+   commit-turn: physical recompute → aggregate-realm-totals (physical)
+              → process-turn (fiscal)            [guardedFiscal]
+              → aggregate-realm-totals (final)
+              → world-layer-tick (route lifecycle, mythic, cleanup)
+              → snapshot (only if the whole pipeline succeeded)
+Time-based chain: src/lib/ai.ts → world-tick → aggregate-realm-totals
+```
 
-- **Two growth writers per turn.** `commit-turn` (physics growth) and `process-turn` (staple-based growth) both mutate population in the same resolved turn. The comment in `process-turn` claiming growth was removed is wrong.
-- **Class-sum drift is real.** `process-turn:1405-1412` adds `popDelta` to total but `round(popDelta*0.6)` to peasants; the famine path at 712 subtracts from classes but not from total. `population_total == sum(classes)` is therefore violated by design today.
-- **No conservation anywhere.** Growth is ex-nihilo; the only transfers are `world-tick` migration, which moves total+peasants only.
+Writers of `cities.population_total` / class columns, verified today:
 
-## B. Verified duplicated / dead / stale demographic logic
+| Writer | Role | Status |
+|---|---|---|
+| `commit-turn` settlement growth | canonical turn-based growth, normalized classes | correct |
+| `commit-turn` rebellion | loss via `applyPopulationLoss` on post-growth total | correct |
+| `process-turn` famine | loss via `applyPopulationLoss` | correct |
+| `world-tick` growth (line ~175) | canonical time-based growth | writes `population_total` only |
+| `world-tick` disaster loss (~607) | `max(50, total − loss)` | classes not adjusted |
+| `world-tick` migration (~755/762) | only live migration; total + peasants | not conserving-safe, peasant-only |
+| `world-tick` social mobility | class shifts | needs invariant check |
+| `resolve-battle` (~434, ~577) | war losses | total only |
+| `command-dispatch` founding (~967) | creates 1000 people ex nihilo | conflicts with target model |
+| `command-dispatch` destruction (~1246) | total only | classes not adjusted |
+| worldgen (`mp-world-generate`, `world-generate-init`, `generate-civ-start`, `seed-realm-skeleton`) | initial seeding | fine |
 
-- `physics.ts:116 computeSettlementGrowth` — abstract growth: `POP_GROWTH_BASE + (stability-50)/200 + famine + trade`. The `hasTrade` slot is abused by `commit-turn` to smuggle a civ-DNA bonus (`hasTrade: growthBonus > 0`).
-- `demographics.ts:376 computeBirthDeathRate` — a full explicit birth/death model, **called from nowhere** (verified: zero callers). Dead code.
-- `cities.birth_rate` / `cities.death_rate` columns exist but **no backend writes them** (verified). `PopulationPanel` reads them, so its "growth" is always 0.
-- Two migration implementations: `demographics.ts:159 computeMigrationFlows` (no callers) and `physics.ts:2249 resolveMigration` (used by `world-tick`). A third, `world-layer-tick` Phase 7, is dead.
-- `PopulationPanel.tsx:56,76` displays `base_rate (1.2%) × food_surplus × stability × housing` and claims it is computed in `process-turn`. No such formula exists anywhere. Misleading.
+`process-turn` no longer contains any growth mutation (staple-based growth removed in Phase A).
 
-## C. Verified schema conflicts
+## B. Duplicated / dead / stale demographic logic (verified)
 
-Queried against the live database:
+- `computeMigrationFlows()` in `_shared/demographics.ts` — zero callers, marked deprecated.
+- `computeBirthDeathRate()` in `_shared/demographics.ts` — zero callers; `cities.birth_rate` / `death_rate` are never written by any backend function.
+- `world-layer-tick` Phase 7 migration — removed in Phase A (it read columns that do not exist).
+- `world-tick` sections labelled "Phase 4 dead metric" (migration pressure, labor allocation) still execute and still write population.
+- `RealmDashboard.tsx` invokes `process-turn` directly from the client, outside the `commit-turn` pipeline — a pipeline-ordering hazard worth closing.
 
-- `cities.population` **does not exist** (only `population_total`). `world-layer-tick` Phase 7 selects and writes `population` → PostgREST error → swallowed by its own `try/catch`. Phase 7 has never moved anyone.
-- Phase 7 also selects `cities.hex_q, hex_r` — those columns do not exist (the real ones are `province_q`, `province_r`).
-- `city_market_baskets` has `basket_key` and `domestic_satisfaction`; Phase 7 selects `basket_kind` and `fulfillment_ratio` → also invalid.
-- Correct, contrary to the suspicion: `cities.overcrowding_ratio`, `epidemic_active`, `migration_pressure`, `housing_capacity`, `mobility_rate`, `last_migration_in/out`, `birth_rate`, `death_rate` all exist.
-- `province_hexes` already carries `biome_family`, `moisture_band`, `has_river`, `coastal`, `mean_height`, `forest_density`, `access_score`, `is_passable`, `q/r`, `grid_x/y` — enough for deterministic carrying capacity. It has **no** population columns.
-- `node_migrations` exists (`from_node`, `to_node`, `population_delta`, `reason`, `route_id`, `turn_number`).
-- `node_turn_state` **does not exist**. `route_state` exists with `lifecycle_state`, `maintenance_level`, `quality_level`.
+## C. Verified schema facts
 
-## D. Reusable existing components
+- `cities`: `population_total` + four class columns, `housing_capacity`, `overcrowding_ratio`, `migration_pressure`, `mobility_rate`, `last_migration_in/out`, `birth_rate`, `death_rate`, `epidemic_active`, `province_q/r`, `settlement_level`. There is **no** `cities.population` and no `hex_q/hex_r`.
+- `province_hexes`: full geography (`biome_family`, `moisture_band`, `temp_band`, `has_river`, `coastal`, `mean_height`, `forest_density`, `geology_type`, `resource_deposits`, `access_score`, `is_passable`, `movement_cost`, `seed`) — but **no population columns**.
+- `node_migrations` exists: `from_node`, `to_node`, `population_delta`, `reason`, `route_id`, `turn_number`.
+- `city_market_baskets` uses `basket_key` and `domestic_satisfaction`.
+- `node_turn_state` does not exist.
 
-- `goodsEconomy.ts` already computes per-city `workforce` / `workforceRatio`, `laborUsed` per sector, realized vs blocked production with `diagnostics.blocked` reasons, and per-city `transit_importance`, `production_importance`, `aggregation_importance`, `strategic_importance`, plus flows with paths. This is the basis for jobs/opportunity and transit service value — no second solver needed.
-- `route_state` lifecycle + the physical road/river graph and city catchment logic already built for trade give generalized route cost and the "blocked route blocks migration" rule.
-- `demographics.ts` housing, overcrowding, social mobility, epidemic and policy tables are sound and should be consolidated as the canonical demographic library.
+## D. Reusable components (verified)
 
-## E. Proposed canonical ownership and turn ordering
+- `goodsEconomy.ts` `Flow` already carries `path`, `edges`, `via_hubs`, `gross_value`, `net_value`, `tolls`, `transport_cost` — enough for `transit_service_value` with no second trade solver.
+- `metrics` already expose `transit_importance`, `production_importance`, `aggregation_importance`, `strategic_importance`.
+- Per-city `workforce` / `workforceRatio`, `laborUsed`, and `diagnostics.blocked` already exist — the basis for real jobs and Opportunity Score.
+- The physical route graph (`snapshot.edges`, `route()` with capacity/risk/toll) is the same graph long-distance migration must use.
+- `route_state.lifecycle_state` / `maintenance_level` supply route quality friction.
 
-One population writer per resolution mode:
+## E. Proposed canonical ownership and ordering
 
-- **Turn-based:** `commit-turn` is the sole writer of population and demographic state, in one phase, after the economy pipeline has produced current-turn baskets/flows.
-- **Time-based:** `world-tick` calls the same shared resolver; it never has its own formula.
-- `process-turn` keeps fiscal ownership and loses all population writes; it may emit demand/satisfaction inputs only.
-- `refresh-economy` / `compute-*` stay derived-only: no population, no migration history, no gold.
-- Destructive one-offs (battle, rebellion, disaster) stay allowed but must go through a shared `applyPopulationLoss` helper that keeps `total == sum(classes)`.
+```text
+PHYSICAL RECOMPUTE → PHYSICAL AGGREGATES → PROCESS-TURN (fiscal)
+  → POPULATION RESOLUTION (single writer, inside commit-turn)
+      births/deaths → local migration → intercity migration → class allocation
+  → FINAL AGGREGATES → SNAPSHOT (history only on full success)
+```
 
-Ordering per resolved turn: physical recompute → goods/derived metrics (jobs, opportunity, transit value) → process-turn fiscal → population resolver (births/deaths → local migration → network migration, all in one atomic pass) → final aggregates → snapshot.
+One canonical population resolver module, called by `commit-turn` (turn mode) and `world-tick` (time mode). All losses and transfers go through `_shared/demographics.ts` helpers. `refresh-economy` and `compute-*` stay derived-only.
 
-## F. Proposed schema changes (later phases, not Phase A)
+## F. Proposed schema changes (Phase B)
 
-- New `world_cell_population` (session_id, cell q/r, carrying_capacity, rural_population, mobile_population, last_resolved_turn) — slow authoritative rural state. Nothing transient in `province_hexes`.
-- New `city_population_ledger` (session_id, turn_number, city_id, births, deaths, local_in, foreign_in, emigration, extraordinary_losses, net) — the decomposition the UI shows, written only on successful turn close.
-- Extend `node_migrations` usage rather than replacing it; add `from_cell`/`to_cell` for rural↔city moves.
-- Write `cities.birth_rate` / `death_rate` from the canonical calculator instead of leaving them null.
+New table `hex_population` (one row per passable cell): `session_id`, `cell_id` (FK `province_hexes`), `carrying_capacity`, `rural_population`, `mobile_population`, `last_resolved_turn`, timestamps. RLS + GRANTs per session membership; no transient scores stored here.
+
+New table `city_population_ledger` (one row per city per resolved turn): `births`, `deaths`, `local_immigration`, `intercity_immigration`, `emigration`, `extraordinary_losses`, `population_before`, `population_after`. Written only on successful turn resolution.
+
+Later phases add derived (non-authoritative) projections for opportunity score and transit service value.
 
 ## G. Risks to Economy Integrity
 
-- Transit service value must stay a derived metric feeding a tax base; any direct `trade flow → gold_reserve` path is forbidden.
-- Population changes affect demand, so the population resolver must run in the writing turn path only — otherwise refresh idempotence breaks (current tests would catch it).
-- Removing `process-turn` population writes changes economic trajectories; needs a shadow comparison before the flag flips.
-- `world-layer-contract` K1/K2 must be respected: rural cell population is authoritative state, city catchment projections stay derived.
+- Any population write outside the canonical resolver breaks the single-writer rule — the residual writers in section A are the live risk.
+- `transit_service_value` must remain derived: trade flow → derived value → tax base → fiscal resolution → treasury. Never flow → gold.
+- `world-tick` writing population per city in loops makes conservation hard to assert; it needs the same resolver.
+- Client-side `process-turn` invocation can run the fiscal writer out of pipeline order.
 
-## H. Phase A file list (audit repair only, no new gameplay)
+## H. Remaining Phase A work (files)
 
-1. `supabase/functions/process-turn/index.ts` — remove the staple-based population mutation (1405-1412); route the famine death toll (712-718) through the shared loss helper so classes and total stay consistent.
-2. `supabase/functions/_shared/demographics.ts` — become the single demographic module; add `applyPopulationLoss` and `normalizeClasses`; mark `computeMigrationFlows` deprecated.
-3. `supabase/functions/_shared/physics.ts` — keep `computeSettlementGrowth` as the only growth entry for now, stop the `hasTrade` civ-bonus abuse by passing an explicit modifier.
-4. `supabase/functions/commit-turn/index.ts` — use the explicit growth modifier; write class columns through `normalizeClasses`.
-5. `supabase/functions/world-layer-tick/index.ts` — delete dead Phase 7 (invalid schema, never executed) rather than repair it; network migration lands in Phase E.
-6. `src/components/economy/PopulationPanel.tsx` — remove the fictional formula text; show only what the engine produces.
-7. `docs/architecture/economy-contract.md` + `world-layer-contract.md` — record the single-population-writer rule.
+1. `supabase/functions/world-tick/index.ts` — route disaster loss and migration through `applyPopulationLoss` / `normalizePopulationClasses`; make migration transfer conserving (deduct exactly what is added, floors applied before transfer).
+2. `supabase/functions/resolve-battle/index.ts` — both loss paths through the shared helper.
+3. `supabase/functions/command-dispatch/index.ts` — destructive loss path through the shared helper; add explicit TODO for founding conservation (Phase C).
+4. `src/components/RealmDashboard.tsx` — stop invoking `process-turn` directly; use the pipeline entry point.
+5. `docs/architecture/economy-contract.md` — record the remaining intentional writers as closed.
+6. `src/test/population-ownership.test.ts` — extend with the cases in section I.
+
+No new gameplay, no schema change, no rural population, no opportunity score in this step.
 
 ## I. Phase A acceptance tests
 
-1. `population_total == peasants + burghers + clerics + warriors` after growth, famine, rebellion and battle paths.
-2. Exactly one population writer in a resolved turn (static guard test over `process-turn`/`commit-turn`/`world-tick`).
-3. No negative population and no city below the floor.
-4. Deterministic: same city state → same growth result.
-5. Refresh still cannot change population, gold, fiscal columns or history (extend existing integrity test).
-6. Existing economy conservation suite stays green.
-7. Static test asserting no code selects `cities.population`, `basket_kind` or `fulfillment_ratio`.
+- After every touched loss path, `population_total === sum(classes)`.
+- `world-tick` migration: total population across all cities is unchanged by migration (conservation), source never below floor.
+- No negative class values anywhere; floor 50 preserved.
+- Static: no backend file writes population columns without the shared helpers; no `cities.population` / `basket_kind` / `fulfillment_ratio` usage.
+- Growth determinism for identical state.
+- `refresh-economy` / `compute-*` cannot mutate population, fiscal state, or history.
+- Existing 196-test suite stays green.
 
-## J. Conflicts with existing normative docs
+## J. Conflicts with normative docs
 
-No conflict found with `economy-contract.md` (it does not currently define population ownership — that gap is the root cause). `world-layer-contract.md` K1/K2 is compatible provided rural population is authoritative state and catchment capture stays derived; the doc's runtime-counter table lists `population` on `cities`, which is a stale name and should be corrected to `population_total` in Phase A.
-
-Recommendation: approve Phase A only. Phases B–H proceed one at a time, each gated on its own tests.
+None. `economy-contract.md` now carries INVARIANT 4 (single population writer) and INVARIANT 5 (class sum), and `world-layer-contract.md` records the corrected column names and forbids population writes in the world layer. The target model extends those documents rather than contradicting them; the rural-population and ledger tables are T2 runtime state, which the world-layer contract already separates from the immutable ancient layer.
