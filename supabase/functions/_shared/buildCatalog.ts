@@ -160,11 +160,11 @@ function contractRecipes(contract: BuildingContract | undefined, level: number):
  * ECONOMY.structureJobsBase people at level 1 (or its declared jobs_capacity) and doubles with
  * every level, together with the physical capacity.
  */
-function jobsFor(capacity: number, declared: number): number | undefined {
-  if (capacity <= 0) return undefined;
-  const base = declared > 0 ? declared : ECONOMY.structureJobsBase;
-  return base * (capacity > 0 ? 1 : 0) * capacity / Math.max(ECONOMY.epsilon, capacity);
+function jobsFor(capacityBase: number, declared: number, level: number): number | undefined {
+  if (capacityBase <= 0) return undefined;
+  return (declared > 0 ? declared : ECONOMY.structureJobsBase) * levelCapacityScale(level);
 }
+
 
 
 const recipeView = (r: RecipeRow, unlockLevel: number): CatalogRecipeView => ({
