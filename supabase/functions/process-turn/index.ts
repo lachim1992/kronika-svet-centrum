@@ -1611,11 +1611,12 @@ Deno.serve(async (req) => {
           // fiscal_revenue = income components only (expenses listed separately)
           fiscal_revenue: Math.round(totalWealthIncome * 10) / 10,
           total_income: Math.round(totalWealthIncome * 10) / 10,
-          recurring_expenses: Math.round((armyWealthUpkeep + sportFundingExpense) * 10) / 10,
-          turn_fiscal_delta: Math.round((totalWealthIncome - armyWealthUpkeep - sportFundingExpense - totalTollsPaid) * 10) / 10,
+          recurring_expenses: Math.round((armyWealthUpkeep + sportFundingExpense + routeUpkeepExpense) * 10) / 10,
+          turn_fiscal_delta: Math.round((totalWealthIncome - armyWealthUpkeep - sportFundingExpense - routeUpkeepExpense - totalTollsPaid) * 10) / 10,
           army_upkeep: armyWealthUpkeep,
           tolls: totalTollsPaid,
           sport_funding: sportFundingExpense,
+          route_upkeep: routeUpkeepExpense,
         },
 
       },
