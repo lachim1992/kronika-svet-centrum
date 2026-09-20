@@ -3,6 +3,7 @@ import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demograp
 import { TAX_MAX, laffer, governance, taxRevenue, sportFundingExpense as computeSportFunding } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { foodShortageImpact } from '../_shared/foodShortage.ts';
+import { routeUpkeepDueThisTurn } from '../_shared/routeUpkeep.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1004,6 +1005,13 @@ Deno.serve(async (req) => {
     newGoldReserve += tradeGoldDelta;
     if (tradeGoldDelta !== 0) logEntries.push(`Obchod: ${tradeGoldDelta >= 0 ? "+" : ""}${tradeGoldDelta} zlata`);
     if (totalTollsPaid > 0) logEntries.push(`🏛️ Mýtné: -${totalTollsPaid} zlata`);
+
+    // ROUTE MAINTENANCE — physical lifecycle is decided by world-layer-tick (which
+    // runs before this fiscal pass and never touches gold); the charge belongs to
+    // the turn ledger here so the treasury delta and the snapshot agree.
+    const routeUpkeepExpense = await routeUpkeepDueThisTurn(supabase, sessionId, playerName, currentTurn);
+    newGoldReserve -= routeUpkeepExpense;
+    if (routeUpkeepExpense > 0) logEntries.push(`🛣️ Údržba cest: -${routeUpkeepExpense} zlata`);
 
     // Sport Funding — share of recurring fiscal income, NOT of the treasury stock.
     const sportFundingExpense = computeSportFunding(wealthIncome, sportFundingPct, Math.max(0, newGoldReserve));
