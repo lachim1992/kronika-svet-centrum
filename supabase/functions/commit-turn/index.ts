@@ -1953,13 +1953,21 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
   for (const city of (cities || [])) {
     const rebellion = evaluateRebellion(city, turnNumber);
     if (rebellion && rebellion.rebelled) {
+      // Losses apply to the post-growth population and keep classes consistent.
+      const basePop = postGrowthPop[city.id] ?? city.population_total;
+      const loss = applyPopulationLoss({ ...city, population_total: basePop }, rebellion.popLoss);
       cityEvents.push({
         cityId: city.id,
         updates: {
           city_stability: rebellion.newStability,
-          population_total: Math.max(50, city.population_total - rebellion.popLoss),
+          population_total: loss.population_total,
+          population_peasants: loss.population_peasants,
+          population_burghers: loss.population_burghers,
+          population_clerics: loss.population_clerics,
+          population_warriors: loss.population_warriors,
         },
       });
+
       emittedEvents.push({
         session_id: sessionId, turn_number: turnNumber,
         player: "Systém", actor_type: "system",
