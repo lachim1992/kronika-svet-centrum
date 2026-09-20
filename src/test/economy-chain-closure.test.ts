@@ -2,13 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { resolveGoodsEconomy, produced, type City, type Good, type Producer, type Snapshot } from '../../supabase/functions/_shared/goodsEconomy';
 import { GOODS, RECIPES, DISTINCTIVE_RECIPE_KEYS } from '../../supabase/functions/_shared/productionCatalog';
 import { foodShortageImpact } from '../../supabase/functions/_shared/foodShortage';
+import { ECONOMY } from "../../supabase/functions/_shared/economyConfig";
+// Fixture crews are one person per output unit; the engine measures labour in crews of ECONOMY.workersPerLaborUnit.
+const FIXTURE_LABOR = 1 / ECONOMY.workersPerLaborUnit;
 
 const city:City={id:'c',owner:'p',name:'C',cell:'0,0',population:1000,classes:{peasants:1000},soldiers:0,
   stability:1,irrigation:0,labor:{},market:1,storage:100,admin:0,security:1,guild:0,ideology:'open_merchant',coastal:false};
 const good=(key:string,basket='tools',finalUse=false):Good=>({key,basket,price:10,stage:'processed',storable:true,
   bulk:1,density:30,perishability:0,storageLoss:0,storageCost:0,substitutability:1,strategic:0,prestige:0,transshipment:0,finalUse,household:false});
 const producer=(id:string,output:string,inputs:{good:string;qty:number}[]=[],source=false):Producer=>({id,city:'c',channel:'facility',capacity:10,
-  recipe:{key:id,good:output,qty:1,inputs,labor:1,quality:0,minQuality:0},allocation:1,staffing:1,logistics:1,mastery:1,source,distinctive:false});
+  recipe:{key:id,good:output,qty:1,inputs,labor:FIXTURE_LABOR,quality:0,minQuality:0},allocation:1,staffing:1,logistics:1,mastery:1,source,distinctive:false});
 const snapshot=(goods:Good[],producers:Producer[]=[],opening:Snapshot['opening']=[]):Snapshot=>({turn:1,goods,cities:[city],producers,opening,fame:[],edges:[]});
 const stock=(good:string,qty:number)=>({city:'c',good,qty,quality:1});
 const conserve=(out:ReturnType<typeof resolveGoodsEconomy>)=>{for(const b of out.balances)
@@ -55,7 +58,7 @@ describe('economy chain closure',()=>{
     const catalogGood=GOODS.find(g=>g.key===r.output)!;
     const source=r.role==='source'||(r.role==='producer'&&catalogGood.stage==='raw');
     const goods=[...new Set([r.output,...r.inputs.map(i=>i.good)])].map(k=>good(k));
-    const p={...producer(r.key,r.output,r.inputs,source),recipe:{key:r.key,good:r.output,qty:r.qty,inputs:r.inputs,labor:1,quality:0,minQuality:0}};
+    const p={...producer(r.key,r.output,r.inputs,source),recipe:{key:r.key,good:r.output,qty:r.qty,inputs:r.inputs,labor:FIXTURE_LABOR,quality:0,minQuality:0}};
     const out=resolveGoodsEconomy(snapshot(goods,[p],r.inputs.map(i=>stock(i.good,100))));
     expect(out.diagnostics[0].blocked).toBeNull();expect(out.diagnostics[0].realized).toBeGreaterThan(0);conserve(out);
   });
