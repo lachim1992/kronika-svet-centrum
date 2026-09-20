@@ -26,7 +26,7 @@ const city = (total: number, split = [0.7, 0.2, 0.06, 0.04]) => ({
   housing_capacity: total * 2,
 });
 
-const sum = (s: Record<string, number>) =>
+const sum = (s: any) =>
   s.population_peasants + s.population_burghers + s.population_clerics + s.population_warriors;
 
 describe('Phase A — population class invariant', () => {
