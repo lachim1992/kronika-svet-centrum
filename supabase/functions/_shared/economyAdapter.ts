@@ -330,6 +330,14 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     fulfillment_type:'canonical',min_quality:0,preferred_quality:0}));
   const payload={result,marketBaskets,demandBaskets,tradeFlows,basketFlows,realms,summaries,marketShares};
   const saved=await sb.rpc('replace_goods_economy_projection',{p_session:session,p_turn:turn,p_payload:payload});if(saved.error)throw saved.error;
+  /**
+   * The management report is a read-only view of the projection just written, so a refresh must
+   * republish it. Otherwise the production overview keeps showing the numbers frozen at the last
+   * turn resolution while every other economy panel is already current.
+   */
+  const savedReports=await sb.rpc('update_goods_management_reports',{p_session:session,p_turn:turn,p_reports:management});
+  if(savedReports.error)throw savedReports.error;
   return {ok:true,turn,flows:result.flows.length,balances:result.balances.length,blocked:result.diagnostics.filter(d=>d.blocked).length};
+
 
 }
