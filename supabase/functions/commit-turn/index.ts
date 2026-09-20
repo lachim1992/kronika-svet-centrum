@@ -1677,20 +1677,22 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
   const allActorNames = [...new Set([...playerNames, ...aiFactionNames])];
 
   // ═══ SETTLEMENT GROWTH → emit events ═══
+  // CANONICAL POPULATION WRITER (turn-based resolution). See
+  // docs/architecture/economy-contract.md — INVARIANT 4.
   const cityEvents: any[] = [];
+  const postGrowthPop: Record<string, number> = {};
   for (const city of (cities || [])) {
-    // Apply civ DNA growth bonus
+    // Civ DNA growth bonus is now an EXPLICIT growth-rate modifier.
     const ownerBonuses = civBonusMap[city.owner_player] || {};
     const growthBonus = ownerBonuses.growth_modifier || 0;
 
     const growth = computeSettlementGrowth(city as CityForGrowth, {
-      hasTrade: growthBonus > 0, // reuse trade factor slot for civ bonus
+      growthModifier: growthBonus,
     });
 
-    // Apply additional civ growth bonus on top
-    const civGrowthDelta = growthBonus > 0 ? Math.round(city.population_total * growthBonus) : 0;
-    const adjustedNewPop = Math.max(50, growth.newPop + civGrowthDelta);
+    const adjustedNewPop = Math.max(POPULATION_FLOOR, growth.newPop);
     const adjustedDelta = adjustedNewPop - city.population_total;
+    postGrowthPop[city.id] = adjustedNewPop;
 
     // Apply civ stability bonus
     const civStabBonus = ownerBonuses.stability_modifier || 0;
@@ -1702,19 +1704,11 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     const adjustedLegitimacy = Math.max(0, Math.min(100, currentLegitimacy + Math.round(civLegitBonus * 0.1)));
 
     if (adjustedDelta !== 0 || civStabBonus !== 0 || civLegitBonus !== 0) {
-      const layers = distributePopLayers(
-        adjustedNewPop, city.population_total,
-        city.population_peasants, city.population_burghers, city.population_clerics,
-        city.population_warriors
-      );
+      const layers = normalizePopulationClasses(adjustedNewPop, city);
       cityEvents.push({
         cityId: city.id,
         updates: {
-          population_total: adjustedNewPop,
-          population_peasants: layers.peasants,
-          population_burghers: layers.burghers,
-          population_clerics: layers.clerics,
-          population_warriors: layers.warriors,
+          ...layers,
           city_stability: adjustedStability,
           legitimacy: adjustedLegitimacy,
           development_level: growth.newDev,
@@ -1729,13 +1723,14 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
           city_id: city.id,
           note: `Populace ${city.name}: ${city.population_total} → ${adjustedNewPop} (${adjustedDelta > 0 ? "+" : ""}${adjustedDelta}).`,
           importance: "normal",
-          reference: { cityId: city.id, cityName: city.name, oldPop: city.population_total, newPop: adjustedNewPop, delta: adjustedDelta, civBonus: civGrowthDelta },
+          reference: { cityId: city.id, cityName: city.name, oldPop: city.population_total, newPop: adjustedNewPop, delta: adjustedDelta, growthModifier: growthBonus },
         });
       }
     }
   }
   results.cityEvents = cityEvents;
   results.growthCount = cityEvents.length;
+
 
   // ═══ INFLUENCE → compute with trait + civ DNA modifiers ═══
   const influenceRecords: any[] = [];
