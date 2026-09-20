@@ -252,44 +252,18 @@ const CityActionsPopover = ({
     const tribute = NEUTRAL_TRIBUTE[lvl] ?? 50;
     setBusy("pact");
     try {
-      // Deduct gold from realm_resources (best-effort; fails silently if no resources row)
-      const { data: rr } = await supabase
-        .from("realm_resources")
-        .select("gold_reserve")
-        .eq("session_id", sessionId).eq("player_name", currentPlayerName)
-        .maybeSingle();
-      const currentGold = (rr as any)?.gold_reserve ?? 0;
-      if (currentGold < tribute) {
-        toast.error(`Nedostatek zlata (potřeba ${tribute}, máš ${currentGold}).`);
+      // Tribute payment, pact row and event all happen server-side
+      // (SIGN_NEUTRAL_PACT) so the treasury is never written from the browser.
+      const res = await dispatchCommand({
+        sessionId, turnNumber: currentTurn, actor: { name: currentPlayerName },
+        commandType: "SIGN_NEUTRAL_PACT",
+        commandPayload: { city_id: cityId, node_id: city.node_id },
+      });
+      if (!res.ok) {
+        toast.error(res.error || "Pakt selhal");
         setBusy(null);
         return;
       }
-      await supabase.from("realm_resources")
-        .update({ gold_reserve: currentGold - tribute })
-        .eq("session_id", sessionId).eq("player_name", currentPlayerName);
-
-      const { error } = await supabase.from("neutral_trade_pacts" as any).insert({
-        session_id: sessionId,
-        neutral_node_id: city.node_id,
-        player_name: currentPlayerName,
-        tribute_paid: tribute,
-        signed_turn: currentTurn,
-        status: "active",
-        metadata: { city_id: cityId, settlement_level: lvl },
-      });
-      if (error) throw error;
-
-      await supabase.from("game_events").insert({
-        session_id: sessionId,
-        turn_number: currentTurn,
-        event_type: "neutral_pact_signed",
-        importance: "important",
-        player: currentPlayerName,
-        actor_type: "player",
-        note: `${currentPlayerName} uzavřel obchodní pakt s neutrálním ${city.name} (tribut ${tribute}g).`,
-        city_id: cityId,
-        reference: { player: currentPlayerName, city_id: cityId, tribute },
-      });
 
       // Recompute trade systems → access projects this player as 'direct'
       await supabase.functions.invoke("compute-trade-systems", {
