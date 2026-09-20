@@ -52,8 +52,12 @@ describe('canonical physical goods economy',()=>{
     s.producers[0].capacity=10;s.producers[0].staffing=0;expect(resolveGoodsEconomy(s).balances.reduce((n,b)=>n+produced(b),0)).toBe(0);});
   it('rejects processing without declared inputs',()=>{const s=setup();s.producers[0].source=false;const r=resolveGoodsEconomy(s);
     expect(r.diagnostics.find(d=>d.producer==='ore')?.blocked).toBe('missing_recipe_inputs');});
-  it('mobilization removes actual civilian workers and output',()=>{const a=resolveGoodsEconomy(setup());const s=setup();s.cities[0].soldiers=250;const b=resolveGoodsEconomy(s);
-    expect(b.workforce.mine.workforce).toBe(250);expect(b.diagnostics.find(d=>d.producer==='ore')!.realized).toBeLessThan(a.diagnostics.find(d=>d.producer==='ore')!.realized);});
+  it('mobilization removes actual civilian workers and, once jobs outrun labour, output',()=>{const a=resolveGoodsEconomy(setup());const s=setup();s.cities[0].soldiers=250;const b=resolveGoodsEconomy(s);
+    expect(b.workforce.mine.workforce).toBe(250);
+    // The labour market only bites when the remaining workforce can no longer staff the jobs.
+    expect(b.diagnostics.find(d=>d.producer==='ore')!.realized).toBe(a.diagnostics.find(d=>d.producer==='ore')!.realized);
+    const s2=setup();s2.cities[0].soldiers=495;const c=resolveGoodsEconomy(s2);
+    expect(c.diagnostics.find(d=>d.producer==='ore')!.realized).toBeLessThan(a.diagnostics.find(d=>d.producer==='ore')!.realized);});
   it('refresh is pure and deterministic including reputation streaks',()=>{const s=setup(),before=JSON.stringify(s);const a=resolveGoodsEconomy(s),b=resolveGoodsEconomy(s);
     expect(a).toEqual(b);expect(JSON.stringify(s)).toBe(before);});
   it('never spends consumed or exported construction goods on CAPEX',()=>{const s=setup();s.goods=[good('timber','construction',10),good('chair','tools',20)];
