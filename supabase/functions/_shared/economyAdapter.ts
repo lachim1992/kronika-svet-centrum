@@ -308,7 +308,6 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     quantity_needed:b.local_demand,quantity_fulfilled:Math.max(0,b.local_demand-b.unmet_demand),
     satisfaction_score:b.local_demand?Math.max(0,b.local_demand-b.unmet_demand)/b.local_demand:1,
     fulfillment_type:'canonical',min_quality:0,preferred_quality:0}));
-  console.log('projection_probe',JSON.stringify({keys:Object.keys(marketBaskets[0]||{}),basket:marketBaskets[0]?.basket_key,detail:!!marketBaskets[0]?.demand_detail}));
   const payload={result,marketBaskets,demandBaskets,tradeFlows,basketFlows,realms,summaries,marketShares};
   const saved=await sb.rpc('replace_goods_economy_projection',{p_session:session,p_turn:turn,p_payload:payload});if(saved.error)throw saved.error;
   return {ok:true,turn,flows:result.flows.length,balances:result.balances.length,blocked:result.diagnostics.filter(d=>d.blocked).length};
