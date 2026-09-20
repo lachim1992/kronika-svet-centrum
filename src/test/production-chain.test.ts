@@ -128,17 +128,29 @@ function scenario(blockRoute = false): Snapshot {
 describe('raw & processed goods trade as industrial inputs', () => {
   it('E/H: a distant mill imports raw_grain as a production_input flow on the canonical graph', () => {
     const out = resolveGoodsEconomy(scenario());
-    const input = out.flows.filter((f) => f.reason === 'production_input' && f.good === 'raw_grain' && f.to === 'millcity');
+    const input = out.flows.filter((f) => f.reason === 'production_input' && f.good === 'raw_grain' && f.destination === 'millcity');
     expect(input.length).toBeGreaterThan(0);
+    expect(input[0].source).toBe('farm');
     expect(input[0].qty).toBeGreaterThan(0);
+    expect(input[0].path.length).toBeGreaterThan(1);
+    expect(input[0].edges.length).toBeGreaterThan(0);
     const flour = out.balances.find((b) => b.city === 'millcity' && b.good === 'flour')!;
     expect(produced(flour)).toBeGreaterThan(0);
   });
 
   it('G: blocking the only route prevents the industrial input trade and the dependent production', () => {
     const out = resolveGoodsEconomy(scenario(true));
-    expect(out.flows.filter((f) => f.reason === 'production_input' && f.to === 'millcity')).toHaveLength(0);
+    expect(out.flows.filter((f) => f.reason === 'production_input' && f.destination === 'millcity')).toHaveLength(0);
     const flour = out.balances.find((b) => b.city === 'millcity' && b.good === 'flour');
     expect(flour ? produced(flour) : 0).toBe(0);
+  });
+
+  it('I: physical conservation holds across the industrial input chain', () => {
+    const out = resolveGoodsEconomy(scenario());
+    for (const b of out.balances) {
+      const inflow = b.opening + produced(b) + b.imported;
+      const outflow = b.consumed_household + b.consumed_state + b.consumed_as_input + b.exported + b.stored + b.lost_spoilage;
+      expect(Math.abs(inflow - outflow), `${b.city}/${b.good}`).toBeLessThan(0.01);
+    }
   });
 });
