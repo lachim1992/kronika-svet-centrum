@@ -107,16 +107,29 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     if(order.mode==='prefer')return match?auto*3:auto;
     return match?auto:0;
   };
+/**
+   * ROUTE ACCESS. A settlement that touches the finished road network is connected, and every
+   * structure and node anchored to it inherits that connection — a built road serves the whole
+   * town, not only the hex it ends on. Unconnected anchors keep their own access factor.
+   */
+  const roadCells=new Set(db.road_segments.filter((r:any)=>r.status==='completed')
+    .flatMap((r:any)=>[`${r.from_x},${r.from_y}`,`${r.to_x},${r.to_y}`]));
+  const cityConnected=(city:City)=>roadCells.has(city.cell);
   for(const node of db.province_nodes){if(node.is_active===false)continue;const c=anchor(node);if(!c)continue;
     const order=db.node_production_orders.find(o=>o.node_id===node.id);
     const eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
     const weights=eligible.map(r=>orderWeight(r,order)),total=weights.reduce((s,n)=>s+n,0);
     if(total<=0)continue;
+    // Nodes employ the same canonical crew as any other producing structure (Lv1 100 → doubling).
+    const capacity=nonnegative(node.production_output);
+    const jobs=capacity>0?ECONOMY.structureJobsBase*levelScale(node.node_level??node.level):undefined;
+    const logistics=cityConnected(c)?1:nonnegative(node.route_access_factor??1);
     eligible.forEach((r,i)=>{if(weights[i]<=0)return;
-      producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity:nonnegative(node.production_output),
-        recipe:recipe(r),allocation:weights[i]/total,staffing:1,logistics:nonnegative(node.route_access_factor??1),mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
+      producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity,
+        recipe:recipe(r),allocation:weights[i]/total,staffing:1,jobs,logistics,mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
         source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
   }
+
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
   /**
    * Explicit production contract. A structure runs either an exact recipe whitelist
