@@ -356,7 +356,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     }
     if(!progress)break;
   }
-  for(const [id,p] of pending)if(!realized.has(id))diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},blocked:'missing_inputs_or_route'});
+  for(const [id,p] of pending)if(!realized.has(id))diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},
+    jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),blocked:'missing_inputs_or_route'});
   const consume=(c:City,g:Good)=>{const b=stock(c.id,g.key),missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     const qty=Math.min(available(b),missing),state=Math.min(qty,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
     b.consumed_state+=state;b.consumed_household+=qty-state;};
