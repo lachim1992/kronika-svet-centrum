@@ -191,7 +191,8 @@ function templateItem(t: TemplateRow, recipesByKey: Map<string, RecipeRow>): Cat
     const rows = keys.map(k => recipesByKey.get(k)).filter(Boolean) as RecipeRow[];
     const capacity = capacityBase * levelCapacityScale(level);
     levels.push({
-      level, capacity, jobs: jobsFor(capacity, rows), recipes: keys,
+      level, capacity, jobs: jobsFor(capacityBase, num(effects.jobs_capacity), level), recipes: keys,
+
       unlocks: contract?.levels[level - 1] || [],
     });
   }
