@@ -15,6 +15,7 @@ import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDeto
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
+import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
 import spriteWorkshop from "@/assets/map/node-workshop.png";
 import spriteGuardPost from "@/assets/map/node-guard-post.png";
@@ -329,6 +330,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [districts, setDistricts] = useState<CityDistrict[]>([]);
   const [productionPick, setProductionPick] = useState<Record<string, string>>({});
   const [storedSubBiomes, setStoredSubBiomes] = useState<StoredSubBiome[]>([]);
+  /** Which built structure the player opened for inspection. */
+  const [buildingTarget, setBuildingTarget] = useState<BuildingTarget | null>(null);
 
 
 
@@ -772,6 +775,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [selected, selectedCell, roadStepsOf, sessionId, tileByCell, terrainOf, selectedInfrastructure]);
 
   const constructionByParcel = useMemo(() => new Map(constructionEntities.map(entity => [entity.parcel_id, entity])), [constructionEntities]);
+  const constructionById = useMemo(() => new Map(constructionEntities.map(entity => [entity.id, entity])), [constructionEntities]);
+  /** Opening a built sub-parcel inspects its structure instead of only selecting the land. */
+  const openStructureOnParcel = useCallback((parcelId: string) => {
+    const content = parcelContents.find(item => item.parcel_id === parcelId && (item.entity_type === "building" || item.entity_type === "district"));
+    if (content) setBuildingTarget({ type: content.entity_type as "building" | "district", id: content.entity_id });
+  }, [parcelContents]);
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
@@ -904,8 +913,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         const quad = parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y);
         const activeParcel = parcel.id === selectedParcelId;
         return <g key={parcel.id} role="button" tabIndex={0} className="cursor-pointer"
-          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); }}
-          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); } }}>
+          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); openStructureOnParcel(parcel.id); }}
+          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); openStructureOnParcel(parcel.id); } }}>
           <polygon points={quad} fill={fill}
             stroke={activeParcel ? "var(--map-focus)" : mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
             strokeWidth={activeParcel ? 2 : mine ? 1.1 : .5}
@@ -1705,7 +1714,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const affordable = treasury.gold >= cost.gold && treasury.production >= cost.production;
                 const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild" && affordable;
                 return <button key={parcel.id} type="button" disabled={claimingParcel !== null}
-                  onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); if (canClaim) void claimParcel(parcel); }}
+                  onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); openStructureOnParcel(parcel.id); if (canClaim) void claimParcel(parcel); }}
                   title={`${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.capacity_slots} slotů · ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
                   className={`aspect-square border text-[8px] leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
                     parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
@@ -1801,7 +1810,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         {selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
           <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p><h3 className="text-sm">{SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</h3></div><span className="text-xs text-muted-foreground">{selectedParcelUsed}/{selectedParcel.capacity_slots} slotů</span></div>
           {(selectedParcelContents.length > 0 || selectedParcelNodes.length > 0) && <div className="space-y-1 text-xs">
-            {selectedParcelContents.filter(item => item.entity_type !== "node").map(item => <div key={item.id} className="flex justify-between border-b border-border/50 py-1"><span className="capitalize">{item.entity_type}</span><span>{item.slots_used} slot</span></div>)}
+            {selectedParcelContents.filter(item => item.entity_type !== "node").map(item => {
+              const structure = constructionById.get(item.entity_id);
+              const inspectable = item.entity_type === "building" || item.entity_type === "district";
+              return <Button key={item.id} type="button" variant="ghost" size="sm" disabled={!inspectable}
+                className="h-auto w-full justify-between rounded-none border-b border-border/50 px-0 py-1 text-left"
+                onClick={() => inspectable && setBuildingTarget({ type: item.entity_type as "building" | "district", id: item.entity_id })}>
+                <span className="flex-1 truncate">{structure?.name || (item.entity_type === "district" ? "Čtvrť" : "Budova")}</span>
+                <span className="text-[10px] text-muted-foreground">{structure && structure.status !== "completed" ? "staví se · " : ""}{inspectable ? "detail →" : `${item.slots_used} slot`}</span>
+              </Button>;
+            })}
             {selectedParcelNodes.map(node => <Button key={node.id} type="button" variant="ghost" size="sm" className="h-auto w-full justify-between rounded-none border-b border-border/50 px-0 py-1 text-left" onClick={() => setSelectedNodeId(node.id)}><span>{node.name}</span><span className="text-muted-foreground">subuzel</span></Button>)}
           </div>}
           {selectedNode && selectedParcelNodes.some(node => node.id === selectedNode.id) && <div className="border-l-2 border-primary bg-background/60 p-2 text-xs">
@@ -1990,6 +2008,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </div>
         </div>}
       </aside>}
+      <BuildingDetailSheet sessionId={sessionId} currentTurn={currentTurn} playerName={playerName}
+        isOwner={selectedCity ? selectedCity.owner_player === playerName : true}
+        treasury={treasury} target={buildingTarget}
+        onClose={() => setBuildingTarget(null)}
+        onChanged={() => { void load(); if (selectedCell) void loadTileParcels(selectedCell.a, selectedCell.b); }} />
       {!tiles.length &&  <div className="absolute inset-0 grid place-items-center text-center"><div className="map-floating-control p-6"><Castle className="mx-auto mb-2 h-7 w-7 text-primary"/><p className="font-display text-primary">Mapa zatím nemá žádná pole.</p></div></div>}
     </div>
   );
