@@ -1498,12 +1498,14 @@ Deno.serve(async (req) => {
       logistic_capacity: logisticCapacity,
       last_processed_turn: currentTurn,
       last_turn_grain_prod: Math.round(foodProduced), // Actual production; excludes imports/opening stock.
-      last_turn_grain_cons: totalDemand,
+      // These legacy ledger columns are integer-valued even though canonical
+      // basket demand is fractional.
+      last_turn_grain_cons: Math.round(totalDemand),
       last_turn_grain_net: Math.round(netProduction),
       last_turn_wood_prod: 0,
       last_turn_stone_prod: 0,
       last_turn_iron_prod: 0,
-      gold_reserve: newGoldReserve,
+      gold_reserve: Math.round(newGoldReserve),
       production_reserve: newProductionReserve,
       famine_city_count: famineCityCount,
       faith: Math.round(newFaith * 100) / 100,
@@ -1513,8 +1515,8 @@ Deno.serve(async (req) => {
       mobilization_production_penalty: Math.round(mobProductionPenalty * 10) / 10,
       mobilization_wealth_penalty: Math.round(mobWealthPenalty * 10) / 10,
       // ── Stage 7: explicit manpower & military upkeep ledger ──
-      manpower_available: Math.max(0, manpowerPool - totalSoldiers),
-      manpower_mobilized: totalSoldiers,
+      manpower_available: Math.max(0, Math.floor(manpowerPool - totalSoldiers)),
+      manpower_mobilized: Math.max(0, Math.floor(totalSoldiers)),
       over_mobilized: overMobilized,
       military_gold_upkeep: armyWealthUpkeep,
       military_food_upkeep: armyProductionUpkeep,
