@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { resolveGoodsEconomy, type Good, type City, type Producer, type Snapshot } from '../../supabase/functions/_shared/goodsEconomy';
 import { BASKET_DEMAND, basketDemandChannels, basketClass, needBand, waterShortageImpact,
   toolProductivityMultiplier, alertPriority, channelTotal, DEMAND } from '../../supabase/functions/_shared/demandModel';
+import { applyPopulationLoss } from '../../supabase/functions/_shared/demographics';
+
 
 // CANONICAL DEMAND CLASSES — needs vs operational / development / civic / military / luxury.
 // Population creates needs (and a little discretionary consumption). Everything else is
