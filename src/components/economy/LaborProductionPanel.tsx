@@ -10,9 +10,12 @@ const fmt = (n: unknown, digits = 0) => Number(n || 0).toLocaleString('cs-CZ', {
 const pct = (n: unknown) => `${(Number(n || 0) * 100).toFixed(0)} %`;
 const SECTORS: Record<string, string> = { farming: 'Zemědělství', crafting: 'Řemesla', logistics: 'Doprava a sklady', admin: 'Správa', extraction: 'Těžba' };
 const BLOCKED: Record<string, string> = {
-  no_workers: 'Chybí pracovníci', missing_inputs_or_route: 'Chybí vstupy nebo cesta',
+  no_workers: 'Chybí pracovníci', missing_inputs: 'Vstupní zboží nikde není',
+  missing_input_route: 'Vstupy existují, chybí cesta', missing_inputs_or_route: 'Chybí vstupy nebo cesta',
+  missing_local_delivery_route: 'Chybí cesta do města',
   missing_recipe_inputs: 'Chybí zadané vstupy', capacity_labor_or_staffing: 'Chybí kapacita nebo lidé',
 };
+
 
 export default function LaborProductionPanel({ sessionId, cities, playerName, currentTurn }:
   { sessionId: string; cities: any[]; playerName: string; currentTurn: number }) {
