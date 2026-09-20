@@ -858,7 +858,15 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         },
       }],
       toolChoice: { type: "function", function: { name: "faction_turn" } },
-    });
+    };
+
+    // Phase 6 — one deterministic retry on transient provider failures (rate limit / 5xx).
+    let aiResult = await invokeAI(aiCtx, aiRequest);
+    if (!aiResult.ok && (aiResult.status === 429 || (aiResult.status ?? 0) >= 500)) {
+      console.warn(`[ai-faction-turn] provider ${aiResult.status} for ${factionName} — retrying once`);
+      await new Promise((r) => setTimeout(r, 2000));
+      aiResult = await invokeAI(aiCtx, aiRequest);
+    }
 
     // ── Wave 2 SHADOW telemetry — does NOT affect AI behavior. ──
     try {
