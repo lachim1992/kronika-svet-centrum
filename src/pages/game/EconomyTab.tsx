@@ -35,6 +35,7 @@ import CityEconomyAnalytics from "@/components/economy/CityEconomyAnalytics";
 import WorkforcePanel from "@/components/economy/WorkforcePanel";
 import PopulationPanel from "@/components/economy/PopulationPanel";
 import MarketsHub from "@/components/economy/MarketsHub";
+import TradeFlowExplorer from "@/components/economy/TradeFlowExplorer";
 import TreasuryHub from "@/components/economy/TreasuryHub";
 import { getFiscalIncome } from "@/lib/economyFlow";
 
@@ -267,6 +268,7 @@ const EconomyTab = ({
 
         {/* ═══ MARKETS TAB ═══ */}
         <TabsContent value="markets" className="space-y-5 animate-fade-in">
+          <TradeFlowExplorer sessionId={sessionId} currentTurn={currentTurn} cities={cities} playerName={currentPlayerName} />
           <MarketsHub
             sessionId={sessionId}
             currentPlayerName={currentPlayerName}

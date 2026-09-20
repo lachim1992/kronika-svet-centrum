@@ -16,6 +16,7 @@ import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
+import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
 import spriteWorkshop from "@/assets/map/node-workshop.png";
 import spriteGuardPost from "@/assets/map/node-guard-post.png";
@@ -180,8 +181,15 @@ type StoredSubBiome = { grid_x: number; grid_y: number; parcel_index: number; pa
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
 type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; city_id: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null; upgrade_level: number | null; infrastructure_level: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
-type PathCell = { x?: number; y?: number; q?: number; r?: number };
+/** Stored paths come as "x,y" strings, [x,y] pairs or objects — all three are valid. */
+type PathCell = string | [number, number] | { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null; transport_modes?: string[] | null };
+/** One economic movement along a corridor, kept for the click-through detail. */
+type FlowRow = {
+  id: string; corridor: string; layer: "goods" | "baskets"; label: string;
+  sourceCityId: string | null; targetCityId: string | null; sourcePlayer: string | null; targetPlayer: string | null;
+  volume: number; value: number; modes: string[];
+};
 type ParcelContent = { id: string; parcel_id: string; entity_type: string; entity_id: string; slots_used: number };
 type TileInfrastructure = { id: string; grid_x: number; grid_y: number; owner_player: string; level: number; target_level: number | null; status: string; progress: number };
 type RoadSegment = { id: string; project_id: string | null; owner_player: string; from_x: number; from_y: number; to_x: number; to_y: number; level: number; status: string; progress: number; capacity: number; utilization: number; maintenance: number; bridge_count: number; sub_path_cells: SubRoadCell[] };
@@ -260,6 +268,24 @@ const LAND_USE_COLOR: Record<string, string> = {
 };
 
 const cellKey = (a: number, b: number) => `${a},${b}`;
+/** Normalises every stored path-cell shape into map coordinates. */
+const parsePathCell = (cell: PathCell): { a: number; b: number } | null => {
+  if (typeof cell === "string") {
+    const [a, b] = cell.split(",").map(Number);
+    return Number.isFinite(a) && Number.isFinite(b) ? { a, b } : null;
+  }
+  if (Array.isArray(cell)) {
+    const [a, b] = cell.map(Number);
+    return Number.isFinite(a) && Number.isFinite(b) ? { a, b } : null;
+  }
+  if (cell && typeof cell === "object") {
+    const a = cell.x ?? cell.q;
+    const b = cell.y ?? cell.r;
+    if (Number.isFinite(Number(a)) && Number.isFinite(Number(b))) return { a: Number(a), b: Number(b) };
+  }
+  return null;
+};
+const corridorKeyOf = (cells: Array<{ a: number; b: number }>) => cells.map(cell => `${cell.a},${cell.b}`).join(">");
 const ROAD_TRACE_CENTER = { x: Math.floor(TILE_PARCEL_COLS / 2), y: Math.floor(TILE_PARCEL_ROWS / 2) };
 const roadEdgeKey = (from: { a: number; b: number }, to: { a: number; b: number }) => (
   from.a < to.a || (from.a === to.a && from.b <= to.b)
@@ -310,6 +336,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
   const [treasury, setTreasury] = useState({ gold: 0, production: 0 });
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
+  const [flowRows, setFlowRows] = useState<FlowRow[]>([]);
+  const [openCorridor, setOpenCorridor] = useState<string | null>(null);
   const [showRoutes, setShowRoutes] = useMapLayer("routes");
   const [showNodes, setShowNodes] = useMapLayer("nodes");
   const [showLabels, setShowLabels] = useMapLayer("labels");
@@ -350,8 +378,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, city_id, controlled_by, production_output, wealth_output, food_value, parcel_index, upgrade_level, infrastructure_level").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
-      supabase.from("trade_flows").select("id, path_cells, transport_modes").eq("session_id", sessionId).not("path_cells", "is", null),
-      supabase.from("basket_trade_flows").select("id, path_cells, transport_modes").eq("session_id", sessionId).eq("turn_number", currentTurn).not("path_cells", "is", null),
+      supabase.from("trade_flows").select("id, good_key, path_cells, transport_modes, source_city_id, target_city_id, source_player, target_player, volume_per_turn, effective_price").eq("session_id", sessionId).not("path_cells", "is", null),
+      supabase.from("basket_trade_flows").select("id, basket_key, path_cells, transport_modes, source_city_id, target_city_id, source_player, target_player, volume, gross_value").eq("session_id", sessionId).eq("turn_number", currentTurn).not("path_cells", "is", null),
       supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
       supabase.from("tile_parcels").select("grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId).limit(40000),
@@ -365,16 +393,31 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
-    // One animated line per physical corridor. Goods flows are per basket, so many
-    // rows share the same path — drawing each would stack identical lines on top of
-    // one another. Baskets (Layer 2) win over the legacy trade_flows rows.
-    const flowRows: any[] = (basketFlowRes.data || []).length ? (basketFlowRes.data || []) : (tradeFlowRes.data || []);
-    const corridors = new Map<string, any>();
-    flowRows.forEach((flow: any) => {
-      if (!Array.isArray(flow.path_cells) || flow.path_cells.length < 2) return;
-      const key = flow.path_cells.map((cell: any) => `${cell.x},${cell.y}`).join(">");
-      if (!corridors.has(key)) corridors.set(key, { route_id: key, path_cells: flow.path_cells, hex_path: null, transport_modes: flow.transport_modes });
-    });
+    // One animated line per physical corridor, but every movement along it stays
+    // readable, so a click can list what actually travels there.
+    const corridors = new Map<string, Route>();
+    const rows: FlowRow[] = [];
+    const collect = (raw: any[], layer: "goods" | "baskets") => {
+      raw.forEach(flow => {
+        const cells = (Array.isArray(flow.path_cells) ? flow.path_cells : []).map(parsePathCell).filter(Boolean) as Array<{ a: number; b: number }>;
+        if (cells.length < 2) return;
+        const corridor = corridorKeyOf(cells);
+        if (!corridors.has(corridor)) corridors.set(corridor, { route_id: corridor, path_cells: flow.path_cells, hex_path: null, transport_modes: flow.transport_modes });
+        const volume = Number(layer === "baskets" ? flow.volume : flow.volume_per_turn) || 0;
+        rows.push({
+          id: `${layer}:${flow.id}`, corridor, layer,
+          label: String(layer === "baskets" ? flow.basket_key : flow.good_key || "—"),
+          sourceCityId: flow.source_city_id ?? null, targetCityId: flow.target_city_id ?? null,
+          sourcePlayer: flow.source_player ?? null, targetPlayer: flow.target_player ?? null,
+          volume,
+          value: Number(layer === "baskets" ? flow.gross_value : volume * (Number(flow.effective_price) || 0)) || 0,
+          modes: Array.isArray(flow.transport_modes) ? flow.transport_modes.map(String) : [],
+        });
+      });
+    };
+    collect((basketFlowRes.data || []) as any[], "baskets");
+    collect((tradeFlowRes.data || []) as any[], "goods");
+    setFlowRows(rows);
     const economicRoutes = [...corridors.values()];
     setRoutes((economicRoutes.length ? economicRoutes : (routeRes.data || [])) as unknown as Route[]); setArmies((armyRes.data || []) as Army[]);
     setCityParcels((parcelRes.data || []) as TileParcel[]);
@@ -696,7 +739,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const routePolylines = useMemo(() => routes.flatMap(route => {
     const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path;
     if (!Array.isArray(path) || path.length < 2) return [];
-    const cells = path.map(cell => ({ a: cell.x ?? cell.q ?? 0, b: cell.y ?? cell.r ?? 0 }));
+    const cells = path.map(parsePathCell).filter(Boolean) as Array<{ a: number; b: number }>;
+    if (cells.length < 2) return [];
     const points: Array<{ x: number; y: number }> = [];
     const pushSubPoint = (sub: SubRoadCell) => {
       const point = subPoint(sub.gridX, sub.gridY, sub.parcelX, sub.parcelY);
@@ -1539,11 +1583,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <line x1={point.x - 5} y1={point.y - 2.6} x2={point.x + 5} y2={point.y - 2.6} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity=".8" />
             </g>;
           })}
-          {!cityLayerCityId && showRoutes && routePolylines.map(route => (
-            <polyline key={route.id} points={route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ")}
-              fill="none" stroke="var(--map-focus)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"
-              opacity=".9" className="iso-active-route" pointerEvents="none" />
-          ))}
+          {!cityLayerCityId && showRoutes && routePolylines.map(route => {
+            const points = route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ");
+            const hasFlows = flowRows.some(row => row.corridor === route.id);
+            return <g key={route.id}>
+              <polyline points={points} fill="none" stroke="var(--map-focus)" strokeWidth="1.9" strokeLinecap="round"
+                strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />
+              {hasFlows && <polyline points={points} fill="none" stroke="transparent" strokeWidth="10"
+                strokeLinecap="round" style={{ cursor: "pointer" }}
+                onClick={event => { event.stopPropagation(); setOpenCorridor(route.id); }} />}
+            </g>;
+          })}
 
           {showNodes && nodes.map(node => {
             if (node.node_type === "primary_city" || node.node_type === "secondary_city") return null;
@@ -2013,6 +2063,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         treasury={treasury} target={buildingTarget}
         onClose={() => setBuildingTarget(null)}
         onChanged={() => { void load(); if (selectedCell) void loadTileParcels(selectedCell.a, selectedCell.b); }} />
+      <TradeCorridorSheet corridor={openCorridor} flows={flowRows}
+        cityName={id => cities.find(city => city.id === id)?.name || "mimo říši"}
+        onClose={() => setOpenCorridor(null)} />
       {!tiles.length &&  <div className="absolute inset-0 grid place-items-center text-center"><div className="map-floating-control p-6"><Castle className="mx-auto mb-2 h-7 w-7 text-primary"/><p className="font-display text-primary">Mapa zatím nemá žádná pole.</p></div></div>}
     </div>
   );
