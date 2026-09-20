@@ -126,8 +126,9 @@ export async function ensureStarterEconomy(
       if (match) {
         existing.push(contract.name);
         // Only ever resize a structure this helper itself created — never a player's building.
-        if (match.effects?.starter_economy &&
-            JSON.stringify(match.effects?.basket_outputs || {}) !== JSON.stringify(effects.basket_outputs)) {
+        const sameSize = JSON.stringify(match.effects?.basket_outputs || {}) === JSON.stringify(effects.basket_outputs)
+          && Number(match.effects?.jobs_capacity) === effects.jobs_capacity;
+        if (match.effects?.starter_economy && !sameSize) {
           resizes.push({ id: match.id, effects: { ...match.effects, ...effects } });
           resized.push(contract.name);
         }
