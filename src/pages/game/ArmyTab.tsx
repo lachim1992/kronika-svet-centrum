@@ -1278,35 +1278,19 @@ function CreateGeneralDialog({
     if (goldReserve < cost) { toast.error(`Nedostatek zlata (potřeba ${cost})`); return; }
     setSaving(true);
 
-    const skill = 40 + Math.floor(Math.random() * 30); // 40-69
-
-    await supabase.from("generals").insert({
-      session_id: sessionId,
-      player_name: currentPlayerName,
-      name: name.trim(),
-      skill,
-      flavor_trait: flavorTrait.trim() || null,
+    // The general row, the skill roll and the fee are all server-side
+    // (RECRUIT_GENERAL): one canonical, idempotent write path.
+    const res = await dispatchCommand({
+      sessionId, actor: { name: currentPlayerName }, commandType: "RECRUIT_GENERAL",
+      commandPayload: { generalName: name.trim(), cost, flavorTrait: flavorTrait.trim() || null },
     });
-
-    // Deduct gold
-    const { data: realm } = await supabase
-      .from("realm_resources")
-      .select("id, gold_reserve")
-      .eq("session_id", sessionId)
-      .eq("player_name", currentPlayerName)
-      .maybeSingle();
-
-    if (realm) {
-      await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve - cost }).eq("id", realm.id);
+    if (!res.ok) {
+      toast.error(res.error || "Jmenování generála selhalo");
+      setSaving(false);
+      return;
     }
 
-    await dispatchCommand({
-      sessionId, actor: { name: currentPlayerName }, commandType: "RECRUIT_GENERAL",
-      commandPayload: { generalName: name.trim(), skill, cost, flavorTrait: flavorTrait.trim() || null,
-        chronicleText: `${currentPlayerName} jmenoval generála **${name.trim()}** (schopnost ${skill}). Náklady: ${cost} zlata.` },
-    });
-
-    toast.success(`Generál ${name.trim()} jmenován (sch. ${skill})`);
+    toast.success(`Generál ${name.trim()} jmenován`);
     setName(""); setFlavorTrait("");
     setSaving(false);
     onRefresh();
