@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SUBNODE_DEFS as SHARED_SUBNODE_DEFS } from "../_shared/subnodeCatalog.ts";
 import { readRealmWorkforce, actualSoldiers } from '../_shared/manpower.ts';
 import {
   computeAnnexCheck,
@@ -3086,16 +3087,8 @@ async function executeClaimTileParcel(
   }], { parcelId: parcel.id });
 }
 
-const SUBNODE_DEFS: Record<string, {
-  label: string; nodeType: string; group: string; gold: number; production: number;
-  resource: Record<string, number>; capabilities: string[]; role: string;
-}> = {
-  farmstead: { label: "Produkční dvůr", nodeType: "resource_node", group: "production", gold: 35, production: 45, resource: { supplies: 4, production: 2 }, capabilities: ["farming", "herding", "milling"], role: "source" },
-  workshop: { label: "Řemeslná dílna", nodeType: "resource_node", group: "production", gold: 45, production: 55, resource: { production: 5, wealth: 1 }, capabilities: ["crafting", "smithing", "toolmaking", "smelting", "stonecutting"], role: "processing" },
-  guard_post: { label: "Strážnice", nodeType: "fortress", group: "military", gold: 50, production: 65, resource: {}, capabilities: ["garrison"], role: "control" },
-  trade_post: { label: "Obchodní stanice", nodeType: "trade_hub", group: "trade", gold: 70, production: 40, resource: { wealth: 5 }, capabilities: ["trade_access", "storage", "construction"], role: "producer" },
-  river_wharf: { label: "Říční překladiště", nodeType: "port", group: "trade", gold: 80, production: 60, resource: { wealth: 4, supplies: 1 }, capabilities: ["shipping", "storage", "fishing"], role: "source" },
-};
+/** Canonical subnode definitions — shared with the construction UI. */
+const SUBNODE_DEFS = SHARED_SUBNODE_DEFS;
 
 
 /** BUILD_SUBNODE — place a small production, military, or trade node on a held parcel. */
