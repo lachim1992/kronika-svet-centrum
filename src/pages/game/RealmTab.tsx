@@ -74,7 +74,7 @@ const RealmTab = ({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-3">
+        <TabsContent value="overview" className="mt-3 space-y-4">
           <RealmDashboard
             sessionId={sessionId} currentPlayerName={currentPlayerName}
             currentTurn={currentTurn} myRole={myRole} cities={cities} realm={realm} onRefetch={onRefetch}
