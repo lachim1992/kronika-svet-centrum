@@ -16,6 +16,7 @@ import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
+import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
 import spriteWorkshop from "@/assets/map/node-workshop.png";
 import spriteGuardPost from "@/assets/map/node-guard-post.png";
@@ -2062,6 +2063,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         treasury={treasury} target={buildingTarget}
         onClose={() => setBuildingTarget(null)}
         onChanged={() => { void load(); if (selectedCell) void loadTileParcels(selectedCell.a, selectedCell.b); }} />
+      <TradeCorridorSheet corridor={openCorridor} flows={flowRows}
+        cityName={id => cities.find(city => city.id === id)?.name || "mimo říši"}
+        onClose={() => setOpenCorridor(null)} />
       {!tiles.length &&  <div className="absolute inset-0 grid place-items-center text-center"><div className="map-floating-control p-6"><Castle className="mx-auto mb-2 h-7 w-7 text-primary"/><p className="font-display text-primary">Mapa zatím nemá žádná pole.</p></div></div>}
     </div>
   );
