@@ -19,8 +19,16 @@ const conserve=(out:ReturnType<typeof resolveGoodsEconomy>)=>{for(const b of out
 
 describe('economy chain closure',()=>{
   it('turns finished construction materials into capital once, without keeping a duplicate',()=>{
-    const out=resolveGoodsEconomy(snapshot([good('construction_materials','construction',true)],[],[stock('construction_materials',100)]));
-    expect(out.balances[0].capex).toBeCloseTo(98.75);expect(out.balances[0].stored).toBeCloseTo(0.25);conserve(out);
+    // Without an active building site there is no construction demand at all (development class),
+    // so the whole surplus becomes capital instead of sitting in a phantom household reserve.
+    const idle=resolveGoodsEconomy(snapshot([good('construction_materials','construction',true)],[],[stock('construction_materials',100)]));
+    expect(idle.balances[0].capex).toBeCloseTo(100);expect(idle.balances[0].stored).toBeCloseTo(0);conserve(idle);
+    // With building sites running, their demand is served first and only the rest is capitalised.
+    const busy=snapshot([good('construction_materials','construction',true)],[],[stock('construction_materials',100)]);
+    busy.cities=[{...city,constructionProjects:5}];
+    const out=resolveGoodsEconomy(busy);
+    expect(out.balances[0].consumed_state).toBeCloseTo(10);
+    expect(out.balances[0].capex).toBeLessThan(90.1);conserve(out);
   });
   it('does not lose final production because an upstream workshop has a later UUID',()=>{
     const run=(id:string)=>resolveGoodsEconomy(snapshot([good('raw'),good('mid'),good('final')],

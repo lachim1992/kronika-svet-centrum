@@ -1,5 +1,6 @@
 import {produced,type Snapshot,type resolveGoodsEconomy} from './goodsEconomy.ts';
 import {fiscalSummary} from './fiscal.ts';
+import {basketSpec,alertPriority,shortageEffect,basketSeverity} from './demandModel.ts';
 
 export interface Contribution {id:string;label:string;value:number;city?:string;good?:string;route?:string}
 export interface Metric {key:string;label:string;value:number|null;previous:number|null;unit:string;definition:string;sources:Contribution[];assumption?:string}
@@ -66,11 +67,31 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
       reason:`${p.city_name}: ${p.good} je za ${p.local_price.toFixed(1)} místo ${p.base_price.toFixed(1)} (pokrytí poptávky ${(p.coverage*100).toFixed(0)} %, dovoz ${p.imported.toFixed(1)}, chybí ${(shortage?.unmet_demand||0).toFixed(1)}).`,
       destination:'economy',levers:['Rozšířit cestu k dodavateli','Zvýšit místní výrobu','Otevřít nový dovoz','Změnit obchodní režim']});}
 
-  for(const b of balances)if(b.unmet_demand>0){const fill=b.demand?1-b.unmet_demand/b.demand:1;
-    alerts.push({id:`need:${b.city}:${b.good}`,severity:goods.get(b.good)?.basket==='staple_food'&&fill<0.8?'critical':'warning',category:'staple_food'===goods.get(b.good)?.basket?'food':'input',entity_type:'city',entity_id:b.city,metric:b.good,current_value:fill,threshold:1,reason:`${names.get(b.city)}: chybí ${b.unmet_demand.toFixed(1)} jednotek ${b.good}.`,destination:'economy',levers:['Prověřit dodavatele a cestu','Otevřít výrobu města']});}
+  /**
+   * SHORTAGE ALERTS BY DEMAND CLASS. Only needs are survival problems: an unmet tool, storage
+   * or luxury demand is a productivity or market signal, never a red alarm. Aggregated per
+   * basket, because the basket — not a single substitute good — is what the player manages.
+   */
+  const basketRows=new Map<string,{demand:number;unmet:number}>();
+  for(const b of balances){const bk=goods.get(b.good)?.basket;if(!bk)continue;
+    const row=basketRows.get(`${b.city}::${bk}`)||{demand:0,unmet:0};
+    row.demand+=b.demand;row.unmet+=b.unmet_demand;basketRows.set(`${b.city}::${bk}`,row);}
+  for(const [k,row] of basketRows){const [city,bk]=k.split('::'),spec=basketSpec(bk);
+    if(!spec||row.demand<=0||row.unmet<=1e-6)continue;
+    const coverage=Math.max(0,row.demand-row.unmet)/row.demand;
+    const priority=alertPriority(bk,coverage,{activeSystem:row.demand>0});
+    if(priority==='none')continue;
+    const severity=basketSeverity(bk,coverage);
+    alerts.push({id:`basket:${city}:${bk}`,severity:severity==='ok'?'info':severity,
+      category:spec.class,entity_type:'city',entity_id:city,metric:bk,current_value:coverage,threshold:1,
+      reason:`${names.get(city)} · ${spec.label}: pokrytí ${(coverage*100).toFixed(0)} % (chybí ${row.unmet.toFixed(1)}). ${shortageEffect(bk,coverage)} [${priority}]`,
+      destination:'economy',levers:spec.class==='operational'?['Postavit či dovézt nástroje','Omezit poptávku útlumem provozu']
+        :spec.class==='critical_need'||spec.class==='basic_need'?['Prověřit dodavatele a cestu','Otevřít místní výrobu']
+        :spec.class==='discretionary'||spec.class==='luxury'?['Využít tržní příležitost']
+        :['Prověřit vstupy a dodávky']});}
   for(const d of producers)if(d.blocked)alerts.push({id:d.producer,severity:'warning',category:'production',entity_type:'node',entity_id:d.node||d.city,metric:d.good,current_value:d.realized,threshold:d.capacity,reason:`${names.get(d.city)} · ${d.good}: ${d.blocked}`,destination:'economy',levers:['Prověřit vstupy','Změnit objednávku','Otevřít pracovní sílu']});
   for(const f of ledger.famous.filter(f=>owned.has(f.city)&&f.created===null))alerts.push({id:`fame:${f.city}:${f.good}`,severity:'opportunity',category:'trade',entity_type:'city',entity_id:f.city,metric:'fame_streak',current_value:f.streak,threshold:3,reason:`${names.get(f.city)} · ${f.good}: ${f.streak} úspěšných tahů k proslulému výrobku.`,destination:'economy',levers:['Zajistit vstupy a vývoz']});
-  const priority={critical:0,warning:1,opportunity:2,info:3};alerts.sort((a,b)=>priority[a.severity]-priority[b.severity]||a.id.localeCompare(b.id));
+  const rank={critical:0,warning:1,opportunity:2,info:3};alerts.sort((a,b)=>rank[a.severity]-rank[b.severity]||a.id.localeCompare(b.id));
   const cityReports=cities.map(c=>({...ledger.metrics.find(m=>m.city===c.id),id:c.id,name:c.name,cell:c.cell,population:c.population,stability:c.stability*100,workforce:ledger.workforce[c.id],labor:labor.find((l:any)=>l.city===c.id),balances:balances.filter(b=>b.city===c.id),prices:prices.filter(p=>p.city===c.id),hinterlands:ledger.hinterlands.filter(h=>h.city===c.id||h.hub===c.id)}));
   const routes=snapshot.edges.filter(e=>flows.some(f=>f.edges.includes(e.id))).map(e=>({...e,used:sum(flows.filter(f=>f.edges.includes(e.id)),f=>f.qty*Math.max(1,goods.get(f.good)!.bulk)),handled_value:sum(flows.filter(f=>f.edges.includes(e.id)),f=>f.gross_value)}));
   const history=[...(previous?.history||[]).filter(h=>h.turn<snapshot.turn),{turn:snapshot.turn,metrics:Object.fromEntries(metrics.map(m=>[m.key,m.value]))}].slice(-10);

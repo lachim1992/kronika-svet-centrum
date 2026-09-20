@@ -1812,6 +1812,7 @@ export type Database = {
           bonus_supply: number | null
           building_bonus: number
           city_id: string
+          demand_detail: Json | null
           domestic_satisfaction: number | null
           export_surplus: number | null
           id: string
@@ -1832,6 +1833,7 @@ export type Database = {
           bonus_supply?: number | null
           building_bonus?: number
           city_id: string
+          demand_detail?: Json | null
           domestic_satisfaction?: number | null
           export_surplus?: number | null
           id?: string
@@ -1852,6 +1854,7 @@ export type Database = {
           bonus_supply?: number | null
           building_bonus?: number
           city_id?: string
+          demand_detail?: Json | null
           domestic_satisfaction?: number | null
           export_surplus?: number | null
           id?: string

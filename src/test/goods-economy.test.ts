@@ -93,7 +93,7 @@ describe('canonical physical goods economy',()=>{
   });
   it('sustained exports create a persistent candidate, premium flows, then decay',()=>{
     const s=setup();s.cities=[city('bakery',0,2),city('court',1,4)];s.cities[0].guild=2;
-    s.cities[1].population=12000;s.cities[1].classes={peasants:12000};
+    s.cities[1].population=12000;s.cities[1].classes={peasants:6000,burghers:5000,clerics:1000};
     s.goods=[good('spice'),{...good('pastries','feast',100),stage:'final',prestige:1}];
     s.producers=[producer('spice','bakery','spice',20),{...producer('pastries','bakery','pastries',20,[{good:'spice',qty:1}]),distinctive:true}];
     for(let turn=1;turn<=3;turn++){s.turn=turn;const r=resolveGoodsEconomy(s);s.fame=r.famous;}

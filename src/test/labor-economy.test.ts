@@ -40,7 +40,14 @@ describe('labour, jobs and capacity economy', () => {
       expect(produced(b)).toBe(0);
       expect(b.produced_household).toBe(0);
     }
-    expect(r.balances.some(b => b.unmet_demand > 0)).toBe(true);
+    // Tools are operational, not a household need: without staffed producers nothing demands them.
+    expect(r.balances.filter(b => b.good === 'tools').every(b => b.demand === 0)).toBe(true);
+    // A basic need is still demanded by the population alone and stays unmet without supply.
+    const needs = chain();
+    needs.producers = [];
+    needs.goods = [...needs.goods, { ...good('bread', 'staple_food', 8, 'final'), finalUse: true }];
+    const n = resolveGoodsEconomy(needs);
+    expect(n.balances.some(b => b.good === 'bread' && b.unmet_demand > 0)).toBe(true);
   });
 
   it('C/D: a producer without workers or without inputs realizes nothing', () => {
@@ -120,6 +127,7 @@ describe('labour, jobs and capacity economy', () => {
 
     const noSupply = chain();
     noSupply.producers = [];
+    noSupply.goods = [...noSupply.goods, { ...good('bread', 'staple_food', 8, 'final'), finalUse: true }];
     const unmet = resolveGoodsEconomy(noSupply).balances.filter(b => b.demand > 0);
     expect(unmet.length).toBeGreaterThan(0);
     for (const b of unmet) expect(b.unmet_demand).toBeCloseTo(b.demand);

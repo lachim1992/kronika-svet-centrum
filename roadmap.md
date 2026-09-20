@@ -161,3 +161,14 @@
       prosperita jako index, oprava záložky „Kde se hromadí bohatství", rework TRADE_BOOM,
       deprecate legacy node wealth fields, testy A–O, read-only diagnostika Test01 turn 64.
 
+
+## Rework poptávkových košů (hotovo, tah 65)
+- [x] Kanonický solver poptávky v `_shared/demandModel.ts` (13 košů, 9 kanálů proveniencí, třídy potřeb)
+- [x] Nástroje = provozní spotřeba obsazených kapacit; měkký strop produktivity (floor 0.75), nikdy nulová výroba
+- [x] Pitná voda = kritická potřeba s pásmy (healthy / minor / meaningful / severe / critical)
+- [x] Stavby, správa, logistika a vojsko generují poptávku jen z reálné aktivity
+- [x] `variety` samostatný kanonický koš i na klientu (odstraněn legacy remap variety→feast)
+- [x] `city_market_baskets.demand_detail` (jsonb) = provenience, krytí, pásmo, alert, důsledek
+- [x] UI: skupinová matice košů + alerty P0–P3/INFO místo „chybí X jednotek"
+- [x] Test01 přepočítán na novou ekonomiku (read-only jinak, tah 65)
+- [ ] Zbývá: mortalita z vody se zatím neaplikuje (jen stabilita + event); production_reserve gating

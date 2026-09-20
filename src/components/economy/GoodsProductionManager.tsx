@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  CANONICAL_BASKET_KEYS,
   resolveBasketKey,
   weightedSatisfaction,
   VALID_BASKETS,
@@ -29,7 +28,11 @@ import BasketDetailDrawer from "./goods-production/BasketDetailDrawer";
 import OrdersCapacityPanel from "./goods-production/OrdersCapacityPanel";
 import HistoryChartsPanel from "./goods-production/HistoryChartsPanel";
 import { useDevMode } from "@/hooks/useDevMode";
-import type { BasketAgg, CityBasketRow } from "./goods-production/types";
+import type { BasketAgg, CityBasketRow, DemandDetail } from "./goods-production/types";
+import {
+  ALERT_ORDER, BASKET_GROUP_FALLBACK, BASKET_GROUP_ORDER, worseAlert,
+  type AlertPriority, type DemandClass,
+} from "@/lib/demandClasses";
 
 interface Props {
   sessionId: string;
@@ -123,11 +126,15 @@ const GoodsProductionManager = ({
 
   // Aggregate per canonical basket (resolve legacy keys, scope = my cities only)
   const aggByBasket: BasketAgg[] = useMemo(() => {
-    const map = new Map<string, {
+    type Acc = {
       demand: number; supply: number; auto: number; recipe: number; building: number;
       importVol: number; unmet: number; cities: Set<string>;
       rows: Array<{ local_demand: number; domestic_satisfaction: number }>;
-    }>();
+      channels: Record<string, number>;
+      alert: AlertPriority; effect: string; worstCoverage: number;
+      demandClass: DemandClass | null; group: string | null;
+    };
+    const map = new Map<string, Acc>();
     for (const r of rawRows) {
       if (!myCityIds.has(r.city_id)) continue;
       const key = resolveBasketKey(r.basket_key);
@@ -136,6 +143,8 @@ const GoodsProductionManager = ({
         map.set(key, {
           demand: 0, supply: 0, auto: 0, recipe: 0, building: 0,
           importVol: 0, unmet: 0, cities: new Set(), rows: [],
+          channels: {}, alert: "none", effect: "", worstCoverage: 1,
+          demandClass: null, group: null,
         });
       }
       const a = map.get(key)!;
@@ -147,22 +156,38 @@ const GoodsProductionManager = ({
       a.unmet  += Number(r.unmet_demand) || Math.max(0, (Number(r.local_demand) || 0) - (Number(r.local_supply) || 0));
       a.cities.add(r.city_id);
       a.rows.push({ local_demand: Number(r.local_demand) || 0, domestic_satisfaction: Number(r.domestic_satisfaction) || 0 });
+      const d = (r.demand_detail ?? null) as DemandDetail | null;
+      if (d) {
+        a.demandClass = d.demand_class ?? a.demandClass;
+        a.group = d.group ?? a.group;
+        for (const [ch, qty] of Object.entries(d.channels || {})) {
+          const n = Number(qty) || 0;
+          if (n > 0) a.channels[ch] = (a.channels[ch] || 0) + n;
+        }
+        const cov = Number.isFinite(Number(d.coverage)) ? Number(d.coverage) : 1;
+        if ((Number(r.local_demand) || 0) > 0 && cov < a.worstCoverage) {
+          a.worstCoverage = cov;
+          a.effect = d.effect || a.effect;
+        }
+        a.alert = worseAlert(a.alert, (d.alert as AlertPriority) || "none");
+      }
     }
-    // Fold import volumes (basket_trade_flows where target_player = me)
     for (const f of tradeFlows) {
       if (f.target_player !== currentPlayerName) continue;
       const key = resolveBasketKey(f.basket_key);
       const a = map.get(key);
       if (a) a.importVol += Number(f.volume) || 0;
     }
-    // Build final ordered list including missing baskets as zero rows.
     const out: BasketAgg[] = [];
-    for (const k of CANONICAL_BASKET_KEYS) {
+    for (const k of VALID_BASKETS as readonly string[]) {
       const a = map.get(k);
+      const group = a?.group || BASKET_GROUP_FALLBACK[k] || "PROVOZNÍ EKONOMIKA";
       if (!a) {
         out.push({
           key: k, demand: 0, supply: 0, auto: 0, recipe: 0, building: 0,
           importVol: 0, unmet: 0, sat: 1, cityCount: 0,
+          demandClass: "operational", group, coverage: 1, alert: "none",
+          effect: "Žádná aktivita → žádná poptávka", channels: {},
         });
         continue;
       }
@@ -178,14 +203,22 @@ const GoodsProductionManager = ({
         unmet: a.unmet,
         sat,
         cityCount: a.cities.size,
+        demandClass: a.demandClass || "operational",
+        group,
+        coverage: a.demand > 0 ? Math.max(0, a.demand - a.unmet) / a.demand : 1,
+        alert: a.alert,
+        effect: a.effect || (a.demand > 0 ? "" : "Žádná aktivita → žádná poptávka"),
+        channels: a.channels,
       });
     }
-    // Sort worst-first; baskets with no demand pushed to the end.
     out.sort((a, b) => {
-      const aHas = a.demand > 0 ? 0 : 1;
-      const bHas = b.demand > 0 ? 0 : 1;
-      if (aHas !== bHas) return aHas - bHas;
-      return a.sat - b.sat;
+      const ga = BASKET_GROUP_ORDER.indexOf(a.group as any);
+      const gb = BASKET_GROUP_ORDER.indexOf(b.group as any);
+      if (ga !== gb) return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb);
+      const aa = ALERT_ORDER.indexOf(a.alert);
+      const ab = ALERT_ORDER.indexOf(b.alert);
+      if (aa !== ab) return aa - ab;
+      return b.demand - a.demand;
     });
     return out;
   }, [rawRows, tradeFlows, myCityIds, currentPlayerName]);
