@@ -107,16 +107,32 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     if(order.mode==='prefer')return match?auto*3:auto;
     return match?auto:0;
   };
+/** Physical throughput and headcount multiplier of a structure level. */
+  const levelScale=(level:unknown)=>{const scale=ECONOMY.levelCapacityScale;
+    return scale[Math.min(scale.length,Math.max(1,Math.round(Number(level)||1)))-1];};
+/**
+   * ROUTE ACCESS. A settlement that touches the finished road network is connected, and every
+   * structure and node anchored to it inherits that connection — a built road serves the whole
+   * town, not only the hex it ends on. Unconnected anchors keep their own access factor.
+   */
+  const roadCells=new Set(db.road_segments.filter((r:any)=>r.status==='completed')
+    .flatMap((r:any)=>[`${r.from_x},${r.from_y}`,`${r.to_x},${r.to_y}`]));
+  const cityConnected=(city:City)=>roadCells.has(city.cell);
   for(const node of db.province_nodes){if(node.is_active===false)continue;const c=anchor(node);if(!c)continue;
     const order=db.node_production_orders.find(o=>o.node_id===node.id);
     const eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
     const weights=eligible.map(r=>orderWeight(r,order)),total=weights.reduce((s,n)=>s+n,0);
     if(total<=0)continue;
+    // Nodes employ the same canonical crew as any other producing structure (Lv1 100 → doubling).
+    const capacity=nonnegative(node.production_output);
+    const jobs=capacity>0?ECONOMY.structureJobsBase*levelScale(node.node_level??node.level):undefined;
+    const logistics=cityConnected(c)?1:nonnegative(node.route_access_factor??1);
     eligible.forEach((r,i)=>{if(weights[i]<=0)return;
-      producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity:nonnegative(node.production_output),
-        recipe:recipe(r),allocation:weights[i]/total,staffing:1,logistics:nonnegative(node.route_access_factor??1),mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
+      producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity,
+        recipe:recipe(r),allocation:weights[i]/total,staffing:1,jobs,logistics,mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
         source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
   }
+
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
   /**
    * Explicit production contract. A structure runs either an exact recipe whitelist
@@ -125,12 +141,9 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    * a licence to run unrelated extraction, processing or manufacturing recipes.
    *
    * CAPACITY / JOBS. Declared basket capacity is the level-1 rating; the level multiplier
-   * (ECONOMY.levelCapacityScale) makes upgrades raise real physical throughput. Jobs capacity
-   * is derived once, canonically, from capacity × recipe labour (see ECONOMY.workersPerLaborUnit),
-   * so the labour market and the production capacity never disagree.
+   * (ECONOMY.levelCapacityScale) raises real throughput and the crew together, so the labour
+   * market and the physical capacity never disagree.
    */
-  const levelScale=(level:unknown)=>{const scale=ECONOMY.levelCapacityScale;
-    return scale[Math.min(scale.length,Math.max(1,Math.round(Number(level)||1)))-1];};
   const structureOrder=(id:string)=>db.structure_production_orders.find((o:any)=>o.structure_id===id);
   const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,
     tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean;level?:unknown;order?:any;jobs?:unknown}={})=>{
@@ -317,5 +330,14 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     fulfillment_type:'canonical',min_quality:0,preferred_quality:0}));
   const payload={result,marketBaskets,demandBaskets,tradeFlows,basketFlows,realms,summaries,marketShares};
   const saved=await sb.rpc('replace_goods_economy_projection',{p_session:session,p_turn:turn,p_payload:payload});if(saved.error)throw saved.error;
+  /**
+   * The management report is a read-only view of the projection just written, so a refresh must
+   * republish it. Otherwise the production overview keeps showing the numbers frozen at the last
+   * turn resolution while every other economy panel is already current.
+   */
+  const savedReports=await sb.rpc('update_goods_management_reports',{p_session:session,p_turn:turn,p_reports:management});
+  if(savedReports.error)throw savedReports.error;
   return {ok:true,turn,flows:result.flows.length,balances:result.balances.length,blocked:result.diagnostics.filter(d=>d.blocked).length};
+
+
 }

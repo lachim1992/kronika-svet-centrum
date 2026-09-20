@@ -10,9 +10,12 @@ const fmt = (n: unknown, digits = 0) => Number(n || 0).toLocaleString('cs-CZ', {
 const pct = (n: unknown) => `${(Number(n || 0) * 100).toFixed(0)} %`;
 const SECTORS: Record<string, string> = { farming: 'Zemědělství', crafting: 'Řemesla', logistics: 'Doprava a sklady', admin: 'Správa', extraction: 'Těžba' };
 const BLOCKED: Record<string, string> = {
-  no_workers: 'Chybí pracovníci', missing_inputs_or_route: 'Chybí vstupy nebo cesta',
+  no_workers: 'Chybí pracovníci', missing_inputs: 'Vstupní zboží nikde není',
+  missing_input_route: 'Vstupy existují, chybí cesta', missing_inputs_or_route: 'Chybí vstupy nebo cesta',
+  missing_local_delivery_route: 'Chybí cesta do města',
   missing_recipe_inputs: 'Chybí zadané vstupy', capacity_labor_or_staffing: 'Chybí kapacita nebo lidé',
 };
+
 
 export default function LaborProductionPanel({ sessionId, cities, playerName, currentTurn }:
   { sessionId: string; cities: any[]; playerName: string; currentTurn: number }) {
@@ -26,6 +29,31 @@ export default function LaborProductionPanel({ sessionId, cities, playerName, cu
   const name = (id: string) => cities.find(c => c.id === id)?.name || report.cities?.find((c: any) => c.id === id)?.name || id;
   const labor: any[] = (report.labor || []).filter((l: any) => !cityId || l.city === cityId);
   const producers: any[] = (report.producers || []).filter((p: any) => !cityId || p.city === cityId);
+  /**
+   * One row per structure, not per recipe line. Producer ids are `structure:recipe`, so a mill
+   * running four recipes is one building with one crew — summing the lines keeps the headcount,
+   * capacity and output honest instead of showing fractional crews.
+   */
+  const structures = Object.values(producers.reduce((acc: Record<string, any>, p: any) => {
+    const id = String(p.producer).split(':')[0];
+    const s = acc[id] ||= { id, city: p.city, goods: [] as string[], jobs_capacity: 0, employed: 0,
+      capacity: 0, potential_output: 0, realized: 0, inputs: [] as any[], reasons: [] as string[] };
+    if (!s.goods.includes(p.good)) s.goods.push(p.good);
+    s.jobs_capacity += Number(p.jobs_capacity || 0);
+    s.employed += Number(p.employed || 0);
+    s.capacity = Math.max(s.capacity, Number(p.capacity || 0));
+    s.potential_output += Number(p.potential_output || 0);
+    s.realized += Number(p.realized || 0);
+    for (const i of p.inputs || []) {
+      const found = s.inputs.find((x: any) => x.good === i.good);
+      if (found) { found.required += Number(i.required || 0); found.supplied += Number(i.supplied || 0); }
+      else s.inputs.push({ good: i.good, required: Number(i.required || 0), supplied: Number(i.supplied || 0) });
+    }
+    const reason = p.bottleneck ? `úzké místo: ${p.bottleneck}` : BLOCKED[p.blocked] || p.blocked || '';
+    if (reason && !s.reasons.includes(reason)) s.reasons.push(reason);
+    return acc;
+  }, {})) as any[];
+
   const realm = (report.labor || []).reduce((acc: any, l: any) => ({
     workforce: acc.workforce + l.available_workforce, employed: acc.employed + l.employed_total,
     unemployed: acc.unemployed + l.unemployed_total, jobs: acc.jobs + l.jobs_capacity, vacancies: acc.vacancies + l.vacancies_total,
@@ -74,23 +102,24 @@ export default function LaborProductionPanel({ sessionId, cities, playerName, cu
     </div>)}
 
     <div className="overflow-auto"><table className="w-full text-xs">
-      <caption className="text-left mb-1">Jednotliví výrobci: obsazenost, možná výroba, vstupy a skutečná výroba</caption>
-      <thead><tr>{['Město', 'Zboží', 'Místa obsazená / celkem', 'Obsazenost', 'Kapacita', 'Možná výroba', 'Vstupy (dodáno / potřeba)', 'Skutečná výroba', 'Co brání'].map(h =>
+      <caption className="text-left mb-1">Jednotlivé stavby: obsazenost, možná výroba, vstupy a skutečná výroba</caption>
+      <thead><tr>{['Město', 'Stavba vyrábí', 'Místa obsazená / celkem', 'Obsazenost', 'Kapacita', 'Možná výroba', 'Vstupy (dodáno / potřeba)', 'Skutečná výroba', 'Co brání'].map(h =>
         <th key={h} className="p-2 text-right first:text-left">{h}</th>)}</tr></thead>
-      <tbody>{producers.map((p: any) => <tr key={p.producer} className="border-t align-top">
-        <td className="p-2">{name(p.city)}</td>
-        <td className="p-2">{p.good}</td>
-        <td className="p-2 text-right">{fmt(p.employed)} / {fmt(p.jobs_capacity)}</td>
-        <td className="p-2 text-right">{pct(p.staffing_ratio)}</td>
-        <td className="p-2 text-right">{fmt(p.capacity, 2)}</td>
-        <td className="p-2 text-right">{fmt(p.potential_output, 2)}</td>
-        <td className="p-2 text-right">{(p.inputs || []).length
-          ? (p.inputs || []).map((i: any) => <div key={i.good}>{i.good}: {fmt(i.supplied, 2)} / {fmt(i.required, 2)}</div>)
+      <tbody>{structures.map(s => <tr key={s.id} className="border-t align-top">
+        <td className="p-2">{name(s.city)}</td>
+        <td className="p-2">{s.goods.join(', ')}</td>
+        <td className="p-2 text-right">{fmt(s.employed)} / {fmt(s.jobs_capacity)}</td>
+        <td className="p-2 text-right">{pct(s.jobs_capacity > 0 ? s.employed / s.jobs_capacity : 0)}</td>
+        <td className="p-2 text-right">{fmt(s.capacity, 2)}</td>
+        <td className="p-2 text-right">{fmt(s.potential_output, 2)}</td>
+        <td className="p-2 text-right">{s.inputs.length
+          ? s.inputs.map(i => <div key={i.good}>{i.good}: {fmt(i.supplied, 2)} / {fmt(i.required, 2)}</div>)
           : '—'}</td>
-        <td className="p-2 text-right">{fmt(p.realized, 2)}</td>
-        <td className="p-2 text-right">{p.bottleneck ? `úzké místo: ${p.bottleneck}` : BLOCKED[p.blocked] || p.blocked || '—'}</td>
+        <td className="p-2 text-right">{fmt(s.realized, 2)}</td>
+        <td className="p-2 text-right">{s.reasons.length ? s.reasons.join(', ') : '—'}</td>
       </tr>)}</tbody>
     </table></div>
-    {!producers.length && <p className="text-sm text-muted-foreground">Žádné výrobní stavby — bez nich nevzniká žádné zboží, jen poptávka.</p>}
+    {!structures.length && <p className="text-sm text-muted-foreground">Žádné výrobní stavby — bez nich nevzniká žádné zboží, jen poptávka.</p>}
+
   </section>;
 }

@@ -10,7 +10,7 @@ const city:City={id:'c',owner:'p',name:'C',cell:'0,0',population:1000,classes:{p
   stability:1,irrigation:0,labor:{},market:1,storage:100,admin:0,security:1,guild:0,ideology:'open_merchant',coastal:false};
 const good=(key:string,basket='tools',finalUse=false):Good=>({key,basket,price:10,stage:'processed',storable:true,
   bulk:1,density:30,perishability:0,storageLoss:0,storageCost:0,substitutability:1,strategic:0,prestige:0,transshipment:0,finalUse,household:false});
-const producer=(id:string,output:string,inputs:{good:string;qty:number}[]=[],source=false):Producer=>({id,city:'c',channel:'facility',capacity:10,
+const producer=(id:string,output:string,inputs:{good:string;qty:number}[]=[],source=false):Producer=>({id,city:'c',channel:'facility',capacity:10,jobs:10,
   recipe:{key:id,good:output,qty:1,inputs,labor:FIXTURE_LABOR,quality:0,minQuality:0},allocation:1,staffing:1,logistics:1,mastery:1,source,distinctive:false});
 const snapshot=(goods:Good[],producers:Producer[]=[],opening:Snapshot['opening']=[]):Snapshot=>({turn:1,goods,cities:[city],producers,opening,fame:[],edges:[]});
 const stock=(good:string,qty:number)=>({city:'c',good,qty,quality:1});

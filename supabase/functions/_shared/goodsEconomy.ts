@@ -216,11 +216,16 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // Structures declare jobs; the city fills them from the civilian workforce of the sector.
   // No worker is counted twice, employment never exceeds supply nor declared jobs.
   const producerSector=(p:Producer)=>BASKET_SECTOR[goodByKey.get(p.recipe.good)?.basket||'']||'crafting';
+  /**
+   * HEADCOUNT. A producing structure declares its crew (ECONOMY.structureJobsBase at level 1,
+   * doubling per level). Jobs are split between its recipe lines by allocation, so a structure
+   * never employs more people than it declares, whatever recipes it happens to run.
+   */
   const jobsOf=(p:Producer)=>{
-    if(p.jobs!==undefined)return n(p.jobs)*clamp(p.allocation)*clamp(p.staffing);
-    const perUnit=n(p.recipe.labor)/Math.max(C.epsilon,n(p.recipe.qty));
-    return n(p.capacity)*clamp(p.allocation)*perUnit*C.workersPerLaborUnit*clamp(p.staffing);
+    const declared=p.jobs!==undefined?n(p.jobs):(n(p.capacity)>0?C.structureJobsBase:0);
+    return declared*clamp(p.allocation)*clamp(p.staffing);
   };
+
   const laborSupply=(c:City,sector:Sector)=>workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
   const employed=new Map<string,number>();
   const laborMetrics:CityLabor[]=[];
@@ -419,8 +424,22 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     }
     if(!progress)break;
   }
-  for(const [id,p] of pending)if(!realized.has(id))diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},
-    jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),blocked:'missing_inputs_or_route'});
+  /**
+   * A producer left pending never got its inputs. Say which reason honestly: the goods do not
+   * exist anywhere in reach ("missing_inputs"), or they exist but no route carries them
+   * ("missing_input_route"). Guessing "inputs or route" hides which problem to solve.
+   */
+  for(const [id,p] of pending)if(!realized.has(id)){
+    const c=cityById.get(p.city)!;
+    const unreachable=p.recipe.inputs.some(i=>{const ig=goodByKey.get(i.good);if(!ig)return false;
+      const holders=cities.filter(s=>available(stock(s.id,ig.key))>C.minLot);
+      return holders.length>0&&!holders.some(s=>s.id===c.id||!!route(s.cell,c.cell,ig));});
+    diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},
+      jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),
+      inputs:p.recipe.inputs.map(i=>({good:i.good,required:i.qty,supplied:available(stock(p.city,i.good))})),
+      blocked:unreachable?'missing_input_route':'missing_inputs'});
+  }
+
   const consume=(c:City,g:Good)=>{const b=stock(c.id,g.key),missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     const qty=Math.min(available(b),missing),state=Math.min(qty,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
     b.consumed_state+=state;b.consumed_household+=qty-state;};

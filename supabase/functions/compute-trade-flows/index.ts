@@ -1,6 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { computeCanonicalEconomy } from "../_shared/economyAdapter.ts";
+/** Canonical physical economy projection (headcount model: 100 jobs at level 1, doubling per level). */
 const headers = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Content-Type": "application/json" };
+
 Deno.serve(async req => {
   if(req.method === "OPTIONS") return new Response(null,{headers});
   try {

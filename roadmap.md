@@ -162,6 +162,14 @@
       deprecate legacy node wealth fields, testy A–O, read-only diagnostika Test01 turn 64.
 
 
+## Pracovní místa a přehled výroby (hotovo, tah 65)
+- [x] Každá vyrábějící stavba zaměstnává 100 lidí na lvl 1 a zdvojnásobuje s úrovní (100/200/400)
+- [x] Uzly dostávají stejný kanonický počet míst jako budovy a čtvrti
+- [x] Budovy ve městě napojeném na dokončenou cestu dědí napojení celého města
+- [x] Přehled výroby = jeden řádek na stavbu (součet receptur), ne zlomky na recepturu
+- [x] `refresh-economy` znovu publikuje přehled výroby i po uzavření tahu (report je odvozený pohled)
+- [x] Důvod zastavení rozlišuje "vstupní zboží nikde není" vs "chybí cesta"
+
 ## Rework poptávkových košů (hotovo, tah 65)
 - [x] Kanonický solver poptávky v `_shared/demandModel.ts` (13 košů, 9 kanálů proveniencí, třídy potřeb)
 - [x] Nástroje = provozní spotřeba obsazených kapacit; měkký strop produktivity (floor 0.75), nikdy nulová výroba

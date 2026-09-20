@@ -13,7 +13,7 @@ const city = (id: string, x: number, population: number, market = 2): City => ({
   population, classes: { peasants: population }, soldiers: 0, stability: 1, irrigation: 0, labor: {},
   market, storage: 10, admin: 0, security: 1, guild: 0, ideology: 'open_merchant', coastal: false });
 const producer = (id: string, c: string, g: string, capacity: number): Producer => ({ id, city: c, channel: 'node',
-  capacity, recipe: { key: id, good: g, qty: 1, inputs: [], labor: FIXTURE_LABOR, quality: 0, minQuality: 0 },
+  capacity, jobs: capacity, recipe: { key: id, good: g, qty: 1, inputs: [], labor: FIXTURE_LABOR, quality: 0, minQuality: 0 },
   allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: true, distinctive: false });
 
 /** One producing town, one large consuming town, one road between them. */
