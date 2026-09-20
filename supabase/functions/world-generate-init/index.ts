@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { computeStructuralBonuses } from "../_shared/physics.ts";
+import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
+
 
 /** Lightweight alias for world-generate-init usage */
 function computeStructuralBonusesInline(identity: any) {
