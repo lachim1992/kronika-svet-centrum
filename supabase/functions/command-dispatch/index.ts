@@ -12,6 +12,7 @@ import {
   type RivalRow,
 } from "../_shared/nodeInfluence.ts";
 import { applyStackMove } from "../_shared/stackMovementCommand.ts";
+import { checkTerritoryAccess, checkWarDeclaration, loadDiplomacyState } from "../_shared/diplomacyEnforcement.ts";
 import {
   parcelClaimCost,
   POPULATION_PER_SLOT,
