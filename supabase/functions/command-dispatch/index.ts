@@ -24,6 +24,7 @@ import {
   ensureTileParcels,
   seatCityOnParcels,
 } from "../_shared/citySeat.ts";
+import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
