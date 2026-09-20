@@ -1967,7 +1967,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <p className="mt-1 text-[10px] text-muted-foreground">Cesta jen prochází podčtverci — nezabírá stavební slot, parcely pod ní zůstávají volné.</p>
             </div>}
 
-          </>
 
         </section>}
 
