@@ -155,17 +155,17 @@ function contractRecipes(contract: BuildingContract | undefined, level: number):
   return contract.levels.slice(0, Math.max(1, level)).flat();
 }
 
-/** Jobs for a capacity spread over the given recipes, exactly like the economy adapter. */
-function jobsFor(capacity: number, recipes: RecipeRow[]): number | undefined {
-  if (!recipes.length || capacity <= 0) return undefined;
-  const weights = recipes.map(r => autoAllocationWeight(GOOD_BASKET[r.output_good_key] || ''));
-  const sum = weights.reduce((s, w) => s + w, 0);
-  if (sum <= 0) return undefined;
-  return recipes.reduce((total, r, i) => {
-    const perUnit = num(r.labor_cost) / Math.max(ECONOMY.epsilon, num(r.output_quantity));
-    return total + capacity * (weights[i] / sum) * perUnit * ECONOMY.workersPerLaborUnit;
-  }, 0);
+/**
+ * Jobs of a structure level, exactly like the economy adapter: a producing structure employs
+ * ECONOMY.structureJobsBase people at level 1 (or its declared jobs_capacity) and doubles with
+ * every level, together with the physical capacity.
+ */
+function jobsFor(capacityBase: number, declared: number, level: number): number | undefined {
+  if (capacityBase <= 0) return undefined;
+  return (declared > 0 ? declared : ECONOMY.structureJobsBase) * levelCapacityScale(level);
 }
+
+
 
 const recipeView = (r: RecipeRow, unlockLevel: number): CatalogRecipeView => ({
   key: r.recipe_key, output: r.output_good_key, outputQty: num(r.output_quantity), labor: num(r.labor_cost),
@@ -188,10 +188,9 @@ function templateItem(t: TemplateRow, recipesByKey: Map<string, RecipeRow>): Cat
   const levels: CatalogLevelView[] = [];
   for (let level = 1; level <= maxLevel; level++) {
     const keys = contractRecipes(contract, level);
-    const rows = keys.map(k => recipesByKey.get(k)).filter(Boolean) as RecipeRow[];
     const capacity = capacityBase * levelCapacityScale(level);
     levels.push({
-      level, capacity, jobs: jobsFor(capacity, rows), recipes: keys,
+      level, capacity, jobs: jobsFor(capacityBase, num(effects.jobs_capacity), level), recipes: keys,
       unlocks: contract?.levels[level - 1] || [],
     });
   }

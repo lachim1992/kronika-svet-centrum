@@ -137,8 +137,15 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     if(!cityMap.has(city))return;
     const scale=levelScale(options.level);
     const total=Object.values(outputs).reduce((s,v)=>s+nonnegative(v),0)*scale;
-    // Declared jobs_capacity wins; otherwise jobs are derived from capacity × recipe labour.
-    const jobs=Number(options.jobs)>0?nonnegative(options.jobs)*scale:undefined;
+    /**
+     * HEADCOUNT. Every producing structure employs ECONOMY.structureJobsBase people at level 1
+     * and doubles per level together with its throughput (Lv1 100, Lv2 200, Lv3 400). A declared
+     * jobs_capacity is a per-structure override; the base never drops below the recipe-derived
+     * crew, so labour demand and physical capacity stay one canonical interpretation.
+     */
+    const declared=Number(options.jobs)>0?nonnegative(options.jobs):ECONOMY.structureJobsBase;
+    const jobs=total>0?declared*scale:undefined;
+
     const push=(candidates:any[],capacity:number)=>{
       if(!candidates.length||capacity<=0)return;
       const weights=candidates.map(r=>orderWeight(r,options.order)),sum=weights.reduce((s,w)=>s+w,0);

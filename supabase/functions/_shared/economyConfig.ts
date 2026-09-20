@@ -35,13 +35,16 @@ export const ECONOMY = {
    *
    * HEADCOUNT SCALE. One labour unit is a whole work crew, not one person, so the jobs a
    * structure declares are real headcounts. Calibration: a level-1 production centre asks
-   * ~2-3 labour units, i.e. ~40-60 people; one residential quarter (250 inhabitants → ~125
-   * economically active) therefore staffs roughly two production centres, and higher levels
-   * raise both the headcount and the output through levelCapacityScale.
+   * ~2.5 labour units, i.e. ~100 people; every level doubles both the headcount and the
+   * physical throughput (Lv1 ≈ 100, Lv2 ≈ 200, Lv3 ≈ 400 workers) through levelCapacityScale.
    */
-  workersPerLaborUnit: 20,
-  /** Capacity multiplier per structure level: Lv1 = 1, Lv2 = 1.8, Lv3 = 3, … */
-  levelCapacityScale: [1, 1.8, 3, 4.2, 5.4],
+  workersPerLaborUnit: 40,
+  /** Headcount of a producing structure at level 1 (doubles per level with the throughput). */
+  structureJobsBase: 100,
+  /** Capacity multiplier per structure level: každá úroveň zdvojnásobuje kapacitu i práci. */
+  levelCapacityScale: [1, 2, 4, 8, 16],
+
+
   /**
    * Households no longer emit tradeable market goods. Population creates labour and demand;
    * physical goods come only from structures, districts and production nodes.
