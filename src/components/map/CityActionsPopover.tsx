@@ -10,6 +10,7 @@ import {
   ScrollText, Send, Loader2, Network, Shield, Users, MapPin,
 } from "lucide-react";
 import { discoverEntity, canAutoDiscover } from "@/lib/cityDiscovery";
+import { dispatchCommand } from "@/lib/commands";
 
 interface Props {
   open: boolean;
