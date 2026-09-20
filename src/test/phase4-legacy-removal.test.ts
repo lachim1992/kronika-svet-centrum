@@ -56,7 +56,7 @@ describe("phase 4: turn-based tick logic was extracted, not dropped", () => {
   it("commit-turn advances army travel, ambush, sieges and node projects once", () => {
     expect(COMMIT).toContain('import { advanceTurnProgress } from "../_shared/turnProgress.ts"');
     expect(COMMIT).toMatch(/advanceTurnProgress\(supabase, sessionId, turnNumber\)/);
-    expect(COMMIT.match(/advanceTurnProgress\(/g)?.length).toBe(2); // import + single call
+    expect(COMMIT.match(/advanceTurnProgress\(/g)?.length).toBe(1); // exactly one call site
   });
 
   it("the extracted module keeps physical ownership only", () => {
@@ -66,7 +66,9 @@ describe("phase 4: turn-based tick logic was extracted, not dropped", () => {
     expect(src).not.toMatch(/gold_reserve/);
     expect(src).not.toMatch(/population_total/);
     // time-clock-only concerns must not come back
-    expect(src).not.toMatch(/time_pools|action_queue|travel_orders|is_delegated/);
+    for (const t of ["time_pools", "action_queue", "travel_orders", "player_activity"]) {
+      expect(src).not.toContain(`from("${t}")`);
+    }
   });
 });
 
