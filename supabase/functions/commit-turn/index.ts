@@ -3,7 +3,7 @@ import { strictDatabase } from '../_shared/strictDatabase.ts';
 import { finalizeManagementReports } from '../_shared/economyAdapter.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  computeSettlementGrowth, distributePopLayers,
+  computeSettlementGrowth,
   computeInfluence, computeTension, evaluateRebellion,
   REPUTATION_DELTAS, REPUTATION_DECAY,
   computeTraitTensionModifier, computeTraitInfluenceModifier,
@@ -12,6 +12,10 @@ import {
   computeStructuralBonuses,
   type CityForGrowth,
 } from "../_shared/physics.ts";
+import {
+  normalizePopulationClasses, applyPopulationLoss, POPULATION_FLOOR,
+} from "../_shared/demographics.ts";
+
 import { logAISkip } from "../_shared/ai-context.ts";
 
 const corsHeaders = {
