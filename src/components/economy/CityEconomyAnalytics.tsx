@@ -15,6 +15,7 @@ import {
   scaledBasketOutputs,
   VALID_BASKETS,
 } from "@/lib/goodsCatalog";
+import { chainLabel, firstMissingStep, productionChainForBasket } from "@/lib/productionPaths";
 import type { CityBasketRow } from "./goods-production/types";
 
 interface Props {
