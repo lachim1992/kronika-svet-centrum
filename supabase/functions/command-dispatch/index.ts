@@ -24,6 +24,7 @@ import {
   ensureTileParcels,
   seatCityOnParcels,
 } from "../_shared/citySeat.ts";
+import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
@@ -985,6 +986,10 @@ async function executeFoundCity(
   if (seatResult.seatIndex !== null && seatResult.seatIndex !== foundedParcelIndex) {
     await supabase.from("cities").update({ founded_parcel_index: seatResult.seatIndex }).eq("id", cityId);
   }
+
+  // ── 1c. Settlement node in the physical graph (structural, idempotent) ──
+  await ensureCitySettlementNodes(supabase, sessionId);
+
 
   // ── 2. World event ──
   const slug = `founding-${cityName.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;

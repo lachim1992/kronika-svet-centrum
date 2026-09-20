@@ -169,7 +169,13 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const physical=resolveGoodsEconomy(snapshot);
   const management=Object.fromEntries(db.realm_resources.map(r=>[r.player_name,buildManagementReport(snapshot,physical,r,prior?.management?.[r.player_name])]));
   const result={...physical,opening,snapshot,management};
-  const cityNode=new Map<string,string>();for(const node of db.province_nodes){const c=cityMap.get(node.city_id);if(c&&!cityNode.has(c.id))cityNode.set(c.id,node.id);}
+  // Anchor every city on its own settlement node (node_subtype 'city'); only fall back to
+  // another node of the same city when the settlement node is missing. Cities must never
+  // drop out of the projection just because a workshop node was indexed first.
+  const cityNode=new Map<string,string>();
+  for(const node of db.province_nodes){const c=cityMap.get(node.city_id);if(!c)continue;
+    if(node.node_subtype==='city'||!cityNode.has(c.id))cityNode.set(c.id,node.id);
+    if(node.node_subtype==='city')cityNode.set(c.id,node.id);}
   const marketBaskets:any[]=[];
   for(const c of cities)for(const bk of Object.keys(BASKET_TIER)){const bs=result.balances.filter(b=>b.city===c.id&&goodMap.get(b.good)!.basket===bk);
     const sum=(field:string)=>bs.reduce((s,b)=>s+Number((b as any)[field]||0),0),demand=sum('demand'),unmet=sum('unmet_demand');
