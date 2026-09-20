@@ -3707,12 +3707,44 @@ async function executeApplyDecreeEffects(
     await supabase.from("realm_resources").update(realmUpdates).eq("id", realm.id);
   }
 
-  if (stabilityDelta !== 0) {
+  // Council backlash: forcing a decree against the council costs stability.
+  // Previously written straight from the UI; it belongs to the same command so a
+  // retry cannot apply the penalty twice.
+  const councilPenalty = Math.max(0, Math.round(Number(payload?.stabilityPenalty ?? 0)));
+  const totalStability = stabilityDelta - councilPenalty;
+
+  if (totalStability !== 0) {
     const { data: cities } = await supabase.from("cities")
       .select("id, city_stability").eq("session_id", sessionId).eq("owner_player", actor.name);
     for (const c of (cities || [])) {
-      const newStab = Math.max(0, Math.min(100, (c.city_stability || 50) + stabilityDelta));
+      const newStab = Math.max(0, Math.min(100, (c.city_stability || 50) + totalStability));
       await supabase.from("cities").update({ city_stability: newStab }).eq("id", c.id);
+    }
+  }
+
+  // Faction reactions: { [faction_type]: { satisfaction, loyalty } } deltas.
+  const factionImpacts = (payload?.factionImpacts && typeof payload.factionImpacts === "object")
+    ? payload.factionImpacts as Record<string, { satisfaction?: number; loyalty?: number }>
+    : {};
+  const impactedTypes = Object.keys(factionImpacts);
+  let factionsUpdated = 0;
+  if (impactedTypes.length > 0) {
+    const { data: cityIds } = await supabase.from("cities")
+      .select("id").eq("session_id", sessionId).eq("owner_player", actor.name);
+    const ids = (cityIds || []).map((c: any) => c.id);
+    if (ids.length > 0) {
+      const { data: factions } = await supabase.from("city_factions")
+        .select("id, faction_type, satisfaction, loyalty")
+        .eq("session_id", sessionId).in("city_id", ids);
+      for (const f of (factions || [])) {
+        const impact = factionImpacts[f.faction_type];
+        if (!impact) continue;
+        await supabase.from("city_factions").update({
+          satisfaction: Math.max(0, Math.min(100, Number(f.satisfaction || 0) + Number(impact.satisfaction || 0))),
+          loyalty: Math.max(0, Math.min(100, Number(f.loyalty || 0) + Number(impact.loyalty || 0))),
+        }).eq("id", f.id);
+        factionsUpdated++;
+      }
     }
   }
 
@@ -3721,7 +3753,7 @@ async function executeApplyDecreeEffects(
     event_type: "decree",
     note: payload.note || `${actor.name} aplikoval okamžité dopady dekretu.`,
     importance: "normal",
-    reference: { effects: immediate },
+    reference: { effects: immediate, stability_penalty: councilPenalty, factions_updated: factionsUpdated },
   }], payload.chronicleText);
 }
 
