@@ -1050,12 +1050,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   /** Subnodes attached to the selected city — they feed the same markets as its districts. */
   const citySubnodes = useMemo(() => {
-    if (!selectedCity) return { list: [] as Node[], production: 0, wealth: 0, food: 0 };
+    if (!selectedCity) return { list: [] as Node[], production: 0, food: 0 };
     const list = nodes.filter(n => n.city_id === selectedCity.id && n.node_tier === "micro");
     return {
       list,
       production: Math.round(list.reduce((sum, n) => sum + Number(n.production_output || 0), 0) * 10) / 10,
-      wealth: Math.round(list.reduce((sum, n) => sum + Number(n.wealth_output || 0), 0) * 10) / 10,
+      // wealth_output is deprecated legacy node wealth (Phase 4) — not shown to players.
       food: Math.round(list.reduce((sum, n) => sum + Number(n.food_value || 0), 0) * 10) / 10,
     };
   }, [nodes, selectedCity?.id]);
@@ -1879,7 +1879,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                     <span className="text-muted-foreground">P {Number(node.production_output || 0)} · Z {Number(node.wealth_output || 0)} · F {Number(node.food_value || 0)}</span>
                   </button>
                 ))}</div>
-                <p className="mt-1 text-[10px] text-muted-foreground">Celkem: produkce {citySubnodes.production} · bohatství {citySubnodes.wealth} · potraviny {citySubnodes.food} — přepočítá se při dalším tahu.</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">Celkem: produkce {citySubnodes.production} · potraviny {citySubnodes.food} — přepočítá se při dalším tahu.</p>
               </>}
           </div>
           {selectedCity.owner_player !== playerName && <p className="text-[10px] text-muted-foreground">Cizí město — výrobu tu nastavit nelze.</p>}
