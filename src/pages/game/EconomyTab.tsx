@@ -1,6 +1,7 @@
 import ManagementCockpit from '@/components/management/ManagementCockpit';
 import EconomyScenarioPreview from '@/components/management/EconomyScenarioPreview';
 import PhysicalEconomyPanel from "@/components/economy/PhysicalEconomyPanel";
+import LaborProductionPanel from "@/components/economy/LaborProductionPanel";
 import { useState, useCallback, useMemo, Suspense, lazy } from "react";
 import { useDevMode } from "@/hooks/useDevMode";
 import { Badge } from "@/components/ui/badge";
@@ -262,6 +263,7 @@ const EconomyTab = ({
         <TabsContent value="production" className="space-y-5 animate-fade-in">
           {realm && <ProductionOverviewCard realm={realm} />}
           <WorkforcePanel cities={myCities} mobilizationRate={mobRate} soldiers={realm?.manpower_mobilized ?? 0} />
+          <LaborProductionPanel sessionId={sessionId} cities={myCities} playerName={currentPlayerName} currentTurn={currentTurn} />
           <PhysicalEconomyPanel sessionId={sessionId} cities={myCities} playerName={currentPlayerName} currentTurn={currentTurn} />
           <PopulationPanel cities={myCities} realm={realm} />
         </TabsContent>

@@ -17,7 +17,14 @@ export interface City {
 }
 export interface Recipe { key: string; good: string; qty: number; inputs: { good: string; qty: number }[]; labor: number; quality: number; minQuality: number }
 export interface Producer { id: string; city: string; node?: string; cell?: string; channel: Channel; capacity: number;
-  recipe: Recipe; allocation: number; staffing: number; logistics: number; mastery: number; source: boolean; distinctive: boolean }
+  recipe: Recipe; allocation: number; staffing: number; logistics: number; mastery: number; source: boolean; distinctive: boolean;
+  /** Workers this facility can employ at full capacity. Derived from capacity × recipe labour when absent. */
+  jobs?: number }
+/** Canonical labour-market readout of one city. Derived, never a second population writer. */
+export interface CityLabor { city: string; population: number; economically_active: number; available_workforce: number;
+  employed_total: number; unemployed_total: number; jobs_capacity: number; vacancies_total: number;
+  employment_rate: number; unemployment_rate: number;
+  sectors: Record<string, { labor_supply: number; jobs_capacity: number; employed: number; vacancies: number; labor_shortage: number }> }
 export interface Edge { id: string; from: string; to: string; cost: number; capacity: number;
   mode: 'road'|'river'|'sea'|'spur'; risk: number; toll: number; border: number }
 export interface Fame { city: string; good: string; name: string; streak: number; fame: number; quality: number; created: number|null; turn: number }
@@ -48,7 +55,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const goods=[...snapshot.goods].sort((a,b)=>a.key.localeCompare(b.key));
   const cityById=new Map(cities.map(c=>[c.id,c])); const goodByKey=new Map(goods.map(g=>[g.key,g]));
   const balances=new Map<string,Balance>(); const flows: Flow[]=[];
-  const diagnostics: {producer:string; good:string; capacity:number; realized:number; factors:Record<string,number>; blocked:string|null; delivery_path?:string[]}[]=[];
+  const diagnostics: {producer:string; good:string; capacity:number; realized:number; factors:Record<string,number>;
+    jobs_capacity?:number; employed?:number; staffing_ratio?:number; potential_output?:number;
+    inputs?:{good:string;required:number;supplied:number}[]; bottleneck?:string|null;
+    blocked:string|null; delivery_path?:string[]}[]=[];
   const priorFame=new Map(snapshot.fame.map(f=>[key(f.city,f.good),f]));
   const stock=(city:string,good:string):Balance=>{
     if(!cityById.has(city)||!goodByKey.has(good)) throw Error(`Invalid economy reference ${city}/${good}`);
@@ -108,7 +118,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const demand=weightedPop*C.populationDemand/BASKET_TIER[basket];
       const state=(basket==='military_supply'||basket==='staple_food')?c.soldiers*C.armyDemand:basket==='admin_supplies'?c.admin:0;
       for(const g of options){const b=stock(c.id,g.key);b.demand=(demand+state)*weight(g)/sum;stateDemand.set(key(c.id,g.key),state*weight(g)/sum);}
-      if((C.householdBaskets as readonly string[]).includes(basket)){
+      // Population is NOT a goods producer. It supplies labour and demand only. The legacy
+      // household emission stays behind an explicit flag for regression comparisons.
+      if(C.householdProduction&&(C.householdBaskets as readonly string[]).includes(basket)){
         const baseline=options.find(g=>g.household===true)||options.find(g=>g.household===undefined&&g.stage==='household');
         if(baseline){let qty=c.population*C.householdRate/BASKET_TIER[basket]*workforce.get(c.id)!.workforceRatio*
           sectorFactor(c,BASKET_SECTOR[basket]||'crafting')*clamp(c.stability)*
@@ -207,6 +219,42 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     depth(a.recipe.good)-depth(b.recipe.good)||a.id.localeCompare(b.id));
   const pending=new Map(producers.map(p=>[p.id,p]));
   const realized=new Map<string,number>();
+  // ── LABOUR MARKET ────────────────────────────────────────────────────────────────────
+  // Structures declare jobs; the city fills them from the civilian workforce of the sector.
+  // No worker is counted twice, employment never exceeds supply nor declared jobs.
+  const producerSector=(p:Producer)=>BASKET_SECTOR[goodByKey.get(p.recipe.good)?.basket||'']||'crafting';
+  const jobsOf=(p:Producer)=>{
+    if(p.jobs!==undefined)return n(p.jobs)*clamp(p.allocation)*clamp(p.staffing);
+    const perUnit=n(p.recipe.labor)/Math.max(C.epsilon,n(p.recipe.qty));
+    return n(p.capacity)*clamp(p.allocation)*perUnit*C.workersPerLaborUnit*clamp(p.staffing);
+  };
+  const laborSupply=(c:City,sector:Sector)=>workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
+  const employed=new Map<string,number>();
+  const laborMetrics:CityLabor[]=[];
+  for(const c of cities){
+    const sectors:CityLabor['sectors']={};let jobsTotal=0,employedTotal=0,supplyTotal=0;
+    for(const sector of Object.keys(C.sectors) as Sector[]){
+      const supply=laborSupply(c,sector);
+      const own=producers.filter(p=>p.city===c.id&&producerSector(p)===sector);
+      const jobs=own.reduce((s,p)=>s+jobsOf(p),0);
+      const fill=jobs>C.epsilon?Math.min(1,supply/jobs):0;
+      for(const p of own)employed.set(p.id,jobsOf(p)*fill);
+      const filled=jobs*fill;
+      sectors[sector]={labor_supply:supply,jobs_capacity:jobs,employed:filled,
+        vacancies:Math.max(0,jobs-filled),labor_shortage:Math.max(0,jobs-supply)};
+      jobsTotal+=jobs;employedTotal+=filled;supplyTotal+=supply;
+    }
+    const active=workforce.get(c.id)!.effectiveActivePop;
+    laborMetrics.push({city:c.id,population:c.population,economically_active:active,
+      available_workforce:workforce.get(c.id)!.workforce,employed_total:employedTotal,
+      unemployed_total:Math.max(0,supplyTotal-employedTotal),jobs_capacity:jobsTotal,
+      vacancies_total:Math.max(0,jobsTotal-employedTotal),
+      employment_rate:supplyTotal>C.epsilon?employedTotal/supplyTotal:0,
+      unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors});
+  }
+  /** employed / jobs_capacity, clamped. Automated producers without declared labour run at their own staffing. */
+  const staffingRatio=(p:Producer)=>{const jobs=jobsOf(p);
+    return jobs>C.epsilon?clamp((employed.get(p.id)||0)/jobs):clamp(p.staffing)*(n(p.recipe.labor)>0?0:1);};
   // Factories may use food surplus, never the last edible stock needed by residents.
   // The same rule applies to local processing and to industrial exports.
   const foodReserve=(c:City,g:Good)=>{
@@ -244,14 +292,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         if(!realized.has(id))diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors:{logistics:0},blocked:'missing_local_delivery_route'});
         pending.delete(id);continue;
       }
-      const sector=BASKET_SECTOR[g.basket]||'crafting',lk=key(c.id,sector);
-      const factors={staffing:clamp(p.staffing),workforce:workforce.get(c.id)!.workforceRatio,sector:sectorFactor(c,sector),
-        stability:clamp(c.stability),logistics:clamp(p.logistics),mastery:n(p.mastery),
+      const sector=BASKET_SECTOR[g.basket]||'crafting';
+      const jobs=jobsOf(p),staffed=staffingRatio(p);
+      // POTENTIAL OUTPUT: what the staffed facility could make if supplied with its inputs.
+      const factors={staffing:staffed,stability:clamp(c.stability),logistics:clamp(p.logistics),mastery:n(p.mastery),
         infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1};
       const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
       const desired=Math.max(0,target-(realized.get(id)||0));
-      const laborPool=workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
-      let qty=Math.min(desired,Math.max(0,laborPool-(laborUsed.get(lk)||0))*p.recipe.qty/Math.max(C.epsilon,p.recipe.labor));
+      const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target};
+      let qty=desired;
       const inputPaths=new Map<string,Path>();
       const loadByEdge=new Map<string,number>();
       if(delivery)for(const edge of delivery.edges)loadByEdge.set(edge.id,Math.max(1,g.bulk));
@@ -260,11 +309,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         for(const e of path.edges)loadByEdge.set(e.id,(loadByEdge.get(e.id)||0)+i.qty/Math.max(C.epsilon,p.recipe.qty)*Math.max(1,ig.bulk)/(1-path.loss));
       }
       for(const [edge,load] of loadByEdge){const e=snapshot.edges.find(e=>e.id===edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
-      if(!p.source&&!p.recipe.inputs.length){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,blocked:'missing_recipe_inputs'});pending.delete(id);continue;}
+      if(!p.source&&!p.recipe.inputs.length){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,...labor,inputs:[],blocked:'missing_recipe_inputs'});pending.delete(id);continue;}
+      // INDUSTRIAL INPUT DEMAND scales from potential output, not from realized output: a staffed
+      // mill demands grain before the grain arrives, through the canonical route engine.
+      const inputs:{good:string;required:number;supplied:number}[]=[];
+      let bottleneck:string|null=null;
       for(const i of p.recipe.inputs){const ig=goodByKey.get(i.good);if(!ig)throw Error(`Unknown input ${i.good}`);
         const deliveryRatio=1-(inputPaths.get(i.good)?.loss||0);
-        const b=stock(c.id,i.good),required=qty*i.qty/Math.max(C.epsilon,p.recipe.qty)/deliveryRatio;
-        if(b.quality<p.recipe.minQuality&&available(b)>0){qty=0;break;}
+        const b=stock(c.id,i.good),required=desired*i.qty/Math.max(C.epsilon,p.recipe.qty)/deliveryRatio;
+        if(b.quality<p.recipe.minQuality&&available(b)>0){qty=0;bottleneck=i.good;inputs.push({good:i.good,required,supplied:0});break;}
         const usable=()=>Math.max(0,available(b)-foodReserve(c,ig));
         let missing=Math.max(0,required-usable());
         const pull=(suppliers:City[])=>{
@@ -274,11 +327,16 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         };
         pull(inputSources(c,ig));
         if(missing>=C.minLot)pull(distantInputSources(c,ig));
-        qty=Math.min(qty,usable()*p.recipe.qty/Math.max(C.epsilon,i.qty)*deliveryRatio);
+        const supplied=Math.min(required,usable());
+        inputs.push({good:i.good,required,supplied});
+        const allowed=usable()*p.recipe.qty/Math.max(C.epsilon,i.qty)*deliveryRatio;
+        if(allowed<qty-C.epsilon)bottleneck=i.good;
+        qty=Math.min(qty,allowed);
       }
       // Input imports above may reserve the same road as the local delivery.
       for(const [edge,load] of loadByEdge){const e=snapshot.edges.find(e=>e.id===edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
-      if(qty<=C.epsilon){if(desired<=C.epsilon){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,blocked:'capacity_labor_or_staffing'});pending.delete(id);}continue;}
+      if(qty<=C.epsilon){if(desired<=C.epsilon){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,...labor,inputs,
+        blocked:jobs>C.epsilon&&staffed<=C.epsilon?'no_workers':'capacity_labor_or_staffing'});pending.delete(id);}continue;}
       let inputValue=0,minQuality=Infinity;
       for(const i of p.recipe.inputs){const b=stock(c.id,i.good),amount=qty*i.qty/p.recipe.qty;
         const shipped=amount/(1-(inputPaths.get(i.good)?.loss||0));
@@ -288,9 +346,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const b=stock(c.id,g.key);add(b,qty,quality,p.channel,p.source);b.intermediate_value+=inputValue;
       b.lost_spoilage+=qty*(delivery?.loss||0);
       for(const [edge,load] of loadByEdge)reserved.set(edge,(reserved.get(edge)||0)+qty*load);
-      laborUsed.set(lk,(laborUsed.get(lk)||0)+qty*p.recipe.labor/p.recipe.qty);
       const total=(realized.get(id)||0)+qty;realized.set(id,total);
-      const diagnostic={producer:id,good:g.key,capacity:p.capacity,realized:total,factors:{...factors,inputs:target?total/target:0},delivery_path:delivery?.cells,blocked:null};
+      const diagnostic={producer:id,good:g.key,capacity:p.capacity,realized:total,factors:{...factors,inputs:target?total/target:0},
+        ...labor,inputs,bottleneck:total>=target-C.epsilon?null:bottleneck,delivery_path:delivery?.cells,blocked:null};
       const index=diagnostics.findIndex(d=>d.producer===id);
       if(index>=0)diagnostics[index]=diagnostic;else diagnostics.push(diagnostic);
       if(total>=target-C.epsilon)pending.delete(id);
@@ -298,7 +356,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     }
     if(!progress)break;
   }
-  for(const [id,p] of pending)if(!realized.has(id))diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},blocked:'missing_inputs_or_route'});
+  for(const [id,p] of pending)if(!realized.has(id))diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},
+    jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),blocked:'missing_inputs_or_route'});
   const consume=(c:City,g:Good)=>{const b=stock(c.id,g.key),missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     const qty=Math.min(available(b),missing),state=Math.min(qty,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
     b.consumed_state+=state;b.consumed_household+=qty-state;};
@@ -380,6 +439,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(Math.abs(residual)>1e-6)throw Error(`Goods conservation failed ${key(c.id,g.key)}: ${residual}`);
   }}
   const prices:PriceRow[]=cities.flatMap(c=>goods.map(g=>priceDetail(c.id,g.key)));
-  return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),workforce:Object.fromEntries(workforce)};
+  return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
+    workforce:Object.fromEntries(workforce),labor:laborMetrics};
 
 }

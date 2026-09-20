@@ -10085,6 +10085,50 @@ export type Database = {
           },
         ]
       }
+      structure_production_orders: {
+        Row: {
+          created_at: string
+          id: string
+          mode: string
+          session_id: string
+          structure_id: string
+          structure_type: string
+          target_basket_key: string | null
+          target_good_key: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mode?: string
+          session_id: string
+          structure_id: string
+          structure_type: string
+          target_basket_key?: string | null
+          target_good_key?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mode?: string
+          session_id?: string
+          structure_id?: string
+          structure_type?: string
+          target_basket_key?: string | null
+          target_good_key?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "structure_production_orders_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supply_chain_state: {
         Row: {
           connected_to_capital: boolean

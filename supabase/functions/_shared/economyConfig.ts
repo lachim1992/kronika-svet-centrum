@@ -20,6 +20,22 @@ export const ECONOMY = {
   sectors: { farming: 0.4, crafting: 0.3, administration: 0.1, logistics: 0.2 },
   householdBaskets: ['staple_food', 'basic_clothing', 'tools', 'fuel', 'drinking_water', 'construction'],
   capexGoods: ['stone_blocks', 'lumber', 'construction_materials'],
+  /**
+   * LABOR ECONOMY. Population supplies labour, never goods. A structure declares how many
+   * workers it can employ (jobs_capacity); the city labour market fills those jobs from the
+   * civilian workforce of the relevant sector. Staffing then scales potential output.
+   *
+   * jobs_capacity = capacity × allocation × recipe.labor / recipe.qty × workersPerLaborUnit
+   * (one canonical interpretation; capacity already carries the level scaling)
+   */
+  workersPerLaborUnit: 1,
+  /** Capacity multiplier per structure level: Lv1 = 1, Lv2 = 1.8, Lv3 = 3, … */
+  levelCapacityScale: [1, 1.8, 3, 4.2, 5.4],
+  /**
+   * Households no longer emit tradeable market goods. Population creates labour and demand;
+   * physical goods come only from structures, districts and production nodes.
+   */
+  householdProduction: false,
 } as const;
 /** Existing city allocations use percentages and the historical scribes/canal keys. */
 export function normalizeLabor(value: Record<string, number> = {}) {

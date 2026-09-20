@@ -32,7 +32,7 @@ export async function finalizeManagementReports(sb:any,session:string,turn:numbe
   if(saved.error)throw saved.error;
 }
 export async function computeCanonicalEconomy(sb:any,session:string){
-  const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','laws','war_declarations'];
+  const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
   const sess=await sb.from('game_sessions').select('current_turn').eq('id',session).single();if(sess.error)throw sess.error;
@@ -86,14 +86,30 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     inputs:(r.input_items||[]).map((i:any)=>({good:i.key??i.good_key,qty:nonnegative(i.qty??i.quantity)})),
     labor:nonnegative(r.labor_cost),quality:nonnegative(r.quality_output_bonus),minQuality:nonnegative(r.min_quality_input)});
   const producers:Producer[]=[];
+  /**
+   * PRODUCTION ORDERS (nodes, buildings and districts share one interpretation):
+   *  AUTO   — legal recipes weighted by basket necessity (1/tier); never a blind even split.
+   *  PREFER — the chosen good/basket gets triple weight, the rest still runs.
+   *  LOCK   — only the chosen good/basket runs, if it is legal for this structure.
+   */
+  const orderWeight=(r:any,order:any)=>{
+    const g=goodMap.get(r.output_good_key);
+    const tier=BASKET_TIER[g?.basket||'']||1,auto=1/tier;
+    if(!order||order.mode==='auto')return auto;
+    const match=(order.target_good_key&&r.output_good_key===order.target_good_key)||
+      (order.target_basket_key&&g?.basket===basket(order.target_basket_key));
+    if(order.mode==='prefer')return match?auto*3:auto;
+    return match?auto:0;
+  };
   for(const node of db.province_nodes){if(node.is_active===false)continue;const c=anchor(node);if(!c)continue;
     const order=db.node_production_orders.find(o=>o.node_id===node.id);
-    let eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
-    if(order?.mode==='lock')eligible=eligible.filter(r=>(!order.target_good_key||r.output_good_key===order.target_good_key)&&goodMap.get(r.output_good_key)?.basket===basket(order.target_basket_key));
-    const weights=eligible.map(r=>order?.mode==='prefer'&&goodMap.get(r.output_good_key)?.basket===basket(order.target_basket_key)?3:1),total=weights.reduce((s,n)=>s+n,0);
-    eligible.forEach((r,i)=>producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity:nonnegative(node.production_output),
-      recipe:recipe(r),allocation:weights[i]/total,staffing:1,logistics:nonnegative(node.route_access_factor??1),mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
-      source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)}));
+    const eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
+    const weights=eligible.map(r=>orderWeight(r,order)),total=weights.reduce((s,n)=>s+n,0);
+    if(total<=0)continue;
+    eligible.forEach((r,i)=>{if(weights[i]<=0)return;
+      producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity:nonnegative(node.production_output),
+        recipe:recipe(r),allocation:weights[i]/total,staffing:1,logistics:nonnegative(node.route_access_factor??1),mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
+        source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
   }
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
   /**
@@ -101,16 +117,30 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    * (effects.recipe_keys) or the recipes matching its declared capability tags and roles.
    * A structure without any declared craft produces nothing — basket capacity alone is not
    * a licence to run unrelated extraction, processing or manufacturing recipes.
+   *
+   * CAPACITY / JOBS. Declared basket capacity is the level-1 rating; the level multiplier
+   * (ECONOMY.levelCapacityScale) makes upgrades raise real physical throughput. Jobs capacity
+   * is derived once, canonically, from capacity × recipe labour (see ECONOMY.workersPerLaborUnit),
+   * so the labour market and the production capacity never disagree.
    */
+  const levelScale=(level:unknown)=>{const scale=ECONOMY.levelCapacityScale;
+    return scale[Math.min(scale.length,Math.max(1,Math.round(Number(level)||1)))-1];};
+  const structureOrder=(id:string)=>db.structure_production_orders.find((o:any)=>o.structure_id===id);
   const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,
-    tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean}={})=>{
+    tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean;level?:unknown;order?:any;jobs?:unknown}={})=>{
     if(!cityMap.has(city))return;
-    const total=Object.values(outputs).reduce((s,v)=>s+nonnegative(v),0);
+    const scale=levelScale(options.level);
+    const total=Object.values(outputs).reduce((s,v)=>s+nonnegative(v),0)*scale;
+    // Declared jobs_capacity wins; otherwise jobs are derived from capacity × recipe labour.
+    const jobs=Number(options.jobs)>0?nonnegative(options.jobs)*scale:undefined;
     const push=(candidates:any[],capacity:number)=>{
       if(!candidates.length||capacity<=0)return;
-      for(const r of candidates)producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),
-        allocation:1/candidates.length,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
-        distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});
+      const weights=candidates.map(r=>orderWeight(r,options.order)),sum=weights.reduce((s,w)=>s+w,0);
+      if(sum<=0)return;
+      candidates.forEach((r,i)=>{if(weights[i]<=0)return;
+        producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),jobs,
+          allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
+          distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
     };
     if(options.recipeKeys?.length){
       // Exact whitelist: unknown keys are a contract error, roles/tags must still match.
@@ -127,7 +157,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       const candidates=db.production_recipes.filter(r=>goodMap.get(r.output_good_key)?.basket===basket(bk)&&
         (role(r)!=='source'||options.allowSource)&&(!options.roles?.length||options.roles.includes(role(r))||options.roles.includes(r.required_role))&&
         (r.required_tags||[]).length>0&&(r.required_tags||[]).every((tag:string)=>tags.includes(tag)));
-      push(candidates,nonnegative(capacity));
+      push(candidates,nonnegative(capacity)*scale);
     }
   };
   // Legacy compatibility only: buildings saved before explicit metadata existed.
@@ -145,7 +175,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const name=`${template?.key||''} ${template?.name||''} ${b.name||''}`;
     const tags=effect.capability_tags||facilityTags(name);
     structure(b.id,b.city_id,'facility',effect.basket_outputs||{},true,tags,
-      {recipeKeys:effect.recipe_keys,roles:effect.production_roles,
+      {recipeKeys:effect.recipe_keys,roles:effect.production_roles,level:b.current_level,order:structureOrder(b.id),jobs:effect.jobs_capacity,
        allowSource:!!effect.recipe_keys||/well|aqueduct|studn|akvad|woodcut|lumber|dřev/i.test(name)});
   }
   for(const c of cities){const districts=db.city_districts.filter(d=>d.city_id===c.id&&d.status==='completed').sort((a,b)=>a.id.localeCompare(b.id));
@@ -154,7 +184,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       const farm=/hospodářský pás|farm_belt/i.test(d.name||'');
       structure(d.id,c.id,'district',{[basket(d.basket_key)]:nonnegative(d.basket_output)},staffed-->0,
         farm?['farming','herding','gathering']:['weaving','smithing','armoring','construction','crafting','baking','spinning','smelting','stonecutting','sawing'],
-        {allowSource:farm});
+        {allowSource:farm,level:d.level??d.current_level,order:structureOrder(d.id)});
     }
   }
   const edges:Edge[]=db.road_segments.filter(r=>r.status==='completed').map(r=>({id:r.id,from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`,

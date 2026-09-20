@@ -25,6 +25,7 @@ import {
   seatCityOnParcels,
 } from "../_shared/citySeat.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
+import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
 import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
@@ -994,6 +995,10 @@ async function executeFoundCity(
 
   // ── 1c. Settlement node in the physical graph (structural, idempotent) ──
   await ensureCitySettlementNodes(supabase, sessionId);
+
+  // ── 1d. Starter production bundle: a settlement subsists on real structures,
+  // never on population emitting goods out of nothing (idempotent).
+  await ensureStarterEconomy(supabase, sessionId, { cityId, turnNumber });
 
 
   // ── 2. World event ──
