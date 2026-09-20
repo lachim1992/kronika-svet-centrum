@@ -202,7 +202,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
         <CardContent className="p-4 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-display font-semibold">Financování sportu</span>
-            <Badge variant="outline" className="text-[9px]">{sportFunding}% zlata / kolo</Badge>
+            <Badge variant="outline" className="text-[9px]">{sportFunding}% příjmů / kolo</Badge>
           </div>
           <Slider
             value={[sportFunding]}
@@ -214,7 +214,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
             className="w-full"
           />
           <p className="text-[10px] text-muted-foreground">
-            Každé kolo se strhne {sportFunding}% ze zlaté rezervy na rozvoj akademií a šanci na vznik nových asociací.
+            Každé kolo se odvede {sportFunding}% z daňových příjmů (nikdy z celé pokladnice) na rozvoj akademií a šanci na vznik nových asociací.
           </p>
         </CardContent>
       </Card>

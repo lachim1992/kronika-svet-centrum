@@ -1,6 +1,6 @@
 import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.ts";
 import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demographics.ts";
-import { TAX_MAX, laffer, governance, taxRevenue } from '../_shared/fiscal.ts';
+import { TAX_MAX, laffer, governance, taxRevenue, sportFundingExpense as computeSportFunding } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -1003,8 +1003,8 @@ Deno.serve(async (req) => {
     if (tradeGoldDelta !== 0) logEntries.push(`Obchod: ${tradeGoldDelta >= 0 ? "+" : ""}${tradeGoldDelta} zlata`);
     if (totalTollsPaid > 0) logEntries.push(`🏛️ Mýtné: -${totalTollsPaid} zlata`);
 
-    // Sport Funding
-    const sportFundingExpense = Math.floor(Math.max(0, newGoldReserve) * (sportFundingPct / 100));
+    // Sport Funding — share of recurring fiscal income, NOT of the treasury stock.
+    const sportFundingExpense = computeSportFunding(wealthIncome, sportFundingPct, Math.max(0, newGoldReserve));
     newGoldReserve -= sportFundingExpense;
 
     // ══════════════════════════════════════════

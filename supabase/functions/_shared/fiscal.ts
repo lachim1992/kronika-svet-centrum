@@ -6,6 +6,16 @@ export const governance=(legitimacy:number)=>0.5+0.5*Math.max(0,Math.min(100,leg
 export function taxRevenue(base:number,rate:number,pillar:TaxPillar,governanceFactor:number,multiplier=1){
   return Math.round(Math.max(0,base)*laffer(rate,TAX_MAX[pillar])*Math.max(0,rate)*governanceFactor*multiplier*10)/10;
 }
+/**
+ * Sport funding is a share of RECURRING FISCAL INCOME, never of the treasury stock.
+ * Taking a percentage of the whole reserve every turn drained large treasuries
+ * (5 % of ~950 000 = ~47 500 per turn). Capped by the treasury so it cannot go negative.
+ */
+export function sportFundingExpense(income:number,pct:number,treasury:number){
+  const share=Math.max(0,Math.min(100,Number(pct)||0))/100;
+  const want=Math.floor(Math.max(0,Number(income)||0)*share);
+  return Math.max(0,Math.min(want,Math.floor(Math.max(0,Number(treasury)||0))));
+}
 export function fiscalSummary(realm:any){
   const wb=realm?.computed_modifiers?.wealth_breakdown||{};
   const income=Number(realm?.wealth_pop_tax||0)+Number(realm?.wealth_domestic_market||0)+Number(realm?.goods_wealth_fiscal||0);
