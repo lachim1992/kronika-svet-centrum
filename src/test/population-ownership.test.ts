@@ -70,8 +70,9 @@ describe('Phase A — population class invariant', () => {
   it('growthModifier replaces the hasTrade carrier', () => {
     const src = fn('_shared/physics.ts');
     expect(src).toContain('growthModifier');
-    const base = computeSettlementGrowth(city(10000) as any, {});
-    const boosted = computeSettlementGrowth(city(10000) as any, { growthModifier: 0.02 });
+    const calm = { ...city(10000), city_stability: 50 };
+    const base = computeSettlementGrowth(calm as any, {});
+    const boosted = computeSettlementGrowth(calm as any, { growthModifier: 0.02 });
     expect(boosted.newPop).toBeGreaterThan(base.newPop);
   });
 });
