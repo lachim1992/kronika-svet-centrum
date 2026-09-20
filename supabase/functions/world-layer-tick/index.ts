@@ -258,103 +258,16 @@ Deno.serve(async (req) => {
       await sb.from("world_events").insert(events);
     }
 
-    // ── Phase 7: migrace mezi nody přes obchodní trasy ───────────────────
-    let migrationsCreated = 0;
-    let migrationPopMoved = 0;
-    try {
-      // Pull cities a city_market_baskets pro fulfillment ratios
-      const { data: citiesData } = await sb
-        .from("cities")
-        .select("id, name, owner_player, population, hex_q, hex_r")
-        .eq("session_id", sessionId);
-      const cities = (citiesData ?? []) as Array<{ id: string; name: string; owner_player: string; population: number; hex_q: number; hex_r: number }>;
-      const cityById = new Map(cities.map((c) => [c.id, c]));
+    // ── Phase 7: REMOVED (Phase A) ───────────────────────────────────────
+    // The former "migrace mezi nody přes obchodní trasy" block read and wrote
+    // city/basket schema columns that do not exist. Every call failed and was
+    // swallowed by its own try/catch, so it never moved a single inhabitant.
+    // Network-based intercity migration is Phase E and will be implemented on the
+    // canonical columns with strict conservation, as described in
+    // docs/architecture/world-layer-contract.md. Do not re-add a writer here.
+    const migrationsCreated = 0;
+    const migrationPopMoved = 0;
 
-      // Načti node→city mapping
-      const { data: nodesData } = await sb
-        .from("province_nodes")
-        .select("id, city_id, mythic_tag")
-        .eq("session_id", sessionId);
-      const nodeById = new Map((nodesData ?? []).map((n: any) => [n.id, n]));
-
-      // Načti aktuální state map
-      const liveStates = new Map<string, any>();
-      for (const u of stateUpdates) liveStates.set(u.route_id as string, u);
-
-      // Načti push/pull signály (city_market_baskets)
-      const { data: baskets } = await sb
-        .from("city_market_baskets")
-        .select("city_id, basket_kind, fulfillment_ratio")
-        .eq("session_id", sessionId)
-        .in("basket_kind", ["staple_food", "fuel", "basic_clothing"]);
-      const cityNeed = new Map<string, number>(); // city_id → push score (0-1, 1=hladomor)
-      for (const b of baskets ?? []) {
-        const ratio = Number((b as any).fulfillment_ratio ?? 1);
-        const deficit = Math.max(0, 1 - ratio);
-        cityNeed.set((b as any).city_id, Math.max(cityNeed.get((b as any).city_id) ?? 0, deficit));
-      }
-
-      // Pro každou usable+ trasu rozhodni o migraci
-      for (const [routeId, st] of liveStates.entries()) {
-        const lc = String(st.lifecycle_state);
-        if (lc !== "usable" && lc !== "maintained") continue;
-        const route = routeMap.get(routeId);
-        if (!route) continue;
-        const nodeA = nodeById.get(route.node_a);
-        const nodeB = nodeById.get(route.node_b);
-        if (!nodeA?.city_id || !nodeB?.city_id) continue;
-        const cityA = cityById.get(nodeA.city_id);
-        const cityB = cityById.get(nodeB.city_id);
-        if (!cityA || !cityB) continue;
-
-        const needA = cityNeed.get(cityA.id) ?? 0;
-        const needB = cityNeed.get(cityB.id) ?? 0;
-        if (Math.abs(needA - needB) < 0.15) continue; // nedostatečný gradient
-
-        const fromCity = needA > needB ? cityA : cityB;
-        const toCity = needA > needB ? cityB : cityA;
-        const fromNode = needA > needB ? route.node_a : route.node_b;
-        const toNode = needA > needB ? route.node_b : route.node_a;
-        const pushScore = Math.max(needA, needB);
-
-        // Throughput cap = maintenance_level × 0.1 lidí/turn × population scale
-        const cap = Math.floor(Number(st.maintenance_level) * 0.1);
-        // Migration cap 2 % populace zdroje
-        const popCap = Math.floor(fromCity.population * 0.02);
-        const moved = Math.min(cap, popCap, Math.floor(fromCity.population * pushScore * 0.05));
-        if (moved < 1) continue;
-
-        await sb.from("cities").update({ population: fromCity.population - moved }).eq("id", fromCity.id);
-        await sb.from("cities").update({ population: toCity.population + moved }).eq("id", toCity.id);
-        fromCity.population -= moved;
-        toCity.population += moved;
-
-        await sb.from("node_migrations").insert({
-          session_id: sessionId,
-          turn_number: turnNumber,
-          from_node: fromNode,
-          to_node: toNode,
-          population_delta: moved,
-          reason: needA > 0.3 || needB > 0.3 ? "famine" : "opportunity",
-          route_id: routeId,
-        });
-
-        await sb.from("world_events").insert({
-          session_id: sessionId,
-          turn_number: turnNumber,
-          event_type: "node_migration",
-          severity: "info",
-          title: "Lidé se stěhují",
-          description: `${moved} obyvatel opustilo ${fromCity.name} a hledá lepší život v ${toCity.name}.`,
-          metadata: { from_city: fromCity.id, to_city: toCity.id, count: moved, route_id: routeId },
-        });
-
-        migrationsCreated++;
-        migrationPopMoved += moved;
-      }
-    } catch (e) {
-      console.warn("phase7 migration error:", (e as Error).message);
-    }
 
     // ── Phase 8: mýtické nody → pasivní prestige + heritage_effects ──────
     let mythicPrestige = 0;

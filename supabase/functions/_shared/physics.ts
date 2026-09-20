@@ -115,7 +115,16 @@ export interface GrowthResult {
 
 export function computeSettlementGrowth(
   city: CityForGrowth,
-  opts: { hasRebellion?: boolean; hasTrade?: boolean; openBordersBonuses?: { birth_rate_bonus?: number; migration_bonus?: number } } = {}
+  opts: {
+    hasRebellion?: boolean;
+    /**
+     * Explicit additive growth-rate modifier (civ DNA, structural bonuses, …).
+     * Phase A: replaces the previous `hasTrade` boolean, which callers abused as
+     * a carrier for the civ growth bonus.
+     */
+    growthModifier?: number;
+    openBordersBonuses?: { birth_rate_bonus?: number; migration_bonus?: number };
+  } = {}
 ): GrowthResult {
   if (city.status !== "ok") {
     return {
@@ -131,11 +140,12 @@ export function computeSettlementGrowth(
   const stabilityFactor = (stability - 50) / 200;
   const famineFactor = city.famine_turn ? -0.02 : 0;
   const warFactor = 0; // status is narrowed to "ok" after early return above
-  const tradeFactor = opts.hasTrade ? 0.005 : 0;
+  const growthModifier = Number(opts.growthModifier) || 0;
   const openBordersBirthBonus = opts.openBordersBonuses?.birth_rate_bonus || 0;
   const openBordersMigrationBonus = opts.openBordersBonuses?.migration_bonus || 0;
-  
-  let growthRate = POP_GROWTH_BASE + stabilityFactor + famineFactor + warFactor + tradeFactor + openBordersBirthBonus + openBordersMigrationBonus;
+
+  let growthRate = POP_GROWTH_BASE + stabilityFactor + famineFactor + warFactor + growthModifier + openBordersBirthBonus + openBordersMigrationBonus;
+
   growthRate = Math.max(POP_GROWTH_MIN, Math.min(POP_GROWTH_MAX, growthRate));
 
   const delta = Math.round(city.population_total * growthRate);

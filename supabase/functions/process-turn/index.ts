@@ -1,5 +1,5 @@
 import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.ts";
-import { promotedSettlementTier } from "../_shared/demographics.ts";
+import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demographics.ts";
 import { TAX_MAX, laffer, governance, taxRevenue } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -710,15 +710,20 @@ Deno.serve(async (req) => {
         famineCityCount++;
         const newStability = Math.max(0, (city.city_stability || 50) - 5);
         const deathToll = Math.floor((city.population_total || 0) * 0.05);
+        // Losses go through the shared helper so population_total always equals
+        // the sum of the four classes (Phase A invariant).
+        const loss = applyPopulationLoss(city, deathToll);
         await supabase.from("cities").update({
           city_stability: newStability,
-          population_peasants: Math.max(0, (city.population_peasants || 0) - Math.floor(deathToll * 0.7)),
-          population_burghers: Math.max(0, (city.population_burghers || 0) - Math.floor(deathToll * 0.15)),
-          population_warriors: Math.max(0, (city.population_warriors || 0) - Math.floor(deathToll * 0.1)),
-          population_clerics: Math.max(0, (city.population_clerics || 0) - Math.floor(deathToll * 0.05)),
+          population_total: loss.population_total,
+          population_peasants: loss.population_peasants,
+          population_burghers: loss.population_burghers,
+          population_clerics: loss.population_clerics,
+          population_warriors: loss.population_warriors,
           famine_turn: true,
           famine_consecutive_turns: (city.famine_consecutive_turns || 0) + 1,
         }).eq("id", city.id);
+
 
         logEntries.push(`⚠️ Hladomor v ${city.name}! Ztráta ${deathToll} obyvatel.`);
         newEvents.push({
@@ -1395,24 +1400,19 @@ Deno.serve(async (req) => {
         else if (avgSat > 0.3) stabilityDrift = -2;  // Under-supplied
         else stabilityDrift = -5;                      // Critical shortage
 
-        // Population growth modifier from staple fulfillment
-        let popGrowthMod = 0;
-        if (stapleSat > 0.8) popGrowthMod = 0.002;   // +0.2% bonus growth
-        else if (stapleSat < 0.3) popGrowthMod = -0.003; // -0.3% growth penalty
+        // PHASE A: process-turn is NOT a population writer. The staple-based
+        // growth mutation was removed — commit-turn (turn-based) / world-tick
+        // (time-based) own population. Staple satisfaction only drives stability
+        // here; demand-driven growth returns in Phase D via the canonical
+        // births/deaths model.
 
         // Apply stability drift
         const newStability = Math.max(0, Math.min(100, (city.city_stability || 50) + stabilityDrift));
-        const popDelta = Math.round((city.population_total || 0) * popGrowthMod);
 
-        if (stabilityDrift !== 0 || popDelta !== 0) {
-          const updates: any = {};
-          if (stabilityDrift !== 0) updates.city_stability = newStability;
-          if (popDelta !== 0) {
-            updates.population_total = Math.max(10, (city.population_total || 0) + popDelta);
-            updates.population_peasants = Math.max(5, (city.population_peasants || 0) + Math.round(popDelta * 0.6));
-          }
-          await supabase.from("cities").update(updates).eq("id", city.id);
+        if (stabilityDrift !== 0) {
+          await supabase.from("cities").update({ city_stability: newStability }).eq("id", city.id);
         }
+
 
         // Generate events for critical shortages
         if (avgSat < 0.3) {

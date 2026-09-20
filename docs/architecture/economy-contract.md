@@ -160,3 +160,35 @@ Graf v `HistoryChartsPanel` je „Objem nabídky", nikoli HDP.
   Spotřeba zůstává v `command-dispatch` (stavby, silnice) bez změny.
 - `laborGrainMult` / `laborWealthMult` nesmí vytvářet paralelní produkci; zůstávají jen
   jako modifikátory kapacity/bohatství a v diagnostice.
+
+## Population ownership — Phase A (Population/Migration pass)
+
+**INVARIANT 4 — jeden kanonický writer populace.**
+V tahovém režimu je jediným writerem `cities.population_total` a vrstev
+(`population_peasants/burghers/clerics/warriors`) funkce `commit-turn`
+(fáze SETTLEMENT GROWTH → `projectCityUpdates`). V časovém režimu je to
+`world-tick`, který používá stejný shared výpočet z `physics.ts`.
+`process-turn` populaci NEMĚNÍ — vlastní pouze fiskál a stabilitu;
+duplicitní růst podle `staple_food` byl odstraněn.
+`refresh-economy` / `compute-*` populaci nikdy nezapisují.
+
+**INVARIANT 5 — třídní invariant.**
+`population_total === population_peasants + population_burghers +
+population_clerics + population_warriors`. Každý zápis populace prochází
+`normalizePopulationClasses()` nebo `applyPopulationLoss()`
+(`_shared/demographics.ts`). Žádný writer nesmí zapsat jen podmnožinu
+sloupců vrstev. Spodní hranice obydleného sídla je `POPULATION_FLOOR = 50`.
+
+**Povolené jednorázové ztráty.** Destruktivní události (hladomor, vzpoura,
+bitva, katastrofa, zásah `command-dispatch`) smí populaci snižovat, ale pouze
+přes `applyPopulationLoss()`. Migrace populaci pouze přesouvá — nikdy netvoří.
+
+**Explicitní růstový modifikátor.** `computeSettlementGrowth()` přijímá
+`growthModifier` (civ DNA, struktury). Dřívější zneužití `hasTrade` jako nosiče
+civ bonusu bylo odstraněno.
+
+Zbývající writeři populace (záměrně, mimo rozsah fáze A):
+`resolve-battle` (válečné ztráty), `command-dispatch` (zakládání města,
+destruktivní akce), world-gen funkce (`mp-world-generate`,
+`world-generate-init`, `generate-civ-start`, `seed-realm-skeleton`) a migrace
+ve `world-tick`. Ty se dorovnají v dalších fázích.
