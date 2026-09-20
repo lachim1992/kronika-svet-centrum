@@ -18,7 +18,12 @@ export const ECONOMY = {
   inputReachBonus: 2.5,
   famePrestige: 0.1,
   sectors: { farming: 0.4, crafting: 0.3, administration: 0.1, logistics: 0.2 },
-  householdBaskets: ['staple_food', 'basic_clothing', 'tools', 'fuel', 'drinking_water', 'construction'],
+  /**
+   * TRUE household-consumption baskets only. Tools are durable operational support of industry
+   * and construction materials belong to building sites, so neither is a household basket any
+   * more (see demandModel.ts for the canonical demand classes).
+   */
+  householdBaskets: ['staple_food', 'basic_clothing', 'fuel', 'drinking_water'],
   capexGoods: ['stone_blocks', 'lumber', 'construction_materials'],
   /**
    * LABOR ECONOMY. Population supplies labour, never goods. A structure declares how many
@@ -79,6 +84,7 @@ export const DEMAND_WEIGHTS: Record<string, Record<string,number>> = {
   military_supply:{peasants:0.1,burghers:0.2,clerics:0.1,warriors:1},
   luxury_clothing:{peasants:0.05,burghers:0.5,clerics:0.3,warriors:0.6},
   feast:{peasants:0.1,burghers:0.6,clerics:0.4,warriors:0.4},
+  variety:{peasants:0.3,burghers:0.7,clerics:0.4,warriors:0.3},
 };
 export type Sector = keyof typeof ECONOMY.sectors;
 export const IDEOLOGIES = {
@@ -91,8 +97,12 @@ export const IDEOLOGIES = {
 export const BASKET_SECTOR: Record<string, Sector> = {
   staple_food: 'farming', drinking_water: 'farming', fuel: 'farming', basic_clothing: 'crafting',
   tools: 'crafting', metalwork: 'crafting', military_supply: 'crafting', luxury_clothing: 'crafting',
-  feast: 'crafting', construction: 'crafting', admin_supplies: 'administration', storage_logistics: 'logistics',
+  feast: 'crafting', variety: 'crafting', construction: 'crafting', admin_supplies: 'administration', storage_logistics: 'logistics',
 };
+/**
+ * PRODUCTION PRIORITY weight only (auto production orders, build catalogue previews).
+ * It is NO LONGER a demand model: demand classes live in demandModel.ts.
+ */
 export const BASKET_TIER: Record<string, number> = { staple_food:1, basic_clothing:1, tools:1, fuel:1,
   drinking_water:2, storage_logistics:2, admin_supplies:2, construction:3, metalwork:3,
-  military_supply:4, luxury_clothing:6, feast:6 };
+  military_supply:4, variety:5, luxury_clothing:6, feast:6 };
