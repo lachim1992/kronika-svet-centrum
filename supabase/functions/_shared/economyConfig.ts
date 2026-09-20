@@ -27,8 +27,14 @@ export const ECONOMY = {
    *
    * jobs_capacity = capacity × allocation × recipe.labor / recipe.qty × workersPerLaborUnit
    * (one canonical interpretation; capacity already carries the level scaling)
+   *
+   * HEADCOUNT SCALE. One labour unit is a whole work crew, not one person, so the jobs a
+   * structure declares are real headcounts. Calibration: a level-1 production centre asks
+   * ~2-3 labour units, i.e. ~40-60 people; one residential quarter (250 inhabitants → ~125
+   * economically active) therefore staffs roughly two production centres, and higher levels
+   * raise both the headcount and the output through levelCapacityScale.
    */
-  workersPerLaborUnit: 1,
+  workersPerLaborUnit: 20,
   /** Capacity multiplier per structure level: Lv1 = 1, Lv2 = 1.8, Lv3 = 3, … */
   levelCapacityScale: [1, 1.8, 3, 4.2, 5.4],
   /**
