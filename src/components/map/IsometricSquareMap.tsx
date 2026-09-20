@@ -330,6 +330,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [districts, setDistricts] = useState<CityDistrict[]>([]);
   const [productionPick, setProductionPick] = useState<Record<string, string>>({});
   const [storedSubBiomes, setStoredSubBiomes] = useState<StoredSubBiome[]>([]);
+  /** Which built structure the player opened for inspection. */
+  const [buildingTarget, setBuildingTarget] = useState<BuildingTarget | null>(null);
 
 
 
