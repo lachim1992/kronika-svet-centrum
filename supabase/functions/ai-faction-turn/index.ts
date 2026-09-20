@@ -947,7 +947,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         : (aiResult.error || "Chyba AI");
       await supabase.from("ai_faction_turn_summary").upsert({
         session_id: sessionId, faction_name: factionName, turn_number: turn,
-        doctrine, war_state: milMetrics.warState,
+        war_state: milMetrics.warState,
         actions_planned: 0, actions_executed: 0, actions_failed: 0,
         recruits_attempted: 0, builds_attempted: 0, attacks_attempted: 0,
         internal_thought: `FALLBACK: ${reason} — frakce drží pozici, žádné akce nebyly vymyšleny.`,
