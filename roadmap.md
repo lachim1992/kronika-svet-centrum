@@ -106,12 +106,13 @@
 
 ## Populace, migrace a prosperita tras (master)
 - [x] Fáze A: jediný kanonický writer populace, třídní invariant, mrtvý kód
-- [ ] Fáze A residue: world-tick ztráty i migrace přes shared helpery
-- [ ] Fáze A residue: resolve-battle ztráty drží total == součet vrstev
-- [ ] Fáze A residue: command-dispatch destruktivní ztráty přes shared helper
-- [ ] Fáze A residue: zakládání města — TODO + testovací pojistka (převod až ve Fázi C)
-- [ ] Fáze A residue: zrušit klientské volání process-turn mimo commit-turn
-- [ ] Fáze B: deterministická venkovská populace a únosná kapacita na buňkách (shadow)
+- [x] Fáze A residue: world-tick ztráty i migrace přes shared helpery
+- [x] Fáze A residue: resolve-battle ztráty drží total == součet vrstev
+- [x] Fáze A residue: command-dispatch destruktivní ztráty přes shared helper
+- [x] Fáze A residue: zakládání města — TODO + testovací pojistka (převod až ve Fázi C)
+- [x] Fáze A residue: zrušit klientské volání process-turn mimo commit-turn
+- [x] Fáze B: deterministická venkovská populace a únosná kapacita na buňkách (shadow)
+- [ ] UI: populace každého pole v mapovém detailu + vývoj, příčiny a migrace v Říši
 - [ ] Fáze C: zakládání a místní migrace jako atomický převod lidí
 - [ ] Fáze D: jeden model narozených/zemřelých + pracovní příležitost za feature flagem
 - [ ] Fáze E: dálková migrace po stejném fyzickém grafu tras
