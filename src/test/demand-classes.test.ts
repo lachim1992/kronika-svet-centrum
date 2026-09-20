@@ -68,6 +68,18 @@ describe('canonical demand classes', () => {
     expect(waterShortageImpact(1000, 0.8).deaths).toBe(0);
   });
 
+  it('F2: water mortality is bounded and keeps population classes consistent', () => {
+    const deaths = waterShortageImpact(1000, 0.2).deaths;
+    expect(deaths).toBeGreaterThan(0);
+    expect(deaths).toBeLessThanOrEqual(Math.ceil(1000 * DEMAND.waterMortality));
+    const loss = applyPopulationLoss({ population_total: 1000, population_peasants: 800, population_burghers: 150,
+      population_clerics: 30, population_warriors: 20 }, deaths);
+    expect(loss.population_total).toBe(1000 - deaths);
+    expect(loss.population_peasants + loss.population_burghers + loss.population_clerics + loss.population_warriors)
+      .toBe(loss.population_total);
+  });
+
+
   it('G/H: construction demand exists only while something is being built', () => {
     expect(demandOf(resolveGoodsEconomy(snap(baseGoods)), 'construction', baseGoods)).toBe(0);
     expect(demandOf(resolveGoodsEconomy(snap(baseGoods, [], { constructionProjects: 3 })), 'construction', baseGoods))
