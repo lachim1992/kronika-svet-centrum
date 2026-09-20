@@ -136,7 +136,7 @@ describe('labour, jobs and capacity economy', () => {
         expect(produced(b)).toBeGreaterThanOrEqual(0);
         expect(b.stored).toBeGreaterThanOrEqual(0);
       }
-      state = { ...state, opening: r.balances.map(b => ({ city: b.city, good: b.good, qty: b.stored })) };
+      state = { ...state, opening: r.balances.map(b => ({ city: b.city, good: b.good, qty: b.stored, quality: b.quality ?? 1 })) };
     }
   });
 });
