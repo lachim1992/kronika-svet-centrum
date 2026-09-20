@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertCircle, Flame, Crown, Coins, Warehouse, Flag, Skull, Loader2, Scroll, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { dispatchCommand } from "@/lib/commands";
 
 interface Demand {
   type: string;
@@ -186,109 +187,26 @@ Vygeneruj hlas lidu a analýzu poradců.`;
     setLoading(true);
 
     try {
-      const effects: Record<string, any> = {};
-
-      if (selectedConcession === "pay_wealth") {
-        const demand = uprising.demands.find(d => d.type === "pay_wealth");
-        const costPercent = demand?.cost_percent || 30;
-        const { data: realm } = await supabase
-          .from("realm_resources")
-          .select("gold_reserve")
-          .eq("session_id", sessionId)
-          .eq("player_name", playerName)
-          .maybeSingle();
-        const loss = Math.round((realm?.gold_reserve || 0) * costPercent / 100);
-        await supabase.from("realm_resources").update({
-          gold_reserve: Math.max(0, (realm?.gold_reserve || 0) - loss),
-        }).eq("session_id", sessionId).eq("player_name", playerName);
-        effects.wealth_lost = loss;
-
-        // Stabilize: clear famine, boost stability, 3-turn cooldown
-        const cooldownUntil = currentTurn + 3;
-        await supabase.from("cities").update({
-          famine_consecutive_turns: 0,
-          famine_turn: false,
-          famine_severity: 0,
-          city_stability: Math.min(100, (uprising.city_stability || 30) + 20),
-          uprising_cooldown_until: cooldownUntil,
-        }).eq("id", uprising.city_id);
-        effects.cooldown_until = cooldownUntil;
+      // All concession effects (treasury, stores, city ownership, cooldowns,
+      // chronicle) are applied server-side by RESOLVE_UPRISING, so a retry
+      // cannot charge the realm twice.
+      const res = await dispatchCommand({
+        sessionId,
+        turnNumber: currentTurn,
+        actor: { name: playerName, type: "player" },
+        commandType: "RESOLVE_UPRISING",
+        commandPayload: {
+          uprisingId: uprising.id,
+          concession: selectedConcession,
+          responseText: playerResponse || null,
+        },
+      });
+      if (!res.ok) {
+        toast.error(res.error || "Řešení vzpoury selhalo");
+        setLoading(false);
+        return;
       }
 
-      if (selectedConcession === "open_stores") {
-        // All reserves → 0 (production + grain), famine immediately ends
-        await supabase.from("realm_resources").update({
-          grain_reserve: 0, production_reserve: 0,
-        }).eq("session_id", sessionId).eq("player_name", playerName);
-
-        const cooldownUntil = currentTurn + 5;
-        await supabase.from("cities").update({
-          famine_turn: false, famine_severity: 0, famine_consecutive_turns: 0,
-          city_stability: Math.min(100, (uprising.city_stability || 30) + 30),
-          uprising_cooldown_until: cooldownUntil,
-        }).eq("id", uprising.city_id);
-        effects.stores_emptied = true;
-        effects.cooldown_until = cooldownUntil;
-      }
-
-      if (selectedConcession === "cede_city") {
-        // City becomes independent (owner = "Nezávislé")
-        await supabase.from("cities").update({
-          owner_player: "Nezávislé",
-          famine_turn: false, famine_severity: 0, famine_consecutive_turns: 0,
-          city_stability: 60,
-          uprising_cooldown_until: currentTurn + 99,
-        }).eq("id", uprising.city_id);
-        effects.city_ceded = true;
-
-        // Reputation hit
-        await supabase.from("game_events").insert({
-          session_id: sessionId, event_type: "crisis", player: playerName,
-          note: `${playerName} se vzdal města ${uprising.city_name} po vzpouře lidu.`,
-          importance: "critical", confirmed: true, turn_number: currentTurn,
-        });
-      }
-
-      if (selectedConcession === "abdicate") {
-        // Game over effect - mark all cities as independent
-        const { data: allCities } = await supabase
-          .from("cities")
-          .select("id")
-          .eq("session_id", sessionId)
-          .eq("owner_player", playerName);
-        for (const c of (allCities || [])) {
-          await supabase.from("cities").update({ owner_player: "Nezávislé" }).eq("id", c.id);
-        }
-        effects.abdicated = true;
-
-        await supabase.from("game_events").insert({
-          session_id: sessionId, event_type: "abdication", player: playerName,
-          note: `${playerName} odstoupil z trůnu pod tlakem hladovějícího lidu.`,
-          importance: "critical", confirmed: true, turn_number: currentTurn,
-        });
-      }
-
-      // Resolve uprising
-      await supabase.from("city_uprisings").update({
-        status: "resolved",
-        chosen_concession: selectedConcession,
-        player_response_text: playerResponse || null,
-        resolved_turn: currentTurn,
-        effects_applied: effects,
-      }).eq("id", uprising.id);
-
-      // Chronicle
-      try {
-        const concessionLabel = uprising.demands.find(d => d.type === selectedConcession)?.label || selectedConcession;
-        await supabase.from("chronicle_entries").insert({
-          session_id: sessionId,
-          text: `**Vzpoura v ${uprising.city_name} ukončena (rok ${currentTurn}):** Vládce ${playerName} zvolil: "${concessionLabel}". ${playerResponse ? `Prohlásil: "${playerResponse}"` : ""}`,
-          epoch_style: "kroniky",
-          turn_from: currentTurn,
-          turn_to: currentTurn,
-          source_type: "system",
-        });
-      } catch (_) { /* non-critical */ }
 
       toast.success(`Vzpoura v ${uprising.city_name} vyřešena.`);
       setOpen(false);

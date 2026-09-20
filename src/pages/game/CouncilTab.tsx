@@ -102,9 +102,17 @@ const CouncilTab = ({
     production: "production_reserve", manpower: "manpower_pool",
   };
 
-  const applyImmediateEffects = async (effects: { type: string; value: number }[]) => {
+  const applyImmediateEffects = async (
+    effects: { type: string; value: number }[],
+    extra?: {
+      factionImpacts?: Record<string, { satisfaction: number; loyalty: number }>;
+      stabilityPenalty?: number;
+    },
+  ) => {
     const immediate = effects.filter(e => IMMEDIATE_EFFECT_TYPES.has(e.type));
-    if (immediate.length === 0) return;
+    const factionImpacts = extra?.factionImpacts || {};
+    const stabilityPenalty = extra?.stabilityPenalty || 0;
+    if (immediate.length === 0 && Object.keys(factionImpacts).length === 0 && stabilityPenalty === 0) return;
 
     const { dispatchCommand } = await import("@/lib/commands");
     const res = await dispatchCommand({
@@ -112,7 +120,7 @@ const CouncilTab = ({
       turnNumber: currentTurn,
       actor: { name: currentPlayerName, type: "player" },
       commandType: "APPLY_DECREE_EFFECTS",
-      commandPayload: { effects: immediate },
+      commandPayload: { effects: immediate, factionImpacts, stabilityPenalty },
     });
     if (!res.ok) {
       toast.error(res.error || "Nepodařilo se aplikovat dopady dekretu");
@@ -360,22 +368,11 @@ const CouncilTab = ({
         }).catch(() => {});
       }
 
-      // Apply immediate one-time effects (gold, grain, stability, etc.)
-      await applyImmediateEffects(decree.effects || []);
-
-      // Apply faction impacts
+      // Immediate effects + faction reactions in one canonical command.
       const votes = computeFactionReactions(allFactions, decree.decreeType, decree.effects);
-      if (votes.length > 0) {
-        const impacts = computeDecreeImpacts(votes);
-        for (const faction of allFactions) {
-          const impact = impacts[faction.faction_type];
-          if (!impact) continue;
-          await supabase.from("city_factions").update({
-            satisfaction: Math.max(0, Math.min(100, faction.satisfaction + impact.satisfaction)),
-            loyalty: Math.max(0, Math.min(100, faction.loyalty + impact.loyalty)),
-          }).eq("id", faction.id);
-        }
-      }
+      await applyImmediateEffects(decree.effects || [], {
+        factionImpacts: votes.length > 0 ? computeDecreeImpacts(votes) : {},
+      });
 
       // Log
       await supabase.from("world_action_log").insert({
@@ -510,33 +507,16 @@ const CouncilTab = ({
         }).catch(() => {});
       }
 
-      // Apply immediate one-time effects (gold, grain, stability, etc.)
-      await applyImmediateEffects(decreeEffects);
+      // Immediate effects, faction reactions and the council backlash all go
+      // through the single APPLY_DECREE_EFFECTS command (no direct UI writes).
+      const votingResult = factionVotes.length > 0 ? computeVotingResult(factionVotes) : null;
+      const factionImpacts = factionVotes.length > 0 ? computeDecreeImpacts(factionVotes) : {};
+      const stabilityPenalty = votingResult && !votingResult.approved ? votingResult.stabilityPenalty : 0;
 
-      // Apply faction impacts (mechanical effects on satisfaction & loyalty)
-      if (factionVotes.length > 0) {
-        const impacts = computeDecreeImpacts(factionVotes);
-        const votingResult = computeVotingResult(factionVotes);
+      await applyImmediateEffects(decreeEffects, { factionImpacts, stabilityPenalty });
 
-        for (const faction of allFactions) {
-          const impact = impacts[faction.faction_type];
-          if (!impact) continue;
-          const newSatisfaction = Math.max(0, Math.min(100, faction.satisfaction + impact.satisfaction));
-          const newLoyalty = Math.max(0, Math.min(100, faction.loyalty + impact.loyalty));
-          await supabase.from("city_factions").update({
-            satisfaction: newSatisfaction,
-            loyalty: newLoyalty,
-          }).eq("id", faction.id);
-        }
-
-        // If forced against council will, apply stability penalty
-        if (!votingResult.approved && votingResult.stabilityPenalty > 0) {
-          for (const city of myCities) {
-            const newStability = Math.max(0, (city.city_stability || 70) - votingResult.stabilityPenalty);
-            await supabase.from("cities").update({ city_stability: newStability } as any).eq("id", city.id);
-          }
-          toast.warning(`⚠ Dekret vynucen proti vůli rady! Stabilita snížena o ${votingResult.stabilityPenalty}.`);
-        }
+      if (stabilityPenalty > 0) {
+        toast.warning(`⚠ Dekret vynucen proti vůli rady! Stabilita snížena o ${stabilityPenalty}.`);
       }
 
       // Write to world action log
