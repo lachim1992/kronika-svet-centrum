@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  CANONICAL_BASKET_KEYS,
   resolveBasketKey,
   weightedSatisfaction,
   VALID_BASKETS,
