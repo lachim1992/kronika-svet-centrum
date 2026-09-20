@@ -155,17 +155,17 @@ function contractRecipes(contract: BuildingContract | undefined, level: number):
   return contract.levels.slice(0, Math.max(1, level)).flat();
 }
 
-/** Jobs for a capacity spread over the given recipes, exactly like the economy adapter. */
-function jobsFor(capacity: number, recipes: RecipeRow[]): number | undefined {
-  if (!recipes.length || capacity <= 0) return undefined;
-  const weights = recipes.map(r => autoAllocationWeight(GOOD_BASKET[r.output_good_key] || ''));
-  const sum = weights.reduce((s, w) => s + w, 0);
-  if (sum <= 0) return undefined;
-  return recipes.reduce((total, r, i) => {
-    const perUnit = num(r.labor_cost) / Math.max(ECONOMY.epsilon, num(r.output_quantity));
-    return total + capacity * (weights[i] / sum) * perUnit * ECONOMY.workersPerLaborUnit;
-  }, 0);
+/**
+ * Jobs of a structure level, exactly like the economy adapter: a producing structure employs
+ * ECONOMY.structureJobsBase people at level 1 (or its declared jobs_capacity) and doubles with
+ * every level, together with the physical capacity.
+ */
+function jobsFor(capacity: number, declared: number): number | undefined {
+  if (capacity <= 0) return undefined;
+  const base = declared > 0 ? declared : ECONOMY.structureJobsBase;
+  return base * (capacity > 0 ? 1 : 0) * capacity / Math.max(ECONOMY.epsilon, capacity);
 }
+
 
 const recipeView = (r: RecipeRow, unlockLevel: number): CatalogRecipeView => ({
   key: r.recipe_key, output: r.output_good_key, outputQty: num(r.output_quantity), labor: num(r.labor_cost),
