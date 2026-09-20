@@ -195,14 +195,18 @@ Deno.serve(async (req) => {
       phase9Deleted = count ?? 0;
     }
 
+    const result = {
+      // upkeepDue is charged by process-turn (single turn-fiscal writer), not here.
+      phase4: { processed: stateUpdates.length, maintained, degraded, blocked, upkeepDue, upkeepByOwner },
+      phase7: { migrations: migrationsCreated, populationMoved: migrationPopMoved },
+      phase8: { mythicPrestige },
+      phase9: { deleted: phase9Deleted },
+    };
+    await sb.from("world_layer_tick_guards")
+      .upsert({ session_id: sessionId, turn_number: turnNumber, result }, { onConflict: "session_id,turn_number" });
+
     return new Response(
-      JSON.stringify({
-        ok: true,
-        phase4: { processed: stateUpdates.length, maintained, degraded, blocked, goldSpent },
-        phase7: { migrations: migrationsCreated, populationMoved: migrationPopMoved },
-        phase8: { mythicPrestige },
-        phase9: { deleted: phase9Deleted },
-      }),
+      JSON.stringify({ ok: true, ...result }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
