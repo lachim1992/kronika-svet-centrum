@@ -260,12 +260,11 @@ Deno.serve(async (req) => {
 
     // ── Phase 7: REMOVED (Phase A) ───────────────────────────────────────
     // The former "migrace mezi nody přes obchodní trasy" block read and wrote
-    // schema that does not exist (cities.population, cities.hex_q/hex_r,
-    // city_market_baskets.basket_kind / fulfillment_ratio). Every call failed and
-    // was swallowed by its own try/catch, so it never moved a single inhabitant.
+    // city/basket schema columns that do not exist. Every call failed and was
+    // swallowed by its own try/catch, so it never moved a single inhabitant.
     // Network-based intercity migration is Phase E and will be implemented on the
-    // canonical columns (population_total, basket_key, domestic_satisfaction) with
-    // strict conservation. Do not re-add a migration writer here before then.
+    // canonical columns with strict conservation, as described in
+    // docs/architecture/world-layer-contract.md. Do not re-add a writer here.
     const migrationsCreated = 0;
     const migrationPopMoved = 0;
 

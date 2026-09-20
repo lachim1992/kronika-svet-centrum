@@ -14,6 +14,7 @@ const fn = (rel: string) =>
 const city = (total: number, split = [0.7, 0.2, 0.06, 0.04]) => ({
   id: 'c1',
   name: 'Testov',
+  status: 'ok',
   population_total: total,
   population_peasants: Math.round(total * split[0]),
   population_burghers: Math.round(total * split[1]),
