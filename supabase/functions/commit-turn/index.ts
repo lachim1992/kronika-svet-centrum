@@ -2147,7 +2147,7 @@ async function projectDiplomaticRelations(
     supabase.from("diplomatic_pacts").select("*").eq("session_id", sessionId).eq("status", "active"),
     supabase.from("war_declarations").select("*").eq("session_id", sessionId).eq("status", "active"),
     supabase.from("diplomatic_memory").select("*").eq("session_id", sessionId).eq("is_active", true),
-    supabase.from("trade_routes").select("*").eq("session_id", sessionId).eq("is_active", true),
+    supabase.from("trade_routes").select("*").eq("session_id", sessionId).eq("status", "active"),
     supabase.from("diplomatic_relations").select("*").eq("session_id", sessionId),
     supabase.from("ai_factions").select("faction_name").eq("session_id", sessionId).eq("is_active", true),
   ]);

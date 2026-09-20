@@ -240,8 +240,8 @@ Deno.serve(async (req) => {
       supabase.from("civ_tensions").select("player_a, player_b, total_tension, crisis_triggered")
         .eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(50),
       // Trade routes
-      supabase.from("trade_routes").select("player_a, player_b, resource_type, amount, route_safety, is_active")
-        .eq("session_id", sessionId).eq("is_active", true),
+      supabase.from("trade_routes").select("from_player, to_player, resource_type, amount_per_turn, route_safety, status")
+        .eq("session_id", sessionId).eq("status", "active"),
       // AI MEMORY: what did this faction do last turn?
       supabase.from("world_action_log").select("action_type, description, turn_number")
         .eq("session_id", sessionId).eq("player_name", factionName)
