@@ -101,11 +101,19 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    * (effects.recipe_keys) or the recipes matching its declared capability tags and roles.
    * A structure without any declared craft produces nothing — basket capacity alone is not
    * a licence to run unrelated extraction, processing or manufacturing recipes.
+   *
+   * CAPACITY / JOBS. Declared basket capacity is the level-1 rating; the level multiplier
+   * (ECONOMY.levelCapacityScale) makes upgrades raise real physical throughput. Jobs capacity
+   * is derived once, canonically, from capacity × recipe labour (see ECONOMY.workersPerLaborUnit),
+   * so the labour market and the production capacity never disagree.
    */
+  const levelScale=(level:unknown)=>{const scale=ECONOMY.levelCapacityScale;
+    return scale[Math.min(scale.length,Math.max(1,Math.round(Number(level)||1)))-1];};
   const structure=(id:string,city:string,channel:'facility'|'district',outputs:Record<string,number>,staffed:boolean,
-    tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean}={})=>{
+    tags:string[],options:{recipeKeys?:string[];roles?:string[];allowSource?:boolean;level?:unknown}={})=>{
     if(!cityMap.has(city))return;
-    const total=Object.values(outputs).reduce((s,v)=>s+nonnegative(v),0);
+    const scale=levelScale(options.level);
+    const total=Object.values(outputs).reduce((s,v)=>s+nonnegative(v),0)*scale;
     const push=(candidates:any[],capacity:number)=>{
       if(!candidates.length||capacity<=0)return;
       for(const r of candidates)producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),
