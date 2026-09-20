@@ -179,8 +179,11 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       local_supply:sum('consumed_household')+sum('consumed_state'),
       local_demand:demand,unmet_demand:unmet,domestic_satisfaction:demand?1-unmet/demand:1,export_surplus:sum('stored')+sum('exported'),quality_weight:1,
       market_access:1,monetization:1});}
+  // City columns carry cities.id; node columns carry the anchoring province_nodes.id. Never swap them.
   const tradeFlows=result.flows.filter(f=>cityNode.has(f.source)&&cityNode.has(f.destination)).map(f=>({session_id:session,good_key:f.good,
-    source_city_id:cityNode.get(f.source),target_city_id:cityNode.get(f.destination),source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,
+    source_city_id:f.source,target_city_id:f.destination,
+    source_node_id:cityNode.get(f.source),target_node_id:cityNode.get(f.destination),
+    source_player:cityMap.get(f.source)!.owner,target_player:cityMap.get(f.destination)!.owner,
     flow_type:f.reason,volume_per_turn:f.qty,quality_band:Math.floor(f.quality),effective_price:f.qty?f.gross_value/f.qty:0,status:'active',turn_created:turn,
     path_cells:f.path,transport_modes:f.edges.map((edgeId:string)=>edgeId.startsWith('river:')?'river':edgeId.startsWith('spur:')?'spur':'road'),
     provenance:f}));
