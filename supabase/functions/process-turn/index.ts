@@ -1,5 +1,5 @@
 import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.ts";
-import { promotedSettlementTier } from "../_shared/demographics.ts";
+import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demographics.ts";
 import { TAX_MAX, laffer, governance, taxRevenue } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
