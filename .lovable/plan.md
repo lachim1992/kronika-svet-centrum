@@ -110,3 +110,41 @@ No new gameplay, no schema change, no rural population, no opportunity score in 
 ## J. Conflicts with normative docs
 
 None. `economy-contract.md` now carries INVARIANT 4 (single population writer) and INVARIANT 5 (class sum), and `world-layer-contract.md` records the corrected column names and forbids population writes in the world layer. The target model extends those documents rather than contradicting them; the rural-population and ledger tables are T2 runtime state, which the world-layer contract already separates from the immutable ancient layer.
+
+---
+
+## Current UI pass — population on the map and in Realm
+
+### Goal
+
+Expose already-produced demographic data without adding a writer or changing population mechanics. Every inspected map cell shows its rural population projection, capacity, mobile share, and whether the value is current. The Realm overview gains a dedicated population section with totals, city development, recorded births/deaths/migration/losses, and movement origins/destinations.
+
+### Implementation
+
+1. **Map cell detail**
+   - Read `hex_population` alongside `province_hexes` and join by `(session_id, q, r)` in the existing map load.
+   - In the selected-cell panel show rural population, carrying capacity, occupancy, mobile population, and last resolved turn.
+   - Clearly label Phase B values as a deterministic projection that does not yet affect city population or gameplay; show “not yet calculated” instead of deriving a fallback.
+   - Keep the city population separate when a city occupies the cell, so rural and urban residents are never added together as if they were one canonical total.
+
+2. **Realm population view**
+   - Add a `Populace` tab under Realm, using a focused realm analytics component rather than overloading the general overview.
+   - Read `city_population_ledger` for the player’s cities and aggregate by turn: population before/after, births, deaths, local/intercity immigration, emigration, extraordinary losses, and net change.
+   - Show a turn-by-turn trend, the latest causes of growth/decline, and a city table. All numbers come from stored engine output.
+   - Read recorded migration events for named origin/destination details. When historic route/reason data is absent, state that it was not recorded; never infer it from current rates or pressure.
+   - Keep current city totals/classes and settlement progression visible using the existing `PopulationPanel`.
+
+3. **Truthfulness and integrity**
+   - Frontend/read-only changes only: no population, migration, economy, trade, treasury, or history writes.
+   - No Test01 turn advancement or live-state mutation.
+   - Empty ledger/history states explicitly explain that detailed causes become available only for turns recorded by the demographic ledger.
+   - Do not present `birth_rate`, `death_rate`, or `migration_pressure` estimates as recorded births, deaths, or migration.
+
+4. **Verification**
+   - Add focused tests for population aggregation and labels where practical.
+   - Run the full test suite and rely on the preview build check.
+   - Verify the map detail and Realm population view at desktop and mobile widths without changing Test01 data.
+
+### Master-roadmap preservation
+
+This UI pass does not replace or shorten Phases C–H. The original invariants remain binding: migration conserves people; founding becomes rural transfer only in Phase C; `population_total == sum(classes)`; deterministic outcomes; non-negative population; migration caps by source mobility and destination capacity; route blocking affects long migration; transit prosperity derives from canonical flows; refresh remains population/fiscal/history read-only and idempotent; exactly one population writer per mode; no second trade/economy/route/fiscal engine; deterministic 30-turn and preferably 100-turn smoke tests before final cutover.
