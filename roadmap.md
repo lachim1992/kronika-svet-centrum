@@ -127,7 +127,10 @@
 - [x] Fáze 1d: akceptační test nové hry (vytvoření → stavba → uzávěrka → čtení)
 - [ ] Fáze 2: kanonické zápisy jen přes command-dispatch + RLS podle vlastnictví
 - [x] Fáze 3: migrace město↔město (computeIntercityMigration, ledger v úspěšné uzávěrce; venkovský převod zůstává Fáze C)
-- [ ] Fáze 4: odstranit legacy (world-tick, wealth_output v UI, production_reserve u upgradů, CitiesTab)
+- [x] Fáze 4: odstraněn druhý herní cyklus (world-tick, process-tick), PersistentTab/ActionQueue/TimePool, mrtvé CitiesTab a EmpireManagement;
+      turnová část tiku (pohyb armád, léčky, obléhání, projekty uzlů) extrahována do _shared/turnProgress.ts a volána z commit-turn;
+      legacy wealth_output už není vidět hráči (zůstává jen v dev panelech)
+- [ ] Fáze 4 zbytek: povýšení/stavby platit kanonickými fyzickými zbožími místo production_reserve (souvisí s parkovaným ekonomickým zadáním)
 - [ ] Fáze 5: jeden společný derived chain pro commit-turn i refresh-economy, jeden model cest
 - [ ] Fáze 6: aliance blokují válku, open borders řídí mírový pohyb, AI fallback, serverová náhoda
 - [ ] Rozhodnuto: persistentní real-time režim opuštěn — world-tick/process-tick/action_queue/time_pools k odstranění
