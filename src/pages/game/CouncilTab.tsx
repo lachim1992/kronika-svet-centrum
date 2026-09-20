@@ -102,9 +102,17 @@ const CouncilTab = ({
     production: "production_reserve", manpower: "manpower_pool",
   };
 
-  const applyImmediateEffects = async (effects: { type: string; value: number }[]) => {
+  const applyImmediateEffects = async (
+    effects: { type: string; value: number }[],
+    extra?: {
+      factionImpacts?: Record<string, { satisfaction: number; loyalty: number }>;
+      stabilityPenalty?: number;
+    },
+  ) => {
     const immediate = effects.filter(e => IMMEDIATE_EFFECT_TYPES.has(e.type));
-    if (immediate.length === 0) return;
+    const factionImpacts = extra?.factionImpacts || {};
+    const stabilityPenalty = extra?.stabilityPenalty || 0;
+    if (immediate.length === 0 && Object.keys(factionImpacts).length === 0 && stabilityPenalty === 0) return;
 
     const { dispatchCommand } = await import("@/lib/commands");
     const res = await dispatchCommand({
@@ -112,7 +120,7 @@ const CouncilTab = ({
       turnNumber: currentTurn,
       actor: { name: currentPlayerName, type: "player" },
       commandType: "APPLY_DECREE_EFFECTS",
-      commandPayload: { effects: immediate },
+      commandPayload: { effects: immediate, factionImpacts, stabilityPenalty },
     });
     if (!res.ok) {
       toast.error(res.error || "Nepodařilo se aplikovat dopady dekretu");
