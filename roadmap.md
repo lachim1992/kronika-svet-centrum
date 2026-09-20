@@ -171,4 +171,6 @@
 - [x] `city_market_baskets.demand_detail` (jsonb) = provenience, krytí, pásmo, alert, důsledek
 - [x] UI: skupinová matice košů + alerty P0–P3/INFO místo „chybí X jednotek"
 - [x] Test01 přepočítán na novou ekonomiku (read-only jinak, tah 65)
-- [ ] Zbývá: mortalita z vody se zatím neaplikuje (jen stabilita + event); production_reserve gating
+- [x] Mortalita z nedostatku pitné vody se aplikuje (pásmo critical, max 2 % populace, přes applyPopulationLoss)
+- [ ] Zbývá: production_reserve gating
+
