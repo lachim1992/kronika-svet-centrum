@@ -2485,6 +2485,7 @@ export type Database = {
           military_diff: number
           player_a: string
           player_b: string
+          prestige_reduction: number
           session_id: string
           total_tension: number
           trade_embargo: number
@@ -2502,6 +2503,7 @@ export type Database = {
           military_diff?: number
           player_a: string
           player_b: string
+          prestige_reduction?: number
           session_id: string
           total_tension?: number
           trade_embargo?: number
@@ -2519,6 +2521,7 @@ export type Database = {
           military_diff?: number
           player_a?: string
           player_b?: string
+          prestige_reduction?: number
           session_id?: string
           total_tension?: number
           trade_embargo?: number
@@ -11054,6 +11057,7 @@ export type Database = {
         Row: {
           error: string | null
           finished_at: string | null
+          report: Json
           session_id: string
           started_at: string
           status: string
@@ -11062,6 +11066,7 @@ export type Database = {
         Insert: {
           error?: string | null
           finished_at?: string | null
+          report?: Json
           session_id: string
           started_at?: string
           status: string
@@ -11070,6 +11075,7 @@ export type Database = {
         Update: {
           error?: string | null
           finished_at?: string | null
+          report?: Json
           session_id?: string
           started_at?: string
           status?: string
