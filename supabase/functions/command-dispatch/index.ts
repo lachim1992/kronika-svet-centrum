@@ -164,23 +164,31 @@ Deno.serve(async (req) => {
       description: `Command ${commandType} dispatched (${result.events.length} events)`,
     }).then(() => {}, () => {});
 
-    // ── Auto-recompute trade flows after membership/link changes ──
-    // Keeps the EconomyFlowOverlay visualization in sync with real state.
+    // Commands change the physical input state; refresh the whole derived projection.
+    // A failed refresh must not turn a successfully applied command into a retryable failure.
     const TRADE_TOPOLOGY_COMMANDS = new Set([
       "OPEN_TRADE_WITH_NODE",
       "JOIN_TRADE_SYSTEM",
       "ESTABLISH_PROTECTORATE",
       "VASSALIZE_NODE",
       "ANNEX_NODE",
+      "FOUND_CITY", "BUILD_BUILDING", "UPGRADE_BUILDING", "BUILD_DISTRICT",
+      "SET_DISTRICT_PRODUCTION", "BUILD_SUBNODE", "BUILD_ROAD_PATH",
+      "UPGRADE_INFRASTRUCTURE", "UPGRADE_SETTLEMENT", "APPLY_DECREE_EFFECTS",
+      "SET_TRADE_IDEOLOGY", "RECRUIT_STACK", "REINFORCE_STACK", "DISBAND_STACK",
     ]);
     if (!result.idempotent && TRADE_TOPOLOGY_COMMANDS.has(commandType)) {
       try {
-        const { error: tfErr } = await supabase.functions.invoke("compute-trade-flows", {
+        const { data: refreshed, error: tfErr } = await supabase.functions.invoke("refresh-economy", {
           body: { session_id: sessionId },
         });
-        if (tfErr) console.warn(`[command-dispatch] compute-trade-flows after ${commandType}:`, tfErr.message);
+        const fresh = !tfErr && refreshed?.ok === true;
+        result.sideEffects = { ...result.sideEffects, economy: { status: fresh ? 'fresh' : 'stale',
+          error: fresh ? null : tfErr?.message || refreshed?.error || 'Economy refresh incomplete' } };
+        if (!fresh) console.warn(`[command-dispatch] refresh-economy after ${commandType}:`, result.sideEffects.economy.error);
       } catch (e) {
-        console.warn(`[command-dispatch] compute-trade-flows after ${commandType} failed:`, (e as Error).message);
+        result.sideEffects = { ...result.sideEffects, economy: { status: 'stale', error: (e as Error).message } };
+        console.warn(`[command-dispatch] refresh-economy after ${commandType} failed:`, (e as Error).message);
       }
     }
 

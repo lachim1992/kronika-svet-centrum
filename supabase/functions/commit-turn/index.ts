@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
 
   const tCommit = Date.now();
   let execution: {client:any;session:string;turn:number}|undefined;
+  const results: Record<string, any> = {};
   try {
     const { sessionId, playerName, skipNarrative, expectedTurn } = await req.json();
     if (!sessionId || !playerName) {
@@ -86,19 +87,19 @@ Deno.serve(async (req) => {
     if(acquired!==true)return new Response(JSON.stringify({ok:false,error:'Zpracování tahu již běží nebo předchozí pokus vyžaduje opravu. Tah nebyl opakován.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
     execution={client:supabase,session:sessionId,turn:turnNumber};
     const isAIMode = session.game_mode === "tb_single_ai";
-    const results: Record<string, any> = {};
 
     // ═══════════════════════════════════════════
     // 1. WORLD TICK (idempotent via world_tick_log)
     // ═══════════════════════════════════════════
     const { data: existingTick } = await supabase
       .from("world_tick_log")
-      .select("id, results")
+      .select("id, status, results")
       .eq("session_id", sessionId)
       .eq("turn_number", turnNumber)
       .maybeSingle();
 
     if (existingTick) {
+      if (existingTick.status !== 'completed') throw new Error(`World tick ${turnNumber} is ${existingTick.status}; partial effects must be reconciled before continuing.`);
       // Replay: reuse the population ledger computed by the original tick so the
       // history write below stays idempotent instead of recomputing demographics.
       results.worldTick = {
@@ -118,6 +119,8 @@ Deno.serve(async (req) => {
       try {
         const tickResults = await runWorldTickEvents(supabase, sessionId, turnNumber);
         results.worldTick = tickResults;
+        // Persist the plan before any projection, so partial failures remain diagnosable.
+        await supabase.from('world_tick_log').update({ results: tickResults }).eq('id', tickId);
 
         // Apply projections from emitted events
         await projectCityUpdates(supabase, tickResults.cityEvents || []);
@@ -145,12 +148,15 @@ Deno.serve(async (req) => {
         await supabase.from("world_tick_log").update({
           status: "failed",
           finished_at: new Date().toISOString(),
-          results: { error: (tickErr as Error).message },
+          results: { ...results.worldTick, error: (tickErr as Error).message },
         }).eq("id", tickId);
         console.error("World tick error:", tickErr);
         results.worldTick = { error: (tickErr as Error).message };
       }
     }
+
+    // Never advance the calendar after a failed mandatory world projection.
+    if (results.worldTick?.error) throw new Error(`world-tick: ${results.worldTick.error}`);
 
     // ═══════════════════════════════════════════
     // 2. TURN PROGRESS — army traversal, ambush, sieges, node projects
@@ -162,6 +168,7 @@ Deno.serve(async (req) => {
       console.error("turn progress error:", e);
       results.turnProgress = { error: (e as Error).message };
     }
+    if (results.turnProgress?.error) throw new Error(`turn-progress: ${results.turnProgress.error}`);
 
     // ═══════════════════════════════════════════
     // 2b. AUTO-RESOLVE UNRESOLVED BATTLE LOBBIES
@@ -1585,7 +1592,7 @@ Deno.serve(async (req) => {
 
     const totalMs = Date.now() - tCommit;
     const completed=aggregationOk&&!economyFailed&&!pipelineFailed&&!results.economySnapshot?.error&&!results.worldTick?.error;
-    await supabase.from('turn_execution_guards').update({status:completed?'completed':'failed',finished_at:new Date().toISOString(),error:completed?null:'Mandatory turn phase failed; inspect turn report'}).eq('session_id',sessionId).eq('turn_number',turnNumber);
+    await supabase.from('turn_execution_guards').update({status:completed?'completed':'failed',finished_at:new Date().toISOString(),report:results,error:completed?null:'Mandatory turn phase failed; inspect persisted report'}).eq('session_id',sessionId).eq('turn_number',turnNumber);
     console.log(`[commit-turn] DONE turn=${turnNumber} player=${playerName} critical=${totalMs}ms (background scheduled)`);
     return new Response(JSON.stringify({
       ok: completed,
@@ -1597,7 +1604,7 @@ Deno.serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
-    if(execution)try{await execution.client.from('turn_execution_guards').update({status:'failed',finished_at:new Date().toISOString(),error:(err as Error).message}).eq('session_id',execution.session).eq('turn_number',execution.turn);}catch{/* Existing running guard still blocks replay. */}
+    if(execution)try{await execution.client.from('turn_execution_guards').update({status:'failed',finished_at:new Date().toISOString(),report:results,error:(err as Error).message}).eq('session_id',execution.session).eq('turn_number',execution.turn);}catch{/* Existing running guard still blocks replay. */}
     console.error("commit-turn error:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
