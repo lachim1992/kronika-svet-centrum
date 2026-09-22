@@ -68,22 +68,23 @@ const DevHUD = ({ sessionId, currentTurn, playerName }: Props) => {
         // Red flags: check population consistency
         const flags: RedFlag[] = [];
 
-        // Check for cities with 0 population but active status
+        // Cities that still stand (canonical status values: ok / occupied / devastated)
+        // but hold no inhabitants at all.
         const { data: zeroPop } = await supabase
           .from("cities")
           .select("id, name, population_total, status")
           .eq("session_id", sessionId)
-          .eq("status", "active")
+          .neq("status", "devastated")
           .lte("population_total", 0);
 
         if (zeroPop && zeroPop.length > 0) {
           flags.push({
-            label: "Zero-pop active cities",
+            label: "Zero-pop living cities",
             detail: zeroPop.map(c => c.name).join(", "),
           });
         }
 
-        // Check for realm_resources without matching cities
+        // Granary parity: only meaningful once local granaries are actually tracked.
         const { data: realm } = await supabase
           .from("realm_resources")
           .select("player_name, granary_capacity")
@@ -93,12 +94,14 @@ const DevHUD = ({ sessionId, currentTurn, playerName }: Props) => {
           .from("cities")
           .select("owner_player, local_granary_capacity")
           .eq("session_id", sessionId)
-          .eq("status", "active");
+          .neq("status", "devastated");
 
         if (realm && allCities) {
           for (const r of realm) {
             const playerCities = allCities.filter(c => c.owner_player === r.player_name);
-            const sumLocalCap = playerCities.reduce((s, c) => s + (c.local_granary_capacity || 500), 0);
+            const sumLocalCap = playerCities.reduce((s, c) => s + (c.local_granary_capacity || 0), 0);
+            // No city reports a local granary → the local layer is simply unused, not broken.
+            if (!playerCities.length || sumLocalCap <= 0) continue;
             if (Math.abs(sumLocalCap - (r.granary_capacity || 0)) > 100) {
               flags.push({
                 label: `Grain cap mismatch: ${r.player_name}`,
