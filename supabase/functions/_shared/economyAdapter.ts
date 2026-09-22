@@ -1,6 +1,7 @@
 import { resolveGoodsEconomy, produced, type Snapshot, type City, type Good, type Producer, type Edge } from './goodsEconomy.ts';
 import { actualSoldiers, workforceLawModifiers } from './manpower.ts';
 import { staffingCapacity } from './cityDistricts.ts';
+import { ratedNodeCapacity } from './nodeCapacity.ts';
 import { BASKET_TIER, ECONOMY, normalizeLabor, INDUSTRIAL_INPUTS, HOUSEHOLD_GOODS, GOOD_FINAL_USE, GOOD_HOUSEHOLD } from './economyConfig.ts';
 import { buildManagementReport } from './management.ts';
 import { BASKET_KEYS, basketSpec, needBand, alertPriority, shortageEffect, basketSeverity } from './demandModel.ts';
@@ -124,7 +125,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const weights=eligible.map(r=>orderWeight(r,order)),total=weights.reduce((s,n)=>s+n,0);
     if(total<=0)continue;
     // Nodes employ the same canonical crew as any other producing structure (Lv1 100 → doubling).
-    const capacity=nonnegative(node.production_output);
+    const capacity=ratedNodeCapacity(node);
     const jobs=capacity>0?ECONOMY.structureJobsBase*levelScale(node.node_level??node.level):undefined;
     const logistics=cityConnected(c)?1:nonnegative(node.route_access_factor??1);
     eligible.forEach((r,i)=>{if(weights[i]<=0)return;

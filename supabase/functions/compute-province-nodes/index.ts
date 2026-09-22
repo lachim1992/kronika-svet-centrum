@@ -584,7 +584,7 @@ Deno.serve(async (req) => {
           garrison_strength: rest.garrison_strength ?? 0,
           strategic_resource_tier: rest.strategic_resource_tier ?? 0,
           production_base: rest.production_base ?? 0,
-          production_output: rest.production_output ?? 0,
+          production_output: rest.production_output ?? rest.production_base ?? 0,
           wealth_output: rest.wealth_output ?? 0,
           faith_output: rest.faith_output ?? 0,
           food_value: rest.food_value ?? 0,

@@ -30,7 +30,8 @@ export const STARTER_FARM: StarterContract = {
   name: 'Záhumenkové hospodářství', category: 'economic',
   description: 'Základní obživa osady: pole a pastvina s vlastní pracovní silou.',
   recipeKeys: ['harvest_wheat'], roles: ['source'], tags: ['farming', 'herding'],
-  basketOutputs: { staple_food: 3 }, jobsCapacity: 100,
+  // Raw grain satisfies only 30% of the equivalent prepared-food need.
+  basketOutputs: { staple_food: 10 }, jobsCapacity: 100,
 };
 export const STARTER_FISHERY: StarterContract = {
   name: 'Osadní rybářství', category: 'economic',
@@ -62,7 +63,7 @@ export const starterBundle = (nearWater: boolean): StarterContract[] =>
  * a 100-job production centre, and an unstaffable structure produces nothing.
  */
 export const starterUnitsFor = (population: number): number =>
-  Math.max(1, Math.round((Number(population) || 0) / 150));
+  Math.max(1, Math.ceil((Number(population) || 0) / 150));
 
 /** Crew a settlement of this size can really field for one starter structure. */
 export const starterJobsFor = (population: number): number =>
@@ -70,14 +71,14 @@ export const starterJobsFor = (population: number): number =>
 
 const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE;
 
-const effectsOf = (c: StarterContract, population: number) => {
+export const starterEffects = (c: StarterContract, population: number) => {
   const units = scalesWithPopulation(c) ? starterUnitsFor(population) : 1;
   const outputs = Object.fromEntries(
     Object.entries(c.basketOutputs).map(([k, v]) => [k, v * units]),
   );
   return {
     recipe_keys: c.recipeKeys, production_roles: c.roles, capability_tags: c.tags,
-    basket_outputs: outputs, jobs_capacity: starterJobsFor(population) * units,
+    basket_outputs: outputs, jobs_capacity: starterJobsFor(population),
     starter_economy: true,
   };
 };
@@ -97,13 +98,15 @@ export async function ensureStarterEconomy(
   options: { cityId?: string; turnNumber?: number; dryRun?: boolean } = {},
 ): Promise<StarterReport[]> {
   let cityQuery = sb.from('cities')
-    .select('id, name, grid_x, grid_y, population_total').eq('session_id', sessionId);
+    .select('id, name, grid_x, grid_y, province_q, province_r, population_total').eq('session_id', sessionId);
   if (options.cityId) cityQuery = cityQuery.eq('id', options.cityId);
-  const [{ data: cities }, { data: buildings }, { data: hexes }] = await Promise.all([
+  const loaded = await Promise.all([
     cityQuery,
     sb.from('city_buildings').select('id, city_id, name, effects, current_level').eq('session_id', sessionId),
     sb.from('province_hexes').select('q, r, has_river, biome_family').eq('session_id', sessionId),
   ]);
+  for (const result of loaded) if (result.error) throw new Error(result.error.message);
+  const [{ data: cities }, { data: buildings }, { data: hexes }] = loaded;
   const water = new Set((hexes || [])
     .filter((h: any) => h.has_river || /water|ocean|sea|lake|coast/i.test(h.biome_family || ''))
     .map((h: any) => `${h.q},${h.r}`));
@@ -117,11 +120,12 @@ export async function ensureStarterEconomy(
   for (const city of (cities || []).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)))) {
     const own = (buildings || []).filter((b: any) => b.city_id === city.id);
     const population = Number(city.population_total) || 0;
-    const bundle = starterBundle(near(Number(city.grid_x) || 0, Number(city.grid_y) || 0));
+    const bundle = starterBundle(near(Number(city.grid_x ?? city.province_q) || 0, Number(city.grid_y ?? city.province_r) || 0));
     const added: string[] = [], existing: string[] = [], resized: string[] = [];
     for (const contract of bundle) {
-      const effects = effectsOf(contract, population);
-      const match = own.find((b: any) => b.name === contract.name ||
+      const effects = starterEffects(contract, population);
+      // Prefer our own bundle over a later player-built structure with the same recipe.
+      const match = own.find((b: any) => b.effects?.starter_economy && b.name === contract.name) || own.find((b: any) => b.name === contract.name ||
         (b.effects?.recipe_keys || []).some((k: string) => contract.recipeKeys.includes(k)));
       if (match) {
         existing.push(contract.name);
@@ -147,9 +151,13 @@ export async function ensureStarterEconomy(
     });
   }
   if (!options.dryRun) {
-    if (rows.length) await sb.from('city_buildings').insert(rows);
+    if (rows.length) {
+      const { error } = await sb.from('city_buildings').insert(rows);
+      if (error) throw new Error(error.message);
+    }
     for (const u of resizes) {
-      await sb.from('city_buildings').update({ effects: u.effects }).eq('id', u.id);
+      const { error } = await sb.from('city_buildings').update({ effects: u.effects }).eq('id', u.id);
+      if (error) throw new Error(error.message);
     }
   }
   return reports;
