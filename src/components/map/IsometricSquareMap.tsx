@@ -713,8 +713,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const roadDraftBlock = useMemo(() => {
     if (roadDraft.length < 2) return "Nakresli alespoň dva sousední podčtverce.";
     if (treasury.gold < roadDraftSummary.gold || treasury.production < roadDraftSummary.production) return `Chybí zdroje: potřeba ${roadDraftSummary.gold} zlata a ${roadDraftSummary.production} produkce.`;
+    // Same rule as the server: an edge can host only one road, upgrades need the finished tier below.
+    const byEdge = new Map<string, { level: number; status: string }>();
+    roadSegments.forEach(segment => {
+      const key = roadEdgeKey({ a: segment.from_x, b: segment.from_y }, { a: segment.to_x, b: segment.to_y });
+      const previous = byEdge.get(key);
+      if (!previous || Number(segment.level) > previous.level) byEdge.set(key, { level: Number(segment.level), status: segment.status });
+    });
+    const macroPath = macroPathFromSubRoad(roadDraft);
+    for (let i = 1; i < macroPath.length; i += 1) {
+      const from = { a: macroPath[i - 1].x, b: macroPath[i - 1].y };
+      const to = { a: macroPath[i].x, b: macroPath[i].y };
+      const existing = byEdge.get(roadEdgeKey(from, to));
+      const where = `mezi poli ${from.a},${from.b} a ${to.a},${to.b}`;
+      if (existing && existing.level >= roadDraftLevel) return `Tady už cesta ${where} je (úroveň ${existing.level}) — zvol vyšší úroveň nebo veď trasu jinam.`;
+      if (roadDraftLevel > 1 && (!existing || existing.level !== roadDraftLevel - 1 || existing.status !== "completed")) return `Vyšší úroveň lze stavět jen na dokončené cestě o stupeň nižší — ${where} taková cesta chybí.`;
+    }
     return null;
-  }, [roadDraft.length, roadDraftSummary, treasury]);
+  }, [roadDraft, roadDraftLevel, roadDraftSummary, treasury, roadSegments]);
+
 
   /**
    * While drawing: how far from each of my settlements and nodes a finished road still
