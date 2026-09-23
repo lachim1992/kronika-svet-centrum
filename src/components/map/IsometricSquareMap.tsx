@@ -341,6 +341,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
   const [flowRows, setFlowRows] = useState<FlowRow[]>([]);
   const [openCorridor, setOpenCorridor] = useState<string | null>(null);
+  const [hoverCorridor, setHoverCorridor] = useState<string | null>(null);
+
   const [showRoutes, setShowRoutes] = useMapLayer("routes");
   const [showNodes, setShowNodes] = useMapLayer("nodes");
   const [showLabels, setShowLabels] = useMapLayer("labels");
