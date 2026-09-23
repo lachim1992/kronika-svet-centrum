@@ -1420,9 +1420,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       }
 
 
+      // Keep the trace continuous: when a filled cell revisits the draft, cut back to it
+      // instead of skipping it — skipping would leave a gap the server rejects.
       const result = [...current];
-      filled.forEach(cell => { if (!result.some(item => sameCell(item, cell))) result.push(cell); });
+      filled.forEach(cell => {
+        const seen = result.findIndex(item => sameCell(item, cell));
+        if (seen >= 0) result.splice(seen + 1);
+        else result.push(cell);
+      });
       return result;
+
     });
   };
 
