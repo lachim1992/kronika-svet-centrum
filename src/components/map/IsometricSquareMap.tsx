@@ -341,6 +341,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
   const [flowRows, setFlowRows] = useState<FlowRow[]>([]);
   const [openCorridor, setOpenCorridor] = useState<string | null>(null);
+  const [hoverCorridor, setHoverCorridor] = useState<string | null>(null);
+
   const [showRoutes, setShowRoutes] = useMapLayer("routes");
   const [showNodes, setShowNodes] = useMapLayer("nodes");
   const [showLabels, setShowLabels] = useMapLayer("labels");
@@ -1591,15 +1593,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           })}
           {!cityLayerCityId && showRoutes && routePolylines.map(route => {
             const points = route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ");
-            const hasFlows = flowRows.some(row => row.corridor === route.id);
+            const corridorFlows = flowRows.filter(row => row.corridor === route.id);
+            const hovered = hoverCorridor === route.id;
+            // The clickable band must stay the same size on screen at every zoom level,
+            // otherwise a zoomed-out corridor is impossible to hit.
+            const hitWidth = Math.max(6, 16 / zoom);
             return <g key={route.id}>
-              <polyline points={points} fill="none" stroke="var(--map-focus)" strokeWidth="1.9" strokeLinecap="round"
-                strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />
-              {hasFlows && <polyline points={points} fill="none" stroke="transparent" strokeWidth="10"
+              <polyline points={points} fill="none" stroke="var(--map-focus)"
+                strokeWidth={hovered ? 3.2 : 1.9} strokeLinecap="round"
+                strokeLinejoin="round" opacity={hovered ? 1 : .9} className="iso-active-route" pointerEvents="none" />
+              {corridorFlows.length > 0 && <polyline points={points} fill="none" stroke="transparent" strokeWidth={hitWidth}
                 strokeLinecap="round" style={{ cursor: "pointer" }}
-                onClick={event => { event.stopPropagation(); setOpenCorridor(route.id); }} />}
+                onPointerEnter={() => setHoverCorridor(route.id)}
+                onPointerLeave={() => setHoverCorridor(current => (current === route.id ? null : current))}
+                onClick={event => { event.stopPropagation(); setOpenCorridor(route.id); }}>
+                <title>{`Obchodní trasa · ${corridorFlows.length} toků — klikni pro detail`}</title>
+              </polyline>}
             </g>;
           })}
+
 
           {showNodes && nodes.map(node => {
             if (node.node_type === "primary_city" || node.node_type === "secondary_city") return null;
