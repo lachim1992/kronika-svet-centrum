@@ -1,6 +1,6 @@
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { computeWorkforceBreakdown } from './manpower.ts';
-import { demandShares, cityAccounts, recipeMargin, productMeta, landedInputCost, outputQuality, tradeServiceValue, prosperityIndex, capitalStockDelta, PRODUCT_MARKET, type CityAccounts } from './productMarket.ts';
+import { demandShares, functionalValue, substitutionEfficiency, discretionaryBudgetScale, cityAccounts, recipeMargin, productMeta, landedInputCost, outputQuality, tradeServiceValue, prosperityIndex, capitalStockDelta, PRODUCT_MARKET, type CityAccounts } from './productMarket.ts';
 import { BASKET_KEYS, DEMAND_CHANNELS, basketDemandChannels, basketSpec, channelTotal, emptyChannels,
   toolIntensityOf, toolProductivityMultiplier, type DemandChannel, type DemandInput } from './demandModel.ts';
 
@@ -30,6 +30,10 @@ export interface Producer { id: string; city: string; node?: string; cell?: stri
   jobs?: number;
   /** Explicit craftsmanship from level/master craft (productMarket.craftsmanship); falls back to city guild. */
   craft?: number;
+  /** AUTO diagnostic: emergency_unprofitable_production when an essential recipe runs at a loss. */
+  autoFlag?: string|null;
+  /** Expected margin ratio at previous committed prices (proxy, not a landed-cost forecast). */
+  expectedMarginProxy?: number;
   /** Player production order mode for this structure (loss warnings only; never changes it). */
   order?: 'auto'|'prefer'|'lock' }
 /** Canonical labour-market readout of one city. Derived, never a second population writer. */
@@ -45,7 +49,9 @@ export interface Snapshot { turn: number; goods: Good[]; cities: City[]; produce
   /** Last COMMITTED turn's consumption share per city × good (read-only history, never written by refresh). */
   familiarity?: Record<string, Record<string, number>>;
   /** Last COMMITTED turn's city budget ratios; absent → bootstrap (unconstrained, flagged). */
-  budget?: Record<string, { discretionary_ratio: number; affordability: number }>;
+  budget?: Record<string, { discretionary_ratio: number; affordability: number; discretionary_budget?: number }>;
+  /** Last COMMITTED local prices per `city::good` (product choice + budget reference; never same pass). */
+  priorPrices?: Record<string, number>;
   /** Household tax wedge per owner (realm tax rates), for city accounts only. */
   householdTaxRate?: Record<string, number> }
 export interface Balance { city: string; good: string; opening: number; produced_household: number; produced_node: number;
@@ -129,6 +135,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // depend on how many jobs are actually staffed. See the DEMAND PASS below.
   const demandComponents=new Map<string,Record<DemandChannel,number>>();
   const choice:any[]=[];
+  const budgetCaps=new Map<string,{planned_spend:number;budget:number|null;scale:number;funded_spend:number;constrained:boolean;mode:string}>();
   const componentsOf=(city:string,good:string)=>{const k=key(city,good);let c=demandComponents.get(k);
     if(!c){c=emptyChannels();demandComponents.set(k,c);}return c;};
   const addChannel=(city:string,good:string,channel:DemandChannel,qty:number)=>{
@@ -202,7 +209,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     // Price gradient: merchants move goods for realized value differences, not for bare deficits.
     const sourcePrice=priceOf(src.id,g.key),destinationPrice=priceOf(dst.id,g.key);
     const risk=p.edges.reduce((a,e)=>a+n(e.risk),0)*C.priceRiskCost*destinationPrice;
-    const margin=destinationPrice*(1-p.loss)*(1-targetPolicy.tariff)-sourcePrice-transport-p.tolls-risk;
+    // Origin-specific WTP: a branded good sells at the destination's base valuation × its OWN origin
+    // fame premium (the destination's own fame factor for that good is removed). Fame acts on WTP only.
+    const dd=priceDetail(dst.id,g.key),destinationWTP=branded?dd.local_price/Math.max(C.epsilon,dd.fame_factor)*(1+premium):destinationPrice;
+    const margin=destinationWTP*(1-p.loss)*(1-targetPolicy.tariff)-sourcePrice-transport-p.tolls-risk;
     if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return 0;
     // Factories do not buy at any price: landed cost is capped at a bounded multiple of the base price.
     if(reason==='production_input'&&(landed(src,dst,g)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple)return 0;
@@ -216,7 +226,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:b.quality,gross_value:delivered*unit,
       transport_cost:qty*transport,tolls,net_value:delivered*unit-qty*transport-tolls,reason:branded&&reason==='household_consumption'?'famous_good_demand':reason,
       path:p.cells,edges:p.edges.map(e=>e.id),via_hubs:via.filter(id=>p.cells.includes(cityById.get(id)?.cell||'')),famous:branded?key(src.id,g.key):null,
-      source_price:sourcePrice,destination_price:destinationPrice,expected_margin:margin*delivered});return delivered;
+      source_price:sourcePrice,destination_price:destinationPrice,destination_wtp:destinationWTP,expected_margin:margin*delivered});return delivered;
 
   };
   // Resolve upstream recipes before their customers, independently of database UUIDs.
@@ -296,38 +306,47 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       logisticsWorkers:labor?.sectors.logistics?.employed??0,
       stockVolume:stockVolumeOf(c),constructionProjects:n(c.constructionProjects),soldiers:n(c.soldiers),
     };
+    // PASS 1 — plan every basket: functional need (channels) and two-level product shares.
+    const budget=snapshot.budget?.[c.id],afford=budget?clamp(budget.affordability):1;
+    const refPrice=(g:Good)=>snapshot.priorPrices?.[key(c.id,g.key)]??g.price*(1+stock(c.id,g.key).quality*C.qualityPremium);
+    const plans:{basket:string;spec:any;options:Good[];shareOf:Map<string,number>;channels:ReturnType<typeof basketDemandChannels>}[]=[];
     for(const basket of BASKET_KEYS){
       const spec=basketSpec(basket)!;
       // Industrial intermediates receive demand from downstream recipes only.
       if(spec.class==='intermediate_only')continue;
       const options=goods.filter(g=>g.basket===basket&&(g.finalUse??g.stage!=='intermediate'));if(!options.length)continue;
-      // PRODUCT CHOICE: bounded attractiveness (preference, region, familiarity, novelty from
-      // local prevalence, quality, fame, reference price). Shares only split the basket need;
-      // they never change its size, so diversity cannot create hunger.
-      const budget=snapshot.budget?.[c.id],afford=budget?clamp(budget.affordability):1;
+      // PRODUCT CHOICE: preference, region, familiarity, novelty, quality, fame and PREVIOUS
+      // COMMITTED local price (bootstrap: base × quality). Shares split the functional need only.
       const offer=options.map(g=>stock(c.id,g.key).opening+producers.filter(p=>p.city===c.id&&p.recipe.good===g.key).reduce((s,p)=>s+n(p.capacity)*clamp(p.allocation),0));
       const offerTotal=offer.reduce((a,b)=>a+b,0);
-      const refPrice=(g:Good)=>g.price*(1+stock(c.id,g.key).quality*C.qualityPremium);
       const avgPrice=options.reduce((a,g)=>a+refPrice(g),0)/options.length;
       const shares=demandShares(options.map((g,i)=>({good:g.key,basket,referencePrice:refPrice(g),basketAveragePrice:avgPrice,
         quality:stock(c.id,g.key).quality,fame:Math.max(0,...snapshot.fame.filter(f=>f.good===g.key&&f.created!=null).map(f=>f.fame),0),
         familiarity:snapshot.familiarity?.[c.id]?.[g.key]??0,prevalence:offerTotal>0?offer[i]/offerTotal:1/options.length,
         coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
-      for(const s of shares)choice.push({city:c.id,basket,subbasket:productMeta(s.good,basket).subbasket,...s});
-      const shareOf=new Map(shares.map(s=>[s.good,s.share]));
+      for(const s of shares)choice.push({city:c.id,basket,...s,reference_price:refPrice(goodByKey.get(s.good)!),functional_value:functionalValue(s.good,basket)});
       const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
-      const channels=basketDemandChannels(basket,{...input,weightedPop});
-      // Discretionary spending is hard budget-constrained (previous committed budget, no loop).
-      if(budget)channels.household_discretionary*=clamp(budget.discretionary_ratio);
+      plans.push({basket,spec,options,shareOf:new Map(shares.map(s=>[s.good,s.share])),channels:basketDemandChannels(basket,{...input,weightedPop})});
+    }
+    // PASS 2 — one hard monetary cap for household_discretionary + fame at reference prices.
+    let planned=0;
+    for(const pl of plans)for(const g of pl.options)planned+=pl.channels.household_discretionary*(pl.shareOf.get(g.key)??0)/functionalValue(g.key,pl.basket)*refPrice(g);
+    if(c.market>0)for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0&&f.city!==c.id)){const g=goodByKey.get(f.good);if(!g||!cityById.has(f.city))continue;
+      planned+=c.population*C.fameDemand*f.fame/100*refPrice(g)*(1+C.famePremium*f.fame/100);}
+    const cap=discretionaryBudgetScale(planned,budget?.discretionary_budget);
+    budgetCaps.set(c.id,{planned_spend:planned,budget:budget?.discretionary_budget??null,scale:cap.scale,funded_spend:planned*cap.scale,constrained:cap.constrained,mode:cap.mode});
+    for(const {basket,spec,options,shareOf,channels} of plans){
+      channels.household_discretionary*=cap.scale;
       const total=channelTotal(channels);
       if(total<=0)continue;
       // Non-household channels (industry, institutions, construction, army) are state-side
       // consumption in the ledger; households consume needs and discretionary goods.
       const household=channels.household_need+channels.household_discretionary;
-      for(const g of options){const share=shareOf.get(g.key)??0,b=stock(c.id,g.key);
-        b.demand=total*share;
-        stateDemand.set(key(c.id,g.key),(total-household)*share);
-        for(const channel of DEMAND_CHANNELS)addChannel(c.id,g.key,channel,channels[channel]*share);
+      // Functional need → physical units per product (÷ functional_value).
+      for(const g of options){const share=shareOf.get(g.key)??0,b=stock(c.id,g.key),fv=functionalValue(g.key,basket);
+        b.demand=total*share/fv;
+        stateDemand.set(key(c.id,g.key),(total-household)*share/fv);
+        for(const channel of DEMAND_CHANNELS)addChannel(c.id,g.key,channel,channels[channel]*share/fv);
       }
       // Population is NOT a goods producer. It supplies labour and demand only. The legacy
       // household emission stays behind an explicit flag for regression comparisons.
@@ -490,7 +509,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // Substitution debits actual goods, transfers unmet need, never creates physical units.
   const substitute=()=>{for(const c of cities)for(const g of goods){const b=stock(c.id,g.key);let missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     for(const sub of goods.filter(s=>s.key!==g.key&&s.basket===g.basket&&s.substitutability>0&&(s.finalUse??s.stage!=='intermediate'))){
-      const efficiency=Math.min(1,sub.substitutability/Math.max(C.epsilon,g.substitutability));
+      // Need units of g covered per physical unit of sub: substitutability × functional value ratio.
+      const efficiency=substitutionEfficiency(g,sub);if(efficiency<=0)continue;
       const sb=stock(c.id,sub.key),qty=Math.min(missing/efficiency,available(sb));if(qty<=0)continue;
       const fulfilled=qty*efficiency,stateNeed=Math.min(fulfilled,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
       const stateQty=stateNeed/efficiency;
@@ -523,7 +543,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0)){
     const origin=cityById.get(f.city),g=goodByKey.get(f.good);if(!origin||!g)continue;
     for(const c of cities.filter(c=>c.id!==origin.id&&c.market>0)){
-      const wanted=c.population*C.fameDemand*f.fame/100*(snapshot.budget?.[c.id]?clamp(snapshot.budget[c.id].discretionary_ratio):1);
+      const wanted=c.population*C.fameDemand*f.fame/100*(budgetCaps.get(c.id)?.scale??1);
       const b=stock(c.id,g.key);b.demand+=wanted;addChannel(c.id,g.key,'fame',wanted);
       const delivered=transfer(origin,c,g,wanted,'famous_good_demand',[],stock(origin.id,g.key).demand*C.reserveTurns);
       b.consumed_household+=delivered;
@@ -584,7 +604,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const outPrice=priceOf(p.city,p.recipe.good);
     const m=recipeMargin(d.realized,outPrice,lines);
     (d as any).margin={...m,unit_output_price:outPrice,unit_input_cost:d.realized>0?m.cost/d.realized:0,inputs:lines,
-      order:p.order||'auto',loss_warning:m.margin<0};}
+      order:p.order||'auto',loss_warning:m.margin<0,auto_flag:p.autoFlag??null,expected_margin_proxy:p.expectedMarginProxy??null};}
   // CITY ACCOUNTS (derived flows; no private wealth stock, no fiscal writes).
   const accounts=cities.map(c=>{const own=goods.map(g=>({g,b:stock(c.id,g.key)}));
     const comp=(g:Good)=>componentsOf(c.id,g.key);
@@ -608,7 +628,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const capital=capitalStockDelta({stock:n(c.capitalStock),valueAdded:acc.city_gdp,needCoverage:acc.physical_need_coverage,
       stability:c.stability,taxRate,devastated:!!c.devastated});
     return {...acc,goods_value_added:goodsVA,service_value_added:services.service_value_added,trade_services:services,
-      prosperity:prosperity.index,prosperity_parts:prosperity.parts,capital_stock:n(c.capitalStock),capital_candidate:capital};});
+      prosperity:prosperity.index,prosperity_parts:prosperity.parts,discretionary_cap:budgetCaps.get(c.id)??null,capital_stock:n(c.capitalStock),capital_candidate:capital};});
   const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
     channels:{...channels},total:channelTotal(channels)}));
   return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
