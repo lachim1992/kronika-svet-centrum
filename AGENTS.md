@@ -2,3 +2,4 @@
 - Player builds resolve from `building_templates` server-side (`_shared/buildValidation.ts`); client cost/effects are ignored — one authority for prerequisites.
 - `city_capital_stock` is written only by process-turn (formula `productMarket.capitalStockDelta`); refresh shows the candidate only — no second accumulator.
 - Trade-service value added (`productMarket.tradeServiceValue`) is part of city_gdp and realm value_added_gdp; gross trade never is.
+- Household income uses one global PRODUCT_MARKET.incomeUnitFactor, never the city CPI; product choice/budget cap read previous COMMITTED prices (snapshot.priorPrices) — so local inflation is visible and there is no same-pass price loop.
