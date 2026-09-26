@@ -52,6 +52,12 @@
   - [x] Restore rumor, annotation, crisis, victory, and briefing queries
   - [x] Restrict persistent test-mode effects to administrators
 
+## Ekonomika: kalibrace příjmů a cen (hotovo, Test02 tah 10)
+- Příjem domácností nese místní cenovou hladinu (HDP z fyzické knihy je v základních cenách) — dostupnost už nepodhodnocuje o celý cenový index.
+- Kalibrované rozdělení: podíl práce 0.65, místní kapitál 0.6, spotřeba 0.95 (jediný zdroj: PRODUCT_MARKET).
+- Nové výstupy: nominal_gdp, price_level; UI Městské účty ukazuje rozpad.
+- Odloženo (další fáze): AUTO výroba podle marže v samotném solveru, soukromé bohatství jako zásoba, rozšíření katalogu produktů.
+
 ## Layer A/B/C pass (otevřeno)
 - [x] total_gdp = realized_goods_value (bez exportu), export jako samostatná obchodní metrika
 - [x] jednotná basketová valuace auto/recipe/buildings + goods_value_detail

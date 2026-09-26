@@ -86,6 +86,10 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
                         Příčiny: daně {f(a.household_taxes)} · ceny index {f(a.price_index, 2)} · přání volných nákupů {f(a.discretionary_wish)},
                         zaplaceno {pct(a.discretionary_ratio)}
                       </div>
+                      <div className="mb-1 text-muted-foreground">
+                        HDP v místních cenách {f(a.nominal_gdp)} (HDP v základních cenách {f(a.city_gdp)} × cenová hladina {f(a.price_level, 2)}) ·
+                        příjem práce {f(a.labor_income)} · příjem z majetku {f(a.capital_income)} · dostupnost {pct(a.affordability)}
+                      </div>
                       <div className="font-medium mb-1">Proč lidé volí dané zboží (násobky, 1 = neutrální)</div>
                       <div className="grid grid-cols-9 gap-1">
                         <span>zboží</span><span>podíl</span><span>obliba</span><span>region</span><span>zvyk</span><span>novost</span><span>kvalita</span><span>věhlas</span><span>cena</span>

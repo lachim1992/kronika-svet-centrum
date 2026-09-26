@@ -29,12 +29,17 @@ export const PRODUCT_MARKET = {
   /** Coastal settlements prefer sea protein; inland ones barely consume it (derived regional taste). */
   coastalAffinity: 1.6,
   inlandAffinity: 0.35,
-  /** Provisional household income distribution of city value added (transparent, not a wage sim). */
-  laborShare: 0.6,
+  /**
+   * Provisional household income distribution of city value added (transparent, not a wage sim).
+   * Calibrated for a pre-industrial economy: most value added is peasant/artisan labour income and
+   * most of the rest (rents, workshop profits) is spent locally, with almost nothing saved — so a
+   * city that physically feeds itself can also pay for its own basic basket.
+   */
+  laborShare: 0.65,
   /** Part of non-labour value added (rents, profits) that stays with local households. */
-  localCapitalShare: 0.5,
+  localCapitalShare: 0.6,
   /** Share of disposable income spent on market goods this turn (rest = saving, not modelled yet). */
-  propensityToConsume: 0.85,
+  propensityToConsume: 0.95,
   /** Tax wedge applied to household income: domestic + poll proxy from realm tax rates. */
   defaultHouseholdTaxRate: 0.1,
 } as const;
@@ -192,16 +197,23 @@ export interface CityAccountsInput {
  */
 export function cityAccounts(i: CityAccountsInput) {
   const M = PRODUCT_MARKET, gdp = pos(i.valueAdded);
-  const laborIncome = gdp * M.laborShare;
-  const capitalIncome = gdp * (1 - M.laborShare) * M.localCapitalShare;
+  // The physical ledger values gross output at BASE prices, so city_gdp is a CONSTANT-PRICE figure.
+  // Households, however, buy at local (scarcity/quality/fame) prices. Comparing a constant-price
+  // income against a local-price basket understated affordability by the whole price index, which
+  // made every city look bankrupt. Producers sell at local prices, so nominal income carries the
+  // same price level as the basket: nominal = constant-price × price_level. Real purchasing power
+  // is unchanged by this (it divides the level out again) — only the money comparison is honest.
+  const basicCost = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.localPrice), 0);
+  const basicCostAtBase = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.basePrice), 0);
+  const priceIndex = basicCostAtBase > 0 ? basicCost / basicCostAtBase : 1;
+  const priceLevel = Math.max(0.05, priceIndex);
+  const laborIncome = gdp * M.laborShare * priceLevel;
+  const capitalIncome = gdp * (1 - M.laborShare) * M.localCapitalShare * priceLevel;
   const grossIncome = laborIncome + capitalIncome;
   const taxes = grossIncome * clamp01(i.householdTaxRate);
   const disposable = grossIncome - taxes;
   const purchasingPower = disposable * M.propensityToConsume;
-  const basicCost = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.localPrice), 0);
-  const basicCostAtBase = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.basePrice), 0);
-  const priceIndex = basicCostAtBase > 0 ? basicCost / basicCostAtBase : 1;
-  const realPurchasingPower = purchasingPower / Math.max(0.05, priceIndex);
+  const realPurchasingPower = purchasingPower / priceLevel;
   const discretionaryBudget = Math.max(0, purchasingPower - basicCost);
   const needQty = i.needs.reduce((s, n) => s + pos(n.qty), 0);
   const consumed = i.needs.reduce((s, n) => s + Math.min(pos(n.qty), pos(n.consumed)), 0);
@@ -217,6 +229,8 @@ export function cityAccounts(i: CityAccountsInput) {
     city: i.city, city_gdp: gdp, labor_income: laborIncome, capital_income: capitalIncome,
     household_income: grossIncome, household_taxes: taxes, disposable_income: disposable,
     purchasing_power: purchasingPower, basic_basket_cost: basicCost, price_index: priceIndex,
+    /** Nominal counterpart of the constant-price city_gdp (city_gdp × local price level). */
+    nominal_gdp: gdp * priceLevel, price_level: priceLevel,
     real_purchasing_power: realPurchasingPower, discretionary_budget: discretionaryBudget,
     discretionary_wish: pos(i.discretionaryWish), discretionary_funded: discretionaryFunded,
     discretionary_ratio: discretionaryRatio, physical_need_coverage: physicalCoverage,
