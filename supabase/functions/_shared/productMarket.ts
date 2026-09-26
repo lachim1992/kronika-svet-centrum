@@ -42,7 +42,114 @@ export const PRODUCT_MARKET = {
   propensityToConsume: 0.95,
   /** Tax wedge applied to household income: domestic + poll proxy from realm tax rates. */
   defaultHouseholdTaxRate: 0.1,
+  // ── LANDED INPUT COST (sourcing) ──
+  /** Monetised risk per unit of route risk, as a share of the source price. */
+  landedRiskShare: 0.05,
+  // ── AUTO PRODUCTION ──
+  /** Weight of margin ratio vs basket necessity in AUTO allocation (bounded, no loop). */
+  autoMarginWeight: 1,
+  /** Loss-making options keep this tiny weight only if NO profitable legal option exists. */
+  autoLossFloor: 0,
+  // ── TRADE SERVICES (service demand rates on gross handled value; only this margin is VA) ──
+  serviceRates: { local_exchange: 0.03, import_export: 0.05, aggregation: 0.04, reexport: 0.06, transit: 0.01 },
+  /** Capture without any staffed commercial capacity (a road passing a hamlet). */
+  serviceCaptureFloor: 0.15,
+  /** Commercial capacity (market + storage levels) at which capture is complete. */
+  serviceCapacityRef: 12,
+  // ── CITY CAPITAL STOCK (process-turn only writer) ──
+  capitalRetentionBase: 0.08,
+  capitalRetentionMax: 0.2,
+  capitalDepreciation: 0.03,
+  capitalWarLoss: 0.25,
+  // ── CRAFTSMANSHIP / QUALITY ──
+  /** Craft points per structure level above 1 (Lv1 0, Lv2 1, Lv3 2). */
+  craftPerLevel: 1,
+  /** Extra craft from an explicit master_craft capability tag. */
+  masterCraftBonus: 1,
+  /** Processed output may exceed the worst input quality by at most this much (bounded inheritance). */
+  qualityInheritanceHeadroom: 1,
+  maxQuality: 3,
 } as const;
+
+/**
+ * LANDED INPUT COST of one delivered unit: source local price + transport + tolls + tariff +
+ * risk premium + expected transport loss. Deterministic and bounded; used to rank suppliers.
+ */
+export function landedInputCost(i: { sourcePrice: number; transport: number; tolls: number; tariffRate: number;
+  destinationPrice?: number; risk: number; loss: number }) {
+  const loss = Math.min(0.95, pos(i.loss)), src = pos(i.sourcePrice);
+  const tariff = pos(i.tariffRate) * (i.destinationPrice ?? src);
+  const risk = pos(i.risk) * PRODUCT_MARKET.landedRiskShare * src;
+  const perShipped = src + pos(i.transport) + pos(i.tolls) + tariff + risk;
+  const landed = perShipped / (1 - loss);
+  return { landed, source: src, transport: pos(i.transport), tolls: pos(i.tolls), tariff, risk, loss_cost: landed - perShipped };
+}
+
+/**
+ * AUTO allocation among legal recipes of one structure. Weight = necessity × margin ratio (from
+ * the previous committed / reference prices — never the same pass, so no price loop).
+ * Loss-making options get zero whenever a profitable legal option exists; if nothing pays, the
+ * structure keeps its necessity weights (a starter farm never stops feeding people) and the
+ * diagnostics flag the loss.
+ */
+export function autoAllocation(options: { key: string; necessity: number; marginRatio: number }[]) {
+  const profitable = options.filter(o => o.marginRatio > 0);
+  if (!profitable.length) return Object.fromEntries(options.map(o => [o.key, pos(o.necessity)]));
+  return Object.fromEntries(options.map(o => [o.key, o.marginRatio > 0
+    ? pos(o.necessity) * (1 + PRODUCT_MARKET.autoMarginWeight * Math.min(1, o.marginRatio)) : PRODUCT_MARKET.autoLossFloor]));
+}
+
+/**
+ * TRADE-SERVICE VALUE ADDED. Gross trade is not GDP; it creates service DEMAND at configured
+ * rates. Topology gives the opportunity, staffed commercial capacity monetises it.
+ */
+export function tradeServiceValue(i: { local_exchange: number; import_export: number; aggregation: number; reexport: number;
+  transit: number; commercialCapacity: number }) {
+  const R = PRODUCT_MARKET.serviceRates;
+  const opportunity = { local_exchange: pos(i.local_exchange) * R.local_exchange, import_export: pos(i.import_export) * R.import_export,
+    aggregation: pos(i.aggregation) * R.aggregation, reexport: pos(i.reexport) * R.reexport, transit: pos(i.transit) * R.transit };
+  const total = Object.values(opportunity).reduce((s, v) => s + v, 0);
+  const capacity = clamp01(pos(i.commercialCapacity) / PRODUCT_MARKET.serviceCapacityRef);
+  const capture = PRODUCT_MARKET.serviceCaptureFloor + (1 - PRODUCT_MARKET.serviceCaptureFloor) * capacity;
+  return { opportunity, opportunity_total: total, capture, service_value_added: total * capture };
+}
+
+/** Producer craftsmanship from explicit, player-visible progression (level + master craft). */
+export function craftsmanship(level: unknown, tags: string[] = [], guild = 0) {
+  const lv = Math.max(1, Math.round(Number(level) || 1));
+  const own = (lv - 1) * PRODUCT_MARKET.craftPerLevel + (tags.includes('master_craft') ? PRODUCT_MARKET.masterCraftBonus : 0);
+  return Math.min(PRODUCT_MARKET.maxQuality, Math.max(own, pos(guild)));
+}
+
+/** Output quality: recipe bonus + craftsmanship, processed goods bounded by input quality. */
+export function outputQuality(i: { recipeBonus: number; craft: number; source: boolean; minInputQuality: number }) {
+  const craft = pos(i.craft);
+  const bounded = i.source ? craft : Math.min(craft, pos(i.minInputQuality) + PRODUCT_MARKET.qualityInheritanceHeadroom);
+  return Math.min(PRODUCT_MARKET.maxQuality, pos(i.recipeBonus) + bounded);
+}
+
+/** PROSPERITY: derived current-condition index 0..1 — NOT a stock, never accumulated. */
+export function prosperityIndex(i: { realPurchasingPowerPerCapita: number; employment: number; needCoverage: number;
+  housingHeadroom: number; stability: number; marketAccess: number }) {
+  const parts = { purchasing: clamp01(pos(i.realPurchasingPowerPerCapita) / 0.05), employment: clamp01(i.employment),
+    needs: clamp01(i.needCoverage), housing: clamp01(i.housingHeadroom), stability: clamp01(i.stability), market: clamp01(i.marketAccess) };
+  const index = (parts.purchasing + parts.employment + parts.needs * 2 + parts.housing + parts.stability + parts.market) / 7;
+  return { index, parts };
+}
+
+/**
+ * CITY CAPITAL STOCK delta (Bohatství města). Derived candidate only; process-turn is the one
+ * writer that persists it. Retention depends on stable signals only; stock never creates goods.
+ */
+export function capitalStockDelta(i: { stock: number; valueAdded: number; needCoverage: number; stability: number;
+  taxRate: number; devastated: boolean }) {
+  const M = PRODUCT_MARKET;
+  const retention = Math.min(M.capitalRetentionMax, M.capitalRetentionBase * clamp01(i.needCoverage) * (0.5 + clamp01(i.stability)) * (1 - clamp01(i.taxRate)) * 1.5);
+  const accumulation = pos(i.valueAdded) * retention, depreciation = pos(i.stock) * M.capitalDepreciation;
+  const war = i.devastated ? pos(i.stock) * M.capitalWarLoss : 0;
+  const delta = accumulation - depreciation - war;
+  return { retention, accumulation, depreciation, war_loss: war, delta, next: Math.max(0, pos(i.stock) + delta) };
+}
 
 export interface ProductMeta {
   basket: string;
