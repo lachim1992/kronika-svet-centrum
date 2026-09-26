@@ -17,6 +17,7 @@ import {
 } from "@/lib/goodsCatalog";
 import { chainLabel, firstMissingStep, productionChainForBasket } from "@/lib/productionPaths";
 import type { CityBasketRow } from "./goods-production/types";
+import CityAccountsPanel from "./CityAccountsPanel";
 
 interface Props {
   sessionId: string;
@@ -283,6 +284,8 @@ const CityEconomyAnalytics = ({
   }
 
   return (
+    <div className="space-y-4">
+    <CityAccountsPanel sessionId={sessionId} currentTurn={currentTurn} cities={cities} currentPlayerName={currentPlayerName} />
     <Card>
       <CardHeader className="p-4 pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
@@ -499,6 +502,7 @@ const CityEconomyAnalytics = ({
         )}
       </CardContent>
     </Card>
+    </div>
   );
 };
 
