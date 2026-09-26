@@ -48,7 +48,7 @@ export const PRODUCT_MARKET = {
    * cancelled out: when a city's prices rise at the same income, its real purchasing power and
    * affordability fall.
    */
-  incomeUnitFactor: 1,
+  incomeUnitFactor: 0 as number, // set below by calibrateIncomeUnitFactor() — derived, never hand-tuned
   // ── LANDED INPUT COST (sourcing) ──
   /** Monetised risk per unit of route risk, as a share of the source price. */
   landedRiskShare: 0.05,
@@ -378,6 +378,28 @@ export function autoRecipeWeights(options: { key: string; margin: number; unmetD
   const sum = scored.reduce((s, o) => s + o.score, 0);
   return Object.fromEntries(scored.map(o => [o.key, sum > 0 ? o.score / sum : 0]));
 }
+
+/**
+ * GLOBAL INCOME UNIT CALIBRATION (one factor for every city; no CPI, scarcity or local price input).
+ *
+ * Units: city_gdp is constant-price value added (physical ledger × BASE prices). Household money is
+ *   purchasing_power = VA × householdShare × (1 − tax) × propensityToConsume × incomeUnitFactor,
+ *   householdShare  = laborShare + (1 − laborShare) × localCapitalShare.
+ *
+ * Reference equilibrium (EconomyLab "balanced"): a subsistence city whose whole constant-price VA
+ * is exactly its own basic basket at base prices (VA_ref = B_ref), fully staffed, standard tax,
+ * no scarcity/glut, no fame. We require affordability = PP / basic_basket_cost = 1 there, hence
+ *   incomeUnitFactor = B_ref / (VA_ref × householdShare × (1 − t_ref) × ptc) = 1 / (hs × (1 − t) × ptc).
+ * Any value added beyond subsistence (exports, crafts, services) becomes discretionary budget;
+ * local inflation or higher taxes lower affordability — they are never cancelled out.
+ */
+export function calibrateIncomeUnitFactor(ref: { basicShareOfVA?: number; taxRate?: number } = {}) {
+  const M = PRODUCT_MARKET;
+  const hs = M.laborShare + (1 - M.laborShare) * M.localCapitalShare;
+  const t = ref.taxRate ?? M.defaultHouseholdTaxRate, basic = ref.basicShareOfVA ?? 1;
+  return basic / (hs * (1 - t) * M.propensityToConsume);
+}
+(PRODUCT_MARKET as { incomeUnitFactor: number }).incomeUnitFactor = calibrateIncomeUnitFactor();
 
 export interface CityAccountsInput {
   city: string;

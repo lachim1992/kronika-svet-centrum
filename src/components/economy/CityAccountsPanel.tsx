@@ -92,6 +92,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
                         HDP v místních cenách {f(a.nominal_gdp)} (jen informativně; příjem se počítá ze stálých cen) ·
                         výroba {f(a.goods_value_added ?? a.city_gdp)} + obchodní služby {f(a.service_value_added ?? 0)} (zachyceno {pct(a.trade_services?.capture ?? 0)}; obchodní zázemí {f(a.trade_services?.infrastructure ?? 0)}, obsazenost služeb {pct(a.trade_services?.staffing ?? 0)}) ·
                         příjem práce {f(a.labor_income)} · příjem z majetku {f(a.capital_income)} · dostupnost {pct(a.affordability)}
+                        <span className="block text-muted-foreground">HDP = přidaná hodnota ve stálých cenách; kupní síla = peněžní tok (× globální faktor {f(a.income_unit_factor, 3)}); dostupnost = kupní síla / cena základního koše.</span>
                       </div>
                       <div className="font-medium mb-1">Proč lidé volí dané zboží (násobky, 1 = neutrální)</div>
                       <div className="grid grid-cols-12 gap-1">
