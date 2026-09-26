@@ -7,7 +7,7 @@ import { buildManagementReport } from './management.ts';
 import { BASKET_KEYS, basketSpec, needBand, alertPriority, shortageEffect, basketSeverity } from './demandModel.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
 import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
-import { autoAllocation, craftsmanship } from './productMarket.ts';
+import { autoAllocationDetail, craftsmanship, PRODUCT_MARKET } from './productMarket.ts';
 
 const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
 /** Baseline market/granary capability that any inhabited settlement has by its size alone. */
@@ -114,10 +114,16 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const marginRatio=(city:string,r:any)=>{const out=nonnegative(r.output_quantity)*refPrice(city,r.output_good_key);
     const cost=(r.input_items||[]).reduce((s:number,i:any)=>s+nonnegative(i.qty??i.quantity)*refPrice(city,i.key??i.good_key),0);
     return out>0?(out-cost)/out:-1;};
+  const essential=(r:any)=>{const b=goodMap.get(r.output_good_key)?.basket||'',cls=basketSpec(b)?.class;
+    return cls==='critical_need'||cls==='basic_need'||PRODUCT_MARKET.strategicOperationalBaskets.includes(b);};
+  /** AUTO weights + flags; `norm` = max(Σweights, Σnecessity) so stopped/emergency capacity stays idle. */
   const autoWeights=(city:string,candidates:any[],weights:number[],order:any)=>{
-    if(order&&order.mode!=='auto')return weights;
-    const w=autoAllocation(candidates.map((r,i)=>({key:String(i),necessity:weights[i],marginRatio:marginRatio(city,r)})));
-    return candidates.map((_,i)=>w[String(i)]);};
+    const margins=candidates.map(r=>marginRatio(city,r));
+    const base=weights.reduce((s,w)=>s+w,0);
+    if(order&&order.mode!=='auto')return {weights,norm:base,flags:candidates.map(()=>null as string|null),margins};
+    const d=autoAllocationDetail(candidates.map((r,i)=>({key:String(i),necessity:weights[i],marginRatio:margins[i],essential:essential(r)})));
+    const w=candidates.map((_,i)=>d.weights[String(i)]);
+    return {weights:w,norm:Math.max(w.reduce((s,x)=>s+x,0),base),flags:candidates.map((_,i)=>d.flags[String(i)]),margins};};
   const orderMode=(order:any)=>(order?.mode||'auto') as 'auto'|'prefer'|'lock';
   const orderWeight=(r:any,order:any)=>{
     const g=goodMap.get(r.output_good_key);
@@ -142,8 +148,8 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   for(const node of db.province_nodes){if(node.is_active===false)continue;const c=anchor(node);if(!c)continue;
     const order=db.node_production_orders.find(o=>o.node_id===node.id);
     const eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
-    const weights=autoWeights(c.id,eligible,eligible.map(r=>orderWeight(r,order)),order),total=weights.reduce((s,n)=>s+n,0);
-    if(total<=0)continue;
+    const aw=autoWeights(c.id,eligible,eligible.map(r=>orderWeight(r,order)),order),weights=aw.weights,total=aw.norm;
+    if(!(weights.reduce((s,n)=>s+n,0)>0))continue;
     // Nodes employ the same canonical crew as any other producing structure (Lv1 100 → doubling).
     const capacity=ratedNodeCapacity(node);
     const jobs=capacity>0?ECONOMY.structureJobsBase*levelScale(node.node_level??node.level):undefined;
@@ -151,7 +157,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     eligible.forEach((r,i)=>{if(weights[i]<=0)return;
       producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity,
         recipe:recipe(r),allocation:weights[i]/total,staffing:1,jobs,logistics,mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
-        craft:craftsmanship(node.node_level??node.level,node.capability_tags||[],nonnegative(node.guild_level)),order:orderMode(order),
+        craft:craftsmanship(node.node_level??node.level,node.capability_tags||[],nonnegative(node.guild_level)),order:orderMode(order),autoFlag:aw.flags[i],expectedMarginProxy:aw.margins[i],
         source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
   }
 
@@ -184,11 +190,11 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const craft=craftsmanship(options.level,tags,nonnegative(cityMap.get(city)?.guild));
     const push=(candidates:any[],capacity:number)=>{
       if(!candidates.length||capacity<=0)return;
-      const weights=autoWeights(city,candidates,candidates.map(r=>orderWeight(r,options.order)),options.order),sum=weights.reduce((s,w)=>s+w,0);
-      if(sum<=0)return;
+      const aw=autoWeights(city,candidates,candidates.map(r=>orderWeight(r,options.order)),options.order),weights=aw.weights,sum=aw.norm;
+      if(!(weights.reduce((s,w)=>s+w,0)>0))return;
       candidates.forEach((r,i)=>{if(weights[i]<=0)return;
         producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),jobs,
-          allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',craft,order:orderMode(options.order),
+          allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',craft,order:orderMode(options.order),autoFlag:aw.flags[i],expectedMarginProxy:aw.margins[i],
           distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
     };
     if(options.recipeKeys?.length){
@@ -277,9 +283,10 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     basketTotals.set(k,(basketTotals.get(k)||0)+nonnegative(b.consumed_household)+nonnegative(b.consumed_state));}
   for(const b of prior?.balances||[]){const g=goodMap.get(b.good);if(!g)continue;const t=basketTotals.get(`${b.city}::${g.basket}`)||0;
     if(t>0)(familiarity[b.city] ||= {})[b.good]=(nonnegative(b.consumed_household)+nonnegative(b.consumed_state))/t;}
-  const budget=prior?.cityAccounts?Object.fromEntries(prior.cityAccounts.map((a:any)=>[a.city,{discretionary_ratio:nonnegative(a.discretionary_ratio),affordability:nonnegative(a.affordability)}])):undefined;
+  const budget=prior?.cityAccounts?Object.fromEntries(prior.cityAccounts.map((a:any)=>[a.city,{discretionary_ratio:nonnegative(a.discretionary_ratio),affordability:nonnegative(a.affordability),discretionary_budget:nonnegative(a.discretionary_budget)}])):undefined;
   const householdTaxRate=Object.fromEntries(db.realm_resources.map((r:any)=>[r.player_name,Math.min(0.9,nonnegative(r.tax_rate_domestic??0.1)+nonnegative(r.tax_rate_poll??0.002))]));
-  const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,householdTaxRate,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
+  const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
+  const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,priorPrices,householdTaxRate,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
   const physical=resolveGoodsEconomy(snapshot);
   const management=Object.fromEntries(db.realm_resources.map(r=>[r.player_name,buildManagementReport(snapshot,physical,r,prior?.management?.[r.player_name])]));
   const result={...physical,opening,snapshot,management};
