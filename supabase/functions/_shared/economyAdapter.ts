@@ -61,13 +61,19 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations','node_projects'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
-  const sess=await sb.from('game_sessions').select('current_turn').eq('id',session).single();if(sess.error)throw sess.error;
-  const turn=sess.data.current_turn;
-  const previous=await sb.from('economy_turn_ledgers').select('committed_result').eq('session_id',session).lt('turn_number',turn).eq('committed',true).order('turn_number',{ascending:false}).limit(1).maybeSingle();
-  if(previous.error)throw previous.error;
-  const prior=previous.data?.committed_result;
-  const current=await sb.from('economy_turn_ledgers').select('result').eq('session_id',session).eq('turn_number',turn).maybeSingle();
-  if(current.error)throw current.error;
+  const sess=await query<any>('game_sessions',()=>sb.from('game_sessions').select('current_turn').eq('id',session).single());
+  const turn=sess.current_turn;
+  /**
+   * The committed ledger is a very large JSON document (flows, diagnostics, per-good balances of
+   * every city). Only five of its sections are ever read here, so ask Postgres for those sections
+   * instead of the whole document — the full read is what pushes this query into a statement timeout.
+   */
+  const previous=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
+    .select('prices:committed_result->prices,balances:committed_result->balances,cityAccounts:committed_result->cityAccounts,famous:committed_result->famous,management:committed_result->management')
+    .eq('session_id',session).lt('turn_number',turn).eq('committed',true).order('turn_number',{ascending:false}).limit(1).maybeSingle());
+  const prior=previous?.balances||previous?.prices||previous?.management?previous:null;
+  const current=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
+    .select('opening:result->opening').eq('session_id',session).eq('turn_number',turn).maybeSingle());
   const goods:Good[]=db.goods.map(g=>{
     const bk=basket(g.demand_basket);if(!basketSpec(bk))throw Error(`Unmapped basket for good ${g.key}: ${bk}`);
     const profile=g.friction_profile||{};
