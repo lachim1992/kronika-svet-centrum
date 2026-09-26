@@ -5,3 +5,4 @@
 - Household income uses one global PRODUCT_MARKET.incomeUnitFactor, never the city CPI; product choice/budget cap read previous COMMITTED prices (snapshot.priorPrices) — so local inflation is visible and there is no same-pass price loop.
 - Production-contract role/tier normalization and the catalogue audit live only in `supabase/functions/_shared/productionContract.ts` (adapter re-exports it) — one deterministic legacy repair, so no path can grant a `source` role to an input-consuming recipe.
 - Population never yields wealth: `computeCityLayerEconomy` has no wealth layer; fiscal revenue comes solely from the canonical tax pillars and goods ledger.
+- The labour market is one two-pass allocation in `goodsEconomy.ts`: sector-native fill, then retraining limited by `ECONOMY.laborMobility` (guild, admin, market, stability); leftover idle labour next to vacancies is reported as `structural_unemployed` — one place decides staffing, so UI never re-derives employment.
