@@ -20,6 +20,17 @@ async function rows(sb:any,table:string,session?:string){
   for(let start=0;;start+=1000){let q=sb.from(table).select('*').order(orderBy,{ascending:true}).range(start,start+999);if(session)q=q.eq('session_id',session);
     const r=await q;if(r.error)throw Error(`${table}: ${r.error.message}`);out.push(...r.data);if(r.data.length<1000)return out;}
 }
+/**
+ * LEGACY ROLE COMPATIBILITY. Saved structures from before zero-input extraction became 'source'
+ * (wells, aqueducts, peat cuts) declare only 'producer'. A whitelisted zero-input source recipe
+ * stays legal for them; arbitrary factories still cannot create goods from nothing because the
+ * recipe itself must be a zero-input source in the catalogue.
+ */
+export function normalizeStructureRoles(roles:string[],whitelisted:any[],roleOf:(r:any)=>string){
+  if(!roles.includes('producer')||roles.includes('source'))return roles;
+  const zeroInputSource=whitelisted.some(r=>roleOf(r)==='source'&&!(r.input_items||[]).length);
+  return zeroInputSource?[...roles,'source']:roles;
+}
 const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clothing',ritual:'luxury_clothing',prestige:'luxury_clothing'};
 const basket=(v:string)=>remap[v]||v;
 /** Refresh report fiscal fields after the fiscal transaction, without rerunning production. */
@@ -203,7 +214,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       // Exact whitelist: unknown keys are a contract error, roles/tags must still match.
       const candidates=options.recipeKeys.map(key=>{const r=recipeByKey.get(key);
         if(!r)throw Error(`Structure ${id} references unknown recipe ${key}`);return r;});
-      const roles=options.roles||[];
+      const roles=normalizeStructureRoles(options.roles||[],candidates,role);
       const legal=candidates.filter((r:any)=>(!roles.length||roles.includes(role(r))||roles.includes(r.required_role))&&
         (r.required_tags||[]).every((tag:string)=>tags.includes(tag)));
       push(legal,total);
