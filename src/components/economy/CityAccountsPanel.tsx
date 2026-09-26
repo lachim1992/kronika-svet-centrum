@@ -23,7 +23,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.from("economy_turn_ledgers")
+      const { data } = await (supabase as any).from("economy_turn_ledgers")
         .select("accounts:result->cityAccounts, choice:result->productChoice, mode:result->budgetMode")
         .eq("session_id", sessionId).eq("turn_number", currentTurn).maybeSingle();
       if (cancelled) return;
