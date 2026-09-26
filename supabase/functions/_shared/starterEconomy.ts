@@ -42,7 +42,7 @@ export const STARTER_FISHERY: StarterContract = {
 export const STARTER_WELL: StarterContract = {
   name: 'Osadní studna', category: 'infrastructure',
   description: 'Zdroj pitné vody pro obyvatele osady.',
-  recipeKeys: ['draw_water'], roles: ['producer'], tags: ['farming'],
+  recipeKeys: ['draw_water'], roles: ['source'], tags: ['farming'],
   basketOutputs: { drinking_water: 2 }, jobsCapacity: 100,
 };
 export const STARTER_STORAGE: StarterContract = {
