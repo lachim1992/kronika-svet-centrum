@@ -4,6 +4,14 @@
  * effects, recipes, levels or prerequisites. Geography and settlement rules are hard blockers.
  */
 export const SETTLEMENT_RANK: Record<string, number> = { HAMLET: 1, TOWNSHIP: 2, CITY: 3, POLIS: 4 };
+/** Legacy aliases → canonical four-tier progression (HAMLET < TOWNSHIP < CITY < POLIS). */
+export const SETTLEMENT_ALIASES: Record<string, string> = { HAMLET: 'HAMLET', VILLAGE: 'TOWNSHIP', TOWNSHIP: 'TOWNSHIP', TOWN: 'CITY', CITY: 'CITY', POLIS: 'POLIS' };
+/** Canonical tier or null for a truly unknown value (callers fail closed). */
+export function canonicalSettlementLevel(v: unknown): string | null {
+  if (v == null || v === '') return 'HAMLET';
+  return SETTLEMENT_ALIASES[String(v).trim().toUpperCase()] ?? null;
+}
+export const settlementRank = (v: unknown) => { const c = canonicalSettlementLevel(v); return c ? SETTLEMENT_RANK[c] : null; };
 export const WATER_REASON = "Nedostupné: tato stavba potřebuje řeku nebo pobřeží.";
 
 /** Production-defining effect keys that only a template may declare. */
@@ -23,8 +31,9 @@ export const requiresWater = (t: any) => !!(t?.requires_water ?? t?.effects?.req
 export function validateBuild(template: any, ctx: BuildContext): string | null {
   if (!ctx.city.owner_player || ctx.city.owner_player !== ctx.actor) return "Nedostupné: stavět lze jen ve vlastním městě";
   const e = template?.effects || {};
-  const need = SETTLEMENT_RANK[String(template?.required_settlement_level || "HAMLET").toUpperCase()] || 1;
-  const have = SETTLEMENT_RANK[String(ctx.city.settlement_level || "HAMLET").toUpperCase()] || 1;
+  const need = settlementRank(template?.required_settlement_level);
+  if (need == null) return `Nedostupné: neznámá požadovaná úroveň sídla (${template.required_settlement_level})`;
+  const have = settlementRank(ctx.city.settlement_level) ?? 1;
   if (have < need) return `Nedostupné: vyžaduje sídlo úrovně ${template.required_settlement_level}`;
   if (template?.is_unique && ctx.existingTemplateIds.includes(template.id)) return "Nedostupné: unikátní stavba už v městě stojí";
   if (requiresWater(template) && !(ctx.tile?.has_river || ctx.tile?.coastal)) return WATER_REASON;
