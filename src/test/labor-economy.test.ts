@@ -99,7 +99,8 @@ describe('labour, jobs and capacity economy', () => {
       expect(employedBySector).toBeCloseTo(l.employed_total);
       for (const sector of Object.values(l.sectors)) {
         expect(sector.employed).toBeLessThanOrEqual(sector.jobs_capacity + 1e-6);
-        expect(sector.employed).toBeLessThanOrEqual(sector.labor_supply + 1e-6);
+        // Retrained workers from other sectors count into this sector's available labour.
+        expect(sector.employed).toBeLessThanOrEqual(sector.labor_supply + (sector.transferred_in || 0) + 1e-6);
       }
     }
   });

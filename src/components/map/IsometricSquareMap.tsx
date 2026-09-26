@@ -17,6 +17,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
+import CityEconomyBrief from "@/components/map/CityEconomyBrief";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
 import spriteWorkshop from "@/assets/map/node-workshop.png";
 import spriteGuardPost from "@/assets/map/node-guard-post.png";
@@ -2030,6 +2031,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Drží {cityHeldParcels.length} podparcel na {(cityCellsById.get(selectedCity.id) || []).length || 1} polích · kapacita {cityCapacity.toLocaleString("cs-CZ")} obyvatel.</p>
           </section>
+          <CityEconomyBrief sessionId={sessionId} playerName={playerName} currentTurn={currentTurn}
+            cityId={selectedCity.id} nameOf={id => cityById.get(id)?.name || ""}
+            freeParcels={Math.max(0, cityHeldParcels.length - occupiedParcels)} treasury={treasury}/>
         </div>}
 
         {!selectedCity && expansionCity && <div className="mt-6 border border-primary/30 bg-primary/5 p-4 text-sm">

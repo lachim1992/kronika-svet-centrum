@@ -43,6 +43,14 @@ export const ECONOMY = {
   structureJobsBase: 100,
   /** Capacity multiplier per structure level: každá úroveň zdvojnásobuje kapacitu i práci. */
   levelCapacityScale: [1, 2, 4, 8, 16],
+  /**
+   * STRUCTURAL UNEMPLOYMENT. Labour supply is split by sector (a ploughman is not a smith), so a
+   * city can hold idle people and empty workshops at the same time. `laborMobility` is the share
+   * of idle labour that can retrain / move between sectors within one turn. It is NOT a constant:
+   * guilds teach crafts, administration organises the labour market, markets circulate people and
+   * a stable city lets them move — every term is a lever the player can actually build.
+   */
+  laborMobility: { base: 0.25, guild: 0.06, admin: 0.05, market: 0.03, stability: 0.25, max: 0.9 },
 
 
   /**

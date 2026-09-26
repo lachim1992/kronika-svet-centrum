@@ -49,6 +49,18 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
   add('vacancies','Neobsazená místa','míst','Pracovní místa, pro která chybí lidé.',labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.vacancies_total})));
   const laborSupplyTotal=labor.reduce((s:number,l:any)=>s+l.available_workforce,0),employedTotal=labor.reduce((s:number,l:any)=>s+l.employed_total,0);
   add('employment_rate','Zaměstnanost','%','Podíl zaměstnané pracovní síly říše.',[],laborSupplyTotal?employedTotal/laborSupplyTotal*100:null);
+  add('structural_unemployed','Strukturální nezaměstnanost','lidí','Lidé bez práce v okamžiku, kdy jinde ve stejném městě stojí prázdná pracovní místa — nabídka práce má jinou odbornost než volná místa.',
+    labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.structural_unemployed||0})));
+  // STRUCTURAL MISMATCH ALERT. Idle people next to empty jobs is a fixable problem, not a shortage.
+  for(const l of labor as any[]){
+    const stranded=Number(l.structural_unemployed||0);
+    if(stranded<=1||stranded<Number(l.available_workforce||0)*0.02)continue;
+    const worst=Object.entries(l.sectors||{}).map(([sector,s]:any)=>({sector,vacancies:Number(s.vacancies||0),idle:Math.max(0,Number(s.labor_supply||0)+Number(s.transferred_in||0)-Number(s.employed||0))}))
+      .sort((a,b)=>b.vacancies-a.vacancies)[0];
+    alerts.push({id:`labor:${l.city}`,severity:'warning',category:'labor',entity_type:'city',entity_id:l.city,
+      metric:'structural_unemployed',current_value:stranded,threshold:0,
+      reason:`${names.get(l.city)}: ${Math.round(stranded)} lidí bez práce, zároveň ${Math.round(l.vacancies_total||0)} prázdných míst (nejvíc v odvětví ${worst?.sector||'—'}). Přestup mezi odvětvími zvládne jen ${Math.round((l.labor_mobility||0)*100)} % nezaměstnaných — chybí výcvik a organizace práce.`,
+      destination:'economy',levers:['Postavit cech (řemeslný výcvik)','Rozšířit správu města','Postavit trh nebo sklad','Zvýšit stabilitu města','Postavit stavby v odvětví, kde lidé zbývají']});}
   const fiscal=fiscalSummary(realm);
   add('treasury','Pokladnice','zlata','Aktuální zůstatek státní pokladny.',[{id:player,label:'realm_resources.gold_reserve',value:Number(realm.gold_reserve||0)}]);
   add('net_fiscal','Čistý fiskální tok','zlata/tah','Zveřejněné daňové příjmy minus vykázané průběžné výdaje. Jednorázové stavební náklady nejsou zahrnuty.',[{id:'tax',label:'Daňové příjmy',value:fiscal.income},{id:'expenses',label:'Průběžné výdaje',value:-fiscal.expenses}],fiscal.net,`Poslední fiskální vyúčtování: tah ${realm.last_processed_turn??'nezjištěn'}.`);
