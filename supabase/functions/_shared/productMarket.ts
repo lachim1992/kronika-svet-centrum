@@ -70,8 +70,10 @@ export const PRODUCT_MARKET = {
   serviceRates: { local_exchange: 0.03, import_export: 0.05, aggregation: 0.04, reexport: 0.06, transit: 0.01 },
   /** Capture without any staffed commercial capacity (a road passing a hamlet). */
   serviceCaptureFloor: 0.15,
-  /** Commercial capacity (market + storage levels) at which capture is complete. */
+  /** STAFFED formal commercial capacity (infrastructure points × staffing) at which capture is complete. */
   serviceCapacityRef: 12,
+  /** Service jobs per point of formal commercial infrastructure (market/warehouse/port levels). */
+  serviceJobsPerCapacity: 10,
   // ── CITY CAPITAL STOCK (process-turn only writer) ──
   capitalRetentionBase: 0.08,
   capitalRetentionMax: 0.2,
@@ -127,17 +129,36 @@ export function autoAllocation(options: { key: string; necessity: number; margin
 
 /**
  * TRADE-SERVICE VALUE ADDED. Gross trade is not GDP; it creates service DEMAND at configured
- * rates. Topology gives the opportunity, staffed commercial capacity monetises it.
+ * rates. Topology gives the opportunity, formal commercial INFRASTRUCTURE defines service jobs,
+ * and only the STAFFED part of it monetises the trade. No staffed services → informal floor only.
  */
 export function tradeServiceValue(i: { local_exchange: number; import_export: number; aggregation: number; reexport: number;
-  transit: number; commercialCapacity: number }) {
+  transit: number; infrastructure: number; staffing: number }) {
   const R = PRODUCT_MARKET.serviceRates;
   const opportunity = { local_exchange: pos(i.local_exchange) * R.local_exchange, import_export: pos(i.import_export) * R.import_export,
     aggregation: pos(i.aggregation) * R.aggregation, reexport: pos(i.reexport) * R.reexport, transit: pos(i.transit) * R.transit };
   const total = Object.values(opportunity).reduce((s, v) => s + v, 0);
-  const capacity = clamp01(pos(i.commercialCapacity) / PRODUCT_MARKET.serviceCapacityRef);
+  const staffed = pos(i.infrastructure) * clamp01(i.staffing);
+  const capacity = clamp01(staffed / PRODUCT_MARKET.serviceCapacityRef);
   const capture = PRODUCT_MARKET.serviceCaptureFloor + (1 - PRODUCT_MARKET.serviceCaptureFloor) * capacity;
-  return { opportunity, opportunity_total: total, capture, service_value_added: total * capture };
+  return { opportunity, opportunity_total: total, infrastructure: pos(i.infrastructure), staffing: clamp01(i.staffing),
+    staffed_capacity: staffed, capture, service_value_added: total * capture };
+}
+
+/**
+ * Expected landed input cost for AUTO (read-only, previous committed / reference prices, never the
+ * same pass): cheapest of the local reference price and every reachable supplier's landed cost.
+ * A proxy — actual sourcing in goodsEconomy stays authoritative.
+ */
+export function expectedInputCost(local: number, suppliers: { city: string; sourcePrice: number; transport: number; tolls: number;
+  tariffRate: number; risk: number; loss: number }[], basePrice: number) {
+  let best = { cost: pos(local), source: 'local' as string };
+  for (const s of suppliers) {
+    const l = landedInputCost({ ...s, destinationPrice: local }).landed;
+    if (l > pos(basePrice) * PRODUCT_MARKET.maxLandedInputMultiple) continue;
+    if (l < best.cost - 1e-9) best = { cost: l, source: s.city };
+  }
+  return best;
 }
 
 /** Producer craftsmanship from explicit, player-visible progression (level + master craft). */
