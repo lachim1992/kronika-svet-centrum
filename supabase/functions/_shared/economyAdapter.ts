@@ -234,9 +234,13 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       [/stonecut|kamen/i,['stonecutting']],[/winery|vinař|tavern|hostin/i,['fermenting']]];
     return rules.flatMap(([match,tags])=>match.test(name)?tags:[]);
   };
+  const contractNotes:{structure:string;notes:string[]}[]=[];
   for(const b of db.city_buildings.filter(b=>b.status==='completed')){
     const template=db.building_templates.find(t=>t.id===b.template_id);
-    const effect={...template?.effects,...b.effects};
+    // Old saves keep stale role metadata: reconcile it against the current recipe catalogue.
+    const norm=normalizeProductionContract({...template?.effects,...b.effects},recipeByKey);
+    if(norm.notes.length)contractNotes.push({structure:b.id,notes:norm.notes});
+    const effect=norm.effects;
     const name=`${template?.key||''} ${template?.name||''} ${b.name||''}`;
     const tags=effect.capability_tags||facilityTags(name);
     structure(b.id,b.city_id,'facility',effect.basket_outputs||{},true,tags,
