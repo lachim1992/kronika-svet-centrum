@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
 
   const tCommit = Date.now();
   let execution: {client:any;session:string;turn:number}|undefined;
+  let effectsStarted = false;
   const results: Record<string, any> = {};
   try {
     const { sessionId, playerName, skipNarrative, expectedTurn } = await req.json();
