@@ -586,7 +586,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     (d as any).margin={...m,unit_output_price:outPrice,unit_input_cost:d.realized>0?m.cost/d.realized:0,inputs:lines,
       order:p.order||'auto',loss_warning:m.margin<0};}
   // CITY ACCOUNTS (derived flows; no private wealth stock, no fiscal writes).
-  const accounts:CityAccounts[]=cities.map(c=>{const own=goods.map(g=>({g,b:stock(c.id,g.key)}));
+  const accounts=cities.map(c=>{const own=goods.map(g=>({g,b:stock(c.id,g.key)}));
     const comp=(g:Good)=>componentsOf(c.id,g.key);
     const needs=own.filter(({g})=>basketSpec(g.basket)?.class==='critical_need'||basketSpec(g.basket)?.class==='basic_need')
       .map(({g,b})=>{const ch=comp(g),tot=channelTotal(ch),hh=ch.household_need;
