@@ -79,7 +79,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       // buildings exist; without it all surplus spoils and no trade can ever start.
       market:nonnegative(c.market_level)+settlementBaseline(c.population_total),
       storage:effects.reduce((s,e)=>s+nonnegative(e.storage_capacity??e.warehouse_level),0)+settlementBaseline(c.population_total),
-      admin:nonnegative(c.temple_level),
+      admin:nonnegative(c.temple_level),commercialBaseline:2*settlementBaseline(c.population_total),
       housingHeadroom:nonnegative(c.housing_capacity)>0?Math.max(0,Math.min(1,1-nonnegative(c.population_total)/nonnegative(c.housing_capacity))):0.5,
       capitalStock:capitalByCity.get(c.id)||0,
       // Construction demand exists only while something is actually being built.
