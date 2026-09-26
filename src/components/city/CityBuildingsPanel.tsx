@@ -1,3 +1,4 @@
+import { settlementRank } from "../../../supabase/functions/_shared/buildValidation";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
@@ -116,10 +117,10 @@ const CityBuildingsPanel = ({
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const settlementIdx = SETTLEMENT_ORDER.indexOf(settlementLevel);
+  const settlementIdx = (settlementRank(settlementLevel) ?? 1) - 1;
 
   const availableTemplates = templates.filter(t => {
-    const reqIdx = SETTLEMENT_ORDER.indexOf(t.required_settlement_level);
+    const reqIdx = (settlementRank(t.required_settlement_level) ?? Infinity) - 1;
     return reqIdx <= settlementIdx;
   });
 
@@ -710,7 +711,7 @@ const CityBuildingsPanel = ({
               // Unlock conditions
               const reqLevel = cb.required_settlement_level || "HAMLET";
               const reqBuildingsCount = cb.required_buildings_count || 0;
-              const reqLevelIdx = SETTLEMENT_ORDER.indexOf(reqLevel);
+              const reqLevelIdx = (settlementRank(reqLevel) ?? Infinity) - 1;
               const meetsLevelReq = settlementIdx >= reqLevelIdx;
               const meetsBuiltReq = activeBuildings.length >= reqBuildingsCount;
               const isLocked = !meetsLevelReq || !meetsBuiltReq;

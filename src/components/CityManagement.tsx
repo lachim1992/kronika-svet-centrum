@@ -1,3 +1,4 @@
+import { settlementRank } from "../../supabase/functions/_shared/buildValidation";
 import ManagementCockpit from '@/components/management/ManagementCockpit';
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -593,7 +594,7 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
               {Object.entries(CATEGORY_META).map(([cat, meta]) => {
                 const catTemplates = templates.filter(t => t.category === cat);
                 if (catTemplates.length === 0) return null;
-                const meetLevel = (t: BuildingTemplate) => SETTLEMENT_ORDER.indexOf(city.settlement_level) >= SETTLEMENT_ORDER.indexOf(t.required_settlement_level);
+                const meetLevel = (t: BuildingTemplate) => (settlementRank(city.settlement_level) ?? 1) >= (settlementRank(t.required_settlement_level) ?? Infinity);
                 return (
                   <div key={cat} className="space-y-2">
                     <h4 className={`text-xs font-display font-semibold flex items-center gap-1.5 ${meta.color}`}>
