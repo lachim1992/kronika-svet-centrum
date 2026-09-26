@@ -48,7 +48,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
             kapitálu z HDP minus daně. Kupní síla = utracená část příjmu. Cenový index = cena základního koše
             v místních cenách vůči základním cenám. Mezera dostupnosti = kolik peněz chybí na základní koš,
             i když zboží fyzicky je. Rozmanitost jen zvyšuje spokojenost, nikdy nevytváří hlad.
-            Soukromé bohatství (zásoba) se zatím nemodeluje.
+            Městský kapitál je zásoba produktivního majetku města — není to kupní síla domácností ani pokladna. Soukromé bohatství domácností se zatím nemodeluje.
           </InfoTip>
           {mode === "bootstrap_unconstrained" && <Badge variant="outline" className="text-[10px]">první výpočet — rozpočet z minulého tahu chybí</Badge>}
         </CardTitle>
@@ -60,7 +60,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
               <TableHead>Město</TableHead><TableHead>HDP</TableHead><TableHead>Příjem po daních</TableHead>
               <TableHead>Kupní síla</TableHead><TableHead>Základní koš</TableHead><TableHead>Cenový index</TableHead>
               <TableHead>Reálná kupní síla</TableHead><TableHead>Volný rozpočet</TableHead>
-              <TableHead>Pokrytí potřeb</TableHead><TableHead>Mezera dostupnosti</TableHead><TableHead>Rozmanitost jídla</TableHead><TableHead>Prosperita</TableHead><TableHead>Bohatství města</TableHead>
+              <TableHead>Pokrytí potřeb</TableHead><TableHead>Mezera dostupnosti</TableHead><TableHead>Rozmanitost jídla</TableHead><TableHead>Prosperita</TableHead><TableHead title="Akumulovaná zásoba produktivního majetku města (odhad). NENÍ kupní síla domácností a NENÍ státní pokladna.">Městský kapitál</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -79,26 +79,26 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
                   <TableCell className={a.affordability_gap > 0 ? "text-destructive" : ""}>{f(a.affordability_gap)}</TableCell>
                   <TableCell>{f(a.diversity?.staple_food?.effective, 1)} druhů</TableCell>
                   <TableCell>{a.prosperity != null ? pct(a.prosperity) : "—"}</TableCell>
-                  <TableCell title="Uložený městský kapitál; mění se jen uzavřením tahu">{f(a.capital_stock ?? 0)}{a.capital_candidate ? ` (${a.capital_candidate.delta >= 0 ? "+" : ""}${f(a.capital_candidate.delta, 1)})` : ""}</TableCell>
+                  <TableCell title="Kapitálová zásoba: akumulovaný produktivní/majetkový kapitál města (odhad). Není kupní síla domácností ani státní pokladna; mění se jen uzavřením tahu.">{f(a.capital_stock ?? 0)}{a.capital_candidate ? ` (${a.capital_candidate.delta >= 0 ? "+" : ""}${f(a.capital_candidate.delta, 1)})` : ""}</TableCell>
                 </TableRow>
                 {open === city.id && (
                   <TableRow key={`${city.id}-d`}>
                     <TableCell colSpan={13} className="text-xs bg-muted/30">
                       <div className="mb-1 text-muted-foreground">
                         Příčiny: daně {f(a.household_taxes)} · ceny index {f(a.price_index, 2)} · přání volných nákupů {f(a.discretionary_wish)},
-                        zaplaceno {pct(a.discretionary_ratio)}
+                        zaplaceno {pct(a.discretionary_ratio)}{a.discretionary_cap ? ` · strop rozpočtu: plán ${f(a.discretionary_cap.planned_spend)} → ${pct(a.discretionary_cap.scale)}${a.discretionary_cap.mode === 'bootstrap_unconstrained' ? ' (bez omezení, první výpočet)' : ''}` : ''}
                       </div>
                       <div className="mb-1 text-muted-foreground">
-                        HDP v místních cenách {f(a.nominal_gdp)} (HDP v základních cenách {f(a.city_gdp)} × cenová hladina {f(a.price_level, 2)}) ·
+                        HDP v místních cenách {f(a.nominal_gdp)} (jen informativně; příjem se počítá ze stálých cen) ·
                         výroba {f(a.goods_value_added ?? a.city_gdp)} + obchodní služby {f(a.service_value_added ?? 0)} (zachyceno {pct(a.trade_services?.capture ?? 0)}) ·
                         příjem práce {f(a.labor_income)} · příjem z majetku {f(a.capital_income)} · dostupnost {pct(a.affordability)}
                       </div>
                       <div className="font-medium mb-1">Proč lidé volí dané zboží (násobky, 1 = neutrální)</div>
-                      <div className="grid grid-cols-9 gap-1">
-                        <span>zboží</span><span>podíl</span><span>obliba</span><span>region</span><span>zvyk</span><span>novost</span><span>kvalita</span><span>věhlas</span><span>cena</span>
+                      <div className="grid grid-cols-11 gap-1">
+                        <span>zboží</span><span>podkoš</span><span>podíl podkoše</span><span>v podkoši</span><span>podíl</span><span>obliba</span><span>region</span><span>zvyk</span><span>novost</span><span>kvalita</span><span>věhlas</span><span>cena</span>
                         {choice.filter(c => c.city === city.id).map(c => (
                           <Fragment key={c.good}>
-                            <span>{c.good}</span><span>{pct(c.share)}</span><span>{f(c.preference, 2)}</span><span>{f(c.region, 2)}</span>
+                            <span>{c.good}</span><span>{c.subbasket}</span><span>{pct(c.subbasket_share)}</span><span>{pct(c.within_subbasket_share)}</span><span>{pct(c.share)}</span><span>{f(c.preference, 2)}</span><span>{f(c.region, 2)}</span>
                             <span>{f(c.familiarity, 2)}</span><span>{f(c.novelty, 2)}</span><span>{f(c.quality, 2)}</span><span>{f(c.fame, 2)}</span><span>{f(c.price, 2)}</span>
                           </Fragment>
                         ))}
