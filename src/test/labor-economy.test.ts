@@ -149,3 +149,31 @@ describe('labour, jobs and capacity economy', () => {
     }
   });
 });
+
+/**
+ * STRUCTURAL UNEMPLOYMENT. A city can hold idle people and empty workshops at once, because labour
+ * is split by sector. Mobility (guilds, administration, market, stability) is the player's lever.
+ */
+describe('labour mobility and structural unemployment', () => {
+  const setup = (patch: Partial<City>) => {
+    const s = chain();
+    s.cities = [{ ...city('one', 0, 1000), ...patch }];
+    // Every job sits in crafting; farming labour is idle unless people can retrain.
+    s.producers = [producer('tools', 'one', 'tools', 40, [], { jobs: 400 })];
+    s.goods = [good('tools', 'tools', 35, 'final')];
+    return resolveGoodsEconomy(s).labor!.find(l => l.city === 'one')!;
+  };
+  it('reports idle people next to empty jobs and grows with the city institutions', () => {
+    const plain = setup({ guild: 0, admin: 0, market: 0, stability: 0.2 });
+    const invested = setup({ guild: 3, admin: 3, market: 4, stability: 1 });
+    expect(plain.jobs_capacity).toBeGreaterThan(plain.employed_total);
+    expect(plain.structural_unemployed!).toBeGreaterThan(0);
+    expect(invested.labor_mobility!).toBeGreaterThan(plain.labor_mobility!);
+    expect(invested.employed_total).toBeGreaterThan(plain.employed_total);
+    expect(invested.structural_unemployed!).toBeLessThan(plain.structural_unemployed!);
+    for (const l of [plain, invested]) {
+      expect(l.employed_total).toBeLessThanOrEqual(l.available_workforce + 1e-6);
+      expect(l.retrained!).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
