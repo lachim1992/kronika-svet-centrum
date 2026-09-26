@@ -139,7 +139,7 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
               <span className="font-mono">{pollTaxRaw.toFixed(1)}</span>
             </div>
             <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
-              <span>🏛️ Daň z city wealth (layers.wealth)</span>
+              <span>🏛️ Zbytek pilíře (sazby a správa)</span>
               <span className="font-mono">{cityWealthTaxRaw.toFixed(1)}</span>
             </div>
           </div>
