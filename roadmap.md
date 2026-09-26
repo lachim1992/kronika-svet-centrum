@@ -203,3 +203,9 @@
 - [ ] Soukromé bohatství domácností (zásoba) — odloženo, chybí rozumná startovní kalibrace
 - [ ] Kalibrace příjmů vs. cen základního koše (dnes všude mezera dostupnosti)
 - [ ] Nové produkty (další druhy chleba atd.) — vyžadují řádky zboží a receptů
+
+## Economy closure pass (hotovo)
+- [x] Landed input cost sourcing, AUTO podle marže, marže/ztráta v přehledu výroby
+- [x] Obchodní služby v HDP, prosperita, Bohatství města (city_capital_stock), nový TRADE_BOOM
+- [x] Rýže, nástroje, zdrojové recepty, řemeslná kvalita, serverová validace staveb
+- [ ] Odloženo: intermediate_value v nákupních cenách (HDP je ve stálých cenách), režie práce v marži

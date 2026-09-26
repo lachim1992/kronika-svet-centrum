@@ -1,1 +1,4 @@
 - Product choice, diversity, city accounts and recipe margins live only in `supabase/functions/_shared/productMarket.ts`; the UI reads `economy_turn_ledgers.result.cityAccounts/productChoice` and never recomputes them — single source of truth for new economy formulas.
+- Player builds resolve from `building_templates` server-side (`_shared/buildValidation.ts`); client cost/effects are ignored — one authority for prerequisites.
+- `city_capital_stock` is written only by process-turn (formula `productMarket.capitalStockDelta`); refresh shows the candidate only — no second accumulator.
+- Trade-service value added (`productMarket.tradeServiceValue`) is part of city_gdp and realm value_added_gdp; gross trade never is.
