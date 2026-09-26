@@ -203,3 +203,9 @@ ve `world-tick`. Ty se dorovnají v dalších fázích.
 - **City accounts** (`result.cityAccounts`, current-turn projection) track city_gdp (Σ equals realm value_added_gdp), household income (labour share plus local capital share of value added), taxes, disposable income, purchasing power, basic basket cost, price index, real purchasing power, discretionary budget, physical need coverage and affordability gap. These are flows only; there is no private wealth stock.
 - **Need ≠ effective demand.** Household need never shrinks with poverty. The discretionary channel and fame demand are scaled by the discretionary ratio from the last **committed** turn. This avoids a price↔demand loop, and on the first computation the ratio is `bootstrap_unconstrained`.
 - **Cost ≠ value.** Producer diagnostics carry `margin` at local prices; input costs never raise the output price. `autoRecipeWeights` gives loss-making recipes zero weight.
+
+## Closure pass
+- Suppliers ranked by landed cost (price + transport + tolls + tariff + risk + loss); factory inputs capped at `maxLandedInputMultiple` × base price.
+- AUTO allocation uses previous committed prices (`autoAllocation`); PREFER/LOCK unchanged, losses flagged.
+- intermediate_value stays at base prices: city_gdp is a constant-price measure; landed costs appear only in producer margins.
+- city_gdp = goods VA + trade-service VA; legacy population wealth is not authoritative anywhere.

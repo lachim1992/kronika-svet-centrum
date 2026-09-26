@@ -60,7 +60,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
               <TableHead>Město</TableHead><TableHead>HDP</TableHead><TableHead>Příjem po daních</TableHead>
               <TableHead>Kupní síla</TableHead><TableHead>Základní koš</TableHead><TableHead>Cenový index</TableHead>
               <TableHead>Reálná kupní síla</TableHead><TableHead>Volný rozpočet</TableHead>
-              <TableHead>Pokrytí potřeb</TableHead><TableHead>Mezera dostupnosti</TableHead><TableHead>Rozmanitost jídla</TableHead>
+              <TableHead>Pokrytí potřeb</TableHead><TableHead>Mezera dostupnosti</TableHead><TableHead>Rozmanitost jídla</TableHead><TableHead>Prosperita</TableHead><TableHead>Bohatství města</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -78,16 +78,19 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
                   <TableCell>{pct(a.physical_need_coverage)}</TableCell>
                   <TableCell className={a.affordability_gap > 0 ? "text-destructive" : ""}>{f(a.affordability_gap)}</TableCell>
                   <TableCell>{f(a.diversity?.staple_food?.effective, 1)} druhů</TableCell>
+                  <TableCell>{a.prosperity != null ? pct(a.prosperity) : "—"}</TableCell>
+                  <TableCell title="Uložený městský kapitál; mění se jen uzavřením tahu">{f(a.capital_stock ?? 0)}{a.capital_candidate ? ` (${a.capital_candidate.delta >= 0 ? "+" : ""}${f(a.capital_candidate.delta, 1)})` : ""}</TableCell>
                 </TableRow>
                 {open === city.id && (
                   <TableRow key={`${city.id}-d`}>
-                    <TableCell colSpan={11} className="text-xs bg-muted/30">
+                    <TableCell colSpan={13} className="text-xs bg-muted/30">
                       <div className="mb-1 text-muted-foreground">
                         Příčiny: daně {f(a.household_taxes)} · ceny index {f(a.price_index, 2)} · přání volných nákupů {f(a.discretionary_wish)},
                         zaplaceno {pct(a.discretionary_ratio)}
                       </div>
                       <div className="mb-1 text-muted-foreground">
                         HDP v místních cenách {f(a.nominal_gdp)} (HDP v základních cenách {f(a.city_gdp)} × cenová hladina {f(a.price_level, 2)}) ·
+                        výroba {f(a.goods_value_added ?? a.city_gdp)} + obchodní služby {f(a.service_value_added ?? 0)} (zachyceno {pct(a.trade_services?.capture ?? 0)}) ·
                         příjem práce {f(a.labor_income)} · příjem z majetku {f(a.capital_income)} · dostupnost {pct(a.affordability)}
                       </div>
                       <div className="font-medium mb-1">Proč lidé volí dané zboží (násobky, 1 = neutrální)</div>

@@ -7,6 +7,7 @@ import { buildManagementReport } from './management.ts';
 import { BASKET_KEYS, basketSpec, needBand, alertPriority, shortageEffect, basketSeverity } from './demandModel.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
 import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
+import { autoAllocation, craftsmanship } from './productMarket.ts';
 
 const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
 /** Baseline market/granary capability that any inhabited settlement has by its size alone. */
@@ -58,6 +59,9 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   });
   const goodMap=new Map(goods.map(g=>[g.key,g]));
   const role=(r:any)=>r.required_role==='producer'?(goodMap.get(r.output_good_key)?.stage==='raw'?'source':'processing'):r.required_role;
+  // Persisted city capital stock (process-turn is its only writer); tolerate a missing table.
+  const capitalRows=await sb.from('city_capital_stock').select('city_id,stock').eq('session_id',session);
+  const capitalByCity=new Map<string,number>((capitalRows.error?[]:capitalRows.data||[]).map((r:any)=>[r.city_id,nonnegative(r.stock)]));
   const cities:City[]=db.cities.filter(c=>c.owner_player&&(!c.status||c.status==='ok')).map(c=>{
     const realm=db.realm_resources.find(r=>r.player_name===c.owner_player)||{};
     const lawModifiers=workforceLawModifiers(db.laws.filter(l=>l.player_name===c.owner_player));
@@ -76,6 +80,8 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       market:nonnegative(c.market_level)+settlementBaseline(c.population_total),
       storage:effects.reduce((s,e)=>s+nonnegative(e.storage_capacity??e.warehouse_level),0)+settlementBaseline(c.population_total),
       admin:nonnegative(c.temple_level),
+      housingHeadroom:nonnegative(c.housing_capacity)>0?Math.max(0,Math.min(1,1-nonnegative(c.population_total)/nonnegative(c.housing_capacity))):0.5,
+      capitalStock:capitalByCity.get(c.id)||0,
       // Construction demand exists only while something is actually being built.
       constructionProjects:db.city_buildings.filter(b=>b.city_id===c.id&&b.status!=='completed').length+
         db.city_districts.filter(d=>d.city_id===c.id&&d.status!=='completed').length+
@@ -99,6 +105,20 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    *  PREFER — the chosen good/basket gets triple weight, the rest still runs.
    *  LOCK   — only the chosen good/basket runs, if it is legal for this structure.
    */
+  /**
+   * AUTO PROFITABILITY. Expected margin ratio of a recipe at the PREVIOUS COMMITTED local prices
+   * (catalogue base price at bootstrap) — never this pass's prices, so there is no price↔allocation loop.
+   */
+  const priorPrice=new Map<string,number>((prior?.prices||[]).map((p:any)=>[`${p.city}::${p.good}`,nonnegative(p.local_price)]));
+  const refPrice=(city:string,good:string)=>priorPrice.get(`${city}::${good}`)||nonnegative(goodMap.get(good)?.price);
+  const marginRatio=(city:string,r:any)=>{const out=nonnegative(r.output_quantity)*refPrice(city,r.output_good_key);
+    const cost=(r.input_items||[]).reduce((s:number,i:any)=>s+nonnegative(i.qty??i.quantity)*refPrice(city,i.key??i.good_key),0);
+    return out>0?(out-cost)/out:-1;};
+  const autoWeights=(city:string,candidates:any[],weights:number[],order:any)=>{
+    if(order&&order.mode!=='auto')return weights;
+    const w=autoAllocation(candidates.map((r,i)=>({key:String(i),necessity:weights[i],marginRatio:marginRatio(city,r)})));
+    return candidates.map((_,i)=>w[String(i)]);};
+  const orderMode=(order:any)=>(order?.mode||'auto') as 'auto'|'prefer'|'lock';
   const orderWeight=(r:any,order:any)=>{
     const g=goodMap.get(r.output_good_key);
     const tier=BASKET_TIER[g?.basket||'']||1,auto=1/tier;
@@ -122,7 +142,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   for(const node of db.province_nodes){if(node.is_active===false)continue;const c=anchor(node);if(!c)continue;
     const order=db.node_production_orders.find(o=>o.node_id===node.id);
     const eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
-    const weights=eligible.map(r=>orderWeight(r,order)),total=weights.reduce((s,n)=>s+n,0);
+    const weights=autoWeights(c.id,eligible,eligible.map(r=>orderWeight(r,order)),order),total=weights.reduce((s,n)=>s+n,0);
     if(total<=0)continue;
     // Nodes employ the same canonical crew as any other producing structure (Lv1 100 → doubling).
     const capacity=ratedNodeCapacity(node);
@@ -131,6 +151,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     eligible.forEach((r,i)=>{if(weights[i]<=0)return;
       producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity,
         recipe:recipe(r),allocation:weights[i]/total,staffing:1,jobs,logistics,mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
+        craft:craftsmanship(node.node_level??node.level,node.capability_tags||[],nonnegative(node.guild_level)),order:orderMode(order),
         source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
   }
 
@@ -160,13 +181,14 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const declared=Number(options.jobs)>0?nonnegative(options.jobs):ECONOMY.structureJobsBase;
     const jobs=total>0?declared*scale:undefined;
 
+    const craft=craftsmanship(options.level,tags,nonnegative(cityMap.get(city)?.guild));
     const push=(candidates:any[],capacity:number)=>{
       if(!candidates.length||capacity<=0)return;
-      const weights=candidates.map(r=>orderWeight(r,options.order)),sum=weights.reduce((s,w)=>s+w,0);
+      const weights=autoWeights(city,candidates,candidates.map(r=>orderWeight(r,options.order)),options.order),sum=weights.reduce((s,w)=>s+w,0);
       if(sum<=0)return;
       candidates.forEach((r,i)=>{if(weights[i]<=0)return;
         producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),jobs,
-          allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
+          allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',craft,order:orderMode(options.order),
           distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
     };
     if(options.recipeKeys?.length){
@@ -301,7 +323,8 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const realms=db.realm_resources.map(r=>{const owned=new Set(cities.filter(c=>c.owner===r.player_name).map(c=>c.id)),bs=result.balances.filter(b=>owned.has(b.city));
     const sum=(f:string)=>bs.reduce((s,b)=>s+Number((b as any)[f]||0),0),consumption=bs.reduce((s,b)=>s+(b.consumed_household+b.consumed_state)*goodMap.get(b.good)!.price,0);
     const channelValue=(ch:string)=>bs.reduce((s,b)=>s+Number((b as any)[`produced_${ch}`])*goodMap.get(b.good)!.price*(1+b.quality*ECONOMY.qualityPremium),0);
-    return {player_name:r.player_name,goods_production_value:sum('gross_output_value'),value_added_gdp:sum('gross_output_value')-sum('intermediate_value'),
+    return {player_name:r.player_name,goods_production_value:sum('gross_output_value'),value_added_gdp:sum('gross_output_value')-sum('intermediate_value')+result.metrics.filter(m=>owned.has(m.city)).reduce((s,m)=>s+m.trade_services.service_value_added,0),
+      trade_service_value_added:result.metrics.filter(m=>owned.has(m.city)).reduce((s,m)=>s+m.trade_services.service_value_added,0),
       goods_extraction_value:sum('extraction_value'),goods_domestic_consumption_value:consumption,construction_available_for_capex:sum('capex'),
       goods_supply_volume:bs.reduce((s,b)=>s+produced(b),0),goods_value_detail:{auto:channelValue('household'),recipe:channelValue('node'),structures:channelValue('facility')+channelValue('district')},
       economy_detail:{produced_household:sum('produced_household'),produced_node:sum('produced_node'),produced_facility:sum('produced_facility'),produced_district:sum('produced_district'),

@@ -1474,6 +1474,57 @@ export type Database = {
           },
         ]
       }
+      city_capital_stock: {
+        Row: {
+          city_id: string
+          created_at: string
+          detail: Json
+          id: string
+          last_delta: number
+          last_turn: number
+          session_id: string
+          stock: number
+          updated_at: string
+        }
+        Insert: {
+          city_id: string
+          created_at?: string
+          detail?: Json
+          id?: string
+          last_delta?: number
+          last_turn?: number
+          session_id: string
+          stock?: number
+          updated_at?: string
+        }
+        Update: {
+          city_id?: string
+          created_at?: string
+          detail?: Json
+          id?: string
+          last_delta?: number
+          last_turn?: number
+          session_id?: string
+          stock?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_capital_stock_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_capital_stock_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city_districts: {
         Row: {
           basket_key: string | null

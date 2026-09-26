@@ -18,7 +18,8 @@ describe('product market layer', () => {
   });
   it('Σ city_gdp equals the value added of the physical ledger', () => {
     const r = resolveGoodsEconomy(base());
-    const va = r.balances.reduce((s, b) => s + b.gross_output_value - b.intermediate_value, 0);
+    const va = r.balances.reduce((s, b) => s + b.gross_output_value - b.intermediate_value, 0)
+      + r.metrics.reduce((s, m) => s + m.trade_services.service_value_added, 0);
     expect(r.cityAccounts.reduce((s, a) => s + a.city_gdp, 0)).toBeCloseTo(va, 6);
   });
   it('dearer inputs cut margin and never raise the output price', () => {

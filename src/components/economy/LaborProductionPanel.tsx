@@ -49,6 +49,12 @@ export default function LaborProductionPanel({ sessionId, cities, playerName, cu
       if (found) { found.required += Number(i.required || 0); found.supplied += Number(i.supplied || 0); }
       else s.inputs.push({ good: i.good, required: Number(i.required || 0), supplied: Number(i.supplied || 0) });
     }
+    if (p.margin) {
+      s.revenue = (s.revenue || 0) + Number(p.margin.revenue || 0);
+      s.cost = (s.cost || 0) + Number(p.margin.cost || 0);
+      for (const i of p.margin.inputs || []) if (i.cheaper_supplier && !s.reasons.includes('levnější dodavatel existuje')) s.reasons.push('levnější dodavatel existuje');
+      if (p.margin.loss_warning && p.margin.order !== 'auto') { const w = p.margin.order === 'lock' ? 'ZAMČENO se ztrátou' : 'preferováno se ztrátou'; if (!s.reasons.includes(w)) s.reasons.push(w); }
+    }
     const reason = p.bottleneck ? `úzké místo: ${p.bottleneck}` : BLOCKED[p.blocked] || p.blocked || '';
     if (reason && !s.reasons.includes(reason)) s.reasons.push(reason);
     return acc;
@@ -103,7 +109,7 @@ export default function LaborProductionPanel({ sessionId, cities, playerName, cu
 
     <div className="overflow-auto"><table className="w-full text-xs">
       <caption className="text-left mb-1">Jednotlivé stavby: obsazenost, možná výroba, vstupy a skutečná výroba</caption>
-      <thead><tr>{['Město', 'Stavba vyrábí', 'Místa obsazená / celkem', 'Obsazenost', 'Kapacita', 'Možná výroba', 'Vstupy (dodáno / potřeba)', 'Skutečná výroba', 'Co brání'].map(h =>
+      <thead><tr>{['Město', 'Stavba vyrábí', 'Místa obsazená / celkem', 'Obsazenost', 'Kapacita', 'Možná výroba', 'Vstupy (dodáno / potřeba)', 'Skutečná výroba', 'Marže', 'Co brání'].map(h =>
         <th key={h} className="p-2 text-right first:text-left">{h}</th>)}</tr></thead>
       <tbody>{structures.map(s => <tr key={s.id} className="border-t align-top">
         <td className="p-2">{name(s.city)}</td>
@@ -116,6 +122,10 @@ export default function LaborProductionPanel({ sessionId, cities, playerName, cu
           ? s.inputs.map(i => <div key={i.good}>{i.good}: {fmt(i.supplied, 2)} / {fmt(i.required, 2)}</div>)
           : '—'}</td>
         <td className="p-2 text-right">{fmt(s.realized, 2)}</td>
+        <td className={`p-2 text-right ${s.revenue != null && s.revenue - s.cost < 0 ? 'text-destructive' : ''}`}
+          title="Tržba v místních cenách − náklad vstupů (dovoz v ceně na místě dodání)">
+          {s.revenue ? `${(s.revenue - s.cost).toFixed(1)} (${Math.round((s.revenue - s.cost) / s.revenue * 100)} %)` : '—'}
+        </td>
         <td className="p-2 text-right">{s.reasons.length ? s.reasons.join(', ') : '—'}</td>
       </tr>)}</tbody>
     </table></div>

@@ -1,3 +1,4 @@
+import { capitalStockDelta } from "../_shared/productMarket.ts";
 import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.ts";
 import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demographics.ts";
 import { TAX_MAX, laffer, governance, taxRevenue, sportFundingExpense as computeSportFunding } from '../_shared/fiscal.ts';
@@ -97,6 +98,11 @@ function computeCityDemand(city: any): number {
 }
 
 // Per-city population-driven economy
+// TRADE_BOOM thresholds (canonical trade-service value added, not population).
+const TRADE_BOOM_MIN_SERVICE_VA = 5;
+const TRADE_BOOM_GROWTH = 1.25;
+const TRADE_BOOM_COOLDOWN = 5;
+
 function computeCityLayerEconomy(city: any, buildingEffects: Record<string, number>) {
   const peas = city.population_peasants || 0;
   const burg = city.population_burghers || 0;
@@ -252,6 +258,14 @@ Deno.serve(async (req) => {
       .eq("session_id", sessionId)
       .eq("turn_number", currentTurn)
       .in("city_id", cityIds.length ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    // Canonical city accounts of this turn and the last committed turn (trade services, capital).
+    const [curLedgerRes, prevLedgerRes] = await Promise.all([
+      supabase.from("economy_turn_ledgers").select("result").eq("session_id", sessionId).eq("turn_number", currentTurn).maybeSingle(),
+      supabase.from("economy_turn_ledgers").select("committed_result").eq("session_id", sessionId).lt("turn_number", currentTurn)
+        .eq("committed", true).order("turn_number", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    const accountsByCity = new Map<string, any>(((curLedgerRes.data?.result?.cityAccounts) || []).map((a: any) => [a.city, a]));
+    const prevAccountsByCity = new Map<string, any>(((prevLedgerRes.data?.committed_result?.cityAccounts) || []).map((a: any) => [a.city, a]));
     const stapleByCity = new Map<string, any>();
     for (const b of (myBasketRows as any[]) || []) {
       if (b.basket_key === "staple_food") stapleByCity.set(b.city_id, b);
@@ -619,7 +633,7 @@ Deno.serve(async (req) => {
     const cityEconResults: Array<{
       cityId: string; cityName: string;
       nodeProduction: number; layerProduction: number;
-      layerWealth: number; layerCapacity: number; layerFaith: number;
+      serviceValueAdded: number; layerCapacity: number; layerFaith: number;
       demand: number; balance: number;
       isolationPenalty: number; famine: boolean;
     }> = [];
@@ -686,7 +700,7 @@ Deno.serve(async (req) => {
       // v4.2: City wealth comes from Pillar 2 (domestic + market share), distributed by market level
       const totalMarketLevelAll = myCities.reduce((s, c) => s + (c.market_level || 1), 0) || 1;
       const cityMarketShare = (city.market_level || 1) / totalMarketLevelAll;
-      const cityWealth = layers.wealth * laborWealthMult * strategicBonuses.wealth_mult * prestigeEffects.tradeMultiplier;
+      const cityWealth = 0; // legacy population wealth deprecated (never authoritative)
       const cityCapacity = layers.capacity * laborCapacityMult;
       const cityFaith = layers.faith + strategicBonuses.faith_bonus * 0.1; // Strategic faith distributed per-city
 
@@ -758,14 +772,19 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Trade boom event for hub nodes
-      if (node && layers.wealth > 3 && node.flow_role === "hub") {
-        newEvents.push({
+      // TRADE BOOM from canonical commerce: realized trade-service value added above a floor and
+      // clearly growing against the last committed turn, with a cooldown. Never from headcount.
+      const acc = accountsByCity.get(city.id), prevAcc = prevAccountsByCity.get(city.id);
+      const serviceVA = Number(acc?.service_value_added || 0), prevServiceVA = Number(prevAcc?.service_value_added || 0);
+      if (serviceVA >= TRADE_BOOM_MIN_SERVICE_VA && serviceVA >= prevServiceVA * TRADE_BOOM_GROWTH && prevServiceVA > 0) {
+        const { count: recentBooms } = await supabase.from("game_events").select("id", { count: "exact", head: true })
+          .eq("session_id", sessionId).eq("event_type", "trade_boom").eq("city_id", city.id).gte("turn_number", currentTurn - TRADE_BOOM_COOLDOWN);
+        if (!recentBooms) newEvents.push({
           event_type: "trade_boom",
-          note: `Obchodní centrum ${city.name} zažívá rozkvět. Bohatství: ${layers.wealth.toFixed(1)}.`,
+          note: `Obchodní centrum ${city.name} zažívá rozkvět: obchodní služby vynesly ${serviceVA.toFixed(1)} (předtím ${prevServiceVA.toFixed(1)}).`,
           importance: "normal",
           city_id: city.id,
-          reference: { wealth: layers.wealth, flow_role: node.flow_role },
+          reference: { service_value_added: serviceVA, previous: prevServiceVA, capture: acc?.trade_services?.capture },
         });
       }
 
@@ -773,7 +792,8 @@ Deno.serve(async (req) => {
         cityId: city.id, cityName: city.name,
         nodeProduction: Math.round(nodeProduction * 10) / 10,
         layerProduction: Math.round(layers.production * 10) / 10,
-        layerWealth: Math.round(layers.wealth * 10) / 10,
+        // Legacy population "wealth" removed: population makes labour and demand, not wealth.
+        serviceValueAdded: Math.round(Number(accountsByCity.get(city.id)?.service_value_added || 0) * 10) / 10,
         layerCapacity: Math.round(layers.capacity * 10) / 10,
         layerFaith: Math.round(layers.faith * 10) / 10,
         demand: cityDemand,
@@ -1668,6 +1688,25 @@ Deno.serve(async (req) => {
     });
     if (fiscalError) throw fiscalError;
     if (!fiscalApplied) return new Response(JSON.stringify({ ok: true, skipped: true, reason: "turn_already_processed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    // CITY CAPITAL STOCK — process-turn is its ONLY writer, once per turn (after the fiscal guard).
+    // The delta formula lives in productMarket.capitalStockDelta; devastated cities also lose stock.
+    {
+      const { data: stockRows } = await supabase.from("city_capital_stock").select("city_id, stock, last_turn").eq("session_id", sessionId)
+        .in("city_id", cityIds.length ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+      const stockBy = new Map<string, any>((stockRows || []).map((r: any) => [r.city_id, r]));
+      const upserts = myCities.filter((c: any) => (stockBy.get(c.id)?.last_turn ?? -1) < currentTurn).map((c: any) => {
+        const acc = accountsByCity.get(c.id), prev = Number(stockBy.get(c.id)?.stock || 0);
+        const d = capitalStockDelta({ stock: prev, valueAdded: Number(acc?.city_gdp || 0), needCoverage: Number(acc?.physical_need_coverage ?? 1),
+          stability: Number(c.city_stability ?? 50) / 100, taxRate: Number(acc?.household_taxes || 0) / Math.max(1e-9, Number(acc?.household_income || 0)) || 0,
+          devastated: c.status === "zpustošeno" });
+        return { session_id: sessionId, city_id: c.id, stock: d.next, last_delta: d.delta, last_turn: currentTurn, detail: d };
+      });
+      if (upserts.length) {
+        const { error: capErr } = await supabase.from("city_capital_stock").upsert(upserts, { onConflict: "session_id,city_id" });
+        if (capErr) console.error("city_capital_stock write failed", capErr);
+      }
+    }
 
 
     // ══════════════════════════════════════════
