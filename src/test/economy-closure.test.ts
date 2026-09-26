@@ -26,9 +26,9 @@ describe('A. landed cost, margins, AUTO', () => {
   it('AUTO abandons a loss-making recipe when a profitable legal option exists', () => {
     const w = autoAllocation([{ key: 'fame', necessity: 1, marginRatio: -0.3 }, { key: 'plain', necessity: 1, marginRatio: 0.2 }]);
     expect(w.fame).toBe(0); expect(w.plain).toBeGreaterThan(0);
-    // Nothing pays → keep necessity weights (no survival deadlock), diagnostics flag the loss.
-    const none = autoAllocation([{ key: 'a', necessity: 1, marginRatio: -0.1 }]);
-    expect(none.a).toBe(1);
+    // Nothing pays: non-essential → 0; essential gets only the bounded emergency floor.
+    expect(autoAllocation([{ key: 'a', necessity: 1, marginRatio: -0.1 }]).a).toBe(0);
+    expect(autoAllocation([{ key: 'a', necessity: 1, marginRatio: -0.1, essential: true }]).a).toBe(PRODUCT_MARKET.autoEmergencyFloor);
   });
   it('LOCK keeps a loss-making recipe but the ledger reports the loss', () => {
     const s: Snapshot = { turn: 1, cities: [city('a', 0)], goods: [good('iron', 'tools', 20, 'intermediate'), good('arms', 'military_supply', 5)],
