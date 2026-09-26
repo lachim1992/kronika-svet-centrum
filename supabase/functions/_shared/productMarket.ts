@@ -29,12 +29,17 @@ export const PRODUCT_MARKET = {
   /** Coastal settlements prefer sea protein; inland ones barely consume it (derived regional taste). */
   coastalAffinity: 1.6,
   inlandAffinity: 0.35,
-  /** Provisional household income distribution of city value added (transparent, not a wage sim). */
-  laborShare: 0.6,
+  /**
+   * Provisional household income distribution of city value added (transparent, not a wage sim).
+   * Calibrated for a pre-industrial economy: most value added is peasant/artisan labour income and
+   * most of the rest (rents, workshop profits) is spent locally, with almost nothing saved — so a
+   * city that physically feeds itself can also pay for its own basic basket.
+   */
+  laborShare: 0.65,
   /** Part of non-labour value added (rents, profits) that stays with local households. */
-  localCapitalShare: 0.5,
+  localCapitalShare: 0.6,
   /** Share of disposable income spent on market goods this turn (rest = saving, not modelled yet). */
-  propensityToConsume: 0.85,
+  propensityToConsume: 0.95,
   /** Tax wedge applied to household income: domestic + poll proxy from realm tax rates. */
   defaultHouseholdTaxRate: 0.1,
 } as const;
