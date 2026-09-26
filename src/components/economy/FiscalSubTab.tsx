@@ -56,7 +56,7 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
   const totalPopulation = Number(realm?.total_population ?? 0);
   const POLL_TAX_PER_CAPITA = 0.002;
   const pollTaxRaw = totalPopulation * POLL_TAX_PER_CAPITA;
-  const cityWealthTaxRaw = Math.max(0, fi.popTax - pollTaxRaw * (1 + (Number(realm?.tax_rate_modifier ?? 0) / 100)));
+  const pillarResidualRaw = Math.max(0, fi.popTax - pollTaxRaw * (1 + (Number(realm?.tax_rate_modifier ?? 0) / 100)));
 
 
   const maxRevenue = Math.max(...pillars.map(r => r.value), 1);
@@ -139,8 +139,8 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
               <span className="font-mono">{pollTaxRaw.toFixed(1)}</span>
             </div>
             <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
-              <span>🏛️ Daň z city wealth (layers.wealth)</span>
-              <span className="font-mono">{cityWealthTaxRaw.toFixed(1)}</span>
+              <span>🏛️ Zbytek pilíře (sazby a správa)</span>
+              <span className="font-mono">{pillarResidualRaw.toFixed(1)}</span>
             </div>
           </div>
 

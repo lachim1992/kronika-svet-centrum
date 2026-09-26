@@ -21,16 +21,13 @@ async function rows(sb:any,table:string,session?:string){
     const r=await q;if(r.error)throw Error(`${table}: ${r.error.message}`);out.push(...r.data);if(r.data.length<1000)return out;}
 }
 /**
- * LEGACY ROLE COMPATIBILITY. Saved structures from before zero-input extraction became 'source'
- * (wells, aqueducts, peat cuts) declare only 'producer'. A whitelisted zero-input source recipe
- * stays legal for them; arbitrary factories still cannot create goods from nothing because the
- * recipe itself must be a zero-input source in the catalogue.
+ * LEGACY ROLE COMPATIBILITY lives in productionContract.ts (one shared normalizer). Saved
+ * structures from before zero-input extraction became 'source' (wells, aqueducts, peat cuts)
+ * declare only 'producer'; their whitelisted zero-input source recipes stay legal. Arbitrary
+ * factories still cannot create goods from nothing — the recipe itself must be a zero-input source.
  */
-export function normalizeStructureRoles(roles:string[],whitelisted:any[],roleOf:(r:any)=>string){
-  if(!roles.includes('producer')||roles.includes('source'))return roles;
-  const zeroInputSource=whitelisted.some(r=>roleOf(r)==='source'&&!(r.input_items||[]).length);
-  return zeroInputSource?[...roles,'source']:roles;
-}
+export { normalizeStructureRoles, normalizeProductionContract, auditProductionContracts } from './productionContract.ts';
+import { normalizeStructureRoles, normalizeProductionContract } from './productionContract.ts';
 const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clothing',ritual:'luxury_clothing',prestige:'luxury_clothing'};
 const basket=(v:string)=>remap[v]||v;
 /** Refresh report fiscal fields after the fiscal transaction, without rerunning production. */
@@ -237,9 +234,13 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       [/stonecut|kamen/i,['stonecutting']],[/winery|vinař|tavern|hostin/i,['fermenting']]];
     return rules.flatMap(([match,tags])=>match.test(name)?tags:[]);
   };
+  const contractNotes:{structure:string;notes:string[]}[]=[];
   for(const b of db.city_buildings.filter(b=>b.status==='completed')){
     const template=db.building_templates.find(t=>t.id===b.template_id);
-    const effect={...template?.effects,...b.effects};
+    // Old saves keep stale role metadata: reconcile it against the current recipe catalogue.
+    const norm=normalizeProductionContract({...template?.effects,...b.effects},recipeByKey);
+    if(norm.notes.length)contractNotes.push({structure:b.id,notes:norm.notes});
+    const effect=norm.effects;
     const name=`${template?.key||''} ${template?.name||''} ${b.name||''}`;
     const tags=effect.capability_tags||facilityTags(name);
     structure(b.id,b.city_id,'facility',effect.basket_outputs||{},true,tags,
@@ -340,7 +341,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,priorPrices,householdTaxRate,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
   const physical=resolveGoodsEconomy(snapshot);
   const management=Object.fromEntries(db.realm_resources.map(r=>[r.player_name,buildManagementReport(snapshot,physical,r,prior?.management?.[r.player_name])]));
-  const result={...physical,opening,snapshot,management};
+  const result={...physical,opening,snapshot,management,contractNormalizations:contractNotes};
   // Anchor every city on its own settlement node (node_subtype 'city'); only fall back to
   // another node of the same city when the settlement node is missing. Cities must never
   // drop out of the projection just because a workshop node was indexed first.

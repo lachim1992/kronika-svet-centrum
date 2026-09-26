@@ -46,8 +46,6 @@ const RATION_DEMAND_MULT: Record<string, number> = {
 // Per-capita economic contribution
 const PRODUCTION_PER_PEASANT = 0.012;  // Peasants are primary producers
 const PRODUCTION_PER_BURGHER = 0.003;  // Burghers produce some crafts
-const WEALTH_PER_BURGHER = 0.015;      // Burghers are primary wealth generators
-const WEALTH_PER_PEASANT = 0.002;      // Peasants contribute market surplus
 const CAPACITY_PER_CLERIC = 0.010;     // Clerics administrate
 const CAPACITY_PER_BURGHER = 0.004;    // Burghers contribute infrastructure
 const FAITH_PER_CLERIC = 0.008;        // Clerics generate faith
@@ -111,19 +109,17 @@ function computeCityLayerEconomy(city: any, buildingEffects: Record<string, numb
 
   // Building multipliers (from completed buildings in this city)
   const prodMult = 1 + (buildingEffects.production_modifier || 0) / 100;
-  const wealthMult = 1 + (buildingEffects.wealth_modifier || 0) / 100;
   const capacityMult = 1 + (buildingEffects.capacity_modifier || 0) / 100;
   const faithMult = 1 + (buildingEffects.faith_modifier || 0) / 100;
 
   // Temple level boosts faith
   const templeBonus = 1 + (city.temple_level || 0) * 0.15;
 
-  // Market level boosts wealth
-  const marketBonus = 1 + (city.market_level || 0) * 0.12;
 
+  // POPULATION NEVER CREATES WEALTH. The legacy population-derived `wealth` layer is removed:
+  // fiscal revenue comes from the canonical tax pillars and city value added from the goods ledger.
   return {
     production: (peas * PRODUCTION_PER_PEASANT + burg * PRODUCTION_PER_BURGHER) * prodMult,
-    wealth: (burg * WEALTH_PER_BURGHER + peas * WEALTH_PER_PEASANT) * wealthMult * marketBonus,
     capacity: (cler * CAPACITY_PER_CLERIC + burg * CAPACITY_PER_BURGHER) * capacityMult,
     faith: (cler * FAITH_PER_CLERIC + warr * FAITH_PER_WARRIOR) * faithMult * templeBonus,
     warriorRatio: (city.population_total || 1) > 0 ? warr / (city.population_total || 1) : 0,
@@ -547,7 +543,6 @@ Deno.serve(async (req) => {
     let totalFoodSupply = 0;
     let totalFoodDeficit = 0;
 
-    let totalCityWealth = 0;
     let totalCityCapacity = 0;
     let totalFaith = 0;
 
@@ -624,10 +619,9 @@ Deno.serve(async (req) => {
     }
     // Labor modifiers: deviation from 25% baseline (each ±1% = ±2% effect)
     const laborGrainMult = 1 + (avgFarming - 25) * 0.02;
-    const laborWealthMult = 1 + (avgCrafting - 25) * 0.02;
     const laborCapacityMult = 1 + (avgScribes - 25) * 0.02;
     const laborStabilityBonus = (avgMaintenance - 25) * 0.1; // ±2.5 stability per tick
-    logEntries.push(`👷 Práce: 🌾×${laborGrainMult.toFixed(2)} 💰×${laborWealthMult.toFixed(2)} 🏛️×${laborCapacityMult.toFixed(2)} stab${laborStabilityBonus >= 0 ? "+" : ""}${laborStabilityBonus.toFixed(1)}`);
+    logEntries.push(`👷 Práce: 🌾×${laborGrainMult.toFixed(2)} 🏛️×${laborCapacityMult.toFixed(2)} stab${laborStabilityBonus >= 0 ? "+" : ""}${laborStabilityBonus.toFixed(1)}`);
 
     // Per-city breakdown for reporting
     const cityEconResults: Array<{
@@ -675,7 +669,6 @@ Deno.serve(async (req) => {
           const supplyMult = Math.max(0.3, 1 - isoTurns * 0.1);
           nodeProduction *= supplyMult;
           // Isolation also hits wealth and capacity
-          layers.wealth *= supplyMult;
           layers.capacity *= Math.max(0.5, supplyMult);
 
           if (isoTurns >= 3) {
@@ -697,10 +690,6 @@ Deno.serve(async (req) => {
       // city population layers feed capacity/wealth/faith and upstream auto production,
       // never a second production number. Realized production lives in the Goods layer.
 
-      // v4.2: City wealth comes from Pillar 2 (domestic + market share), distributed by market level
-      const totalMarketLevelAll = myCities.reduce((s, c) => s + (c.market_level || 1), 0) || 1;
-      const cityMarketShare = (city.market_level || 1) / totalMarketLevelAll;
-      const cityWealth = 0; // legacy population wealth deprecated (never authoritative)
       const cityCapacity = layers.capacity * laborCapacityMult;
       const cityFaith = layers.faith + strategicBonuses.faith_bonus * 0.1; // Strategic faith distributed per-city
 
@@ -714,7 +703,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      totalCityWealth += cityWealth;
       totalCityCapacity += cityCapacity;
       totalFaith += cityFaith;
 
@@ -811,8 +799,8 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════════════════════════
 
     // Mobilization: peasants pulled into armies reduce food supply, not a macro production.
-    // Mobilization already reduced physical production in the canonical goods solver.
-    totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
+    // Mobilization already reduced physical production in the canonical goods solver; the penalty
+    // below is reported only (no population wealth aggregate exists any more).
 
     // NOTE: the legacy "goods_supply_volume → grain reserve" bonus is REMOVED.
     // goods_supply_volume sums every storable good (tools, textiles…), not food.
@@ -1643,7 +1631,6 @@ Deno.serve(async (req) => {
         },
         labor: {
           grain_mult: Math.round(laborGrainMult * 1000) / 1000,
-          wealth_mult: Math.round(laborWealthMult * 1000) / 1000,
           capacity_mult: Math.round(laborCapacityMult * 1000) / 1000,
           stability_bonus: Math.round(laborStabilityBonus * 10) / 10,
         },
@@ -1687,13 +1674,17 @@ Deno.serve(async (req) => {
       p_gold_delta: newGoldReserve - Number(realm.gold_reserve || 0), p_capex_delta: productionIncome,
     });
     if (fiscalError) throw fiscalError;
-    if (!fiscalApplied) return new Response(JSON.stringify({ ok: true, skipped: true, reason: "turn_already_processed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    // CITY CAPITAL STOCK — process-turn is its ONLY writer, once per turn (after the fiscal guard).
-    // The delta formula lives in productMarket.capitalStockDelta; devastated cities also lose stock.
-    {
-      const { data: stockRows } = await supabase.from("city_capital_stock").select("city_id, stock, last_turn").eq("session_id", sessionId)
+    /**
+     * CITY CAPITAL STOCK — process-turn is its ONLY writer. Idempotent by (session, city, turn):
+     * a row already stamped with this turn is skipped, so a retry repairs a missed write without
+     * double-applying the delta. It runs even when the fiscal turn was already applied (a crash
+     * between the fiscal RPC and this write must be repairable), and a failure is surfaced.
+     */
+    const applyCityCapital = async () => {
+      const { data: stockRows, error: readErr } = await supabase.from("city_capital_stock").select("city_id, stock, last_turn").eq("session_id", sessionId)
         .in("city_id", cityIds.length ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+      if (readErr) throw readErr;
       const stockBy = new Map<string, any>((stockRows || []).map((r: any) => [r.city_id, r]));
       const upserts = myCities.filter((c: any) => (stockBy.get(c.id)?.last_turn ?? -1) < currentTurn).map((c: any) => {
         const acc = accountsByCity.get(c.id), prev = Number(stockBy.get(c.id)?.stock || 0);
@@ -1702,11 +1693,17 @@ Deno.serve(async (req) => {
           devastated: c.status === "zpustošeno" });
         return { session_id: sessionId, city_id: c.id, stock: d.next, last_delta: d.delta, last_turn: currentTurn, detail: d };
       });
-      if (upserts.length) {
-        const { error: capErr } = await supabase.from("city_capital_stock").upsert(upserts, { onConflict: "session_id,city_id" });
-        if (capErr) console.error("city_capital_stock write failed", capErr);
-      }
+      if (!upserts.length) return 0;
+      const { error: capErr } = await supabase.from("city_capital_stock").upsert(upserts, { onConflict: "session_id,city_id" });
+      if (capErr) throw capErr;
+      return upserts.length;
+    };
+    if (!fiscalApplied) {
+      const repaired = await applyCityCapital();
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "turn_already_processed", city_capital_reconciled: repaired }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    await applyCityCapital();
+
 
 
     // ══════════════════════════════════════════
