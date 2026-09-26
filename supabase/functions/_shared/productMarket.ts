@@ -177,7 +177,6 @@ export interface CityAccountsInput {
   city: string;
   /** Σ(gross output − intermediate inputs) of the city, from the physical ledger. */
   valueAdded: number;
-  employmentRate: number;
   householdTaxRate: number;
   /** Need-class household demand per good with local and base prices. */
   needs: { good: string; qty: number; localPrice: number; basePrice: number; consumed: number }[];
@@ -193,7 +192,7 @@ export interface CityAccountsInput {
  */
 export function cityAccounts(i: CityAccountsInput) {
   const M = PRODUCT_MARKET, gdp = pos(i.valueAdded);
-  const laborIncome = gdp * M.laborShare * clamp01(i.employmentRate > 0 ? 1 : 0);
+  const laborIncome = gdp * M.laborShare;
   const capitalIncome = gdp * (1 - M.laborShare) * M.localCapitalShare;
   const grossIncome = laborIncome + capitalIncome;
   const taxes = grossIncome * clamp01(i.householdTaxRate);

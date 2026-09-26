@@ -1,5 +1,6 @@
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { computeWorkforceBreakdown } from './manpower.ts';
+import { demandShares, cityAccounts, recipeMargin, productMeta, type CityAccounts } from './productMarket.ts';
 import { BASKET_KEYS, DEMAND_CHANNELS, basketDemandChannels, basketSpec, channelTotal, emptyChannels,
   toolIntensityOf, toolProductivityMultiplier, type DemandChannel, type DemandInput } from './demandModel.ts';
 
@@ -32,7 +33,13 @@ export interface Edge { id: string; from: string; to: string; cost: number; capa
   mode: 'road'|'river'|'sea'|'spur'; risk: number; toll: number; border: number }
 export interface Fame { city: string; good: string; name: string; streak: number; fame: number; quality: number; created: number|null; turn: number }
 export interface Opening { city: string; good: string; qty: number; quality: number }
-export interface Snapshot { turn: number; goods: Good[]; cities: City[]; producers: Producer[]; edges: Edge[]; opening: Opening[]; fame: Fame[]; blockedTrade?: [string,string][] }
+export interface Snapshot { turn: number; goods: Good[]; cities: City[]; producers: Producer[]; edges: Edge[]; opening: Opening[]; fame: Fame[]; blockedTrade?: [string,string][];
+  /** Last COMMITTED turn's consumption share per city × good (read-only history, never written by refresh). */
+  familiarity?: Record<string, Record<string, number>>;
+  /** Last COMMITTED turn's city budget ratios; absent → bootstrap (unconstrained, flagged). */
+  budget?: Record<string, { discretionary_ratio: number; affordability: number }>;
+  /** Household tax wedge per owner (realm tax rates), for city accounts only. */
+  householdTaxRate?: Record<string, number> }
 export interface Balance { city: string; good: string; opening: number; produced_household: number; produced_node: number;
   produced_facility: number; produced_district: number; consumed_household: number; consumed_state: number;
   consumed_as_input: number; imported: number; exported: number; stored: number; lost_spoilage: number;
@@ -113,6 +120,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // Demand components are filled after the labour market, because operational and civic demand
   // depend on how many jobs are actually staffed. See the DEMAND PASS below.
   const demandComponents=new Map<string,Record<DemandChannel,number>>();
+  const choice:any[]=[];
   const componentsOf=(city:string,good:string)=>{const k=key(city,good);let c=demandComponents.get(k);
     if(!c){c=emptyChannels();demandComponents.set(k,c);}return c;};
   const addChannel=(city:string,good:string,channel:DemandChannel,qty:number)=>{
@@ -278,17 +286,30 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       // Industrial intermediates receive demand from downstream recipes only.
       if(spec.class==='intermediate_only')continue;
       const options=goods.filter(g=>g.basket===basket&&(g.finalUse??g.stage!=='intermediate'));if(!options.length)continue;
-      const weight=(g:Good)=> (g.key.includes('fish')?(c.coastal?3:0.2):1) *
-        (g.key.includes('bread')?(1+n(c.classes.burghers)/Math.max(1,c.population)):1)*Math.max(0.01,g.substitutability);
-      const sum=options.reduce((a,g)=>a+weight(g),0);
+      // PRODUCT CHOICE: bounded attractiveness (preference, region, familiarity, novelty from
+      // local prevalence, quality, fame, reference price). Shares only split the basket need;
+      // they never change its size, so diversity cannot create hunger.
+      const budget=snapshot.budget?.[c.id],afford=budget?clamp(budget.affordability):1;
+      const offer=options.map(g=>stock(c.id,g.key).opening+producers.filter(p=>p.city===c.id&&p.recipe.good===g.key).reduce((s,p)=>s+n(p.capacity)*clamp(p.allocation),0));
+      const offerTotal=offer.reduce((a,b)=>a+b,0);
+      const refPrice=(g:Good)=>g.price*(1+stock(c.id,g.key).quality*C.qualityPremium);
+      const avgPrice=options.reduce((a,g)=>a+refPrice(g),0)/options.length;
+      const shares=demandShares(options.map((g,i)=>({good:g.key,basket,referencePrice:refPrice(g),basketAveragePrice:avgPrice,
+        quality:stock(c.id,g.key).quality,fame:Math.max(0,...snapshot.fame.filter(f=>f.good===g.key&&f.created!=null).map(f=>f.fame),0),
+        familiarity:snapshot.familiarity?.[c.id]?.[g.key]??0,prevalence:offerTotal>0?offer[i]/offerTotal:1/options.length,
+        coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
+      for(const s of shares)choice.push({city:c.id,basket,subbasket:productMeta(s.good,basket).subbasket,...s});
+      const shareOf=new Map(shares.map(s=>[s.good,s.share]));
       const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
       const channels=basketDemandChannels(basket,{...input,weightedPop});
+      // Discretionary spending is hard budget-constrained (previous committed budget, no loop).
+      if(budget)channels.household_discretionary*=clamp(budget.discretionary_ratio);
       const total=channelTotal(channels);
       if(total<=0)continue;
       // Non-household channels (industry, institutions, construction, army) are state-side
       // consumption in the ledger; households consume needs and discretionary goods.
       const household=channels.household_need+channels.household_discretionary;
-      for(const g of options){const share=weight(g)/sum,b=stock(c.id,g.key);
+      for(const g of options){const share=shareOf.get(g.key)??0,b=stock(c.id,g.key);
         b.demand=total*share;
         stateDemand.set(key(c.id,g.key),(total-household)*share);
         for(const channel of DEMAND_CHANNELS)addChannel(c.id,g.key,channel,channels[channel]*share);
@@ -480,7 +501,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0)){
     const origin=cityById.get(f.city),g=goodByKey.get(f.good);if(!origin||!g)continue;
     for(const c of cities.filter(c=>c.id!==origin.id&&c.market>0)){
-      const wanted=c.population*C.fameDemand*f.fame/100;
+      const wanted=c.population*C.fameDemand*f.fame/100*(snapshot.budget?.[c.id]?clamp(snapshot.budget[c.id].discretionary_ratio):1);
       const b=stock(c.id,g.key);b.demand+=wanted;addChannel(c.id,g.key,'fame',wanted);
       const delivered=transfer(origin,c,g,wanted,'famous_good_demand',[],stock(origin.id,g.key).demand*C.reserveTurns);
       b.consumed_household+=delivered;
@@ -524,10 +545,28 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(Math.abs(provenance-b.demand)>1e-6)throw Error(`Demand provenance mismatch ${key(c.id,g.key)}: ${provenance} vs ${b.demand}`);
   }}
   const prices:PriceRow[]=cities.flatMap(c=>goods.map(g=>priceDetail(c.id,g.key)));
+  // COST ≠ MARKET VALUE: producer margin at local prices, inputs valued at the processing city.
+  const recipeOf=new Map(snapshot.producers.map(p=>[p.id,p]));
+  for(const d of diagnostics){const p=recipeOf.get(d.producer);if(!p||!(d.realized>0))continue;
+    const m=recipeMargin(d.realized,priceOf(p.city,p.recipe.good),p.recipe.inputs.map(i=>({qty:d.realized*i.qty/Math.max(C.epsilon,p.recipe.qty),price:priceOf(p.city,i.good)})));
+    (d as any).margin=m;}
+  // CITY ACCOUNTS (derived flows; no private wealth stock, no fiscal writes).
+  const accounts:CityAccounts[]=cities.map(c=>{const own=goods.map(g=>({g,b:stock(c.id,g.key)}));
+    const comp=(g:Good)=>componentsOf(c.id,g.key);
+    const needs=own.filter(({g})=>basketSpec(g.basket)?.class==='critical_need'||basketSpec(g.basket)?.class==='basic_need')
+      .map(({g,b})=>{const ch=comp(g),tot=channelTotal(ch),hh=ch.household_need;
+        return {good:g.key,qty:hh,localPrice:priceOf(c.id,g.key),basePrice:g.price,consumed:tot>0?(b.consumed_household+b.consumed_state)*hh/tot:0};})
+      .filter(x=>x.qty>0);
+    const wish=own.reduce((s,{g})=>s+(comp(g).household_discretionary+comp(g).fame)*priceOf(c.id,g.key),0);
+    const basketConsumption:Record<string,number[]>={};
+    for(const {g,b} of own){if(!(g.finalUse??g.stage!=='intermediate'))continue;(basketConsumption[g.basket] ||= []).push(b.consumed_household+b.consumed_state);}
+    return cityAccounts({city:c.id,valueAdded:own.reduce((s,{b})=>s+b.gross_output_value-b.intermediate_value,0),
+      householdTaxRate:snapshot.householdTaxRate?.[c.owner]??0.1,needs,discretionaryWish:wish,basketConsumption});});
   const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
     channels:{...channels},total:channelTotal(channels)}));
   return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
     workforce:Object.fromEntries(workforce),labor:laborMetrics,demand,
-    toolCoverage:Object.fromEntries(toolCoverage)};
+    toolCoverage:Object.fromEntries(toolCoverage),productChoice:choice,cityAccounts:accounts,
+    budgetMode:snapshot.budget?'previous_committed_turn':'bootstrap_unconstrained'};
 
 }
