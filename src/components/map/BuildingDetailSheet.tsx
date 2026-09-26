@@ -8,6 +8,15 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { ArrowUp, Building2, Clock, Coins, Hammer, Loader2, Sparkles, Users } from "lucide-react";
 import { DEMAND_BASKETS, getBasketMeta, inspectBasketOutputs, scaledBasketOutputs } from "@/lib/goodsCatalog";
+import { useManagementReport } from "@/hooks/useManagementReport";
+
+/** Honest reasons a structure makes nothing this turn. */
+const BLOCKED_REASON: Record<string, string> = {
+  no_workers: "chybí pracovníci", missing_inputs: "vstupy nikde nejsou",
+  missing_input_route: "vstupy existují, chybí cesta", missing_inputs_or_route: "chybí vstupy nebo cesta",
+  missing_local_delivery_route: "chybí cesta do města", missing_recipe_inputs: "chybí zadané vstupy",
+  capacity_labor_or_staffing: "chybí kapacita nebo lidé",
+};
 
 /** Human labels for the flat effect keys buildings and templates carry. */
 const EFFECT_LABELS: Record<string, string> = {
@@ -139,6 +148,33 @@ const BuildingDetailSheet = ({
       .map(([key, value]) => ({ key, label: EFFECT_LABELS[key] || key.replace(/_/g, " "), value }));
   }, [entity, template]);
 
+  /**
+   * LIVE OPERATION. What this exact structure really made last closed turn, with its crew, its
+   * inputs, the settlements those inputs came from and what stopped it. Read-only.
+   */
+  const { data: reportData } = useManagementReport(sessionId, playerName, currentTurn);
+  const operation = useMemo(() => {
+    const lines = ((reportData?.report as any)?.producers || []).filter((p: any) => String(p.producer).split(":")[0] === target?.id);
+    if (!lines.length) return null;
+    const row = { goods: [] as string[], jobs: 0, employed: 0, realized: 0, potential: 0,
+      inputs: [] as any[], suppliers: [] as string[], reasons: [] as string[] };
+    for (const p of lines) {
+      if (!row.goods.includes(p.good)) row.goods.push(p.good);
+      row.jobs += num(p.jobs_capacity); row.employed += num(p.employed);
+      row.realized += num(p.realized); row.potential += num(p.potential_output);
+      for (const i of p.inputs || []) {
+        const found = row.inputs.find((x: any) => x.good === i.good);
+        if (found) { found.required += num(i.required); found.supplied += num(i.supplied); }
+        else row.inputs.push({ good: i.good, required: num(i.required), supplied: num(i.supplied) });
+      }
+      for (const i of p.margin?.inputs || []) if (i.chosen_supplier && !row.suppliers.includes(i.chosen_supplier)) row.suppliers.push(i.chosen_supplier);
+      const reason = p.bottleneck ? `úzké místo: ${p.bottleneck}` : BLOCKED_REASON[p.blocked] || p.blocked || "";
+      if (reason && !row.reasons.includes(reason)) row.reasons.push(reason);
+    }
+    return { ...row, turn: (reportData?.report as any)?.turn };
+  }, [reportData, target]);
+  const supplierName = (id: string) => ((reportData?.report as any)?.cities || []).find((c: any) => c.id === id)?.name || "jiné město";
+
   const inProgress = entity?.status && entity.status !== "completed";
   const duration = num(entity?.build_duration) || num(entity?.build_turns) || 0;
   const turnsLeft = inProgress ? Math.max(0, num(entity?.build_started_turn) + duration - currentTurn) : 0;
@@ -263,6 +299,19 @@ const BuildingDetailSheet = ({
             {isDistrict && num(entity.population_capacity) > 0 && <p className="flex items-center gap-1 text-xs"><Users className="h-3 w-3" />Ubytuje {Math.round(num(entity.population_capacity))} obyvatel</p>}
             {!!entity.building_tags?.length && <p className="text-[11px] text-muted-foreground">Tagy: {entity.building_tags.join(", ")}</p>}
           </section>
+
+          {/* LIVE OPERATION */}
+          {operation && <section className="space-y-1">
+            <h4 className="text-xs font-semibold uppercase text-primary">Jak teď funguje</h4>
+            <p className="text-xs">Vyrábí {operation.goods.join(", ")} — {fmt(operation.realized)} z možných {fmt(operation.potential)} jednotek.</p>
+            <p className="text-[11px] text-muted-foreground">Pracuje {Math.round(operation.employed)} z {Math.round(operation.jobs)} lidí.</p>
+            {operation.inputs.length > 0 && <p className="text-[11px] text-muted-foreground">
+              Potřebuje: {operation.inputs.map((i: any) => `${i.good} ${fmt(i.supplied)}/${fmt(i.required)}`).join(" · ")}
+            </p>}
+            {operation.suppliers.length > 0 && <p className="text-[11px] text-muted-foreground">Vstupy bere z: {operation.suppliers.map(supplierName).join(", ")}</p>}
+            {operation.reasons.length > 0 && <p className="text-[11px] text-amber-300">Brání: {operation.reasons.join(", ")}</p>}
+            <p className="text-[10px] text-muted-foreground">Data z uzavřeného tahu {operation.turn}.</p>
+          </section>}
 
           {/* CITY IMPACT */}
           {Object.keys(outputs).length > 0 && baskets.length > 0 && <section className="space-y-2">

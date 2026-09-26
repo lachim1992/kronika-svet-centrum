@@ -73,24 +73,29 @@ describe('2. settlement level aliases (real templates)', () => {
 describe('3. trade services are gated by real staffing', () => {
   const L = 1 / ECONOMY.workersPerLaborUnit;
   const good = (key: string, basket: string, price = 10): Good => ({ key, basket, price, stage: 'final', storable: true, bulk: 1, density: 30, perishability: 0, storageLoss: 0, storageCost: 0, substitutability: 1, strategic: 0, prestige: 0, transshipment: 0, finalUse: true });
-  const city = (id: string, x: number, labor: any): City => ({ id, owner: 'p', name: id, cell: `${x},0`, population: 1000, classes: { peasants: 800, burghers: 200 }, soldiers: 0, stability: 1, irrigation: 0, labor, market: 3, storage: 3, commercialBaseline: 0, admin: 0, security: 1, guild: 0, ideology: 'open_merchant', coastal: false });
+  const city = (id: string, x: number, labor: any, population = 1000): City => ({ id, owner: 'p', name: id, cell: `${x},0`, population, classes: { peasants: Math.round(population * 0.8), burghers: Math.round(population * 0.2) }, soldiers: 0, stability: 1, irrigation: 0, labor, market: 3, storage: 3, commercialBaseline: 0, admin: 0, security: 1, guild: 0, ideology: 'open_merchant', coastal: false });
   const prod = (id: string, c: string, g: string, cap: number): Producer => ({ id, city: c, channel: 'node', capacity: cap, jobs: cap, recipe: { key: id, good: g, qty: 1, inputs: [], labor: L, quality: 0, minQuality: 0 }, allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: true, distinctive: false });
-  const run = (logistics: number) => {
-    const labor = { farming: 0.4, crafting: 0.3, logistics, administration: 0.3 - logistics };
-    const s: Snapshot = { turn: 2, cities: [city('a', 0, labor), city('b', 1, labor)], goods: [good('raw_grain', 'staple_food', 2)],
+  /**
+   * Labour mobility means a sector share alone no longer starves trade services: what gates them is
+   * how many people the city actually has. Staffing is therefore varied through the population of
+   * the trading city, with identical commercial infrastructure in every run.
+   */
+  const run = (population: number) => {
+    const labor = { farming: 0.4, crafting: 0.3, logistics: 0.2, administration: 0.1 };
+    const s: Snapshot = { turn: 2, cities: [city('a', 0, labor), city('b', 1, labor, population)], goods: [good('raw_grain', 'staple_food', 2)],
       producers: [prod('grain', 'a', 'raw_grain', 60)], edges: [{ id: 'r', from: '0,0', to: '1,0', cost: 1, capacity: 500, mode: 'road', risk: 0, toll: 0, border: 0 }], opening: [], fame: [] };
     const r = resolveGoodsEconomy(s);
     return { m: r.metrics.find(m => m.city === 'b')!.trade_services, lab: r.labor.find(l => l.city === 'b')! };
   };
-  it('same trade + same infrastructure: zero < partial < full staffing; hamlet floor at zero', () => {
-    const zero = run(0), part = run(0.005), full = run(0.3);
-    expect(zero.m.opportunity_total).toBeGreaterThan(0);
-    expect(part.m.opportunity_total).toBeCloseTo(zero.m.opportunity_total, 6);
-    expect(full.m.opportunity_total).toBeCloseTo(zero.m.opportunity_total, 6);
-    expect(zero.m.capture).toBeCloseTo(0.15, 9);
-    expect(zero.m.service_value_added).toBeLessThan(part.m.service_value_added);
-    expect(part.m.service_value_added).toBeLessThan(full.m.service_value_added);
-    expect(full.lab.service!.jobs).toBe(60); expect(full.lab.service!.employed).toBeGreaterThan(part.lab.service!.employed);
+  it('same trade + same infrastructure: fewer people = less staffed trade service; informal floor holds', () => {
+    const tiny = run(20), small = run(120), full = run(2000);
+    expect(tiny.m.opportunity_total).toBeGreaterThan(0);
+    expect(tiny.m.capture).toBeGreaterThanOrEqual(0.15);
+    expect(tiny.lab.service!.jobs).toBe(60);
+    expect(full.lab.service!.jobs).toBe(60);
+    expect(tiny.lab.service!.employed).toBeLessThan(small.lab.service!.employed);
+    expect(small.lab.service!.employed).toBeLessThan(full.lab.service!.employed);
+    expect(tiny.m.capture).toBeLessThan(full.m.capture);
   });
 });
 

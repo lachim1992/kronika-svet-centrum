@@ -42,7 +42,13 @@ export interface Producer { id: string; city: string; node?: string; cell?: stri
 export interface CityLabor { city: string; population: number; economically_active: number; available_workforce: number;
   employed_total: number; unemployed_total: number; jobs_capacity: number; vacancies_total: number;
   employment_rate: number; unemployment_rate: number;
-  sectors: Record<string, { labor_supply: number; jobs_capacity: number; employed: number; vacancies: number; labor_shortage: number; service_jobs?: number; service_employed?: number }>;
+  /** Share of idle labour that can cross sectors this turn (guilds, administration, market, stability). */
+  labor_mobility?: number;
+  /** Workers who actually retrained into another sector this turn. */
+  retrained?: number;
+  /** Idle people while jobs stand empty — the sector mismatch, not a general labour shortage. */
+  structural_unemployed?: number;
+  sectors: Record<string, { labor_supply: number; jobs_capacity: number; employed: number; vacancies: number; labor_shortage: number; transferred_in?: number; service_jobs?: number; service_employed?: number }>;
   /** Trade-service jobs from formal commercial infrastructure (logistics sector, filled after goods producers). */
   service?: { infrastructure: number; jobs: number; employed: number; staffing: number } }
 export interface Edge { id: string; from: string; to: string; cost: number; capacity: number;
@@ -269,33 +275,58 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const employed=new Map<string,number>();
   const laborMetrics:CityLabor[]=[];
   const serviceLabor=new Map<string,{infrastructure:number;jobs:number;employed:number;staffing:number}>();
+  /**
+   * LABOUR MOBILITY. Share of idle labour able to cross into another sector this turn. Guilds,
+   * administration, markets and stability raise it, so structural unemployment is a problem the
+   * player can act on instead of an invisible rounding rule.
+   */
+  const mobilityOf=(c:City)=>{const m=C.laborMobility;
+    return Math.max(0,Math.min(m.max,m.base+n(c.guild)*m.guild+n(c.admin)*m.admin+Math.max(0,n(c.market))*m.market+clamp(c.stability)*m.stability));};
   for(const c of cities){
     const sectors:CityLabor['sectors']={};let jobsTotal=0,employedTotal=0,supplyTotal=0;
-    for(const sector of Object.keys(C.sectors) as Sector[]){
+    // Pass 1: every sector's own labour pool and its own jobs (goods lines + trade services).
+    const plan=(Object.keys(C.sectors) as Sector[]).map(sector=>{
       const supply=laborSupply(c,sector);
       const own=producers.filter(p=>p.city===c.id&&producerSector(p)===sector);
-      const jobs=own.reduce((s,p)=>s+jobsOf(p),0);
-      const fill=jobs>C.epsilon?Math.min(1,supply/jobs):0;
-      for(const p of own)employed.set(p.id,jobsOf(p)*fill);
-      let filled=jobs*fill,allJobs=jobs;
-      const row:CityLabor['sectors'][string]={labor_supply:supply,jobs_capacity:jobs,employed:filled,vacancies:0,labor_shortage:0};
-      if(sector==='logistics'){
-        // TRADE SERVICES: formal market/warehouse/port capacity creates service jobs; they are filled
-        // from logistics labour left after goods producers (one labour market, deterministic order).
-        const infra=Math.max(0,n(c.market)+n(c.storage)-n(c.commercialBaseline));
-        const sJobs=infra*PRODUCT_MARKET.serviceJobsPerCapacity,sEmp=Math.min(sJobs,Math.max(0,supply-filled));
-        serviceLabor.set(c.id,{infrastructure:infra,jobs:sJobs,employed:sEmp,staffing:sJobs>C.epsilon?sEmp/sJobs:0});
-        row.service_jobs=sJobs;row.service_employed=sEmp;filled+=sEmp;allJobs+=sJobs;
-      }
-      row.jobs_capacity=allJobs;row.employed=filled;row.vacancies=Math.max(0,allJobs-filled);row.labor_shortage=Math.max(0,allJobs-supply);
-      sectors[sector]=row;
-      jobsTotal+=allJobs;employedTotal+=filled;supplyTotal+=supply;
+      const goodsJobs=own.reduce((s,p)=>s+jobsOf(p),0);
+      // TRADE SERVICES: formal market/warehouse/port capacity creates service jobs; they are filled
+      // from logistics labour left after goods producers (one labour market, deterministic order).
+      const infra=sector==='logistics'?Math.max(0,n(c.market)+n(c.storage)-n(c.commercialBaseline)):0;
+      const serviceJobs=infra*PRODUCT_MARKET.serviceJobsPerCapacity;
+      return {sector,supply,own,goodsJobs,serviceJobs,infra,jobs:goodsJobs+serviceJobs,transferred:0};
+    });
+    /**
+     * Pass 2: RETRAINING. Idle labour in oversupplied sectors covers vacancies elsewhere, but only
+     * up to the city's mobility. What stays idle next to an empty workshop is structural
+     * unemployment — reported explicitly so it can be fixed, not silently hidden.
+     */
+    const mobility=mobilityOf(c);
+    const surplus=plan.reduce((s,r)=>s+Math.max(0,r.supply-r.jobs),0);
+    const deficit=plan.reduce((s,r)=>s+Math.max(0,r.jobs-r.supply),0);
+    const moved=Math.min(surplus*mobility,deficit);
+    if(moved>C.epsilon&&deficit>C.epsilon)for(const r of plan)r.transferred=moved*Math.max(0,r.jobs-r.supply)/deficit;
+    for(const r of plan){
+      const available=r.supply+r.transferred;
+      const goodsUsed=Math.min(available,r.goodsJobs),fill=r.goodsJobs>C.epsilon?goodsUsed/r.goodsJobs:0;
+      for(const p of r.own)employed.set(p.id,jobsOf(p)*fill);
+      const serviceEmployed=Math.min(r.serviceJobs,Math.max(0,available-goodsUsed));
+      const filled=goodsUsed+serviceEmployed;
+      if(r.sector==='logistics')serviceLabor.set(c.id,{infrastructure:r.infra,jobs:r.serviceJobs,employed:serviceEmployed,
+        staffing:r.serviceJobs>C.epsilon?serviceEmployed/r.serviceJobs:0});
+      sectors[r.sector]={labor_supply:r.supply,jobs_capacity:r.jobs,employed:filled,
+        vacancies:Math.max(0,r.jobs-filled),labor_shortage:Math.max(0,r.jobs-available),
+        transferred_in:r.transferred,
+        ...(r.sector==='logistics'?{service_jobs:r.serviceJobs,service_employed:serviceEmployed}:{})};
+      jobsTotal+=r.jobs;employedTotal+=filled;supplyTotal+=r.supply;
     }
     const active=workforce.get(c.id)!.effectiveActivePop;
+    const unemployed=Math.max(0,supplyTotal-employedTotal),vacancies=Math.max(0,jobsTotal-employedTotal);
     laborMetrics.push({city:c.id,population:c.population,economically_active:active,
       available_workforce:workforce.get(c.id)!.workforce,employed_total:employedTotal,
-      unemployed_total:Math.max(0,supplyTotal-employedTotal),jobs_capacity:jobsTotal,
-      vacancies_total:Math.max(0,jobsTotal-employedTotal),
+      unemployed_total:unemployed,jobs_capacity:jobsTotal,vacancies_total:vacancies,
+      labor_mobility:mobility,retrained:moved,
+      // People idle while jobs stand empty: the mismatch itself, not a general labour shortage.
+      structural_unemployed:Math.min(unemployed,vacancies),
       employment_rate:supplyTotal>C.epsilon?employedTotal/supplyTotal:0,
       unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors,service:serviceLabor.get(c.id)});
   }

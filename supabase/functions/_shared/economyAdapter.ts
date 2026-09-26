@@ -13,12 +13,27 @@ const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
 /** Baseline market/granary capability that any inhabited settlement has by its size alone. */
 const settlementBaseline=(population:unknown)=>{const p=nonnegative(population);
   return p>=8000?3:p>=4000?2:p>=1500?1:p>0?0.5:0;};
+/**
+ * A Postgres statement timeout (57014) is a transient load symptom, not a broken economy: the same
+ * read succeeds moments later. Retry it a couple of times with backoff, and keep failing closed on
+ * every other error so a partial read can never masquerade as an empty economy.
+ */
+async function query<T>(label:string,run:()=>Promise<{data:T;error:any}>):Promise<T>{
+  for(let attempt=1;;attempt++){
+    const r=await run();
+    if(!r.error)return r.data;
+    if(attempt>=3||r.error.code!=='57014')throw Error(`${label}: ${r.error.message}`);
+    console.warn(`[economy] ${label}: databáze nestíhala (${attempt}. pokus), opakuji`);
+    await new Promise(resolve=>setTimeout(resolve,600*attempt));
+  }
+}
 /** Fail closed: pagination and DB failures must never masquerade as an empty economy. */
 async function rows(sb:any,table:string,session?:string){
   const out:any[]=[];
   const orderBy=table==='goods'?'key':table==='production_recipes'?'recipe_key':table==='node_production_orders'?'node_id':'id';
-  for(let start=0;;start+=1000){let q=sb.from(table).select('*').order(orderBy,{ascending:true}).range(start,start+999);if(session)q=q.eq('session_id',session);
-    const r=await q;if(r.error)throw Error(`${table}: ${r.error.message}`);out.push(...r.data);if(r.data.length<1000)return out;}
+  for(let start=0;;start+=1000){
+    const page=await query<any[]>(table,()=>{let q=sb.from(table).select('*').order(orderBy,{ascending:true}).range(start,start+999);if(session)q=q.eq('session_id',session);return q;});
+    out.push(...page);if(page.length<1000)return out;}
 }
 /**
  * LEGACY ROLE COMPATIBILITY lives in productionContract.ts (one shared normalizer). Saved
@@ -32,13 +47,13 @@ const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clo
 const basket=(v:string)=>remap[v]||v;
 /** Refresh report fiscal fields after the fiscal transaction, without rerunning production. */
 export async function finalizeManagementReports(sb:any,session:string,turn:number){
-  const ledger=await sb.from('economy_turn_ledgers').select('result').eq('session_id',session).eq('turn_number',turn).single();
-  if(ledger.error)throw ledger.error;
-  const result=ledger.data?.result;if(!result?.snapshot)throw new Error('Missing physical snapshot');
-  const previous=await sb.from('economy_turn_ledgers').select('committed_result').eq('session_id',session).eq('turn_number',turn-1).eq('committed',true).maybeSingle();
-  if(previous.error)throw previous.error;
+  const ledger=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers').select('result').eq('session_id',session).eq('turn_number',turn).single());
+  const result=ledger?.result;if(!result?.snapshot)throw new Error('Missing physical snapshot');
+  // Only last turn's management section is needed for the trend columns, never the whole ledger.
+  const previous=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
+    .select('management:committed_result->management').eq('session_id',session).eq('turn_number',turn-1).eq('committed',true).maybeSingle());
   const realms=await rows(sb,'realm_resources',session);
-  const reports=Object.fromEntries(realms.map(realm=>[realm.player_name,buildManagementReport(result.snapshot,result,realm,previous.data?.committed_result?.management?.[realm.player_name])]));
+  const reports=Object.fromEntries(realms.map(realm=>[realm.player_name,buildManagementReport(result.snapshot,result,realm,(previous?.management??previous?.committed_result?.management)?.[realm.player_name])]));
   const saved=await sb.rpc('update_goods_management_reports',{p_session:session,p_turn:turn,p_reports:reports});
   if(saved.error)throw saved.error;
 }
@@ -46,13 +61,21 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations','node_projects'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
-  const sess=await sb.from('game_sessions').select('current_turn').eq('id',session).single();if(sess.error)throw sess.error;
-  const turn=sess.data.current_turn;
-  const previous=await sb.from('economy_turn_ledgers').select('committed_result').eq('session_id',session).lt('turn_number',turn).eq('committed',true).order('turn_number',{ascending:false}).limit(1).maybeSingle();
-  if(previous.error)throw previous.error;
-  const prior=previous.data?.committed_result;
-  const current=await sb.from('economy_turn_ledgers').select('result').eq('session_id',session).eq('turn_number',turn).maybeSingle();
-  if(current.error)throw current.error;
+  const sess=await query<any>('game_sessions',()=>sb.from('game_sessions').select('current_turn').eq('id',session).single());
+  const turn=sess.current_turn;
+  /**
+   * The committed ledger is a very large JSON document (flows, diagnostics, per-good balances of
+   * every city). Only five of its sections are ever read here, so ask Postgres for those sections
+   * instead of the whole document — the full read is what pushes this query into a statement timeout.
+   */
+  const previous=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
+    .select('prices:committed_result->prices,balances:committed_result->balances,cityAccounts:committed_result->cityAccounts,famous:committed_result->famous,management:committed_result->management')
+    .eq('session_id',session).lt('turn_number',turn).eq('committed',true).order('turn_number',{ascending:false}).limit(1).maybeSingle());
+  // PostgREST returns the requested sections directly; a client that ignores column selection
+  // returns the whole document, so accept both shapes.
+  const prior=previous?.committed_result??previous??null;
+  const current=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
+    .select('opening:result->opening').eq('session_id',session).eq('turn_number',turn).maybeSingle());
   const goods:Good[]=db.goods.map(g=>{
     const bk=basket(g.demand_basket);if(!basketSpec(bk))throw Error(`Unmapped basket for good ${g.key}: ${bk}`);
     const profile=g.friction_profile||{};
@@ -315,7 +338,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     }
     for(let i=producers.length-1;i>=0;i--)if(!(producers[i].allocation>0))producers.splice(i,1);
   }
-  let opening=prior?.balances?.filter((b:any)=>cityMap.has(b.city)).map((b:any)=>({city:b.city,good:b.good,qty:b.stored,quality:b.quality}))??current.data?.result?.opening;
+  let opening=prior?.balances?.filter((b:any)=>cityMap.has(b.city)).map((b:any)=>({city:b.city,good:b.good,qty:b.stored,quality:b.quality}))??current?.result?.opening??current?.opening;
   if(!opening){
     opening=[];
     // First adoption preserves existing inventories. Subsequent refreshes reuse
