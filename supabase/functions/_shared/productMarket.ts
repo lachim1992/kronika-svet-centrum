@@ -48,7 +48,7 @@ export const PRODUCT_MARKET = {
    * cancelled out: when a city's prices rise at the same income, its real purchasing power and
    * affordability fall.
    */
-  incomeUnitFactor: 0, // set below by calibrateIncomeUnitFactor() — derived, never hand-tuned
+  incomeUnitFactor: 0 as number, // set below by calibrateIncomeUnitFactor() — derived, never hand-tuned
   // ── LANDED INPUT COST (sourcing) ──
   /** Monetised risk per unit of route risk, as a share of the source price. */
   landedRiskShare: 0.05,
