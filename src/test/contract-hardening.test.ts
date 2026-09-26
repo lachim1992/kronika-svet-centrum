@@ -12,7 +12,7 @@ import {
 } from '../../supabase/functions/_shared/productionContract.ts';
 
 const drawWater = { recipe_key: 'draw_water', required_role: 'source', input_items: [], output_good_key: 'drinking_water' };
-const bakeBread = { recipe_key: 'bake_bread', required_role: 'producer', input_items: [{ good_key: 'grain', qty: 2 }], output_good_key: 'baked_staples' };
+const bakeBread = { recipe_key: 'bake_bread', required_role: 'producer', input_items: [{ good_key: 'grain', qty: 2 }], required_tags: ['bakery'], output_good_key: 'baked_staples' };
 const recipes = [drawWater, bakeBread];
 
 describe('normalizeProductionContract', () => {
@@ -84,7 +84,6 @@ describe('auditProductionContracts', () => {
         template({ name: 'ZlyRole', effects: { recipe_keys: ['bake_bread'], production_roles: ['trade'], capability_tags: ['bakery'] } }),
         template({ name: 'ChybiTag', effects: { recipe_keys: ['need_tag'], production_roles: ['producer'], capability_tags: [] } }),
       ],
-      recipesExtra: [],
     } as any);
     const issues = f.map(x => `${x.id}:${x.issue}`).join('|');
     expect(issues).toContain('METROPOLIS');
