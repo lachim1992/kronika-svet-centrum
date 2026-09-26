@@ -7,6 +7,7 @@ import { buildManagementReport } from './management.ts';
 import { BASKET_KEYS, basketSpec, needBand, alertPriority, shortageEffect, basketSeverity } from './demandModel.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
 import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
+import { autoAllocation, craftsmanship } from './productMarket.ts';
 
 const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
 /** Baseline market/granary capability that any inhabited settlement has by its size alone. */
@@ -58,6 +59,9 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   });
   const goodMap=new Map(goods.map(g=>[g.key,g]));
   const role=(r:any)=>r.required_role==='producer'?(goodMap.get(r.output_good_key)?.stage==='raw'?'source':'processing'):r.required_role;
+  // Persisted city capital stock (process-turn is its only writer); tolerate a missing table.
+  const capitalRows=await sb.from('city_capital_stock').select('city_id,stock').eq('session_id',session);
+  const capitalByCity=new Map<string,number>((capitalRows.error?[]:capitalRows.data||[]).map((r:any)=>[r.city_id,nonnegative(r.stock)]));
   const cities:City[]=db.cities.filter(c=>c.owner_player&&(!c.status||c.status==='ok')).map(c=>{
     const realm=db.realm_resources.find(r=>r.player_name===c.owner_player)||{};
     const lawModifiers=workforceLawModifiers(db.laws.filter(l=>l.player_name===c.owner_player));
@@ -76,6 +80,8 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       market:nonnegative(c.market_level)+settlementBaseline(c.population_total),
       storage:effects.reduce((s,e)=>s+nonnegative(e.storage_capacity??e.warehouse_level),0)+settlementBaseline(c.population_total),
       admin:nonnegative(c.temple_level),
+      housingHeadroom:nonnegative(c.housing_capacity)>0?Math.max(0,Math.min(1,1-nonnegative(c.population_total)/nonnegative(c.housing_capacity))):0.5,
+      capitalStock:capitalByCity.get(c.id)||0,
       // Construction demand exists only while something is actually being built.
       constructionProjects:db.city_buildings.filter(b=>b.city_id===c.id&&b.status!=='completed').length+
         db.city_districts.filter(d=>d.city_id===c.id&&d.status!=='completed').length+
