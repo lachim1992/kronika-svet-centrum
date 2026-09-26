@@ -207,7 +207,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(transport>unit||p.cost>reach*policy.reach)return 0;
     if ((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0) return 0;
     // Price gradient: merchants move goods for realized value differences, not for bare deficits.
-    const sourcePrice=priceOf(src.id,g.key),destinationPrice=priceOf(dst.id,g.key);
+    // A branded good is acquired at its unbranded origin value; its fame premium is realised
+    // at the destination WTP only (fame never enters production/acquisition cost).
+    const sd=priceDetail(src.id,g.key),sourcePrice=branded?sd.local_price/Math.max(C.epsilon,sd.fame_factor):sd.local_price,destinationPrice=priceOf(dst.id,g.key);
     const risk=p.edges.reduce((a,e)=>a+n(e.risk),0)*C.priceRiskCost*destinationPrice;
     // Origin-specific WTP: a branded good sells at the destination's base valuation × its OWN origin
     // fame premium (the destination's own fame factor for that good is removed). Fame acts on WTP only.
