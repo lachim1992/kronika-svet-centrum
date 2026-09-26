@@ -42,6 +42,13 @@ export const PRODUCT_MARKET = {
   propensityToConsume: 0.95,
   /** Tax wedge applied to household income: domestic + poll proxy from realm tax rates. */
   defaultHouseholdTaxRate: 0.1,
+  /**
+   * ONE global unit conversion from constant-price value added to household money. Identical
+   * for every city and independent of current local prices, so local inflation/scarcity is NOT
+   * cancelled out: when a city's prices rise at the same income, its real purchasing power and
+   * affordability fall.
+   */
+  incomeUnitFactor: 1,
   // ── LANDED INPUT COST (sourcing) ──
   /** Monetised risk per unit of route risk, as a share of the source price. */
   landedRiskShare: 0.05,
@@ -50,8 +57,15 @@ export const PRODUCT_MARKET = {
   // ── AUTO PRODUCTION ──
   /** Weight of margin ratio vs basket necessity in AUTO allocation (bounded, no loop). */
   autoMarginWeight: 1,
-  /** Loss-making options keep this tiny weight only if NO profitable legal option exists. */
+  /** Loss-making AUTO options that are not essential always get this (zero). */
   autoLossFloor: 0,
+  /**
+   * Emergency floor (share of necessity weight) for loss-making AUTO production of a critical /
+   * basic need or explicit strategic operational good when nothing profitable exists. Flagged as
+   * emergency_unprofitable_production in diagnostics. Fame never qualifies a recipe for it.
+   */
+  autoEmergencyFloor: 0.5,
+  strategicOperationalBaskets: ['tools'] as readonly string[],
   // ── TRADE SERVICES (service demand rates on gross handled value; only this margin is VA) ──
   serviceRates: { local_exchange: 0.03, import_export: 0.05, aggregation: 0.04, reexport: 0.06, transit: 0.01 },
   /** Capture without any staffed commercial capacity (a road passing a hamlet). */
@@ -88,17 +102,27 @@ export function landedInputCost(i: { sourcePrice: number; transport: number; tol
 }
 
 /**
- * AUTO allocation among legal recipes of one structure. Weight = necessity × margin ratio (from
- * the previous committed / reference prices — never the same pass, so no price loop).
- * Loss-making options get zero whenever a profitable legal option exists; if nothing pays, the
- * structure keeps its necessity weights (a starter farm never stops feeding people) and the
- * diagnostics flag the loss.
+ * AUTO allocation among legal recipes of one structure. Weight = necessity × (1 + margin ratio),
+ * margin ratio being an EXPECTED MARGIN PROXY at previous committed / reference prices (never the
+ * same pass, so no price loop; not a precise landed-cost forecast).
+ *   margin > 0                      → weighted by necessity × margin
+ *   margin ≤ 0, non-essential       → 0 (luxury/discretionary/famous never run at a loss on AUTO)
+ *   margin ≤ 0, essential, and NO profitable option in the structure → bounded emergency floor,
+ *                                     flagged emergency_unprofitable_production
+ * Callers normalise by max(Σweights, Σnecessity) so a floor never expands to full capacity.
  */
-export function autoAllocation(options: { key: string; necessity: number; marginRatio: number }[]) {
-  const profitable = options.filter(o => o.marginRatio > 0);
-  if (!profitable.length) return Object.fromEntries(options.map(o => [o.key, pos(o.necessity)]));
-  return Object.fromEntries(options.map(o => [o.key, o.marginRatio > 0
-    ? pos(o.necessity) * (1 + PRODUCT_MARKET.autoMarginWeight * Math.min(1, o.marginRatio)) : PRODUCT_MARKET.autoLossFloor]));
+export function autoAllocationDetail(options: { key: string; necessity: number; marginRatio: number; essential?: boolean }[]) {
+  const M = PRODUCT_MARKET, anyProfitable = options.some(o => o.marginRatio > 0);
+  const weights: Record<string, number> = {}, flags: Record<string, 'emergency_unprofitable_production' | 'auto_loss_stopped' | null> = {};
+  for (const o of options) {
+    if (o.marginRatio > 0) { weights[o.key] = pos(o.necessity) * (1 + M.autoMarginWeight * Math.min(1, o.marginRatio)); flags[o.key] = null; }
+    else if (o.essential && !anyProfitable) { weights[o.key] = pos(o.necessity) * M.autoEmergencyFloor; flags[o.key] = 'emergency_unprofitable_production'; }
+    else { weights[o.key] = M.autoLossFloor; flags[o.key] = 'auto_loss_stopped'; }
+  }
+  return { weights, flags };
+}
+export function autoAllocation(options: { key: string; necessity: number; marginRatio: number; essential?: boolean }[]) {
+  return autoAllocationDetail(options).weights;
 }
 
 /**
