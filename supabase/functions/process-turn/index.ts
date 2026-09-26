@@ -111,15 +111,12 @@ function computeCityLayerEconomy(city: any, buildingEffects: Record<string, numb
 
   // Building multipliers (from completed buildings in this city)
   const prodMult = 1 + (buildingEffects.production_modifier || 0) / 100;
-  const wealthMult = 1 + (buildingEffects.wealth_modifier || 0) / 100;
   const capacityMult = 1 + (buildingEffects.capacity_modifier || 0) / 100;
   const faithMult = 1 + (buildingEffects.faith_modifier || 0) / 100;
 
   // Temple level boosts faith
   const templeBonus = 1 + (city.temple_level || 0) * 0.15;
 
-  // Market level boosts wealth
-  const marketBonus = 1 + (city.market_level || 0) * 0.12;
 
   // POPULATION NEVER CREATES WEALTH. The legacy population-derived `wealth` layer is removed:
   // fiscal revenue comes from the canonical tax pillars and city value added from the goods ledger.
