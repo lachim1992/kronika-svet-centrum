@@ -1,0 +1,1 @@
+- Product choice, diversity, city accounts and recipe margins live only in `supabase/functions/_shared/productMarket.ts`; the UI reads `economy_turn_ledgers.result.cityAccounts/productChoice` and never recomputes them — single source of truth for new economy formulas.

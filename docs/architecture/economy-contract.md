@@ -192,3 +192,14 @@ Zbývající writeři populace (záměrně, mimo rozsah fáze A):
 destruktivní akce), world-gen funkce (`mp-world-generate`,
 `world-generate-init`, `generate-civ-start`, `seed-realm-skeleton`) a migrace
 ve `world-tick`. Ty se dorovnají v dalších fázích.
+
+## Product market layer (Economy Pass, 2026-09-26)
+
+`_shared/productMarket.ts` is the only source of truth for the constants and formulas below. It is pure and called only from the canonical goods solver.
+
+- **Basket → subbasket → product → famous variant.** `PRODUCT_META` holds extensible metadata: subbasket, functional_value, base_preference, substitutability, origin, distinctiveness. Famous variants stay as `famous_goods` rows (city × good), never as duplicated goods.
+- **Product choice.** The size of a basket's need comes from demandModel. Product shares only split that need. The factors are preference × region × familiarity × novelty × quality × fame × reference price, each bounded. Novelty is derived from local prevalence and saturates; the engine never uses 1/production anywhere.
+- **Diversity.** The effective number of products per basket (exp Shannon) is a utility metric only. It never changes need or survival. The `variety` basket keeps its own content role.
+- **City accounts** (`result.cityAccounts`, current-turn projection) track city_gdp (Σ equals realm value_added_gdp), household income (labour share plus local capital share of value added), taxes, disposable income, purchasing power, basic basket cost, price index, real purchasing power, discretionary budget, physical need coverage and affordability gap. These are flows only; there is no private wealth stock.
+- **Need ≠ effective demand.** Household need never shrinks with poverty. The discretionary channel and fame demand are scaled by the discretionary ratio from the last **committed** turn. This avoids a price↔demand loop, and on the first computation the ratio is `bootstrap_unconstrained`.
+- **Cost ≠ value.** Producer diagnostics carry `margin` at local prices; input costs never raise the output price. `autoRecipeWeights` gives loss-making recipes zero weight.

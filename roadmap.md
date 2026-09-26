@@ -190,3 +190,10 @@
 - [x] Mortalita z nedostatku pitné vody se aplikuje (pásmo critical, max 2 % populace, přes applyPopulationLoss)
 - [ ] Zbývá: production_reserve gating
 
+
+## Economy pass: produkty, kupní síla (hotovo – základ, tah 10)
+- [x] Koš → podkoš → produkt, volba produktu, rozmanitost, městské účty, marže výrobce
+- [ ] Automatické rozdělení výroby podle marže (AUTO objednávky) — funkce připravena, zapojení odloženo
+- [ ] Soukromé bohatství domácností (zásoba) — odloženo, chybí rozumná startovní kalibrace
+- [ ] Kalibrace příjmů vs. cen základního koše (dnes všude mezera dostupnosti)
+- [ ] Nové produkty (další druhy chleba atd.) — vyžadují řádky zboží a receptů
