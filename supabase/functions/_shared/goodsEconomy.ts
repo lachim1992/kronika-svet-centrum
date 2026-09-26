@@ -209,34 +209,36 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const b=stock(src.id,g.key),db=stock(dst.id,g.key);const fame=priorFame.get(key(src.id,g.key));
     const branded=fame?.created!=null&&fame.fame>0;
     const premium=branded?C.famePremium*fame!.fame/100:0;
-    const unit=g.price*(1+b.quality*C.qualityPremium)*(1+premium);
+    // Acquisition value at origin NEVER carries fame: fame acts on destination WTP only.
+    const unit=g.price*(1+b.quality*C.qualityPremium);
     // Industrial inputs are pulled by factories, not by shoppers: they reach further.
     const reach=(C.localReach+g.density+g.strategic*C.regionalReach+g.prestige*C.regionalReach+(branded?fame!.fame:0))
       *(reason==='production_input'?C.inputReachBonus:1);
     const transport=p.cost*policy.merchantFriction;
-    if(transport>unit||p.cost>reach*policy.reach)return 0;
-    if ((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0) return 0;
-    // Price gradient: merchants move goods for realized value differences, not for bare deficits.
-    // A branded good is acquired at its unbranded origin value; its fame premium is realised
-    // at the destination WTP only (fame never enters production/acquisition cost).
+    if(p.cost>reach*policy.reach)return 0;
     const sd=priceDetail(src.id,g.key),sourcePrice=branded?sd.local_price/Math.max(C.epsilon,sd.fame_factor):sd.local_price,destinationPrice=priceOf(dst.id,g.key);
     const risk=p.edges.reduce((a,e)=>a+n(e.risk),0)*C.priceRiskCost*destinationPrice;
-    // Origin-specific WTP: a branded good sells at the destination's base valuation × its OWN origin
-    // fame premium (the destination's own fame factor for that good is removed). Fame acts on WTP only.
-    const dd=priceDetail(dst.id,g.key),destinationWTP=branded?dd.local_price/Math.max(C.epsilon,dd.fame_factor)*(1+premium):destinationPrice;
+    // Origin-specific WTP: destination base valuation × the good's OWN origin fame premium
+    // (destination's own fame factor removed). A factory buying an input pays no fame premium.
+    const dd=priceDetail(dst.id,g.key),baseWTP=branded?dd.local_price/Math.max(C.epsilon,dd.fame_factor):destinationPrice;
+    const destinationWTP=branded&&reason!=='production_input'?baseWTP*(1+premium):baseWTP;
+    // ONE economics for every guard: sourcePrice + destination WTP + transport + tolls + tariff + risk.
     const margin=destinationWTP*(1-p.loss)*(1-targetPolicy.tariff)-sourcePrice-transport-p.tolls-risk;
     if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return 0;
-    // Factories do not buy at any price: landed cost is capped at a bounded multiple of the base price.
-    if(reason==='production_input'&&(landed(src,dst,g)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple)return 0;
+    // Factories are cost-driven: the physical haul must be worth the good, and the landed cost is capped.
+    if(reason==='production_input'&&((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0
+      ||(landed(src,dst,g)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple))return 0;
+    // Realised sale value per delivered unit (gross trade — never GDP; only service margin is VA).
+    const saleUnit=reason==='production_input'?unit:destinationWTP;
     const qty=Math.min(Math.max(0,available(b)-keep),wanted/(1-p.loss),p.capacity)*targetPolicy.imports;
     if(qty<C.minLot)return 0;const delivered=qty*(1-p.loss),before=available(db);
     b.exported+=qty;db.imported+=delivered;db.quality=(before*db.quality+delivered*b.quality)/(before+delivered);
     // Lost transport quantity is recorded at destination as import+loss for conservation.
     db.imported+=qty-delivered;db.lost_spoilage+=qty-delivered;
     for(const e of p.edges)reserved.set(e.id,(reserved.get(e.id)||0)+qty*Math.max(1,g.bulk));
-    const tolls=qty*(p.tolls+unit*targetPolicy.tariff);
-    flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:b.quality,gross_value:delivered*unit,
-      transport_cost:qty*transport,tolls,net_value:delivered*unit-qty*transport-tolls,reason:branded&&reason==='household_consumption'?'famous_good_demand':reason,
+    const tolls=qty*(p.tolls+saleUnit*targetPolicy.tariff);
+    flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:b.quality,gross_value:delivered*saleUnit,
+      transport_cost:qty*transport,tolls,net_value:delivered*saleUnit-qty*transport-tolls,reason:branded&&reason==='household_consumption'?'famous_good_demand':reason,
       path:p.cells,edges:p.edges.map(e=>e.id),via_hubs:via.filter(id=>p.cells.includes(cityById.get(id)?.cell||'')),famous:branded?key(src.id,g.key):null,
       source_price:sourcePrice,destination_price:destinationPrice,destination_wtp:destinationWTP,expected_margin:margin*delivered});return delivered;
 
