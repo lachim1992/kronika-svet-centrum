@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
 
   const tCommit = Date.now();
   let execution: {client:any;session:string;turn:number}|undefined;
+  let effectsStarted = false;
   const results: Record<string, any> = {};
   try {
     const { sessionId, playerName, skipNarrative, expectedTurn } = await req.json();
@@ -85,12 +86,14 @@ Deno.serve(async (req) => {
     if(expectedTurn!==undefined&&expectedTurn!==turnNumber)return new Response(JSON.stringify({ok:false,error:'Tah se mezitím změnil. Obnovte stav hry.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
     const {data:acquired}=await supabase.rpc('acquire_turn_execution',{p_session:sessionId,p_turn:turnNumber});
     if(acquired!==true)return new Response(JSON.stringify({ok:false,error:'Zpracování tahu již běží nebo předchozí pokus vyžaduje opravu. Tah nebyl opakován.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
-    execution={client:supabase,session:sessionId,turn:turnNumber};
+    execution={client:supabase,session:sessionId,turn:turnNumber};effectsStarted=false;
     const isAIMode = session.game_mode === "tb_single_ai";
 
     // ═══════════════════════════════════════════
     // 1. WORLD TICK (idempotent via world_tick_log)
     // ═══════════════════════════════════════════
+    // From here on the turn may write game state; earlier failures are safe to retry.
+    effectsStarted = true;
     const { data: existingTick } = await supabase
       .from("world_tick_log")
       .select("id, status, results")
@@ -1604,7 +1607,7 @@ Deno.serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
-    if(execution)try{await execution.client.from('turn_execution_guards').update({status:'failed',finished_at:new Date().toISOString(),report:results,error:(err as Error).message}).eq('session_id',execution.session).eq('turn_number',execution.turn);}catch{/* Existing running guard still blocks replay. */}
+    if(execution)try{await execution.client.from('turn_execution_guards').update({status:effectsStarted?'failed':'reconciled',finished_at:new Date().toISOString(),report:results,error:(err as Error).message}).eq('session_id',execution.session).eq('turn_number',execution.turn);}catch{/* Existing running guard still blocks replay. */}
     console.error("commit-turn error:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },

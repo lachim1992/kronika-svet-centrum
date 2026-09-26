@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, Activity, Trash2 } from "lucide-react";
 
 interface PhaseResult {
@@ -38,6 +40,8 @@ export function saveCommitTurnReport(report: CommitTurnReport) {
 
 interface Props {
   sessionId: string;
+  canReconcile?: boolean;
+  onReconciled?: () => void;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -74,8 +78,21 @@ const StatusIcon = ({ s }: { s: ReturnType<typeof statusOf> }) => {
   return <div className="h-3.5 w-3.5 rounded-full bg-muted" />;
 };
 
-const TurnExecutionReport = ({ sessionId }: Props) => {
+const TurnExecutionReport = ({ sessionId, canReconcile, onReconciled }: Props) => {
   const [report, setReport] = useState<CommitTurnReport | null>(null);
+  const [fixing, setFixing] = useState(false);
+  const reconcile = async () => {
+    setFixing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("reconcile-turn", { body: { sessionId } });
+      if (error || !data?.ok) throw new Error(data?.error || error?.message);
+      if (data.reconciled) toast.success("Tah opraven — ukonči kolo znovu, dokončí se zbývající fáze.");
+      else toast.info("Žádný zablokovaný tah k opravě.");
+      onReconciled?.();
+    } catch (e: any) {
+      toast.error("Opravu tahu se nepodařilo provést", { description: e?.message });
+    } finally { setFixing(false); }
+  };
   const [open, setOpen] = useState(false);
 
   const load = () => {
@@ -135,6 +152,11 @@ const TurnExecutionReport = ({ sessionId }: Props) => {
 
         <CollapsibleContent>
           <div className="px-3 pb-3 pt-1 space-y-2 border-t border-border/50">
+            {canReconcile && !report.ok && (
+              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={fixing} onClick={reconcile}>
+                Opravit a dokončit tah
+              </Button>
+            )}
             {report.topError && (
               <div className="text-xs p-2 rounded bg-red-500/10 text-red-300 border border-red-500/30">
                 Hlavní chyba: {report.topError}
