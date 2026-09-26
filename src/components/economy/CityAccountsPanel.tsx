@@ -94,7 +94,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
                         příjem práce {f(a.labor_income)} · příjem z majetku {f(a.capital_income)} · dostupnost {pct(a.affordability)}
                       </div>
                       <div className="font-medium mb-1">Proč lidé volí dané zboží (násobky, 1 = neutrální)</div>
-                      <div className="grid grid-cols-11 gap-1">
+                      <div className="grid grid-cols-12 gap-1">
                         <span>zboží</span><span>podkoš</span><span>podíl podkoše</span><span>v podkoši</span><span>podíl</span><span>obliba</span><span>region</span><span>zvyk</span><span>novost</span><span>kvalita</span><span>věhlas</span><span>cena</span>
                         {choice.filter(c => c.city === city.id).map(c => (
                           <Fragment key={c.good}>
