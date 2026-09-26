@@ -341,7 +341,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,priorPrices,householdTaxRate,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
   const physical=resolveGoodsEconomy(snapshot);
   const management=Object.fromEntries(db.realm_resources.map(r=>[r.player_name,buildManagementReport(snapshot,physical,r,prior?.management?.[r.player_name])]));
-  const result={...physical,opening,snapshot,management};
+  const result={...physical,opening,snapshot,management,contractNormalizations:contractNotes};
   // Anchor every city on its own settlement node (node_subtype 'city'); only fall back to
   // another node of the same city when the settlement node is missing. Cities must never
   // drop out of the projection just because a workshop node was indexed first.
