@@ -270,11 +270,58 @@ export function attractiveness(i: ProductChoiceInput): Attractiveness {
   return { good: i.good, preference, region, familiarity, novelty, quality, fame, price, total };
 }
 
-/** Normalised demand shares; sum exactly 1 (or all 0 when no option). Deterministic tie order. */
+/** Subbasket metadata (extensible). Unknown subbaskets default to base_weight 1. */
+export const SUBBASKET_META: Record<string, { base_weight: number }> = {
+  bread: { base_weight: 1 }, grain_porridge: { base_weight: 1 }, preserved: { base_weight: 1 }, protein: { base_weight: 1 },
+  water: { base_weight: 1 }, solid_fuel: { base_weight: 1 }, garments: { base_weight: 1 },
+};
+export const subbasketWeight = (sub: string) => pos(SUBBASKET_META[sub]?.base_weight ?? 1);
+
+/**
+ * Two-level demand shares: basket functional need → subbasket share → product share within the
+ * subbasket. Subbasket score = base_weight × attractiveness-weighted MEAN of its products
+ * (Σt²/Σt, bounded by the best product), never a sum — 10 identical bread variants do not enlarge
+ * the bread subbasket. Product shares over the whole basket sum to exactly 1. Deterministic order.
+ */
 export function demandShares(options: ProductChoiceInput[]) {
-  const rows = [...options].sort((a, b) => a.good.localeCompare(b.good)).map(attractiveness);
-  const sum = rows.reduce((s, r) => s + r.total, 0);
-  return rows.map(r => ({ ...r, share: sum > 0 ? r.total / sum : 0 }));
+  const rows = [...options].sort((a, b) => a.good.localeCompare(b.good))
+    .map(o => ({ ...attractiveness(o), subbasket: productMeta(o.good, o.basket).subbasket }));
+  const subs = new Map<string, { sum: number; sq: number }>();
+  for (const r of rows) { const s = subs.get(r.subbasket) || { sum: 0, sq: 0 }; s.sum += r.total; s.sq += r.total * r.total; subs.set(r.subbasket, s); }
+  const score = new Map([...subs].map(([k, s]) => [k, s.sum > 0 ? subbasketWeight(k) * s.sq / s.sum : 0]));
+  const scoreSum = [...score.values()].reduce((a, b) => a + b, 0);
+  return rows.map(r => {
+    const s = subs.get(r.subbasket)!, subShare = scoreSum > 0 ? score.get(r.subbasket)! / scoreSum : 0;
+    const within = s.sum > 0 ? r.total / s.sum : 0;
+    return { ...r, subbasket_share: subShare, within_subbasket_share: within, share: subShare * within };
+  });
+}
+
+/**
+ * Functional units → physical units. Basket demand is measured in FUNCTIONAL units; a product
+ * with functional_value 0.5 needs two physical units per unit of need.
+ */
+export const functionalValue = (good: string, basket: string) => Math.max(0.01, productMeta(good, basket).functional_value);
+/**
+ * Substitution efficiency: need units of `target` covered per physical unit of `sub`
+ * = substitutability ratio (≤1) × functional value ratio.
+ */
+export function substitutionEfficiency(target: { key: string; basket: string; substitutability: number },
+  sub: { key: string; basket: string; substitutability: number }) {
+  const s = Math.min(1, pos(sub.substitutability) / Math.max(1e-9, pos(target.substitutability)));
+  return s * functionalValue(sub.key, sub.basket) / functionalValue(target.key, target.basket);
+}
+
+/**
+ * HARD DISCRETIONARY BUDGET CAP. One scale factor for all household_discretionary + fame wishes
+ * of a city so planned spend at reference prices ≤ previous committed discretionary budget.
+ * Need demand is never touched. No budget (bootstrap) → unconstrained, flagged.
+ */
+export function discretionaryBudgetScale(plannedSpend: number, budget: number | null | undefined) {
+  if (budget == null || !Number.isFinite(budget)) return { scale: 1, constrained: false, mode: 'bootstrap_unconstrained' as const };
+  const spend = pos(plannedSpend), cap = pos(budget);
+  const scale = spend > cap && spend > 0 ? cap / spend : 1;
+  return { scale, constrained: scale < 1, mode: 'previous_committed_budget' as const };
 }
 
 /**
@@ -330,18 +377,15 @@ export interface CityAccountsInput {
  */
 export function cityAccounts(i: CityAccountsInput) {
   const M = PRODUCT_MARKET, gdp = pos(i.valueAdded);
-  // The physical ledger values gross output at BASE prices, so city_gdp is a CONSTANT-PRICE figure.
-  // Households, however, buy at local (scarcity/quality/fame) prices. Comparing a constant-price
-  // income against a local-price basket understated affordability by the whole price index, which
-  // made every city look bankrupt. Producers sell at local prices, so nominal income carries the
-  // same price level as the basket: nominal = constant-price × price_level. Real purchasing power
-  // is unchanged by this (it divides the level out again) — only the money comparison is honest.
+  // city_gdp is constant-price value added (physical ledger at base prices). Household income is
+  // converted with ONE global factor — never the city's own CPI — so local inflation reduces real
+  // purchasing power and affordability instead of cancelling out.
   const basicCost = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.localPrice), 0);
   const basicCostAtBase = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.basePrice), 0);
   const priceIndex = basicCostAtBase > 0 ? basicCost / basicCostAtBase : 1;
   const priceLevel = Math.max(0.05, priceIndex);
-  const laborIncome = gdp * M.laborShare * priceLevel;
-  const capitalIncome = gdp * (1 - M.laborShare) * M.localCapitalShare * priceLevel;
+  const laborIncome = gdp * M.laborShare * M.incomeUnitFactor;
+  const capitalIncome = gdp * (1 - M.laborShare) * M.localCapitalShare * M.incomeUnitFactor;
   const grossIncome = laborIncome + capitalIncome;
   const taxes = grossIncome * clamp01(i.householdTaxRate);
   const disposable = grossIncome - taxes;
@@ -362,8 +406,8 @@ export function cityAccounts(i: CityAccountsInput) {
     city: i.city, city_gdp: gdp, labor_income: laborIncome, capital_income: capitalIncome,
     household_income: grossIncome, household_taxes: taxes, disposable_income: disposable,
     purchasing_power: purchasingPower, basic_basket_cost: basicCost, price_index: priceIndex,
-    /** Nominal counterpart of the constant-price city_gdp (city_gdp × local price level). */
-    nominal_gdp: gdp * priceLevel, price_level: priceLevel,
+    /** Informative only: city_gdp × local price level. Not used for income. */
+    nominal_gdp: gdp * priceLevel, price_level: priceLevel, income_unit_factor: M.incomeUnitFactor,
     real_purchasing_power: realPurchasingPower, discretionary_budget: discretionaryBudget,
     discretionary_wish: pos(i.discretionaryWish), discretionary_funded: discretionaryFunded,
     discretionary_ratio: discretionaryRatio, physical_need_coverage: physicalCoverage,
