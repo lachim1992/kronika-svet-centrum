@@ -106,7 +106,7 @@ describe('4. AUTO uses expected landed input cost (adapter integration)', () => 
       building('mine_a', 'a', { recipe_keys: ['mine_iron'], production_roles: ['source'], basket_outputs: { metalwork: 5 } }),
       building('mine_b', 'b', { recipe_keys: ['mine_iron'], production_roles: ['source'], basket_outputs: { metalwork: 20 } }),
       building('forge', 'a', { recipe_keys: ['forge_arms'], production_roles: ['processing'], basket_outputs: { military_supply: 5 } })];
-    if (order) t.structure_production_orders = [{ structure_id: 'forge', mode: order, target_good_key: 'arms' }];
+    if (order) t.structure_production_orders = [{ session_id: S, structure_id: 'forge', mode: order, target_good_key: 'arms' }];
     t.road_segments = [{ id: 'r', session_id: S, status: 'completed', from_x: 0, from_y: 0, to_x: 1, to_y: 0, friction, capacity: 200 }];
     t.economy_turn_ledgers = [{ session_id: S, turn_number: 1, committed: true, committed_result: { prices: [
       { city: 'a', good: 'iron', local_price: 20 }, { city: 'b', good: 'iron', local_price: 3 }, { city: 'a', good: 'arms', local_price: 10 }] } }];
