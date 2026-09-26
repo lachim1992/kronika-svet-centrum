@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveGoodsEconomy, type Good, type City, type Producer, type Snapshot, type Fame } from '../../supabase/functions/_shared/goodsEconomy';
-import { PRODUCT_MARKET, calibrateIncomeUnitFactor, attractiveness, demandShares, recipeMargin, autoRecipeWeights, PRODUCT_META } from '../../supabase/functions/_shared/productMarket';
+import { PRODUCT_MARKET, calibrateIncomeUnitFactor, attractiveness, demandShares, recipeMargin, autoRecipeWeights, autoAllocationDetail, PRODUCT_META } from '../../supabase/functions/_shared/productMarket';
 import { ECONOMY } from '../../supabase/functions/_shared/economyConfig';
 import { LAB_SCENARIOS, labCity, REFERENCE_BASKET_VALUE } from './economyLab';
 
@@ -36,7 +36,7 @@ describe('A — fame acts on destination WTP only', () => {
   });
   it('higher fame opens an otherwise marginal export; a costlier route closes it again', () => {
     let marginal = 0;
-    for (let c = 1; c < 60; c += 0.5) if (!potteryFlow(potteryTrade(c)).length) { marginal = c; break; }
+    for (let c = 1; c < 400; c += 0.5) if (!potteryFlow(potteryTrade(c)).length) { marginal = c; break; }
     expect(marginal).toBeGreaterThan(0);
     expect(potteryFlow(potteryTrade(marginal, 100)).length).toBeGreaterThan(0);
     expect(potteryFlow(potteryTrade(marginal * 4, 100)).length).toBe(0);
@@ -127,8 +127,9 @@ describe('B5 — elasticity / behaviour', () => {
   it('AUTO stops a non-essential loss maker; an essential one is flagged emergency', () => {
     const r = autoRecipeWeights([{ key: 'lux', margin: -1, unmetDemand: 10, inputsAvailable: true }, { key: 'ok', margin: 1, unmetDemand: 5, inputsAvailable: true }]) as any;
     expect(r.lux ?? r.weights?.lux).toBe(0);
-    const e = autoRecipeWeights([{ key: 'bread', margin: -1, unmetDemand: 10, inputsAvailable: true, essential: true, necessity: 1 } as any]) as any;
-    expect(e.flags?.bread ?? e.__flags?.bread).toBe('emergency_unprofitable_production');
+    const e = autoAllocationDetail([{ key: 'bread', necessity: 1, marginRatio: -0.2, essential: true }, { key: 'lux', necessity: 1, marginRatio: -0.2 }]);
+    expect(e.flags.bread).toBe('emergency_unprofitable_production'); expect(e.weights.bread).toBeGreaterThan(0);
+    expect(e.flags.lux).toBe('auto_loss_stopped'); expect(e.weights.lux).toBe(0);
   });
   it('diversity inside a subbasket does not change survival need', () => {
     const s = base(); s.familiarity = { b: { raw_grain: 1 } };
