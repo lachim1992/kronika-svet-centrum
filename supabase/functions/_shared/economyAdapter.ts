@@ -2,12 +2,12 @@ import { resolveGoodsEconomy, produced, type Snapshot, type City, type Good, typ
 import { actualSoldiers, workforceLawModifiers } from './manpower.ts';
 import { staffingCapacity } from './cityDistricts.ts';
 import { ratedNodeCapacity } from './nodeCapacity.ts';
-import { BASKET_TIER, ECONOMY, normalizeLabor, INDUSTRIAL_INPUTS, HOUSEHOLD_GOODS, GOOD_FINAL_USE, GOOD_HOUSEHOLD } from './economyConfig.ts';
+import { IDEOLOGIES, BASKET_TIER, ECONOMY, normalizeLabor, INDUSTRIAL_INPUTS, HOUSEHOLD_GOODS, GOOD_FINAL_USE, GOOD_HOUSEHOLD } from './economyConfig.ts';
 import { buildManagementReport } from './management.ts';
 import { BASKET_KEYS, basketSpec, needBand, alertPriority, shortageEffect, basketSeverity } from './demandModel.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
 import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
-import { autoAllocationDetail, craftsmanship, PRODUCT_MARKET } from './productMarket.ts';
+import { autoAllocationDetail, craftsmanship, expectedInputCost, PRODUCT_MARKET } from './productMarket.ts';
 
 const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
 /** Baseline market/granary capability that any inhabited settlement has by its size alone. */
@@ -111,19 +111,19 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    */
   const priorPrice=new Map<string,number>((prior?.prices||[]).map((p:any)=>[`${p.city}::${p.good}`,nonnegative(p.local_price)]));
   const refPrice=(city:string,good:string)=>priorPrice.get(`${city}::${good}`)||nonnegative(goodMap.get(good)?.price);
-  const marginRatio=(city:string,r:any)=>{const out=nonnegative(r.output_quantity)*refPrice(city,r.output_good_key);
-    const cost=(r.input_items||[]).reduce((s:number,i:any)=>s+nonnegative(i.qty??i.quantity)*refPrice(city,i.key??i.good_key),0);
+  const marginRatio=(city:string,r:any,inputCost:(city:string,good:string)=>number=refPrice)=>{const out=nonnegative(r.output_quantity)*refPrice(city,r.output_good_key);
+    const cost=(r.input_items||[]).reduce((s:number,i:any)=>s+nonnegative(i.qty??i.quantity)*inputCost(city,i.key??i.good_key),0);
     return out>0?(out-cost)/out:-1;};
+  /** AUTO structures are finalised after the route graph exists (expected LANDED input cost). */
+  const autoGroups:{city:string;candidates:any[];weights:number[];ids:string[]}[]=[];
   const essential=(r:any)=>{const b=goodMap.get(r.output_good_key)?.basket||'',cls=basketSpec(b)?.class;
     return cls==='critical_need'||cls==='basic_need'||PRODUCT_MARKET.strategicOperationalBaskets.includes(b);};
   /** AUTO weights + flags; `norm` = max(Σweights, Σnecessity) so stopped/emergency capacity stays idle. */
   const autoWeights=(city:string,candidates:any[],weights:number[],order:any)=>{
     const margins=candidates.map(r=>marginRatio(city,r));
     const base=weights.reduce((s,w)=>s+w,0);
-    if(order&&order.mode!=='auto')return {weights,norm:base,flags:candidates.map(()=>null as string|null),margins};
-    const d=autoAllocationDetail(candidates.map((r,i)=>({key:String(i),necessity:weights[i],marginRatio:margins[i],essential:essential(r)})));
-    const w=candidates.map((_,i)=>d.weights[String(i)]);
-    return {weights:w,norm:Math.max(w.reduce((s,x)=>s+x,0),base),flags:candidates.map((_,i)=>d.flags[String(i)]),margins};};
+    // PREFER/LOCK keep their weights; AUTO is provisional here and finalised by finalizeAuto().
+    return {weights,norm:base,flags:candidates.map(()=>null as string|null),margins,auto:!order||order.mode==='auto'};};
   const orderMode=(order:any)=>(order?.mode||'auto') as 'auto'|'prefer'|'lock';
   const orderWeight=(r:any,order:any)=>{
     const g=goodMap.get(r.output_good_key);
@@ -154,6 +154,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const capacity=ratedNodeCapacity(node);
     const jobs=capacity>0?ECONOMY.structureJobsBase*levelScale(node.node_level??node.level):undefined;
     const logistics=cityConnected(c)?1:nonnegative(node.route_access_factor??1);
+    if(aw.auto)autoGroups.push({city:c.id,candidates:eligible,weights,ids:eligible.map(r=>`${node.id}:${r.recipe_key}`)});
     eligible.forEach((r,i)=>{if(weights[i]<=0)return;
       producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity,
         recipe:recipe(r),allocation:weights[i]/total,staffing:1,jobs,logistics,mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
@@ -192,6 +193,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       if(!candidates.length||capacity<=0)return;
       const aw=autoWeights(city,candidates,candidates.map(r=>orderWeight(r,options.order)),options.order),weights=aw.weights,sum=aw.norm;
       if(!(weights.reduce((s,w)=>s+w,0)>0))return;
+      if(aw.auto)autoGroups.push({city,candidates,weights,ids:candidates.map(r=>`${id}:${r.recipe_key}`)});
       candidates.forEach((r,i)=>{if(weights[i]<=0)return;
         producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),jobs,
           allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',craft,order:orderMode(options.order),autoFlag:aw.flags[i],expectedMarginProxy:aw.margins[i],
@@ -263,6 +265,44 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   };
   for(const c of db.cities){const city=cityMap.get(c.id);if(city)attach(city.cell,cityCatchmentRadius(c));}
   for(const node of db.province_nodes)if(node.is_active!==false&&anchor(node))attach(`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,nodeCatchmentRadius(node));
+  /**
+   * AUTO FINALISATION. Expected margin uses the cheapest EXPECTED LANDED input cost: previous
+   * committed (bootstrap: catalogue) prices at every reachable supplier + route transport ×
+   * merchant friction + destination tariff (productMarket.expectedInputCost). Read-only, no
+   * same-pass prices; actual sourcing in goodsEconomy remains authoritative.
+   */
+  {
+    const adj=new Map<string,[string,number][]>();
+    for(const e of edges){(adj.get(e.from)||adj.set(e.from,[]).get(e.from)!).push([e.to,nonnegative(e.cost)]);(adj.get(e.to)||adj.set(e.to,[]).get(e.to)!).push([e.from,nonnegative(e.cost)]);}
+    const distCache=new Map<string,Map<string,number>>();
+    const distFrom=(cell:string)=>{let d=distCache.get(cell);if(d)return d;d=new Map([[cell,0]]);const done=new Set<string>();
+      for(;;){let cur:string|null=null,best=Infinity;for(const [k,v] of d)if(!done.has(k)&&v<best){best=v;cur=k;}
+        if(cur==null)break;done.add(cur);for(const [to,w] of adj.get(cur)||[])if(best+w<(d.get(to)??Infinity))d.set(to,best+w);}
+      distCache.set(cell,d);return d;};
+    const blocked=new Set(db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).flatMap(w=>[`${w.declaring_player}|${w.target_player}`,`${w.target_player}|${w.declaring_player}`]));
+    const producedPrior=new Set((prior?.balances||[]).filter((b:any)=>produced(b)>0).map((b:any)=>`${b.city}::${b.good}`));
+    const supplies=(city:string,good:string)=>producedPrior.has(`${city}::${good}`)||producers.some(p=>p.city===city&&p.recipe.good===good);
+    const costCache=new Map<string,{cost:number;source:string}>();
+    const expected=(city:string,good:string)=>{const k=`${city}::${good}`;let v=costCache.get(k);if(v)return v.cost;
+      const dst=cityMap.get(city)!,base=nonnegative(goodMap.get(good)?.price);
+      const tariff=(IDEOLOGIES[dst.ideology]||IDEOLOGIES.customary_local).tariff;
+      const suppliers=cities.filter(s=>s.id!==city&&supplies(s.id,good)&&!blocked.has(`${s.owner}|${dst.owner}`)).flatMap(s=>{
+        const d=distFrom(s.cell).get(dst.cell);if(d==null)return [];
+        return [{city:s.id,sourcePrice:refPrice(s.id,good),transport:d*(IDEOLOGIES[s.ideology]||IDEOLOGIES.customary_local).merchantFriction,tolls:0,tariffRate:tariff,risk:0,loss:0}];});
+      const hasLocal=supplies(city,good)||priorPrice.has(k);
+      v=expectedInputCost(hasLocal?refPrice(city,good):Infinity,suppliers,base);
+      if(!Number.isFinite(v.cost))v={cost:refPrice(city,good),source:'reference'};
+      costCache.set(k,v);return v.cost;};
+    const byId=new Map(producers.map(p=>[p.id,p]));
+    for(const g of autoGroups){
+      const margins=g.candidates.map(r=>marginRatio(g.city,r,expected));
+      const d=autoAllocationDetail(g.candidates.map((r,i)=>({key:String(i),necessity:g.weights[i],marginRatio:margins[i],essential:essential(r)})));
+      const w=g.candidates.map((_,i)=>d.weights[String(i)]),norm=Math.max(w.reduce((s,x)=>s+x,0),g.weights.reduce((s,x)=>s+x,0));
+      g.ids.forEach((id,i)=>{const p=byId.get(id);if(!p)return;p.allocation=norm>0?w[i]/norm:0;p.autoFlag=d.flags[String(i)];p.expectedMarginProxy=margins[i];
+        (p as any).expectedInputSources=Object.fromEntries((g.candidates[i].input_items||[]).map((x:any)=>{const gk=x.key??x.good_key;expected(g.city,gk);return [gk,costCache.get(`${g.city}::${gk}`)];}));});
+    }
+    for(let i=producers.length-1;i>=0;i--)if(!(producers[i].allocation>0))producers.splice(i,1);
+  }
   let opening=prior?.balances?.filter((b:any)=>cityMap.has(b.city)).map((b:any)=>({city:b.city,good:b.good,qty:b.stored,quality:b.quality}))??current.data?.result?.opening;
   if(!opening){
     opening=[];
