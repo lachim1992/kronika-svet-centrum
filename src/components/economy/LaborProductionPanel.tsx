@@ -109,7 +109,7 @@ export default function LaborProductionPanel({ sessionId, cities, playerName, cu
 
     <div className="overflow-auto"><table className="w-full text-xs">
       <caption className="text-left mb-1">Jednotlivé stavby: obsazenost, možná výroba, vstupy a skutečná výroba</caption>
-      <thead><tr>{['Město', 'Stavba vyrábí', 'Místa obsazená / celkem', 'Obsazenost', 'Kapacita', 'Možná výroba', 'Vstupy (dodáno / potřeba)', 'Skutečná výroba', 'Co brání'].map(h =>
+      <thead><tr>{['Město', 'Stavba vyrábí', 'Místa obsazená / celkem', 'Obsazenost', 'Kapacita', 'Možná výroba', 'Vstupy (dodáno / potřeba)', 'Skutečná výroba', 'Marže', 'Co brání'].map(h =>
         <th key={h} className="p-2 text-right first:text-left">{h}</th>)}</tr></thead>
       <tbody>{structures.map(s => <tr key={s.id} className="border-t align-top">
         <td className="p-2">{name(s.city)}</td>
