@@ -13,12 +13,27 @@ const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
 /** Baseline market/granary capability that any inhabited settlement has by its size alone. */
 const settlementBaseline=(population:unknown)=>{const p=nonnegative(population);
   return p>=8000?3:p>=4000?2:p>=1500?1:p>0?0.5:0;};
+/**
+ * A Postgres statement timeout (57014) is a transient load symptom, not a broken economy: the same
+ * read succeeds moments later. Retry it a couple of times with backoff, and keep failing closed on
+ * every other error so a partial read can never masquerade as an empty economy.
+ */
+async function query<T>(label:string,run:()=>Promise<{data:T;error:any}>):Promise<T>{
+  for(let attempt=1;;attempt++){
+    const r=await run();
+    if(!r.error)return r.data;
+    if(attempt>=3||r.error.code!=='57014')throw Error(`${label}: ${r.error.message}`);
+    console.warn(`[economy] ${label}: databáze nestíhala (${attempt}. pokus), opakuji`);
+    await new Promise(resolve=>setTimeout(resolve,600*attempt));
+  }
+}
 /** Fail closed: pagination and DB failures must never masquerade as an empty economy. */
 async function rows(sb:any,table:string,session?:string){
   const out:any[]=[];
   const orderBy=table==='goods'?'key':table==='production_recipes'?'recipe_key':table==='node_production_orders'?'node_id':'id';
-  for(let start=0;;start+=1000){let q=sb.from(table).select('*').order(orderBy,{ascending:true}).range(start,start+999);if(session)q=q.eq('session_id',session);
-    const r=await q;if(r.error)throw Error(`${table}: ${r.error.message}`);out.push(...r.data);if(r.data.length<1000)return out;}
+  for(let start=0;;start+=1000){
+    const page=await query<any[]>(table,()=>{let q=sb.from(table).select('*').order(orderBy,{ascending:true}).range(start,start+999);if(session)q=q.eq('session_id',session);return q;});
+    out.push(...page);if(page.length<1000)return out;}
 }
 /**
  * LEGACY ROLE COMPATIBILITY lives in productionContract.ts (one shared normalizer). Saved
