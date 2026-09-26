@@ -229,6 +229,8 @@ export function cityAccounts(i: CityAccountsInput) {
     city: i.city, city_gdp: gdp, labor_income: laborIncome, capital_income: capitalIncome,
     household_income: grossIncome, household_taxes: taxes, disposable_income: disposable,
     purchasing_power: purchasingPower, basic_basket_cost: basicCost, price_index: priceIndex,
+    /** Nominal counterpart of the constant-price city_gdp (city_gdp × local price level). */
+    nominal_gdp: gdp * priceLevel, price_level: priceLevel,
     real_purchasing_power: realPurchasingPower, discretionary_budget: discretionaryBudget,
     discretionary_wish: pos(i.discretionaryWish), discretionary_funded: discretionaryFunded,
     discretionary_ratio: discretionaryRatio, physical_need_coverage: physicalCoverage,
