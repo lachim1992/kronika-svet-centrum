@@ -62,7 +62,7 @@ export interface Balance { city: string; good: string; opening: number; produced
 export interface Flow { good: string; source: string; destination: string; qty: number; delivered: number; quality: number;
   gross_value: number; transport_cost: number; tolls: number; net_value: number; reason: string;
   path: string[]; edges: string[]; via_hubs: string[]; famous: string|null;
-  source_price: number; destination_price: number; expected_margin: number }
+  source_price: number; destination_price: number; destination_wtp?: number; expected_margin: number }
 /** Endogenous local market price, derived from the physical ledger only. */
 export interface PriceRow { city: string; good: string; base_price: number; local_price: number;
   scarcity_factor: number; quality_factor: number; fame_factor: number; coverage: number;
