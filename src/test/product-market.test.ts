@@ -75,4 +75,19 @@ describe('product market layer', () => {
     const need = (r: typeof a) => r.demand.filter(d => d.city === 'b').reduce((t, d) => t + d.channels.household_need, 0);
     expect(need(b)).toBeCloseTo(need(a), 6);
   });
+  it('income carries the local price level: scarcity alone cannot bankrupt a self-sufficient city', () => {
+    const needs = (localPrice: number) => [{ good: 'g', qty: 100, localPrice, basePrice: 1, consumed: 100 }];
+    const calm = cityAccounts({ city: 'c', valueAdded: 100, householdTaxRate: 0.1, needs: needs(1), discretionaryWish: 0, basketConsumption: {} });
+    const dear = cityAccounts({ city: 'c', valueAdded: 100, householdTaxRate: 0.1, needs: needs(3), discretionaryWish: 0, basketConsumption: {} });
+    // Same physical economy, tripled prices: affordability and real purchasing power are unchanged.
+    expect(dear.affordability).toBeCloseTo(calm.affordability, 6);
+    expect(dear.real_purchasing_power).toBeCloseTo(calm.real_purchasing_power, 6);
+    expect(dear.nominal_gdp).toBeCloseTo(3 * calm.nominal_gdp, 6);
+    expect(dear.price_level).toBeCloseTo(3, 6);
+  });
+  it('a city producing its own basic basket can afford it (calibration floor)', () => {
+    const acc = cityAccounts({ city: 'c', valueAdded: 100, householdTaxRate: 0.1, needs: [{ good: 'g', qty: 100, localPrice: 1, basePrice: 1, consumed: 100 }], discretionaryWish: 0, basketConsumption: {} });
+    expect(acc.affordability).toBeGreaterThan(0.6);
+    expect(acc.affordability_gap).toBeLessThan(acc.basic_basket_cost * 0.4);
+  });
 });
