@@ -53,7 +53,7 @@ describe('product market layer', () => {
     expect(acc.discretionary_funded).toBe(0);
     expect(acc.physical_need_coverage).toBe(1);
     // In the solver the discretionary channel is scaled, the need channel is not.
-    const s = base(); s.budget = { a: { discretionary_ratio: 0, affordability: 0 }, b: { discretionary_ratio: 0, affordability: 0 } };
+    const s = base(); s.budget = { a: { discretionary_ratio: 0, affordability: 0, discretionary_budget: 0 }, b: { discretionary_ratio: 0, affordability: 0, discretionary_budget: 0 } };
     const poor = resolveGoodsEconomy(s), rich = resolveGoodsEconomy(base());
     const need = (r: typeof poor) => r.demand.reduce((t, d) => t + d.channels.household_need, 0);
     const disc = (r: typeof poor) => r.demand.reduce((t, d) => t + d.channels.household_discretionary, 0);
@@ -76,15 +76,15 @@ describe('product market layer', () => {
     const need = (r: typeof a) => r.demand.filter(d => d.city === 'b').reduce((t, d) => t + d.channels.household_need, 0);
     expect(need(b)).toBeCloseTo(need(a), 6);
   });
-  it('income carries the local price level: scarcity alone cannot bankrupt a self-sufficient city', () => {
+  it('local inflation is NOT cancelled: 2x local prices at the same GDP/taxes/qty lower real PP and affordability', () => {
     const needs = (localPrice: number) => [{ good: 'g', qty: 100, localPrice, basePrice: 1, consumed: 100 }];
     const calm = cityAccounts({ city: 'c', valueAdded: 100, householdTaxRate: 0.1, needs: needs(1), discretionaryWish: 0, basketConsumption: {} });
-    const dear = cityAccounts({ city: 'c', valueAdded: 100, householdTaxRate: 0.1, needs: needs(3), discretionaryWish: 0, basketConsumption: {} });
-    // Same physical economy, tripled prices: affordability and real purchasing power are unchanged.
-    expect(dear.affordability).toBeCloseTo(calm.affordability, 6);
-    expect(dear.real_purchasing_power).toBeCloseTo(calm.real_purchasing_power, 6);
-    expect(dear.nominal_gdp).toBeCloseTo(3 * calm.nominal_gdp, 6);
-    expect(dear.price_level).toBeCloseTo(3, 6);
+    const dear = cityAccounts({ city: 'c', valueAdded: 100, householdTaxRate: 0.1, needs: needs(2), discretionaryWish: 0, basketConsumption: {} });
+    expect(dear.purchasing_power).toBeCloseTo(calm.purchasing_power, 9); // income not indexed to local CPI
+    expect(dear.real_purchasing_power).toBeLessThan(calm.real_purchasing_power);
+    expect(dear.affordability).toBeLessThan(calm.affordability);
+    expect(dear.affordability_gap).toBeGreaterThan(calm.affordability_gap);
+    expect(dear.price_index).toBeCloseTo(2, 9);
   });
   it('a city producing its own basic basket can afford it (calibration floor)', () => {
     const acc = cityAccounts({ city: 'c', valueAdded: 100, householdTaxRate: 0.1, needs: [{ good: 'g', qty: 100, localPrice: 1, basePrice: 1, consumed: 100 }], discretionaryWish: 0, basketConsumption: {} });
