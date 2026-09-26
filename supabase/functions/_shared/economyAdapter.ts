@@ -99,6 +99,20 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    *  PREFER — the chosen good/basket gets triple weight, the rest still runs.
    *  LOCK   — only the chosen good/basket runs, if it is legal for this structure.
    */
+  /**
+   * AUTO PROFITABILITY. Expected margin ratio of a recipe at the PREVIOUS COMMITTED local prices
+   * (catalogue base price at bootstrap) — never this pass's prices, so there is no price↔allocation loop.
+   */
+  const priorPrice=new Map<string,number>((prior?.prices||[]).map((p:any)=>[`${p.city}::${p.good}`,nonnegative(p.local_price)]));
+  const refPrice=(city:string,good:string)=>priorPrice.get(`${city}::${good}`)||nonnegative(goodMap.get(good)?.price);
+  const marginRatio=(city:string,r:any)=>{const out=nonnegative(r.output_quantity)*refPrice(city,r.output_good_key);
+    const cost=(r.input_items||[]).reduce((s:number,i:any)=>s+nonnegative(i.qty??i.quantity)*refPrice(city,i.key??i.good_key),0);
+    return out>0?(out-cost)/out:-1;};
+  const autoWeights=(city:string,candidates:any[],weights:number[],order:any)=>{
+    if(order&&order.mode!=='auto')return weights;
+    const w=autoAllocation(candidates.map((r,i)=>({key:String(i),necessity:weights[i],marginRatio:marginRatio(city,r)})));
+    return candidates.map((_,i)=>w[String(i)]);};
+  const orderMode=(order:any)=>(order?.mode||'auto') as 'auto'|'prefer'|'lock';
   const orderWeight=(r:any,order:any)=>{
     const g=goodMap.get(r.output_good_key);
     const tier=BASKET_TIER[g?.basket||'']||1,auto=1/tier;
@@ -122,7 +136,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   for(const node of db.province_nodes){if(node.is_active===false)continue;const c=anchor(node);if(!c)continue;
     const order=db.node_production_orders.find(o=>o.node_id===node.id);
     const eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
-    const weights=eligible.map(r=>orderWeight(r,order)),total=weights.reduce((s,n)=>s+n,0);
+    const weights=autoWeights(c.id,eligible,eligible.map(r=>orderWeight(r,order)),order),total=weights.reduce((s,n)=>s+n,0);
     if(total<=0)continue;
     // Nodes employ the same canonical crew as any other producing structure (Lv1 100 → doubling).
     const capacity=ratedNodeCapacity(node);
@@ -131,6 +145,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     eligible.forEach((r,i)=>{if(weights[i]<=0)return;
       producers.push({id:`${node.id}:${r.recipe_key}`,city:c.id,node:node.id,cell:`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,channel:'node',capacity,
         recipe:recipe(r),allocation:weights[i]/total,staffing:1,jobs,logistics,mastery:1+nonnegative(node.guild_level)*ECONOMY.guildProductivity,
+        craft:craftsmanship(node.node_level??node.level,node.capability_tags||[],nonnegative(node.guild_level)),order:orderMode(order),
         source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
   }
 
@@ -160,13 +175,14 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const declared=Number(options.jobs)>0?nonnegative(options.jobs):ECONOMY.structureJobsBase;
     const jobs=total>0?declared*scale:undefined;
 
+    const craft=craftsmanship(options.level,tags,nonnegative(cityMap.get(city)?.guild));
     const push=(candidates:any[],capacity:number)=>{
       if(!candidates.length||capacity<=0)return;
-      const weights=candidates.map(r=>orderWeight(r,options.order)),sum=weights.reduce((s,w)=>s+w,0);
+      const weights=autoWeights(city,candidates,candidates.map(r=>orderWeight(r,options.order)),options.order),sum=weights.reduce((s,w)=>s+w,0);
       if(sum<=0)return;
       candidates.forEach((r,i)=>{if(weights[i]<=0)return;
         producers.push({id:`${id}:${r.recipe_key}`,city,channel,capacity,recipe:recipe(r),jobs,
-          allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',
+          allocation:weights[i]/sum,staffing:staffed?1:0,logistics:1,mastery:1,source:role(r)==='source',craft,order:orderMode(options.order),
           distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
     };
     if(options.recipeKeys?.length){
