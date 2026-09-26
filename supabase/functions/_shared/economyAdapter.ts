@@ -21,16 +21,13 @@ async function rows(sb:any,table:string,session?:string){
     const r=await q;if(r.error)throw Error(`${table}: ${r.error.message}`);out.push(...r.data);if(r.data.length<1000)return out;}
 }
 /**
- * LEGACY ROLE COMPATIBILITY. Saved structures from before zero-input extraction became 'source'
- * (wells, aqueducts, peat cuts) declare only 'producer'. A whitelisted zero-input source recipe
- * stays legal for them; arbitrary factories still cannot create goods from nothing because the
- * recipe itself must be a zero-input source in the catalogue.
+ * LEGACY ROLE COMPATIBILITY lives in productionContract.ts (one shared normalizer). Saved
+ * structures from before zero-input extraction became 'source' (wells, aqueducts, peat cuts)
+ * declare only 'producer'; their whitelisted zero-input source recipes stay legal. Arbitrary
+ * factories still cannot create goods from nothing — the recipe itself must be a zero-input source.
  */
-export function normalizeStructureRoles(roles:string[],whitelisted:any[],roleOf:(r:any)=>string){
-  if(!roles.includes('producer')||roles.includes('source'))return roles;
-  const zeroInputSource=whitelisted.some(r=>roleOf(r)==='source'&&!(r.input_items||[]).length);
-  return zeroInputSource?[...roles,'source']:roles;
-}
+export { normalizeStructureRoles, normalizeProductionContract, auditProductionContracts } from './productionContract.ts';
+import { normalizeStructureRoles, normalizeProductionContract } from './productionContract.ts';
 const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clothing',ritual:'luxury_clothing',prestige:'luxury_clothing'};
 const basket=(v:string)=>remap[v]||v;
 /** Refresh report fiscal fields after the fiscal transaction, without rerunning production. */
