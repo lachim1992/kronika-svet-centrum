@@ -848,7 +848,13 @@ Deno.serve(async (req) => {
 
       for (const step of chain) {
         try {
-          const { data, error } = await supabase.functions.invoke(step.fn, { body: step.body });
+          // Derived steps are idempotent recomputes: retry once on a transient failure
+          // (e.g. a concurrent refresh holding the lock or a cold start) before failing the turn.
+          let { data, error } = await supabase.functions.invoke(step.fn, { body: step.body });
+          if (economyFailure(data, error)) {
+            await new Promise((r) => setTimeout(r, 3000));
+            ({ data, error } = await supabase.functions.invoke(step.fn, { body: step.body }));
+          }
           noteStepFailure(step.name, economyFailure(data, error));
           results[resultKey[step.name] || step.name] = data || { error: error?.message };
         } catch (stepErr) {

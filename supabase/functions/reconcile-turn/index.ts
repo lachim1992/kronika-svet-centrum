@@ -31,9 +31,11 @@ Deno.serve(async (req) => {
     if (!admin && !["admin", "moderator"].includes(String(member?.role))) return json({ ok: false, error: "Jen admin nebo moderátor" }, 403);
 
     const { data: session } = await sb.from("game_sessions").select("current_turn").eq("id", sessionId).single();
-    const turn = session?.current_turn;
     const { data: guard } = await sb.from("turn_execution_guards").select("turn_number,status").eq("session_id", sessionId).maybeSingle();
-    if (!guard || guard.status !== "failed" || guard.turn_number !== turn) return json({ ok: true, reconciled: false, reason: "no_failed_turn" });
+    // A failed guard may belong to the current turn OR to an earlier turn whose world already
+    // advanced (failure after the turn counter moved). Both block every future turn until sealed.
+    if (!guard || guard.status !== "failed" || guard.turn_number > (session?.current_turn ?? -1)) return json({ ok: true, reconciled: false, reason: "no_failed_turn" });
+    const turn = guard.turn_number;
 
     // Seal a partial tick: its events/projections stay, they are not re-emitted.
     await sb.from("world_tick_log").update({ status: "completed", finished_at: new Date().toISOString() })
