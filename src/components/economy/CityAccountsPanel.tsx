@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -65,7 +65,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
           </TableHeader>
           <TableBody>
             {rows.map(({ city, a }) => (
-              <>
+              <Fragment key={city.id}>
                 <TableRow key={city.id} className="cursor-pointer" onClick={() => setOpen(open === city.id ? null : city.id)}>
                   <TableCell className="font-medium">{city.name}</TableCell>
                   <TableCell>{f(a.city_gdp)}</TableCell>
@@ -90,16 +90,16 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
                       <div className="grid grid-cols-9 gap-1">
                         <span>zboží</span><span>podíl</span><span>obliba</span><span>region</span><span>zvyk</span><span>novost</span><span>kvalita</span><span>věhlas</span><span>cena</span>
                         {choice.filter(c => c.city === city.id).map(c => (
-                          <>
-                            <span key={c.good}>{c.good}</span><span>{pct(c.share)}</span><span>{f(c.preference, 2)}</span><span>{f(c.region, 2)}</span>
+                          <Fragment key={c.good}>
+                            <span>{c.good}</span><span>{pct(c.share)}</span><span>{f(c.preference, 2)}</span><span>{f(c.region, 2)}</span>
                             <span>{f(c.familiarity, 2)}</span><span>{f(c.novelty, 2)}</span><span>{f(c.quality, 2)}</span><span>{f(c.fame, 2)}</span><span>{f(c.price, 2)}</span>
-                          </>
+                          </Fragment>
                         ))}
                       </div>
                     </TableCell>
                   </TableRow>
                 )}
-              </>
+              </Fragment>
             ))}
           </TableBody>
         </Table>
