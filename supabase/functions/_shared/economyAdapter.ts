@@ -248,7 +248,16 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       }
     }
   }
-  const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
+  // Read-only history of the last COMMITTED turn: familiarity and household budget. Refresh never writes it.
+  const familiarity:Record<string,Record<string,number>>={};
+  const basketTotals=new Map<string,number>();
+  for(const b of prior?.balances||[]){const g=goodMap.get(b.good);if(!g)continue;const k=`${b.city}::${g.basket}`;
+    basketTotals.set(k,(basketTotals.get(k)||0)+nonnegative(b.consumed_household)+nonnegative(b.consumed_state));}
+  for(const b of prior?.balances||[]){const g=goodMap.get(b.good);if(!g)continue;const t=basketTotals.get(`${b.city}::${g.basket}`)||0;
+    if(t>0)(familiarity[b.city] ||= {})[b.good]=(nonnegative(b.consumed_household)+nonnegative(b.consumed_state))/t;}
+  const budget=prior?.cityAccounts?Object.fromEntries(prior.cityAccounts.map((a:any)=>[a.city,{discretionary_ratio:nonnegative(a.discretionary_ratio),affordability:nonnegative(a.affordability)}])):undefined;
+  const householdTaxRate=Object.fromEntries(db.realm_resources.map((r:any)=>[r.player_name,Math.min(0.9,nonnegative(r.tax_rate_domestic??0.1)+nonnegative(r.tax_rate_poll??0.002))]));
+  const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,householdTaxRate,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
   const physical=resolveGoodsEconomy(snapshot);
   const management=Object.fromEntries(db.realm_resources.map(r=>[r.player_name,buildManagementReport(snapshot,physical,r,prior?.management?.[r.player_name])]));
   const result={...physical,opening,snapshot,management};
