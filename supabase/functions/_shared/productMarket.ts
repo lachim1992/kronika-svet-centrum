@@ -45,6 +45,8 @@ export const PRODUCT_MARKET = {
   // ── LANDED INPUT COST (sourcing) ──
   /** Monetised risk per unit of route risk, as a share of the source price. */
   landedRiskShare: 0.05,
+  /** A factory refuses inputs whose landed cost exceeds this multiple of the base price. */
+  maxLandedInputMultiple: 4,
   // ── AUTO PRODUCTION ──
   /** Weight of margin ratio vs basket necessity in AUTO allocation (bounded, no loop). */
   autoMarginWeight: 1,

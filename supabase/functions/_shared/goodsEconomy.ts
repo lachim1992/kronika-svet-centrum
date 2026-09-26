@@ -1,6 +1,6 @@
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { computeWorkforceBreakdown } from './manpower.ts';
-import { demandShares, cityAccounts, recipeMargin, productMeta, type CityAccounts } from './productMarket.ts';
+import { demandShares, cityAccounts, recipeMargin, productMeta, landedInputCost, outputQuality, tradeServiceValue, prosperityIndex, capitalStockDelta, PRODUCT_MARKET, type CityAccounts } from './productMarket.ts';
 import { BASKET_KEYS, DEMAND_CHANNELS, basketDemandChannels, basketSpec, channelTotal, emptyChannels,
   toolIntensityOf, toolProductivityMultiplier, type DemandChannel, type DemandInput } from './demandModel.ts';
 
@@ -595,8 +595,20 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const wish=own.reduce((s,{g})=>s+(comp(g).household_discretionary+comp(g).fame)*priceOf(c.id,g.key),0);
     const basketConsumption:Record<string,number[]>={};
     for(const {g,b} of own){if(!(g.finalUse??g.stage!=='intermediate'))continue;(basketConsumption[g.basket] ||= []).push(b.consumed_household+b.consumed_state);}
-    return cityAccounts({city:c.id,valueAdded:own.reduce((s,{b})=>s+b.gross_output_value-b.intermediate_value,0),
-      householdTaxRate:snapshot.householdTaxRate?.[c.owner]??0.1,needs,discretionaryWish:wish,basketConsumption});});
+    const goodsVA=own.reduce((s,{b})=>s+b.gross_output_value-b.intermediate_value,0);
+    const services=metrics.find(m=>m.city===c.id)!.trade_services;
+    const taxRate=snapshot.householdTaxRate?.[c.owner]??0.1;
+    const acc=cityAccounts({city:c.id,valueAdded:goodsVA+services.service_value_added,
+      householdTaxRate:taxRate,needs,discretionaryWish:wish,basketConsumption});
+    const lab=laborMetrics.find(l=>l.city===c.id);
+    const prosperity=prosperityIndex({realPurchasingPowerPerCapita:c.population>0?acc.real_purchasing_power/c.population:0,
+      employment:lab?lab.employment_rate:1,needCoverage:acc.physical_need_coverage,housingHeadroom:c.housingHeadroom??0.5,
+      stability:c.stability,marketAccess:Math.min(1,n(c.market)/5)});
+    // Candidate only: process-turn is the single writer that persists the stock.
+    const capital=capitalStockDelta({stock:n(c.capitalStock),valueAdded:acc.city_gdp,needCoverage:acc.physical_need_coverage,
+      stability:c.stability,taxRate,devastated:!!c.devastated});
+    return {...acc,goods_value_added:goodsVA,service_value_added:services.service_value_added,trade_services:services,
+      prosperity:prosperity.index,prosperity_parts:prosperity.parts,capital_stock:n(c.capitalStock),capital_candidate:capital};});
   const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
     channels:{...channels},total:channelTotal(channels)}));
   return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
