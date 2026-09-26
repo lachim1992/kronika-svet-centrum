@@ -46,8 +46,6 @@ const RATION_DEMAND_MULT: Record<string, number> = {
 // Per-capita economic contribution
 const PRODUCTION_PER_PEASANT = 0.012;  // Peasants are primary producers
 const PRODUCTION_PER_BURGHER = 0.003;  // Burghers produce some crafts
-const WEALTH_PER_BURGHER = 0.015;      // Burghers are primary wealth generators
-const WEALTH_PER_PEASANT = 0.002;      // Peasants contribute market surplus
 const CAPACITY_PER_CLERIC = 0.010;     // Clerics administrate
 const CAPACITY_PER_BURGHER = 0.004;    // Burghers contribute infrastructure
 const FAITH_PER_CLERIC = 0.008;        // Clerics generate faith
@@ -545,7 +543,6 @@ Deno.serve(async (req) => {
     let totalFoodSupply = 0;
     let totalFoodDeficit = 0;
 
-    let totalCityWealth = 0;
     let totalCityCapacity = 0;
     let totalFaith = 0;
 
@@ -622,10 +619,9 @@ Deno.serve(async (req) => {
     }
     // Labor modifiers: deviation from 25% baseline (each ±1% = ±2% effect)
     const laborGrainMult = 1 + (avgFarming - 25) * 0.02;
-    const laborWealthMult = 1 + (avgCrafting - 25) * 0.02;
     const laborCapacityMult = 1 + (avgScribes - 25) * 0.02;
     const laborStabilityBonus = (avgMaintenance - 25) * 0.1; // ±2.5 stability per tick
-    logEntries.push(`👷 Práce: 🌾×${laborGrainMult.toFixed(2)} 💰×${laborWealthMult.toFixed(2)} 🏛️×${laborCapacityMult.toFixed(2)} stab${laborStabilityBonus >= 0 ? "+" : ""}${laborStabilityBonus.toFixed(1)}`);
+    logEntries.push(`👷 Práce: 🌾×${laborGrainMult.toFixed(2)} 🏛️×${laborCapacityMult.toFixed(2)} stab${laborStabilityBonus >= 0 ? "+" : ""}${laborStabilityBonus.toFixed(1)}`);
 
     // Per-city breakdown for reporting
     const cityEconResults: Array<{
@@ -673,7 +669,6 @@ Deno.serve(async (req) => {
           const supplyMult = Math.max(0.3, 1 - isoTurns * 0.1);
           nodeProduction *= supplyMult;
           // Isolation also hits wealth and capacity
-          layers.wealth *= supplyMult;
           layers.capacity *= Math.max(0.5, supplyMult);
 
           if (isoTurns >= 3) {
@@ -695,10 +690,6 @@ Deno.serve(async (req) => {
       // city population layers feed capacity/wealth/faith and upstream auto production,
       // never a second production number. Realized production lives in the Goods layer.
 
-      // v4.2: City wealth comes from Pillar 2 (domestic + market share), distributed by market level
-      const totalMarketLevelAll = myCities.reduce((s, c) => s + (c.market_level || 1), 0) || 1;
-      const cityMarketShare = (city.market_level || 1) / totalMarketLevelAll;
-      const cityWealth = 0; // legacy population wealth deprecated (never authoritative)
       const cityCapacity = layers.capacity * laborCapacityMult;
       const cityFaith = layers.faith + strategicBonuses.faith_bonus * 0.1; // Strategic faith distributed per-city
 
@@ -712,7 +703,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      totalCityWealth += cityWealth;
       totalCityCapacity += cityCapacity;
       totalFaith += cityFaith;
 
@@ -809,8 +799,8 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════════════════════════
 
     // Mobilization: peasants pulled into armies reduce food supply, not a macro production.
-    // Mobilization already reduced physical production in the canonical goods solver.
-    totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
+    // Mobilization already reduced physical production in the canonical goods solver; the penalty
+    // below is reported only (no population wealth aggregate exists any more).
 
     // NOTE: the legacy "goods_supply_volume → grain reserve" bonus is REMOVED.
     // goods_supply_volume sums every storable good (tools, textiles…), not food.
@@ -1641,7 +1631,6 @@ Deno.serve(async (req) => {
         },
         labor: {
           grain_mult: Math.round(laborGrainMult * 1000) / 1000,
-          wealth_mult: Math.round(laborWealthMult * 1000) / 1000,
           capacity_mult: Math.round(laborCapacityMult * 1000) / 1000,
           stability_bonus: Math.round(laborStabilityBonus * 10) / 10,
         },
