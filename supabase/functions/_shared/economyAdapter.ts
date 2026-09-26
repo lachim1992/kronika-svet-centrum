@@ -47,13 +47,13 @@ const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clo
 const basket=(v:string)=>remap[v]||v;
 /** Refresh report fiscal fields after the fiscal transaction, without rerunning production. */
 export async function finalizeManagementReports(sb:any,session:string,turn:number){
-  const ledger=await sb.from('economy_turn_ledgers').select('result').eq('session_id',session).eq('turn_number',turn).single();
-  if(ledger.error)throw ledger.error;
-  const result=ledger.data?.result;if(!result?.snapshot)throw new Error('Missing physical snapshot');
-  const previous=await sb.from('economy_turn_ledgers').select('committed_result').eq('session_id',session).eq('turn_number',turn-1).eq('committed',true).maybeSingle();
-  if(previous.error)throw previous.error;
+  const ledger=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers').select('result').eq('session_id',session).eq('turn_number',turn).single());
+  const result=ledger?.result;if(!result?.snapshot)throw new Error('Missing physical snapshot');
+  // Only last turn's management section is needed for the trend columns, never the whole ledger.
+  const previous=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
+    .select('management:committed_result->management').eq('session_id',session).eq('turn_number',turn-1).eq('committed',true).maybeSingle());
   const realms=await rows(sb,'realm_resources',session);
-  const reports=Object.fromEntries(realms.map(realm=>[realm.player_name,buildManagementReport(result.snapshot,result,realm,previous.data?.committed_result?.management?.[realm.player_name])]));
+  const reports=Object.fromEntries(realms.map(realm=>[realm.player_name,buildManagementReport(result.snapshot,result,realm,previous?.management?.[realm.player_name])]));
   const saved=await sb.rpc('update_goods_management_reports',{p_session:session,p_turn:turn,p_reports:reports});
   if(saved.error)throw saved.error;
 }
