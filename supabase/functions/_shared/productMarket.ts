@@ -192,16 +192,23 @@ export interface CityAccountsInput {
  */
 export function cityAccounts(i: CityAccountsInput) {
   const M = PRODUCT_MARKET, gdp = pos(i.valueAdded);
-  const laborIncome = gdp * M.laborShare;
-  const capitalIncome = gdp * (1 - M.laborShare) * M.localCapitalShare;
+  // The physical ledger values gross output at BASE prices, so city_gdp is a CONSTANT-PRICE figure.
+  // Households, however, buy at local (scarcity/quality/fame) prices. Comparing a constant-price
+  // income against a local-price basket understated affordability by the whole price index, which
+  // made every city look bankrupt. Producers sell at local prices, so nominal income carries the
+  // same price level as the basket: nominal = constant-price × price_level. Real purchasing power
+  // is unchanged by this (it divides the level out again) — only the money comparison is honest.
+  const basicCost = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.localPrice), 0);
+  const basicCostAtBase = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.basePrice), 0);
+  const priceIndex = basicCostAtBase > 0 ? basicCost / basicCostAtBase : 1;
+  const priceLevel = Math.max(0.05, priceIndex);
+  const laborIncome = gdp * M.laborShare * priceLevel;
+  const capitalIncome = gdp * (1 - M.laborShare) * M.localCapitalShare * priceLevel;
   const grossIncome = laborIncome + capitalIncome;
   const taxes = grossIncome * clamp01(i.householdTaxRate);
   const disposable = grossIncome - taxes;
   const purchasingPower = disposable * M.propensityToConsume;
-  const basicCost = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.localPrice), 0);
-  const basicCostAtBase = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.basePrice), 0);
-  const priceIndex = basicCostAtBase > 0 ? basicCost / basicCostAtBase : 1;
-  const realPurchasingPower = purchasingPower / Math.max(0.05, priceIndex);
+  const realPurchasingPower = purchasingPower / priceLevel;
   const discretionaryBudget = Math.max(0, purchasingPower - basicCost);
   const needQty = i.needs.reduce((s, n) => s + pos(n.qty), 0);
   const consumed = i.needs.reduce((s, n) => s + Math.min(pos(n.qty), pos(n.consumed)), 0);
