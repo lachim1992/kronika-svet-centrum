@@ -1,3 +1,4 @@
+import { validateBuild, canonicalBuilding, stripProductionEffects } from "../_shared/buildValidation.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUBNODE_DEFS as SHARED_SUBNODE_DEFS } from "../_shared/subnodeCatalog.ts";
 import { readRealmWorkforce, actualSoldiers } from '../_shared/manpower.ts';
@@ -3376,6 +3377,34 @@ async function executeBuildBuilding(
   }
 
   if (!cityId || !building) return { events: [], error: "Missing cityId or building" };
+
+  // AUTHORITATIVE TEMPLATE: cost, time, effects, recipes, levels and prerequisites come from the
+  // server-side template; client-sent values for these fields are ignored.
+  const templateId = building.template_id || payload.templateId || null;
+  let template: any = null;
+  if (templateId) {
+    const { data } = await supabase.from("building_templates").select("*").eq("id", templateId).maybeSingle();
+    if (!data) return { events: [], error: "Neznámá šablona stavby" };
+    template = data;
+    building = canonicalBuilding(template, building);
+  } else if (!isAiGenerated) {
+    return { events: [], error: "Stavba musí vycházet ze šablony" };
+  } else {
+    building = { ...building, effects: stripProductionEffects(building.effects) };
+  }
+  {
+    const { data: cityRow } = await supabase.from("cities").select("owner_player, settlement_level, grid_x, grid_y, province_q, province_r").eq("id", cityId).maybeSingle();
+    if (!cityRow) return { events: [], error: "Město neexistuje" };
+    const gx = cityRow.grid_x ?? cityRow.province_q, gy = cityRow.grid_y ?? cityRow.province_r;
+    const { data: tile } = await supabase.from("province_hexes").select("has_river, coastal, biome_family, resource_deposits")
+      .eq("session_id", sessionId).eq("grid_x", gx).eq("grid_y", gy).maybeSingle();
+    const { data: existing } = await supabase.from("city_buildings").select("name, template_id, status").eq("city_id", cityId);
+    const done = (existing || []).filter((b: any) => b.status === "completed");
+    const reason = template ? validateBuild(template, { actor: actor.name, city: cityRow, tile,
+      existingBuildingNames: done.map((b: any) => b.name), existingTemplateIds: (existing || []).map((b: any) => b.template_id).filter(Boolean) })
+      : (cityRow.owner_player !== actor.name ? "Nedostupné: stavět lze jen ve vlastním městě" : null);
+    if (reason) return { events: [], error: reason };
+  }
 
   const targetParcel = await getAvailableParcel(supabase, cityId, parcelId);
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };

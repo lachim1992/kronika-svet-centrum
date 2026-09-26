@@ -64,6 +64,9 @@ export function BuildCatalogPanel(props: Props) {
     if (!props.ownCity) return "Nedostupné: stavět lze jen na parcele vlastního města";
     if (item.kind === "district" && item.category === "district" && props.freeDistrictSlots <= 0)
       return "Nedostupné: žádná volná obytná kapacita — postav nejdřív obytnou čtvrť";
+    // Same hard rule and wording as the server (buildValidation.WATER_REASON).
+    if (item.requirements.includes("Řeka nebo pobřeží") && !props.hasWater)
+      return "Nedostupné: tato stavba potřebuje řeku nebo pobřeží.";
     if (props.treasury.gold < item.cost.gold)
       return `Nedostupné: chybí zlato (${item.cost.gold})`;
     return null;
@@ -71,8 +74,6 @@ export function BuildCatalogPanel(props: Props) {
 
   /** Soft warning — postavit lze, ale plný výkon to zatím mít nebude. */
   const warningFor = (item: CatalogItem): string | null => {
-    if (item.requirements.includes("Řeka nebo pobřeží") && !props.hasWater)
-      return "Nevyužije se naplno: tato stavba potřebuje řeku nebo pobřeží.";
     if (item.productive && item.recipes.some(r => r.inputs.length > 0))
       return "Potřebuje dodávky vstupů — bez dodavatele nebo cesty bude vyrábět méně.";
     return null;
@@ -82,7 +83,7 @@ export function BuildCatalogPanel(props: Props) {
     if (!matchesQuery(item, query)) return false;
     const blocked = !!blockedBy(item);
     return availability === "all" || (availability === "now" ? !blocked : blocked);
-  }), [catalog, query, availability, props.parcelBlock, props.ownCity, props.freeDistrictSlots, props.treasury.gold]);
+  }), [catalog, query, availability, props.parcelBlock, props.ownCity, props.freeDistrictSlots, props.treasury.gold, props.hasWater]);
 
   const groups = useMemo(() => {
     const map = new Map<BuildCategory, CatalogItem[]>();
