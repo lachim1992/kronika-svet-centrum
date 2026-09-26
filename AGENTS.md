@@ -3,3 +3,5 @@
 - `city_capital_stock` is written only by process-turn (formula `productMarket.capitalStockDelta`); refresh shows the candidate only — no second accumulator.
 - Trade-service value added (`productMarket.tradeServiceValue`) is part of city_gdp and realm value_added_gdp; gross trade never is.
 - Household income uses one global PRODUCT_MARKET.incomeUnitFactor, never the city CPI; product choice/budget cap read previous COMMITTED prices (snapshot.priorPrices) — so local inflation is visible and there is no same-pass price loop.
+- Production-contract role/tier normalization and the catalogue audit live only in `supabase/functions/_shared/productionContract.ts` (adapter re-exports it) — one deterministic legacy repair, so no path can grant a `source` role to an input-consuming recipe.
+- Population never yields wealth: `computeCityLayerEconomy` has no wealth layer; fiscal revenue comes solely from the canonical tax pillars and goods ledger.
