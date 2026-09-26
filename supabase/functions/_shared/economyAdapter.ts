@@ -53,7 +53,7 @@ export async function finalizeManagementReports(sb:any,session:string,turn:numbe
   const previous=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
     .select('management:committed_result->management').eq('session_id',session).eq('turn_number',turn-1).eq('committed',true).maybeSingle());
   const realms=await rows(sb,'realm_resources',session);
-  const reports=Object.fromEntries(realms.map(realm=>[realm.player_name,buildManagementReport(result.snapshot,result,realm,previous?.management?.[realm.player_name])]));
+  const reports=Object.fromEntries(realms.map(realm=>[realm.player_name,buildManagementReport(result.snapshot,result,realm,(previous?.management??previous?.committed_result?.management)?.[realm.player_name])]));
   const saved=await sb.rpc('update_goods_management_reports',{p_session:session,p_turn:turn,p_reports:reports});
   if(saved.error)throw saved.error;
 }
@@ -71,7 +71,9 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const previous=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
     .select('prices:committed_result->prices,balances:committed_result->balances,cityAccounts:committed_result->cityAccounts,famous:committed_result->famous,management:committed_result->management')
     .eq('session_id',session).lt('turn_number',turn).eq('committed',true).order('turn_number',{ascending:false}).limit(1).maybeSingle());
-  const prior=previous?.balances||previous?.prices||previous?.management?previous:null;
+  // PostgREST returns the requested sections directly; a client that ignores column selection
+  // returns the whole document, so accept both shapes.
+  const prior=previous?.committed_result??previous??null;
   const current=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
     .select('opening:result->opening').eq('session_id',session).eq('turn_number',turn).maybeSingle());
   const goods:Good[]=db.goods.map(g=>{
@@ -336,7 +338,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     }
     for(let i=producers.length-1;i>=0;i--)if(!(producers[i].allocation>0))producers.splice(i,1);
   }
-  let opening=prior?.balances?.filter((b:any)=>cityMap.has(b.city)).map((b:any)=>({city:b.city,good:b.good,qty:b.stored,quality:b.quality}))??current?.opening;
+  let opening=prior?.balances?.filter((b:any)=>cityMap.has(b.city)).map((b:any)=>({city:b.city,good:b.good,qty:b.stored,quality:b.quality}))??current?.result?.opening??current?.opening;
   if(!opening){
     opening=[];
     // First adoption preserves existing inventories. Subsequent refreshes reuse
