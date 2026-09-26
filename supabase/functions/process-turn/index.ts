@@ -121,9 +121,10 @@ function computeCityLayerEconomy(city: any, buildingEffects: Record<string, numb
   // Market level boosts wealth
   const marketBonus = 1 + (city.market_level || 0) * 0.12;
 
+  // POPULATION NEVER CREATES WEALTH. The legacy population-derived `wealth` layer is removed:
+  // fiscal revenue comes from the canonical tax pillars and city value added from the goods ledger.
   return {
     production: (peas * PRODUCTION_PER_PEASANT + burg * PRODUCTION_PER_BURGHER) * prodMult,
-    wealth: (burg * WEALTH_PER_BURGHER + peas * WEALTH_PER_PEASANT) * wealthMult * marketBonus,
     capacity: (cler * CAPACITY_PER_CLERIC + burg * CAPACITY_PER_BURGHER) * capacityMult,
     faith: (cler * FAITH_PER_CLERIC + warr * FAITH_PER_WARRIOR) * faithMult * templeBonus,
     warriorRatio: (city.population_total || 1) > 0 ? warr / (city.population_total || 1) : 0,
