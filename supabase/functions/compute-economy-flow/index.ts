@@ -9,7 +9,8 @@ Deno.serve(async req=>{
     const {session_id}=await req.json();if(!session_id)throw Error("session_id required");
     const sb=strictDatabase(createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!));
     const {data:session,error:se}=await sb.from("game_sessions").select("current_turn").eq("id",session_id).single();if(se)throw se;
-    const {data:ledger,error:le}=await sb.from("economy_turn_ledgers").select("result").eq("session_id",session_id).eq("turn_number",session.current_turn).single();if(le)throw le;
+    const {data:ledger,error:le}=await sb.from("economy_turn_ledgers").select("result").eq("session_id",session_id).eq("turn_number",session.current_turn).maybeSingle();if(le)throw le;
+    if(!ledger)return new Response(JSON.stringify({ok:true,nodes_computed:0,skipped:"no_goods_projection"}),{headers});
     const {data:nodes,error:ne}=await sb.from("province_nodes").select("id,city_id").eq("session_id",session_id).order("id");if(ne)throw ne;
     const assigned=new Set<string>();
     for(const node of nodes||[]){
