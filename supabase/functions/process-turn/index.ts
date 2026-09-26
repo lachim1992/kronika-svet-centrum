@@ -1687,13 +1687,17 @@ Deno.serve(async (req) => {
       p_gold_delta: newGoldReserve - Number(realm.gold_reserve || 0), p_capex_delta: productionIncome,
     });
     if (fiscalError) throw fiscalError;
-    if (!fiscalApplied) return new Response(JSON.stringify({ ok: true, skipped: true, reason: "turn_already_processed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    // CITY CAPITAL STOCK — process-turn is its ONLY writer, once per turn (after the fiscal guard).
-    // The delta formula lives in productMarket.capitalStockDelta; devastated cities also lose stock.
-    {
-      const { data: stockRows } = await supabase.from("city_capital_stock").select("city_id, stock, last_turn").eq("session_id", sessionId)
+    /**
+     * CITY CAPITAL STOCK — process-turn is its ONLY writer. Idempotent by (session, city, turn):
+     * a row already stamped with this turn is skipped, so a retry repairs a missed write without
+     * double-applying the delta. It runs even when the fiscal turn was already applied (a crash
+     * between the fiscal RPC and this write must be repairable), and a failure is surfaced.
+     */
+    const applyCityCapital = async () => {
+      const { data: stockRows, error: readErr } = await supabase.from("city_capital_stock").select("city_id, stock, last_turn").eq("session_id", sessionId)
         .in("city_id", cityIds.length ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+      if (readErr) throw readErr;
       const stockBy = new Map<string, any>((stockRows || []).map((r: any) => [r.city_id, r]));
       const upserts = myCities.filter((c: any) => (stockBy.get(c.id)?.last_turn ?? -1) < currentTurn).map((c: any) => {
         const acc = accountsByCity.get(c.id), prev = Number(stockBy.get(c.id)?.stock || 0);
@@ -1702,11 +1706,17 @@ Deno.serve(async (req) => {
           devastated: c.status === "zpustošeno" });
         return { session_id: sessionId, city_id: c.id, stock: d.next, last_delta: d.delta, last_turn: currentTurn, detail: d };
       });
-      if (upserts.length) {
-        const { error: capErr } = await supabase.from("city_capital_stock").upsert(upserts, { onConflict: "session_id,city_id" });
-        if (capErr) console.error("city_capital_stock write failed", capErr);
-      }
+      if (!upserts.length) return 0;
+      const { error: capErr } = await supabase.from("city_capital_stock").upsert(upserts, { onConflict: "session_id,city_id" });
+      if (capErr) throw capErr;
+      return upserts.length;
+    };
+    if (!fiscalApplied) {
+      const repaired = await applyCityCapital();
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "turn_already_processed", city_capital_reconciled: repaired }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    await applyCityCapital();
+
 
 
     // ══════════════════════════════════════════
