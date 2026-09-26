@@ -52,9 +52,9 @@ describe('A. landed cost, margins, AUTO', () => {
 });
 
 describe('B. trade services, capital stock', () => {
-  it('staffed commercial capacity captures more service value than a hamlet on the same trade', () => {
+  it('helper: fully staffed infrastructure captures more than a hamlet with none (staffing proven in post-closure integration tests)', () => {
     const t = { local_exchange: 0, import_export: 100, aggregation: 0, reexport: 0, transit: 500 };
-    const hamlet = tradeServiceValue({ ...t, commercialCapacity: 0 }), hub = tradeServiceValue({ ...t, commercialCapacity: 12 });
+    const hamlet = tradeServiceValue({ ...t, infrastructure: 0, staffing: 0 }), hub = tradeServiceValue({ ...t, infrastructure: 12, staffing: 1 });
     expect(hub.service_value_added).toBeGreaterThan(hamlet.service_value_added);
     // Only the service margin enters VA, never the gross value.
     expect(hub.service_value_added).toBeLessThan(600 * 0.1);

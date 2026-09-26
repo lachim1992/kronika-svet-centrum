@@ -18,6 +18,8 @@ export interface City {
   security: number; guild: number; /** Active building sites / projects: the only driver of construction demand. */
   constructionProjects?: number; ideology: keyof typeof IDEOLOGIES; coastal: boolean;
   activePopModifier?: number; maxMobModifier?: number;
+  /** Informal part of market+storage (settlement baseline) — creates no service jobs. */
+  commercialBaseline?: number;
   /** Housing headroom 0..1 (free housing / capacity), for the prosperity index only. */
   housingHeadroom?: number;
   /** Persisted city capital stock (written only by process-turn); read-only here. */
@@ -40,7 +42,9 @@ export interface Producer { id: string; city: string; node?: string; cell?: stri
 export interface CityLabor { city: string; population: number; economically_active: number; available_workforce: number;
   employed_total: number; unemployed_total: number; jobs_capacity: number; vacancies_total: number;
   employment_rate: number; unemployment_rate: number;
-  sectors: Record<string, { labor_supply: number; jobs_capacity: number; employed: number; vacancies: number; labor_shortage: number }> }
+  sectors: Record<string, { labor_supply: number; jobs_capacity: number; employed: number; vacancies: number; labor_shortage: number; service_jobs?: number; service_employed?: number }>;
+  /** Trade-service jobs from formal commercial infrastructure (logistics sector, filled after goods producers). */
+  service?: { infrastructure: number; jobs: number; employed: number; staffing: number } }
 export interface Edge { id: string; from: string; to: string; cost: number; capacity: number;
   mode: 'road'|'river'|'sea'|'spur'; risk: number; toll: number; border: number }
 export interface Fame { city: string; good: string; name: string; streak: number; fame: number; quality: number; created: number|null; turn: number }
@@ -264,6 +268,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const laborSupply=(c:City,sector:Sector)=>workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
   const employed=new Map<string,number>();
   const laborMetrics:CityLabor[]=[];
+  const serviceLabor=new Map<string,{infrastructure:number;jobs:number;employed:number;staffing:number}>();
   for(const c of cities){
     const sectors:CityLabor['sectors']={};let jobsTotal=0,employedTotal=0,supplyTotal=0;
     for(const sector of Object.keys(C.sectors) as Sector[]){
@@ -272,10 +277,19 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const jobs=own.reduce((s,p)=>s+jobsOf(p),0);
       const fill=jobs>C.epsilon?Math.min(1,supply/jobs):0;
       for(const p of own)employed.set(p.id,jobsOf(p)*fill);
-      const filled=jobs*fill;
-      sectors[sector]={labor_supply:supply,jobs_capacity:jobs,employed:filled,
-        vacancies:Math.max(0,jobs-filled),labor_shortage:Math.max(0,jobs-supply)};
-      jobsTotal+=jobs;employedTotal+=filled;supplyTotal+=supply;
+      let filled=jobs*fill,allJobs=jobs;
+      const row:CityLabor['sectors'][string]={labor_supply:supply,jobs_capacity:jobs,employed:filled,vacancies:0,labor_shortage:0};
+      if(sector==='logistics'){
+        // TRADE SERVICES: formal market/warehouse/port capacity creates service jobs; they are filled
+        // from logistics labour left after goods producers (one labour market, deterministic order).
+        const infra=Math.max(0,n(c.market)+n(c.storage)-n(c.commercialBaseline));
+        const sJobs=infra*PRODUCT_MARKET.serviceJobsPerCapacity,sEmp=Math.min(sJobs,Math.max(0,supply-filled));
+        serviceLabor.set(c.id,{infrastructure:infra,jobs:sJobs,employed:sEmp,staffing:sJobs>C.epsilon?sEmp/sJobs:0});
+        row.service_jobs=sJobs;row.service_employed=sEmp;filled+=sEmp;allJobs+=sJobs;
+      }
+      row.jobs_capacity=allJobs;row.employed=filled;row.vacancies=Math.max(0,allJobs-filled);row.labor_shortage=Math.max(0,allJobs-supply);
+      sectors[sector]=row;
+      jobsTotal+=allJobs;employedTotal+=filled;supplyTotal+=supply;
     }
     const active=workforce.get(c.id)!.effectiveActivePop;
     laborMetrics.push({city:c.id,population:c.population,economically_active:active,
@@ -283,7 +297,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       unemployed_total:Math.max(0,supplyTotal-employedTotal),jobs_capacity:jobsTotal,
       vacancies_total:Math.max(0,jobsTotal-employedTotal),
       employment_rate:supplyTotal>C.epsilon?employedTotal/supplyTotal:0,
-      unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors});
+      unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors,service:serviceLabor.get(c.id)});
   }
   /** employed / jobs_capacity, clamped. Automated producers without declared labour run at their own staffing. */
   const staffingRatio=(p:Producer)=>{const jobs=jobsOf(p);
@@ -578,7 +592,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       handled_trade_value:sum(inbound)+sum(outbound),reexport_value:reexport,local_value_added:own.reduce((s,b)=>s+b.gross_output_value-b.intermediate_value,0),
       trade_services:tradeServiceValue({local_exchange:own.reduce((s,b)=>s+b.consumed_household*goodByKey.get(b.good)!.price,0),
         import_export:sum(inbound.filter(f=>f.reason!=='hub_aggregation'))+sum(outbound),aggregation:agg,reexport,transit:sum(transit),
-        commercialCapacity:n(c.market)+n(c.storage)}),
+        infrastructure:serviceLabor.get(c.id)?.infrastructure??0,staffing:serviceLabor.get(c.id)?.staffing??0}),
       hinterland_population:children.reduce((s,d)=>s+d.population,0),network_centrality:graph.get(c.cell)?.length||0};});
   for(const c of cities){let storage=n(c.storage)*C.warehouseCapacity;for(const g of goods){const b=stock(c.id,g.key);
     b.unmet_demand=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
