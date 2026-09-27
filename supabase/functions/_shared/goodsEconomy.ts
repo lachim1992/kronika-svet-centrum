@@ -1,6 +1,6 @@
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { computeWorkforceBreakdown } from './manpower.ts';
-import { demandShares, functionalValue, substitutionEfficiency, discretionaryBudgetScale, cityAccounts, recipeMargin, productMeta, landedInputCost, outputQuality, tradeServiceValue, prosperityIndex, capitalStockDelta, PRODUCT_MARKET, type CityAccounts } from './productMarket.ts';
+import { demandShares, functionalValue, substitutionEfficiency, discretionaryBudgetScale, cityAccounts, recipeMargin, productMeta, landedInputCost, outputQuality, tradeServiceVolumes, tradeServiceValue, prosperityIndex, capitalStockDelta, PRODUCT_MARKET, type CityAccounts } from './productMarket.ts';
 import { BASKET_KEYS, DEMAND_CHANNELS, basketDemandChannels, basketSpec, channelTotal, emptyChannels,
   toolIntensityOf, toolProductivityMultiplier, type DemandChannel, type DemandInput } from './demandModel.ts';
 
@@ -623,8 +623,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       production_importance:production,aggregation_importance:agg,transit_importance:sum(transit),strategic_importance:service(c),
       demand_importance:own.reduce((s,b)=>s+b.demand*goodByKey.get(b.good)!.price,0),administrative_importance:c.admin,
       handled_trade_value:sum(inbound)+sum(outbound),reexport_value:reexport,local_value_added:own.reduce((s,b)=>s+b.gross_output_value-b.intermediate_value,0),
-      trade_services:tradeServiceValue({local_exchange:own.reduce((s,b)=>s+b.consumed_household*goodByKey.get(b.good)!.price,0),
-        import_export:sum(inbound.filter(f=>f.reason!=='hub_aggregation'))+sum(outbound),aggregation:agg,reexport,transit:sum(transit),
+      trade_services:tradeServiceValue({...tradeServiceVolumes({inbound,outbound,transit,
+        basePrices:Object.fromEntries(goods.map(g=>[g.key,g.price])),
+        localExchange:own.reduce((s,b)=>s+b.consumed_household*goodByKey.get(b.good)!.price,0)}),
         infrastructure:serviceLabor.get(c.id)?.infrastructure??0,staffing:serviceLabor.get(c.id)?.staffing??0}),
       hinterland_population:children.reduce((s,d)=>s+d.population,0),network_centrality:graph.get(c.cell)?.length||0};});
   for(const c of cities){let storage=n(c.storage)*C.warehouseCapacity;for(const g of goods){const b=stock(c.id,g.key);

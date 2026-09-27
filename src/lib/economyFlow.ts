@@ -471,7 +471,12 @@ export function getFiscalIncome(realm: any) {
   const armyUpkeep = Number(wb.army_upkeep ?? 0);
   const tolls = Number(wb.tolls ?? 0);
   const sportFunding = Number(wb.sport_funding ?? 0);
-  const totalExpenses = armyUpkeep + tolls + sportFunding;
+  const roadUpkeep = Number(wb.route_upkeep ?? 0);
+  const legacyTrade = Number(wb.legacy_trade_gross ?? 0);
+  const prestigeBonus = Number(wb.prestige_bonus ?? 0);
+  const insolvencyRelief = Number(wb.insolvency_relief ?? 0);
+  const roundingAdjustment = Number(wb.rounding_adjustment ?? 0);
+  const totalExpenses = Number(wb.total_expenses ?? armyUpkeep + tolls + sportFunding + roadUpkeep);
 
   const taxBasesRaw = realm?.computed_modifiers?.tax_bases || {};
   const taxBases = {
@@ -490,11 +495,12 @@ export function getFiscalIncome(realm: any) {
     transitToll: Number(detail.transit_toll ?? 0),
     extractionTax: Number(detail.extraction_tax ?? 0),
     taxBases,
-    fiscalRevenue: totalIncome,
-    totalIncome,
+    fiscalRevenue: Number(wb.fiscal_revenue ?? totalIncome),
+    totalIncome: Number(wb.total_income ?? totalIncome),
     armyUpkeep, tolls, sportFunding, totalExpenses,
-    recurringExpenses: armyUpkeep + sportFunding,
-    netChange: totalIncome - totalExpenses,
+    roadUpkeep, legacyTrade, prestigeBonus, insolvencyRelief, roundingAdjustment,
+    recurringExpenses: armyUpkeep + sportFunding + roadUpkeep,
+    netChange: Number(wb.turn_fiscal_delta ?? totalIncome - totalExpenses),
   };
 }
 

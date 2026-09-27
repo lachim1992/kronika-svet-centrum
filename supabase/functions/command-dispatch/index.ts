@@ -86,13 +86,15 @@ Deno.serve(async (req) => {
     // ── Validate session ──
     const { data: session, error: sessErr } = await supabase
       .from("game_sessions")
-      .select("id, current_turn")
+      .select("id, current_turn, resolving_turn")
       .eq("id", sessionId)
       .single();
 
     if (sessErr || !session) {
       return json({ error: "Session not found" }, 404);
     }
+    if(session.resolving_turn != null && actor?.type !== 'ai_faction' && actor?.type !== 'system')
+      return json({error:'Tah se právě uzavírá. Nejprve dokončete jeho zpracování.'},409);
 
     // ── Resolve actor.name to canonical realm player_name ──
     // Keep the authenticated caller separate from client-supplied actor data.

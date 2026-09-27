@@ -86,6 +86,7 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
     { icon: "⚔️", label: "Armádní upkeep", value: fi.armyUpkeep },
     { icon: "🏛️", label: "Mýtné / správa", value: fi.tolls },
     { icon: "🏟️", label: "Sport funding", value: fi.sportFunding },
+    { icon: "🛤️", label: "Údržba cest", value: fi.roadUpkeep },
   ].filter(e => e.value > 0);
 
   return (
@@ -95,7 +96,7 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             🏛️ Příjmy státu
-            <InfoTip>Skutečné příjmy pokladny z posledního vyhodnocení tahu — daně a cla. Přepočet ekonomiky je nemění.</InfoTip>
+            <InfoTip>Příjmy pokladny z posledního uzavřeného tahu. Smluvní obchod a prestižní bonus jsou vykázané samostatně. Přepočet ekonomiky je nemění.</InfoTip>
             <span className="ml-auto font-mono font-bold text-xl text-primary">+{fi.totalIncome.toFixed(1)} /kolo</span>
           </CardTitle>
         </CardHeader>
@@ -143,6 +144,19 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
               <span className="font-mono">{pillarResidualRaw.toFixed(1)}</span>
             </div>
           </div>
+
+          {[
+            { label: "Smluvní obchod před mýtným", value: fi.legacyTrade },
+            { label: "Prestižní příjmový bonus", value: fi.prestigeBonus },
+          ].filter(x => x.value !== 0).map(x => <div key={x.label} className="flex justify-between text-xs">
+            <span>{x.label}</span><span className="font-mono">{x.value.toFixed(1)}</span>
+          </div>)}
+          {[
+            { label: "Vyrovnání záporné pokladny", value: fi.insolvencyRelief },
+            { label: "Zaokrouhlení", value: fi.roundingAdjustment },
+          ].filter(x => x.value !== 0).map(x => <div key={x.label} className="flex justify-between text-xs text-muted-foreground">
+            <span>{x.label}</span><span className="font-mono">{x.value.toFixed(2)}</span>
+          </div>)}
 
           {/* Tax bases — five separate bases (canonical from last turn resolution) */}
           <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
