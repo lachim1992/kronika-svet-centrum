@@ -93,10 +93,10 @@ Deno.serve(async (req) => {
     // Current turn (best-effort)
     const { data: sessionRow } = await sb
       .from("game_sessions")
-      .select("current_turn")
+      .select("current_turn,resolving_turn")
       .eq("id", session_id)
       .maybeSingle();
-    const currentTurn: number = (sessionRow as any)?.current_turn ?? 0;
+    const currentTurn: number = (sessionRow as any)?.resolving_turn ?? (sessionRow as any)?.current_turn ?? 0;
 
     // 1) Load nodes, routes, treaties, neutral_trade_pacts
     const [nodeRes, routeRes, riverRes, prevSnapRes, treatyRes, pactRes] = await Promise.all([
