@@ -472,43 +472,70 @@ export type Database = {
       }
       ai_invocation_log: {
         Row: {
+          automatic: boolean | null
+          cached_tokens: number | null
           created_at: string
+          estimated_cost: number | null
           function_name: string
           id: string
+          input_chars: number | null
+          input_tokens: number | null
+          latency_ms: number | null
           lineage_names_available: string[]
           model: string | null
+          output_tokens: number | null
           player_context_used: boolean
           player_name: string | null
           premise_version: number | null
+          purpose: string | null
           request_id: string
           session_id: string
           success: boolean
+          turn_number: number | null
         }
         Insert: {
+          automatic?: boolean | null
+          cached_tokens?: number | null
           created_at?: string
+          estimated_cost?: number | null
           function_name: string
           id?: string
+          input_chars?: number | null
+          input_tokens?: number | null
+          latency_ms?: number | null
           lineage_names_available?: string[]
           model?: string | null
+          output_tokens?: number | null
           player_context_used?: boolean
           player_name?: string | null
           premise_version?: number | null
+          purpose?: string | null
           request_id: string
           session_id: string
           success?: boolean
+          turn_number?: number | null
         }
         Update: {
+          automatic?: boolean | null
+          cached_tokens?: number | null
           created_at?: string
+          estimated_cost?: number | null
           function_name?: string
           id?: string
+          input_chars?: number | null
+          input_tokens?: number | null
+          latency_ms?: number | null
           lineage_names_available?: string[]
           model?: string | null
+          output_tokens?: number | null
           player_context_used?: boolean
           player_name?: string | null
           premise_version?: number | null
+          purpose?: string | null
           request_id?: string
           session_id?: string
           success?: boolean
+          turn_number?: number | null
         }
         Relationships: []
       }
@@ -11104,6 +11131,41 @@ export type Database = {
           },
         ]
       }
+      turn_digests: {
+        Row: {
+          created_at: string
+          digest: Json
+          id: string
+          importance: number
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          digest?: Json
+          id?: string
+          importance?: number
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          created_at?: string
+          digest?: Json
+          id?: string
+          importance?: number
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "turn_digests_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       turn_execution_guards: {
         Row: {
           error: string | null
@@ -11327,6 +11389,7 @@ export type Database = {
           image_url: string | null
           last_enriched_turn: number | null
           last_generated_at: string | null
+          needs_enrichment: boolean
           owner_player: string
           references: Json | null
           saga_cache: Json | null
@@ -11355,6 +11418,7 @@ export type Database = {
           image_url?: string | null
           last_enriched_turn?: number | null
           last_generated_at?: string | null
+          needs_enrichment?: boolean
           owner_player: string
           references?: Json | null
           saga_cache?: Json | null
@@ -11383,6 +11447,7 @@ export type Database = {
           image_url?: string | null
           last_enriched_turn?: number | null
           last_generated_at?: string | null
+          needs_enrichment?: boolean
           owner_player?: string
           references?: Json | null
           saga_cache?: Json | null
