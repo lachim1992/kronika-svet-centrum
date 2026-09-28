@@ -168,9 +168,9 @@ describe("route upkeep sits inside the fiscal boundary", () => {
     const src = fn("process-turn");
     expect(src).toContain("routeUpkeepDueThisTurn(supabase, sessionId, playerName, currentTurn)");
     expect(src).toContain("newGoldReserve -= routeUpkeepExpense");
-    expect(src).toContain("roads: routeUpkeepExpense");
-    expect(src).toContain("...treasury");
-    expect(src).toContain("p_gold_delta: treasury.turn_fiscal_delta");
+    expect(src).toContain("route_upkeep: routeUpkeepExpense");
+    expect(src).toMatch(/recurring_expenses:.*routeUpkeepExpense/);
+    expect(src).toMatch(/turn_fiscal_delta:.*routeUpkeepExpense/);
   });
 
   it("commit-turn runs the world layer tick before the fiscal pass", () => {

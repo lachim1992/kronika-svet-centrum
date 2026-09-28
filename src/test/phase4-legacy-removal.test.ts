@@ -55,7 +55,7 @@ describe("phase 4: the second game loop is gone", () => {
 describe("phase 4: turn-based tick logic was extracted, not dropped", () => {
   it("commit-turn advances army travel, ambush, sieges and node projects once", () => {
     expect(COMMIT).toContain('import { advanceTurnProgress } from "../_shared/turnProgress.ts"');
-    expect(COMMIT).toContain("journal.atomic('turn_progress',db=>advanceTurnProgress(db,sessionId,turnNumber))");
+    expect(COMMIT).toMatch(/advanceTurnProgress\(supabase, sessionId, turnNumber\)/);
     expect(COMMIT.match(/advanceTurnProgress\(/g)?.length).toBe(1); // exactly one call site
   });
 

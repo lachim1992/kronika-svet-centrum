@@ -47,8 +47,7 @@ const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clo
 const basket=(v:string)=>remap[v]||v;
 /** Refresh report fiscal fields after the fiscal transaction, without rerunning production. */
 export async function finalizeManagementReports(sb:any,session:string,turn:number){
-  const ledger=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers').select('result,committed').eq('session_id',session).eq('turn_number',turn).single());
-  if(ledger?.committed)return; // A retry after commit must preserve the frozen management report.
+  const ledger=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers').select('result').eq('session_id',session).eq('turn_number',turn).single());
   const result=ledger?.result;if(!result?.snapshot)throw new Error('Missing physical snapshot');
   // Only last turn's management section is needed for the trend columns, never the whole ledger.
   const previous=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
@@ -62,8 +61,8 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations','node_projects'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
-  const sess=await query<any>('game_sessions',()=>sb.from('game_sessions').select('current_turn,resolving_turn').eq('id',session).single());
-  const turn=sess.resolving_turn??sess.current_turn;
+  const sess=await query<any>('game_sessions',()=>sb.from('game_sessions').select('current_turn').eq('id',session).single());
+  const turn=sess.current_turn;
   /**
    * The committed ledger is a very large JSON document (flows, diagnostics, per-good balances of
    * every city). Only five of its sections are ever read here, so ask Postgres for those sections

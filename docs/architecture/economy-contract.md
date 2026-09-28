@@ -1,84 +1,211 @@
-# Chronicle Economy Contract
+# Chronicle Economy Contract (Economy Integrity Pass)
 
-Aktuální kontrakt ekonomiky, 27. 9. 2026. Historické stavy roadmapy nejsou alternativní definice veličin.
+Kanonický slovník veličin a vlastnictví dat. Kód i UI se musí držet těchto pojmů.
 
-## Autority
+## Invarianty
 
-- `goodsEconomy.ts` je jediný fyzický solver: obsazená kapacita, vstupy → výstupy, spotřeba, doprava, zásoby a hmotnostní bilance. `householdProduction=false`; populace vytváří pracovní sílu a potřeby, nikoli tržní zboží.
-- `productMarket.ts` vlastní produktové preference, podkoše, funkční hodnotu, rozmanitost, marže, městské účty a ocenění obchodních služeb. UI čte ledger, nepřepočítává vzorce.
-- `demandModel.ts` vlastní třináct košů a provenienci poptávky. Kritické potřeby, provozní vstupy a luxus nejsou zaměnitelné.
-- `process-turn` vlastní fiskální uzávěrku, ekonomické následky nedostatků a městský kapitál. Plánované zápisy se aplikují společně s fiskálním guardem přes `apply_goods_fiscal_plan`.
-- `command-dispatch` vlastní explicitní jednorázové náklady hráče. Stavba se neúčtuje znovu při uzávěrce.
-- `aggregate-realm-totals` pouze agreguje odvozené veličiny; netvoří další příjem ani produkci.
+**INVARIANT 1 — `process-turn` je jediným vlastníkem turn-resolution fiskálu:**
+daňové základy, daňový příjem, periodické výdaje, `wealth_*` komponenty,
+fiskální breakdown a legitimita z ekonomického vyhodnocení.
+`command-dispatch` smí měnit `gold_reserve` pouze kvůli explicitní jednorázové
+transakci hráče (stavba, silnice, nákup, transfer). Cena stavby ani silnice se
+do `process-turn` nepřesouvá.
 
-## Fyzická a peněžní bilance
+**INVARIANT 2 — `refresh-economy` = PURE DERIVED RECOMPUTE.**
+Smí: routes, produkce, poptávka, markets, trade flows, derived agregáty.
+Nesmí: vybírat daně, platit upkeep, měnit `gold_reserve` nebo legitimitu,
+aplikovat transfery, spouštět transakci hráče, a nesmí zapisovat do žádné
+`*_history`, `*_snapshot` ani event/action log tabulky (včetně
+`node_economy_history`). Historie vzniká jen při úspěšném `commit-turn`,
+nejvýše jednou pro (session, turn).
 
-Pro každé město a zboží platí:
+**INVARIANT 3 — snapshot jen po úspěchu celé pipeline:**
+derived physical state → fiscal resolution → final aggregation → validace →
+snapshot → DONE. Při selhání se tah neoznačí jako ekonomicky dokončený,
+snapshot se nevytvoří a stav je `stale`/`error`.
 
+## Slovník
+
+```text
+FYZICKÁ EKONOMIKA   goods_production_value, goods_supply_volume,
+                    trade_turnover, commercial_retention
+GDP                 total_gdp = hodnota finální produkce za tah
+                    total_gdp ≠ trade turnover, ≠ tax revenue, ≠ treasury,
+                    ≠ domácí produkce + export jako fiskální veličina,
+                    ≠ součet node outputu bez eliminace meziproduktů
+                    total_gdp NESMÍ dvojitě započítat intermediate goods
+                    (obilí → mouka → chléb se počítá jednou)
+                    ROZSAH PASSU: současný datový model neodděluje intermediate
+                    a final goods, proto je total_gdp dočasný PROXY
+                    (production_output + export gross_value) s TODO v
+                    aggregate-realm-totals. Value-added reforma = samostatný pass.
+                    Konkurenční definice GDP se odstraňují.
+DAŇOVÉ ZÁKLADY      domestic_tax_base, market_tax_base, transit_tax_base,
+                    extraction_tax_base, poll_tax_base (pět samostatných základů,
+                    každý má jeden writer a jeden vzorec v process-turn)
+FISKÁLNÍ PŘÍJEM     fiscal_revenue = wealth_pop_tax + wealth_domestic_market
+                                     + goods_wealth_fiscal
+VÝDAJE              recurring_expenses = army_upkeep + sport_funding + ...
+TURN RESOLUTION     turn_fiscal_delta = fiscal_revenue − recurring_expenses
+                                        ± turn transfers
+                    gold_after_turn = gold_before_turn + turn_fiscal_delta
+TRANSAKCE HRÁČE     transaction_delta = road / building / purchase / ...
+                    gold_reserve += transaction_delta   (command-dispatch)
 ```
-opening + production + imports
- = household consumption + state consumption + intermediate inputs
- + exports + storage + spoilage + CAPEX
+
+Žádný univerzální `tax_base`. Žádný obecný `net_treasury_change`.
+`total_wealth` se nepoužívá jako ekonomický koncept — v DB zůstává pouze jako
+alias `fiscal_revenue` a v UI se popisuje výhradně jako fiskální příjem.
+
+## Ownership dat
+
+| Vrstva | Writer | Co zapisuje |
+| --- | --- | --- |
+| Physical / derived state | `compute-*` funkce | province_nodes, trade_flows, basket_trade_flows, city_market_baskets, node_inventory |
+| Turn fiscal state | `process-turn` | wealth_*, daňové základy, výdaje, gold_reserve (turn_fiscal_delta), legitimacy |
+| Jednorázové transakce | `command-dispatch` | gold_reserve, production_reserve (CAPEX) |
+| Final aggregation | `aggregate-realm-totals` | total_gdp, total_wealth (alias fiscal_revenue), total_production, total_capacity, total_importance, strategic tiers — read + sum only |
+| Immutable history | `commit-turn` snapshot phase / `world-tick` | node_economy_history a ostatní `*_history` |
+
+## Pipeline
+
+```text
+WORLD STATE → ROUTES/HEX → TRADE SYSTEMS → PRODUCTION → PHYSICAL TRADE
+  → PROCESS-TURN (sole fiscal writer) → AGGREGATE-REALM-TOTALS
+  → VALIDATION → SNAPSHOT → DONE
+
+refresh-economy: ROUTES → PRODUCTION → MARKETS → TRADE → AGGREGATE
+                 (read-only vůči fiskálu a historii)
 ```
 
-Výroba, kapacita, tržby, daně a pokladna jsou rozdílné veličiny. `province_nodes.production_output` je jmenovitá kapacita; skutečná výroba je v Goods ledgeru. `production_reserve` narůstá pouze o fyzické `capex` zůstatky způsobilého stavebního zboží, nejvýše jednou za tah. Kapacita ani populace se přímo na CAPEX nepřevádějí.
+## Acceptance kritéria
 
-```
-goods value added = gross output value − intermediate value
-city_gdp = goods value added + trade-service value added
-realm value_added_gdp = sum(city_gdp)
-```
-
-Zboží používá katalogové základní ceny a definované ocenění kvality; provozní marže používají místní/landed ceny. Obchodní služby oceňují skutečně dodané množství katalogovou cenou, následně sazbou služby, infrastrukturou a obsazením. `flow.gross_value` je nominální obchodní metrika a nesmí vstupovat do stálocenového HDP služeb. Sláva a místní scarcity premium samy HDP nezvyšují. Vyšší reálný objem obslouženého obchodu ano.
-
-Export není druhá produkce: `export_gross_value` se vykazuje odděleně a nepřičítá se do HDP. `fiscal_capture` na obchodním toku je pouze telemetrie, nikoli další příjem koruny. `total_wealth` zůstává kompatibilním aliasem fiskálního příjmu.
-
-## Pokladna
-
-```
-fiscal_revenue = wealth_pop_tax + wealth_domestic_market + goods_wealth_fiscal
-turn_fiscal_delta = treasury_closing − treasury_opening
- = fiscal_revenue + legacy_trade_gross + prestige_bonus
- − army_upkeep − sport_funding − route_upkeep − tolls
- + insolvency_relief + rounding_adjustment
+```text
+S0 --refresh--> S1 --refresh--> S2      S1 === S2 (derived current-turn state)
+GUARD TEST:  gold_reserve, legitimacy, wealth_pop_tax, wealth_domestic_market,
+             goods_wealth_fiscal se refreshem nemění
+HISTORY GUARD: count(history) = N → refresh ×2 → count(history) = N
+COMMIT HISTORY: commit-turn() → count(history for session+turn) = 1
+INCOME SUM: fiscal_revenue === wealth_pop_tax + wealth_domestic_market
+                             + goods_wealth_fiscal   (jen income komponenty)
 ```
 
-`legacy_trade_net` již obsahuje odečtené mýtné. Nesmí se od něj mýtné odečíst podruhé. Rozpis zachovává obě zaokrouhlení a explicitně vykazuje nulovou spodní hranici pokladny jako `insolvency_relief`, nikoli daň. `treasury.ts` kontroluje úplnost rozpisu; klient pouze zobrazuje uložená čísla.
+## Poznámka k „snapshot" tabulkám
 
-Legacy `trade_routes` nadále představují smluvní abstraktní vypořádání. Neodebírají ani nedodávají kanonické fyzické zboží a nevytvářejí další Goods GDP. Jejich peněžní efekt je explicitně oddělen. Převod těchto smluv na fyzicky kryté objednávky je další samostatná migrace. Prestižní bonus je pro kompatibilitu zachován jako explicitní příjmová položka; nejde o výrobu zboží.
+`trade_system_node_snapshot` není historie — je to derived current-turn projekce,
+kterou refresh přepisuje celou (delete + insert) a je proto idempotentní.
+Historií se rozumí append-only řady jako `node_economy_history`; ty vznikají jen
+při `commit-turn` (resp. při world-tick resolution v časovém režimu).
 
-## Uzavření a obnova tahu
+## Event-log emission (dodatek, Economy Integrity Pass)
 
-`game_sessions.current_turn` je zveřejněný kalendář. Během uzávěrky je `resolving_turn=current_turn+1` interním cílem ekonomických projekcí. Kalendář a příznaky hráčů mění až `finish_turn_resolution`, po potvrzení všech povinných fází a committed Goods ledgeru.
+`compute-trade-systems` emituje `world_events` (trade_system_formed/merged/dissolved/split) pouze pokud dostane `emit_events: true`.
+To posílá výhradně `commit-turn` (turn resolution). `refresh-economy`, `world-tick` recompute a klientská volání nechávají flag vypnutý,
+protože opakovaný derived recompute by jinak duplikoval historii. Viz INVARIANT 1 a 3.
 
-`turn_phase_journal` uchovává potvrzené výsledky. Světová projekce, diplomatické projekce a pohyb/projekty zapisují efekty a potvrzení fáze jednou DB transakcí. Fiskální fáze v jedné transakci zapisuje také stabilitu, ztráty z nedostatků, morálku, sportovní výdaje, městský kapitál a audit; její retry nic neúčtuje podruhé. Obdobně je transakční údržba světových cest.
+## Closure pass (dodatky po auditu)
 
-Po potvrzení fyzické fáze ekonomický retry neopakuje demografii, pohyb, AI ani hotovou výrobu. Pokračuje fiskálem či uložením historie. Selhání uvnitř atomické fáze nezanechá částečné zápisy této fáze. To není jedna dlouhá transakce přes HTTP: již dokončené fáze mohou být viditelné, ale tah zůstává rozehraný a hráčské příkazy i refresh jsou blokované.
+**1. Fresh physical aggregates před fiskálem.** `process-turn` nesmí číst `realm.total_production`,
+`realm.total_capacity`, `realm.total_importance` ani `realm.total_wealth` z minulé agregace.
+Čte je přímo z `province_nodes` (production_output, wealth_output, capacity_score,
+importance_score, logistic_capacity) pro daného hráče. `commit-turn` navíc spouští
+`aggregate-realm-totals { phase: "physical" }` PŘED `process-turn` (fyzické agregáty bez
+`total_wealth`) a `{ phase: "final" }` po něm (doplní `total_wealth` = fiscal_revenue).
 
-**Hranice automatické obnovy:** externí bojové a AI operace před fyzickým checkpointem stále mají vlastní write paths. Při nejasném přerušení v této části je `resumable=false`; automatický replay se odmítne. Deník tedy neznamená plnou automatickou obnovu každého vojenského/AI scénáře. `reconcile-turn` již nesmí označit neúplný historický world tick za dokončený. Takový případ vyžaduje kontrolu konkrétních účinků, nikoli přeskočení fiskálu.
+Kanonické pořadí:
+```text
+PHYSICAL RECOMPUTE → PHYSICAL AGGREGATES → PROCESS-TURN (fiskál)
+  → FINAL AGGREGATES → VALIDATION → SNAPSHOT
+```
 
-## Přepočet a historie
+**2. Pipeline success guard.** Snapshot/historie vznikne jen pokud uspěly VŠECHNY povinné
+derived kroky (compute-province-routes, compute-hex-flows, compute-trade-systems,
+compute-trade-flows, compute-basket-trade-flows, compute-economy-flow, physical aggregate),
+`process-turn` i finální agregace. Jinak `economySnapshot = { skipped: true, status: "stale",
+reason, failed_steps }`.
 
-`refresh-economy` mění pouze odvozené trasy, produkci, poptávku, trhy, obchod a agregáty. Nemění zlato, kapitálové zásoby, populaci, legitimitu ani historii. Jeho zámek se získává pod stejným session lockem jako zahájení tahu; během `resolving_turn` se refresh odmítne.
+**3. `fiscal_capture` = TELEMETRIE.** Hodnota na řádku `basket_trade_flows.fiscal_capture` je
+odhad tarifního záchytu pro diagnostiku a UI. NENÍ příjmem koruny, žádný konzument ji nesmí
+přičítat do pokladny. Skutečné fiskální pilíře počítá `process-turn` nezávisle.
+Response klíč: `fiscal_capture_total_telemetry`.
 
-`derivedChain.ts` je jediná definice pořadí routes → hex flows → trade systems → goods → basket projection → economy flow → aggregation. Event emission je v refreshi vypnutá. `trade_system_node_snapshot` je přepisovaná aktuální projekce, nikoli historický záznam. `committed_result` je zmrazený ekonomický výsledek tahu; retry jeho management report nepřepisuje.
+**4. Jedna definice HDP.** Kanonické HDP je pouze `realm_resources.total_gdp`
+(provisional proxy: production_output + export gross value, TODO value-added).
+`TreasuryPanel` čte `total_gdp` a příjmy výhradně přes `getFiscalIncome()`.
+Graf v `HistoryChartsPanel` je „Objem nabídky", nikoli HDP.
 
-## Práce, potřeby a účty
+**5. Export je měřená veličina.** `realm_resources.export_gross_value` zapisuje jen
+`aggregate-realm-totals` ze součtu `basket_trade_flows.gross_value`.
+`getMarketPosition()` čte tento sloupec — nikdy `total_gdp − goods_production_value`.
 
-Práce se přiděluje jedním dvouprůchodovým algoritmem v `goodsEconomy.ts`: nejdřív sektorově, poté omezenou mobilitou. Základ běžné budovy je 100/200/400 míst podle úrovně, startovní provozy mají vlastní posádky. Aktuální `workersPerLaborUnit=40` je herní kalibrace, nikoli empirická konstanta.
+## Layer A/B/C pass — Krok 4b + 4c (process-turn)
 
-Preference používají ceny a spotřebu z minulého committed tahu. Podkoše normalizují průměrnou atraktivitu, takže přidání dvaceti variant automaticky nezvětší potřebu koše dvacetkrát. `functional_value` převádí funkční potřebu na množství. Úplná metadata a jemná kalibrace celého katalogu zůstávají obsahovou prací.
+- `totalCityProduction` je ODSTRANĚN. process-turn už nepočítá žádnou vlastní produkci;
+  Layer A (`province_nodes.production_output`, `capacity_score`) je jen potenciál, Layer B
+  (Goods v4.3) je jediná realizovaná produkce.
+- **Potraviny**: SSOT je `city_market_baskets` s `basket_key = 'staple_food'` (post-trade).
+  `food_available = local_supply` (import už je zahrnut), `food_demand = local_demand`,
+  `food_deficit = unmet_demand`. Bonus `goods_supply_volume → grain_reserve` je odstraněn.
+- `last_turn_grain_prod` = Σ staple_food `local_supply`, `last_turn_grain_cons` = Σ `local_demand`.
+- **Daňové základy**: `domestic = goods_domestic_consumption_value`,
+  `market = goods_production_value`, `extraction = goods_extraction_value × wealth_mult`,
+  `transit` = route capacity, `poll` = populace. Layer A se daňovým základem nikdy nestává.
+- **production_reserve (CAPEX)**: akumuluje se 1:1 pouze z
+  `realm_resources.construction_available_for_capex`, což je post-trade materiál koše
+  `construction` zbylý po domácí poptávce, importech a exportu
+  (`max(0, post_trade_supply − local_demand − exports)`, writer = `compute-basket-trade-flows`).
+  Layer A kapacita se na CAPEX nikdy nepřevádí a `local_supply` se jako zdroj nepoužívá.
+  Přírůstek proběhne nejvýše jednou za tah (`last_processed_turn`) a jen když celá Layer B
+  pipeline uspěla (`commit-turn` předá `allowCapexAccrual`). `refresh-economy` zásobu nemění.
+  Spotřeba zůstává v `command-dispatch` (stavby, silnice) bez změny.
+- `laborGrainMult` / `laborWealthMult` nesmí vytvářet paralelní produkci; zůstávají jen
+  jako modifikátory kapacity/bohatství a v diagnostice.
 
-Příjem domácností používá jediný globální `PRODUCT_MARKET.incomeUnitFactor`; nikdy se nenásobí místním CPI. Kupní síla, náklady základního koše, affordability a reálná kupní síla jsou samostatné toky. Faktor je normalizační konvence, kterou musí ověřit dlouhodobé simulace.
+## Population ownership — Phase A (Population/Migration pass)
 
-Rozmanitost je diagnostická utilita, nemění přežití. Prosperita je převážně analytický index. `city_capital_stock` je historická městská zásoba, nikoli soukromý majetek domácností; akumuluje se pouze v `process-turn`. Soukromé wealth zatím neexistuje.
+**INVARIANT 4 — jeden kanonický writer populace.**
+V tahovém režimu je jediným writerem `cities.population_total` a vrstev
+(`population_peasants/burghers/clerics/warriors`) funkce `commit-turn`
+(fáze SETTLEMENT GROWTH → `projectCityUpdates`). V časovém režimu je to
+`world-tick`, který používá stejný shared výpočet z `physics.ts`.
+`process-turn` populaci NEMĚNÍ — vlastní pouze fiskál a stabilitu;
+duplicitní růst podle `staple_food` byl odstraněn.
+`refresh-economy` / `compute-*` populaci nikdy nezapisují.
 
-Přirozený růst a migraci vlastní `commit-turn`. Fiskální fáze smí aplikovat konkrétní ztráty z hladu a vody přes `applyPopulationLoss`; refresh ne. Vždy platí součet populačních tříd = population_total. Test02 po ručních zásazích a historických dírách není čistý balancing benchmark; pro kalibraci slouží kontrolované scénáře EconomyLab.
+**INVARIANT 5 — třídní invariant.**
+`population_total === population_peasants + population_burghers +
+population_clerics + population_warriors`. Každý zápis populace prochází
+`normalizePopulationClasses()` nebo `applyPopulationLoss()`
+(`_shared/demographics.ts`). Žádný writer nesmí zapsat jen podmnožinu
+sloupců vrstev. Spodní hranice obydleného sídla je `POPULATION_FLOOR = 50`.
 
-## Kontroly
+**Povolené jednorázové ztráty.** Destruktivní události (hladomor, vzpoura,
+bitva, katastrofa, zásah `command-dispatch`) smí populaci snižovat, ale pouze
+přes `applyPopulationLoss()`. Migrace populaci pouze přesouvá — nikdy netvoří.
 
-- Dva refreshe mají stejné fyzické bilance, nemění finance ani historii.
-- Rozpis pokladny odpovídá přesnému skutečnému rozdílu, včetně obchodu, prestiže, mýtného a zaokrouhlení.
-- Změna nominální obchodní ceny při stejném množství nemění službové HDP.
-- Injektovaná chyba uvnitř world/fiscal transakce nezanechá část jejích účinků.
-- Ekonomický retry nepostoupí kalendář před úspěšnou uzávěrkou a neúčtuje již potvrzený fiskál.
+**Explicitní růstový modifikátor.** `computeSettlementGrowth()` přijímá
+`growthModifier` (civ DNA, struktury). Dřívější zneužití `hasTrade` jako nosiče
+civ bonusu bylo odstraněno.
+
+Zbývající writeři populace (záměrně, mimo rozsah fáze A):
+`resolve-battle` (válečné ztráty), `command-dispatch` (zakládání města,
+destruktivní akce), world-gen funkce (`mp-world-generate`,
+`world-generate-init`, `generate-civ-start`, `seed-realm-skeleton`) a migrace
+ve `world-tick`. Ty se dorovnají v dalších fázích.
+
+## Product market layer (Economy Pass, 2026-09-26)
+
+`_shared/productMarket.ts` is the only source of truth for the constants and formulas below. It is pure and called only from the canonical goods solver.
+
+- **Basket → subbasket → product → famous variant.** `PRODUCT_META` holds extensible metadata: subbasket, functional_value, base_preference, substitutability, origin, distinctiveness. Famous variants stay as `famous_goods` rows (city × good), never as duplicated goods.
+- **Product choice.** The size of a basket's need comes from demandModel. Product shares only split that need. The factors are preference × region × familiarity × novelty × quality × fame × reference price, each bounded. Novelty is derived from local prevalence and saturates; the engine never uses 1/production anywhere.
+- **Diversity.** The effective number of products per basket (exp Shannon) is a utility metric only. It never changes need or survival. The `variety` basket keeps its own content role.
+- **City accounts** (`result.cityAccounts`, current-turn projection) track city_gdp (Σ equals realm value_added_gdp), household income (labour share plus local capital share of value added), taxes, disposable income, purchasing power, basic basket cost, price index, real purchasing power, discretionary budget, physical need coverage and affordability gap. These are flows only; there is no private wealth stock.
+- **Need ≠ effective demand.** Household need never shrinks with poverty. The discretionary channel and fame demand are scaled by the discretionary ratio from the last **committed** turn. This avoids a price↔demand loop, and on the first computation the ratio is `bootstrap_unconstrained`.
+- **Cost ≠ value.** Producer diagnostics carry `margin` at local prices; input costs never raise the output price. `autoRecipeWeights` gives loss-making recipes zero weight.
+
+## Closure pass
+- Suppliers ranked by landed cost (price + transport + tolls + tariff + risk + loss); factory inputs capped at `maxLandedInputMultiple` × base price.
+- AUTO allocation uses previous committed prices (`autoAllocation`); PREFER/LOCK unchanged, losses flagged.
+- intermediate_value stays at base prices: city_gdp is a constant-price measure; landed costs appear only in producer margins.
+- city_gdp = goods VA + trade-service VA; legacy population wealth is not authoritative anywhere.

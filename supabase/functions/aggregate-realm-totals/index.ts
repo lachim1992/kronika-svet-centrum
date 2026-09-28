@@ -119,13 +119,13 @@ Deno.serve(async (req) => {
 
     // Export magnitude — a separate TRADE metric. It must NOT be added to GDP:
     // exported goods are already inside realized production value (double counting).
-    const { data: session } = await sb.from("game_sessions").select("current_turn,resolving_turn").eq("id", session_id).single();
+    const { data: session } = await sb.from("game_sessions").select("current_turn").eq("id", session_id).single();
     if (!session) throw new Error("Session not found");
     const btfRows: any[] = [];
     for (let offset = 0; ; offset += 500) {
       const { data } = await sb.from("basket_trade_flows")
         .select("source_player, target_player, gross_value")
-        .eq("session_id", session_id).eq("turn_number", (session.resolving_turn??session.current_turn))
+        .eq("session_id", session_id).eq("turn_number", session.current_turn)
         .order("id", { ascending: true }).range(offset, offset + 499);
       if (!data) throw new Error("Missing trade projection");
       btfRows.push(...data);

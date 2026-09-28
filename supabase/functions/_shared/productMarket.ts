@@ -132,24 +132,6 @@ export function autoAllocation(options: { key: string; necessity: number; margin
  * rates. Topology gives the opportunity, formal commercial INFRASTRUCTURE defines service jobs,
  * and only the STAFFED part of it monetises the trade. No staffed services → informal floor only.
  */
-/** Physical service volume at catalogue prices; no destination price, scarcity or fame premium. */
-export const referenceTradeValue = (delivered: number, basePrice: number): number => pos(delivered) * pos(basePrice);
-
-type ServiceFlow = { good: string; delivered: number; reason: string };
-/** Nominal turnover remains useful for trade reports, but cannot enter constant-price GDP. */
-export function tradeServiceVolumes(i: { inbound: ServiceFlow[]; outbound: ServiceFlow[]; transit: ServiceFlow[];
-  basePrices: Record<string, number>; localExchange: number }) {
-  const sum = (flows: ServiceFlow[]) => flows.reduce((s, f) => s + referenceTradeValue(f.delivered, i.basePrices[f.good] ?? 0), 0);
-  const keys = new Set([...i.inbound, ...i.outbound].map(f => f.good));
-  return {
-    local_exchange: pos(i.localExchange),
-    import_export: sum(i.inbound.filter(f => f.reason !== 'hub_aggregation')) + sum(i.outbound),
-    aggregation: sum(i.inbound.filter(f => f.reason === 'hub_aggregation')),
-    reexport: [...keys].reduce((s, g) => s + Math.min(sum(i.inbound.filter(f => f.good === g)), sum(i.outbound.filter(f => f.good === g))), 0),
-    transit: sum(i.transit),
-  };
-}
-
 export function tradeServiceValue(i: { local_exchange: number; import_export: number; aggregation: number; reexport: number;
   transit: number; infrastructure: number; staffing: number }) {
   const R = PRODUCT_MARKET.serviceRates;

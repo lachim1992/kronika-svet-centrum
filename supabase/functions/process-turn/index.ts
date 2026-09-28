@@ -1,5 +1,3 @@
-import { planFiscalWrites } from '../_shared/atomicWrites.ts';
-import { treasuryBreakdown } from '../_shared/treasury.ts';
 import { capitalStockDelta } from "../_shared/productMarket.ts";
 import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.ts";
 import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demographics.ts";
@@ -179,7 +177,7 @@ Deno.serve(async (req) => {
 
     if (!sessionId || !playerName) throw new Error("Missing sessionId or playerName");
 
-    let supabase = createClient(
+    const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
@@ -196,8 +194,8 @@ Deno.serve(async (req) => {
       realm = newRealm;
     }
 
-    const { data: session } = await supabase.from("game_sessions").select("current_turn,resolving_turn").eq("id", sessionId).single();
-    const currentTurn = session?.resolving_turn ?? session?.current_turn ?? 1;
+    const { data: session } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
+    const currentTurn = session?.current_turn || 1;
 
     // Idempotency — skip for recalcOnly (always recompute)
     if (!recalcOnly && realm.last_processed_turn >= currentTurn) {
@@ -317,12 +315,6 @@ Deno.serve(async (req) => {
       }).select().single();
       infra = newInfra;
     }
-
-    // Bootstrap rows above are idempotent infrastructure, not turn effects.
-    // All subsequent fiscal side effects commit with the treasury in one DB transaction.
-    const fiscalDatabase = supabase;
-    const fiscalPlan = planFiscalWrites(fiscalDatabase);
-    supabase = fiscalPlan.client;
 
     // ── Load civ identity ──
     const { data: civIdentity } = await supabase.from("civ_identity")
@@ -1066,7 +1058,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    const insolvencyRelief = Math.max(0, -newGoldReserve);
     if (newGoldReserve < 0) newGoldReserve = 0;
 
     // ══════════════════════════════════════════
@@ -1558,13 +1549,6 @@ Deno.serve(async (req) => {
     // Pop tax derived from goods layer (kept for backward compat in computed_modifiers)
     const goodsPopTax = Math.round(totalPopulation * 0.002 * (1 + myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1));
 
-    const treasury = treasuryBreakdown({
-      opening: Number(realm.gold_reserve || 0), closingBeforeRounding: newGoldReserve,
-      taxRevenue: totalWealthIncome, creditedTax: wealthIncome,
-      tradeNet: tradeGoldDelta, tradeTolls: totalTollsPaid, prestigeBonus: prestigeWealthBonus,
-      army: armyWealthUpkeep, sport: sportFundingExpense, roads: routeUpkeepExpense, insolvencyRelief,
-    });
-    newGoldReserve = treasury.treasury_closing;
     const fiscalPatch = {
       grain_reserve: Math.round(globalGrainReserve),
       granary_capacity: adjustedGranary,
@@ -1671,12 +1655,26 @@ Deno.serve(async (req) => {
             extraction_tax: pillarExtractionTax,
           },
           route_commerce: pillarRouteCommerce,
-          ...treasury,
+          // fiscal_revenue = income components only (expenses listed separately)
+          fiscal_revenue: Math.round(totalWealthIncome * 10) / 10,
+          total_income: Math.round(totalWealthIncome * 10) / 10,
+          recurring_expenses: Math.round((armyWealthUpkeep + sportFundingExpense + routeUpkeepExpense) * 10) / 10,
+          turn_fiscal_delta: Math.round((totalWealthIncome - armyWealthUpkeep - sportFundingExpense - routeUpkeepExpense - totalTollsPaid) * 10) / 10,
+          army_upkeep: armyWealthUpkeep,
+          tolls: totalTollsPaid,
+          sport_funding: sportFundingExpense,
+          route_upkeep: routeUpkeepExpense,
         },
 
       },
       updated_at: new Date().toISOString(),
     };
+    const { data: fiscalApplied, error: fiscalError } = await supabase.rpc("apply_goods_fiscal_turn", {
+      p_session: sessionId, p_player: playerName, p_turn: currentTurn, p_patch: fiscalPatch,
+      p_gold_delta: newGoldReserve - Number(realm.gold_reserve || 0), p_capex_delta: productionIncome,
+    });
+    if (fiscalError) throw fiscalError;
+
     /**
      * CITY CAPITAL STOCK — process-turn is its ONLY writer. Idempotent by (session, city, turn):
      * a row already stamped with this turn is skipped, so a retry repairs a missed write without
@@ -1700,6 +1698,10 @@ Deno.serve(async (req) => {
       if (capErr) throw capErr;
       return upserts.length;
     };
+    if (!fiscalApplied) {
+      const repaired = await applyCityCapital();
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "turn_already_processed", city_capital_reconciled: repaired }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     await applyCityCapital();
 
 
@@ -1745,14 +1747,6 @@ Deno.serve(async (req) => {
         city_economy: cityEconResults,
       },
     });
-
-    const { data: fiscalApplied, error: fiscalError } = await fiscalDatabase.rpc("apply_goods_fiscal_plan", {
-      p_session: sessionId, p_player: playerName, p_turn: currentTurn, p_patch: fiscalPatch,
-      p_gold_delta: treasury.turn_fiscal_delta, p_capex_delta: productionIncome, p_writes: fiscalPlan.writes,
-    });
-    if (fiscalError) throw fiscalError;
-    if (!fiscalApplied) return new Response(JSON.stringify({ok:true, skipped:true, reason:"turn_already_processed"}),
-      {headers:{...corsHeaders,"Content-Type":"application/json"}});
 
     return new Response(JSON.stringify({
       ok: true, turn: currentTurn,

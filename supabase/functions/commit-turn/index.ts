@@ -1,4 +1,3 @@
-import { turnJournal } from '../_shared/turnJournal.ts';
 import { economyFailure, guardedFiscal } from "../_shared/economyPhaseGuard.ts";
 import { strictDatabase } from '../_shared/strictDatabase.ts';
 import { finalizeManagementReports } from '../_shared/economyAdapter.ts';
@@ -54,7 +53,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const tCommit = Date.now();
-  let execution: {client:any;session:string;turn:number;token:string}|undefined;
+  let execution: {client:any;session:string;turn:number}|undefined;
   let effectsStarted = false;
   const results: Record<string, any> = {};
   try {
@@ -85,46 +84,94 @@ Deno.serve(async (req) => {
 
     const turnNumber = session.current_turn;
     if(expectedTurn!==undefined&&expectedTurn!==turnNumber)return new Response(JSON.stringify({ok:false,error:'Tah se mezitím změnil. Obnovte stav hry.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
-    const {data:acquired}=await supabase.rpc('begin_turn_resolution',{p_session:sessionId,p_turn:turnNumber});
-    if(typeof acquired!=='string')return new Response(JSON.stringify({ok:false,error:'Zpracování tahu již běží nebo předchozí pokus vyžaduje opravu. Tah nebyl opakován.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
-    execution={client:supabase,session:sessionId,turn:turnNumber,token:acquired};effectsStarted=false;
-    const journal=turnJournal(supabase,sessionId,turnNumber,acquired);
+    const {data:acquired}=await supabase.rpc('acquire_turn_execution',{p_session:sessionId,p_turn:turnNumber});
+    if(acquired!==true)return new Response(JSON.stringify({ok:false,error:'Zpracování tahu již běží nebo předchozí pokus vyžaduje opravu. Tah nebyl opakován.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
+    execution={client:supabase,session:sessionId,turn:turnNumber};effectsStarted=false;
     const isAIMode = session.game_mode === "tb_single_ai";
 
-    const physical = await journal.read('physical');
-    if (physical) Object.assign(results,physical);
-    else {
     // ═══════════════════════════════════════════
     // 1. WORLD TICK (idempotent via world_tick_log)
     // ═══════════════════════════════════════════
     // From here on the turn may write game state; earlier failures are safe to retry.
     effectsStarted = true;
-    results.worldTick = await journal.atomic('world',async db=>{
-      const {data:existingTick}=await db.from('world_tick_log').select('id,status,results')
-        .eq('session_id',sessionId).eq('turn_number',turnNumber).maybeSingle();
-      if(existingTick){
-        if(existingTick.status!=='completed')throw new Error(`World tick ${turnNumber} has legacy partial effects; manual inspection required.`);
-        return existingTick.results;
-      }
-      const tick=await runWorldTickEvents(db,sessionId,turnNumber);
-      await projectCityUpdates(db,tick.cityEvents||[]);
-      await projectInfluenceUpdates(db,sessionId,turnNumber,tick.influenceRecords||[]);
-      await projectTensionUpdates(db,sessionId,turnNumber,tick.tensionRecords||[]);
-      await projectCityStateUpdates(db,tick.cityStateUpdates||[]);
-      await db.from('world_tick_log').insert({session_id:sessionId,turn_number:turnNumber,status:'completed',finished_at:new Date().toISOString(),results:tick});
-      return tick;
-    });
-    await journal.atomic('diplomatic_relations',async db=>{
-      await projectDiplomaticRelations(db,sessionId,turnNumber,results.worldTick.tensionRecords||[],results.worldTick.influenceRecords||[],!!results.worldTick.emittedEventsCount);
-      return {done:true};
-    });
-    await journal.atomic('diplomatic_memory',async db=>{await populateDiplomaticMemory(db,sessionId,turnNumber);return {done:true};});
-    await journal.atomic('disposition',async db=>{await syncDispositionFromRelations(db,sessionId);return {done:true};});
-    results.turnProgress=await journal.atomic('turn_progress',db=>advanceTurnProgress(db,sessionId,turnNumber));
+    const { data: existingTick } = await supabase
+      .from("world_tick_log")
+      .select("id, status, results")
+      .eq("session_id", sessionId)
+      .eq("turn_number", turnNumber)
+      .maybeSingle();
 
-    // External combat/AI calls still have their own effect writers. If one is
-    // interrupted ambiguously, fail closed rather than blindly replaying it.
-    await supabase.from('turn_execution_guards').update({resumable:false}).eq('session_id',sessionId).eq('execution_token',acquired);
+    if (existingTick) {
+      if (existingTick.status !== 'completed') throw new Error(`World tick ${turnNumber} is ${existingTick.status}; partial effects must be reconciled before continuing.`);
+      // Replay: reuse the population ledger computed by the original tick so the
+      // history write below stays idempotent instead of recomputing demographics.
+      results.worldTick = {
+        skipped: true, reason: "already_processed", tickId: existingTick.id,
+        populationLedger: (existingTick.results as any)?.populationLedger || [],
+      };
+    } else {
+      // Create tick lock
+      const { data: tickLog } = await supabase
+        .from("world_tick_log")
+        .insert({ session_id: sessionId, turn_number: turnNumber, status: "running" })
+        .select("id")
+        .single();
+
+      const tickId = tickLog?.id;
+
+      try {
+        const tickResults = await runWorldTickEvents(supabase, sessionId, turnNumber);
+        results.worldTick = tickResults;
+        // Persist the plan before any projection, so partial failures remain diagnosable.
+        await supabase.from('world_tick_log').update({ results: tickResults }).eq('id', tickId);
+
+        // Apply projections from emitted events
+        await projectCityUpdates(supabase, tickResults.cityEvents || []);
+        await projectInfluenceUpdates(supabase, sessionId, turnNumber, tickResults.influenceRecords || []);
+        await projectTensionUpdates(supabase, sessionId, turnNumber, tickResults.tensionRecords || []);
+        await projectCityStateUpdates(supabase, tickResults.cityStateUpdates || []);
+
+        // ═══ DIPLOMATIC RELATIONS PROJECTION ═══
+        await projectDiplomaticRelations(
+          supabase, sessionId, turnNumber,
+          tickResults.tensionRecords || [],
+          tickResults.influenceRecords || [],
+          tickResults.emittedEventsCount > 0 ? true : false,
+        );
+        await populateDiplomaticMemory(supabase, sessionId, turnNumber);
+        await syncDispositionFromRelations(supabase, sessionId);
+
+        // Finalize tick
+        await supabase.from("world_tick_log").update({
+          status: "completed",
+          finished_at: new Date().toISOString(),
+          results: tickResults,
+        }).eq("id", tickId);
+      } catch (tickErr) {
+        await supabase.from("world_tick_log").update({
+          status: "failed",
+          finished_at: new Date().toISOString(),
+          results: { ...results.worldTick, error: (tickErr as Error).message },
+        }).eq("id", tickId);
+        console.error("World tick error:", tickErr);
+        results.worldTick = { error: (tickErr as Error).message };
+      }
+    }
+
+    // Never advance the calendar after a failed mandatory world projection.
+    if (results.worldTick?.error) throw new Error(`world-tick: ${results.worldTick.error}`);
+
+    // ═══════════════════════════════════════════
+    // 2. TURN PROGRESS — army traversal, ambush, sieges, node projects
+    // Phase 4: extracted from the removed time-based `process-tick`.
+    // ═══════════════════════════════════════════
+    try {
+      results.turnProgress = await advanceTurnProgress(supabase, sessionId, turnNumber);
+    } catch (e) {
+      console.error("turn progress error:", e);
+      results.turnProgress = { error: (e as Error).message };
+    }
+    if (results.turnProgress?.error) throw new Error(`turn-progress: ${results.turnProgress.error}`);
 
     // ═══════════════════════════════════════════
     // 2b. AUTO-RESOLVE UNRESOLVED BATTLE LOBBIES
@@ -607,7 +654,22 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════
     // 4. ADVANCE TURN FIRST (prevents stuck state on timeout)
     // ═══════════════════════════════════════════
-    // The calendar is published only by finish_turn_resolution after all mandatory phases.
+    await safeInsert(supabase.from("turn_summaries").insert({
+      session_id: sessionId,
+      turn_number: turnNumber,
+      status: "closed",
+      closed_at: new Date().toISOString(),
+      closed_by: playerName,
+    }));
+
+    await supabase.from("game_sessions")
+      .update({ current_turn: turnNumber + 1, turn_closed_p1: false, turn_closed_p2: false })
+      .eq("id", sessionId);
+
+    // Reset player turn_closed flags
+    await supabase.from("game_players")
+      .update({ turn_closed: false })
+      .eq("session_id", sessionId);
 
     // Advance local square infrastructure. Each closed turn contributes one step;
     // target level 2 takes two turns and target level 3 takes three turns.
@@ -751,10 +813,6 @@ Deno.serve(async (req) => {
     // 4b. RECOMPUTE ROUTES + HEX FLOWS + ECONOMY FLOW
     // Ensures new nodes built between turns get connected before economy runs.
     // ═══════════════════════════════════════════
-    if(results.constructionCompletion?.error) throw new Error(`construction-completion: ${results.constructionCompletion.error}`);
-    await journal.complete('physical',results);
-    }
-    const priorGoods = await journal.read('goods');
     const t4b = Date.now();
     // Integrity Pass closure (P0): every mandatory economy step is recorded.
     // A failure here makes the turn economically incomplete → no snapshot.
@@ -766,8 +824,6 @@ Deno.serve(async (req) => {
         economyStepFailures.push({ step, error });
       }
     };
-    if(priorGoods) Object.assign(results,priorGoods);
-    else {
     try {
       // PHYSICAL PREREQUISITE — every owned city is anchored to a settlement
       // node before the chain runs (same helper refresh-economy uses).
@@ -810,9 +866,6 @@ Deno.serve(async (req) => {
       noteStepFailure("economy-chain", (e as Error).message);
       results.economyFlow = { error: (e as Error).message };
     }
-    if(economyStepFailures.length) throw new Error(`Mandatory economy phase failed: ${JSON.stringify(economyStepFailures)}`);
-    await journal.complete('goods',results);
-    }
     results.economyStepFailures = economyStepFailures;
     console.log(`[commit-turn] phase-4b routes/flows/economy/trade: ${Date.now() - t4b}ms, failures=${economyStepFailures.length}`);
 
@@ -842,9 +895,6 @@ Deno.serve(async (req) => {
     // process-turn charges the upkeep inside the turn ledger (so the treasury
     // delta and the fiscal snapshot agree). Guarded per (session, turn).
     // ═══════════════════════════════════════════
-    const priorWorldLayer=await journal.read('world_layer');
-    if(priorWorldLayer) results.worldLayer=priorWorldLayer;
-    else {
     try {
       const { data: wlRes, error: wlErr } = await supabase.functions.invoke("world-layer-tick", {
         body: { sessionId, turnNumber: turnNumber + 1 },
@@ -856,10 +906,6 @@ Deno.serve(async (req) => {
       results.worldLayer = { error: (e as Error).message };
     }
 
-
-    if(economyFailure(results.worldLayer,null)) throw new Error(`world-layer-tick: ${economyFailure(results.worldLayer,null)}`);
-    await journal.complete('world_layer',results.worldLayer);
-    }
 
     // ═══════════════════════════════════════════
     // 5. PROCESS TURN (economy for all players + AI factions)
@@ -905,9 +951,6 @@ Deno.serve(async (req) => {
       console.error("Process turn error:", e);
       results.economy = { error: (e as Error).message };
     }
-
-    if(results.economy?.error || results.economy?.failures?.length) throw new Error(`Fiscal phase failed: ${JSON.stringify(results.economy)}`);
-    await journal.complete('fiscal',results.economy);
 
     // ═══════════════════════════════════════════
     // 5a. FINAL AGGREGATION → VALIDATION → SNAPSHOT (INVARIANT 3)
@@ -998,11 +1041,6 @@ Deno.serve(async (req) => {
     }
 
 
-
-    if(!aggregationOk || economyFailed || pipelineFailed || results.economySnapshot?.status!=='done')
-      throw new Error(`Economic snapshot incomplete: ${JSON.stringify(results.economySnapshot)}`);
-    await journal.complete('snapshot',results.economySnapshot);
-    await supabase.rpc('finish_turn_resolution',{p_session:sessionId,p_turn:turnNumber,p_token:acquired,p_report:results,p_player:playerName});
 
     // ═══════════════════════════════════════════
     // 5b. STRATEGIC GRAPH RECOMPUTE (hex flows + collapse chain)
@@ -1563,7 +1601,7 @@ Deno.serve(async (req) => {
 
     const totalMs = Date.now() - tCommit;
     const completed=aggregationOk&&!economyFailed&&!pipelineFailed&&!results.economySnapshot?.error&&!results.worldTick?.error;
-
+    await supabase.from('turn_execution_guards').update({status:completed?'completed':'failed',finished_at:new Date().toISOString(),report:results,error:completed?null:'Mandatory turn phase failed; inspect persisted report'}).eq('session_id',sessionId).eq('turn_number',turnNumber);
     console.log(`[commit-turn] DONE turn=${turnNumber} player=${playerName} critical=${totalMs}ms (background scheduled)`);
     return new Response(JSON.stringify({
       ok: completed,
@@ -1575,7 +1613,7 @@ Deno.serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
-    if(execution)try{await execution.client.from('turn_execution_guards').update({status:'failed',finished_at:new Date().toISOString(),report:results,error:(err as Error).message}).eq('session_id',execution.session).eq('turn_number',execution.turn).eq('execution_token',execution.token).eq('status','running');}catch{/* Existing running guard still blocks replay. */}
+    if(execution)try{await execution.client.from('turn_execution_guards').update({status:effectsStarted?'failed':'reconciled',finished_at:new Date().toISOString(),report:results,error:(err as Error).message}).eq('session_id',execution.session).eq('turn_number',execution.turn);}catch{/* Existing running guard still blocks replay. */}
     console.error("commit-turn error:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },

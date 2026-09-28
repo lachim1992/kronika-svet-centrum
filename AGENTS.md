@@ -6,7 +6,3 @@
 - Production-contract role/tier normalization and the catalogue audit live only in `supabase/functions/_shared/productionContract.ts` (adapter re-exports it) — one deterministic legacy repair, so no path can grant a `source` role to an input-consuming recipe.
 - Population never yields wealth: `computeCityLayerEconomy` has no wealth layer; fiscal revenue comes solely from the canonical tax pillars and goods ledger.
 - The labour market is one two-pass allocation in `goodsEconomy.ts`: sector-native fill, then retraining limited by `ECONOMY.laborMobility` (guild, admin, market, stability); leftover idle labour next to vacancies is reported as `structural_unemployed` — one place decides staffing, so UI never re-derives employment.
-- Treasury reconciliation lives in `_shared/treasury.ts`; UI reads the persisted complete breakdown. Legacy trade net already includes tolls.
-- Trade-service GDP uses `productMarket.tradeServiceVolumes` at catalogue prices; never feed nominal flow.gross_value into constant-price service GDP.
-- `finish_turn_resolution` alone publishes the calendar after mandatory phases. `resolving_turn` is the internal economy target; refresh/player commands must not overlap it.
-- Turn-phase/fiscal planners buffer writes; SQL applies effects and completion guards atomically. Do not add direct fiscal writes outside the plan. External combat/AI interrupted before the physical checkpoint remain fail-closed; never mark partial ticks completed just to unblock the game.

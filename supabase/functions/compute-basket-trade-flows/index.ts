@@ -7,8 +7,8 @@ Deno.serve(async req => {
   try {
     const {session_id}=await req.json();if(!session_id)throw Error("session_id required");
     const sb=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const s=await sb.from("game_sessions").select("current_turn,resolving_turn").eq("id",session_id).single();if(s.error)throw s.error;
-    const r=await sb.from("economy_turn_ledgers").select("turn_number").eq("session_id",session_id).eq("turn_number",(s.data.resolving_turn??s.data.current_turn)).maybeSingle();
+    const s=await sb.from("game_sessions").select("current_turn").eq("id",session_id).single();if(s.error)throw s.error;
+    const r=await sb.from("economy_turn_ledgers").select("turn_number").eq("session_id",session_id).eq("turn_number",s.data.current_turn).maybeSingle();
     if(r.error)throw r.error;
     // No projection yet for this turn: nothing to project, not a failure.
     if(!r.data)return new Response(JSON.stringify({ok:true,derived:true,skipped:"no_goods_projection",fiscal_writes:0}),{headers});

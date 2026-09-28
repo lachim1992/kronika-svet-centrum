@@ -1,8 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
-/** Admin/moderator inspection of failed turns. Allows retry only for explicitly
- * resumable phases; never seals a partial world tick or skips historical fiscal work. */
+/**
+ * reconcile-turn: admin/moderator recovery for a turn whose guard is "failed".
+ * Keeps effects that already happened (no rollback, no replay): a partial
+ * world tick is sealed so commit-turn skips it, and the guard becomes
+ * "reconciled" so the next commit-turn may finish the remaining phases.
+ */
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -27,20 +31,18 @@ Deno.serve(async (req) => {
     if (!admin && !["admin", "moderator"].includes(String(member?.role))) return json({ ok: false, error: "Jen admin nebo moderátor" }, 403);
 
     const { data: session } = await sb.from("game_sessions").select("current_turn").eq("id", sessionId).single();
-    const { data: guard } = await sb.from("turn_execution_guards").select("turn_number,status,resumable").eq("session_id", sessionId).maybeSingle();
+    const { data: guard } = await sb.from("turn_execution_guards").select("turn_number,status").eq("session_id", sessionId).maybeSingle();
     // A failed guard may belong to the current turn OR to an earlier turn whose world already
     // advanced (failure after the turn counter moved). Both block every future turn until sealed.
     if (!guard || guard.status !== "failed" || guard.turn_number > (session?.current_turn ?? -1)) return json({ ok: true, reconciled: false, reason: "no_failed_turn" });
     const turn = guard.turn_number;
 
-    const {data:pending}=await sb.from('game_sessions').select('resolving_turn').eq('id',sessionId).single();
-    if(pending?.resolving_turn != null) {
-      if(guard.resumable)return json({ok:true,reconciled:true,resumable:true,turn});
-      return json({ok:false,error:'Fyzická fáze nemá potvrzený výsledek. Automatické přeskočení by ztratilo část tahu; vyžaduje opravu konkrétní fáze.'},409);
-    }
-    // Legacy unjournalled incidents cannot be safely sealed by a repair button.
-    return json({ok:false,error:'Historický tah nemá deník fází. Vyžaduje kontrolu provedených účinků; nebyl označen jako dokončený.'},409);
-
+    // Seal a partial tick: its events/projections stay, they are not re-emitted.
+    await sb.from("world_tick_log").update({ status: "completed", finished_at: new Date().toISOString() })
+      .eq("session_id", sessionId).eq("turn_number", turn).neq("status", "completed");
+    await sb.from("turn_execution_guards").update({ status: "reconciled", finished_at: new Date().toISOString() })
+      .eq("session_id", sessionId).eq("turn_number", turn).eq("status", "failed");
+    return json({ ok: true, reconciled: true, turn });
   } catch (e) {
     return json({ ok: false, error: (e as Error).message }, 500);
   }

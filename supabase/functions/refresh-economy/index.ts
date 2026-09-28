@@ -79,10 +79,34 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     sb = createClient(supabaseUrl, serviceKey);
 
-    const {data:acquired,error:lockError}=await sb.rpc('acquire_economy_refresh_lock',{p_session:session_id});
-    if(lockError)throw lockError;
-    if(!acquired)return new Response(JSON.stringify({error:'turn_or_refresh_in_progress',session_id}),
-      {status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
+    // ── Distributed lock (DB, with TTL) ─────────────────────────
+    const { data: existingLock } = await sb.from("economy_recompute_locks")
+      .select("session_id, locked_at")
+      .eq("session_id", session_id)
+      .maybeSingle();
+
+    if (existingLock) {
+      const age = Date.now() - new Date(existingLock.locked_at).getTime();
+      if (age < LOCK_TTL_MS) {
+        return new Response(
+          JSON.stringify({ error: "already_in_progress", session_id, lock_age_ms: age }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 },
+        );
+      }
+      // Stale lock → take it over
+      await sb.from("economy_recompute_locks")
+        .update({ locked_at: new Date().toISOString(), locked_by: "refresh-economy" })
+        .eq("session_id", session_id);
+    } else {
+      const { error: lockErr } = await sb.from("economy_recompute_locks")
+        .insert({ session_id, locked_by: "refresh-economy" });
+      if (lockErr) {
+        return new Response(
+          JSON.stringify({ error: "already_in_progress", session_id }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 },
+        );
+      }
+    }
     lockedSession = session_id;
 
     // ── PHYSICAL PREREQUISITE: every city is a settlement node ─────────────

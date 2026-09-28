@@ -53,13 +53,13 @@
   - [x] Restrict persistent test-mode effects to administrators
 
 ## Ekonomika: kalibrace příjmů a cen (hotovo, Test02 tah 10)
-- Příjem domácností používá globální incomeUnitFactor, nikoli místní CPI; inflace proto snižuje reálnou kupní sílu.
+- Příjem domácností nese místní cenovou hladinu (HDP z fyzické knihy je v základních cenách) — dostupnost už nepodhodnocuje o celý cenový index.
 - Kalibrované rozdělení: podíl práce 0.65, místní kapitál 0.6, spotřeba 0.95 (jediný zdroj: PRODUCT_MARKET).
 - Nové výstupy: nominal_gdp, price_level; UI Městské účty ukazuje rozpad.
-- AUTO podle minulých committed cen a landed marže je zapojené. Odloženo: soukromé bohatství a rozšíření katalogu.
+- Odloženo (další fáze): AUTO výroba podle marže v samotném solveru, soukromé bohatství jako zásoba, rozšíření katalogu produktů.
 
 ## Layer A/B/C pass (otevřeno)
-- [x] total_gdp = goods value added + trade-service value added (bez dvojího exportu), export jako samostatná obchodní metrika
+- [x] total_gdp = realized_goods_value (bez exportu), export jako samostatná obchodní metrika
 - [x] jednotná basketová valuace auto/recipe/buildings + goods_value_detail
 - [x] nodeProductionFactor pryč z recipe quantity, jen throughput budget
 - [x] wealth_output deprecated + allowlist guard
@@ -147,7 +147,7 @@
   - command-dispatch: DECLARE_WAR blokován platným spojenectvím/paktem o obraně/vazalstvím; pohyb (hexový i po cestě) blokován v míru bez otevřených hranic
   - ai-faction-turn: retry při 429/5xx + čestný fallback (frakce drží pozici, důvod zapsán do summary i world_action_log) místo pádu
   - resolve-battle: seed bitvy deterministicky ze session/tahu/stacků, klientský seed ignorován; DiplomacyPanel a BattleLobbyPanel už negenerují náhodu
-  - pracovní místa přeškálována na hlavy (ECONOMY.workersPerLaborUnit = 40), Test01 populace srovnána s bytovou kapacitou
+  - pracovní místa přeškálována na hlavy (ECONOMY.workersPerLaborUnit = 20), Test01 populace srovnána s bytovou kapacitou
   - testy: src/test/phase6-systems-depth.test.ts
 - [ ] Rozhodnuto: persistentní real-time režim opuštěn — world-tick/process-tick/action_queue/time_pools k odstranění
 - [ ] Rozhodnuto: Sphaera/ligy zamrazit za beta flag
@@ -199,7 +199,7 @@
 
 ## Economy pass: produkty, kupní síla (hotovo – základ, tah 10)
 - [x] Koš → podkoš → produkt, volba produktu, rozmanitost, městské účty, marže výrobce
-- [x] Automatické rozdělení výroby podle marže (AUTO objednávky) — zapojené, používá minulý committed tah
+- [ ] Automatické rozdělení výroby podle marže (AUTO objednávky) — funkce připravena, zapojení odloženo
 - [ ] Soukromé bohatství domácností (zásoba) — odloženo, chybí rozumná startovní kalibrace
 - [ ] Kalibrace příjmů vs. cen základního koše (dnes všude mezera dostupnosti)
 - [ ] Nové produkty (další druhy chleba atd.) — vyžadují řádky zboží a receptů
@@ -208,17 +208,7 @@
 - [x] Landed input cost sourcing, AUTO podle marže, marže/ztráta v přehledu výroby
 - [x] Obchodní služby v HDP, prosperita, Bohatství města (city_capital_stock), nový TRADE_BOOM
 - [x] Rýže, nástroje, zdrojové recepty, řemeslná kvalita, serverová validace staveb
-- [ ] Odloženo: režie práce v marži. Landed vstupy již ovlivňují marži; intermediate_value pro HDP zůstává v základních cenách.
+- [ ] Odloženo: intermediate_value v nákupních cenách (HDP je ve stálých cenách), režie práce v marži
 
-
-## Účetní a provozní uzavření (27. 9. 2026)
-- [x] Pokladna: úplný rozpis smluvního obchodu, prestiže, nákladů cest, mýtného, insolvency floor a zaokrouhlení.
-- [x] HDP služeb: fyzické množství v katalogových cenách; nominální turnover zůstává obchodní metrikou.
-- [x] Deník potvrzených fází; kalendář až po committed ledgeru; atomické world projekce, fiskální efekty a údržba cest.
-- [x] Bezpečný ekonomický retry bez opakování fyzických/AI účinků, vzájemné vyloučení refresh/turn.
-- [ ] Plně automatická obnova nejasně přerušených externích bojových a AI operací před fyzickým checkpointem. Dosud fail-closed, nikoli automatické přeskočení.
-- [ ] Content pass: úplná taxonomie podkošů, kalibrace functional_value, regionální preference, více produktů.
-- [ ] Převod legacy smluv na fyzicky krytý obchod; nyní oddělená peněžní položka.
-- [ ] Soukromý majetek domácností až po ověření účetních invariantů a dlouhodobé kalibraci.
-
-Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétních tazích výše jsou historické milníky, nikoli současná diagnostika Test02.
+- [ ] Operational deploy PR #5 (3 migrations + 13 functions)
+- [ ] AI cost & architecture optimization pass
