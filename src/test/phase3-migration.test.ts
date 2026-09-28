@@ -135,7 +135,8 @@ describe("phase 3: commit-turn ownership contract", () => {
   });
 
   it("reuses the stored ledger on replay instead of recomputing", () => {
-    expect(COMMIT).toMatch(/populationLedger: \(existingTick\.results as any\)\?\.populationLedger/);
+    expect(COMMIT).toContain("journal.atomic('world'");
+    expect(COMMIT).toContain('return existingTick.results;');
   });
 
   it("leaves rural transfer to Phase C", () => {

@@ -1,3 +1,4 @@
+import { planFiscalWrites } from '../_shared/atomicWrites.ts';
 // ─────────────────────────────────────────────────────────────────────────────
 // world-layer-tick — World Ontology v9.1 Phase 4 + Phase 9
 //
@@ -54,7 +55,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const sb = createClient(SUPABASE_URL, SERVICE_KEY);
+    let sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
     // ── Load current route state + route owner info ──────────────────────
     const { data: states, error: stErr } = await sb
@@ -90,6 +91,10 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const database=sb;
+    const projection=planFiscalWrites(database);
+    sb=projection.client;
 
     // ── Phase 4: maintenance + lifecycle transitions ─────────────────────
     // FISCAL BOUNDARY: this phase never writes gold. It stamps the routes it
@@ -170,11 +175,11 @@ Deno.serve(async (req) => {
       for (const [owner, amount] of ownerToPrestige.entries()) {
         const { data: rrCur } = await sb
           .from("realm_resources")
-          .select("prestige_score")
+          .select("prestige")
           .eq("session_id", sessionId).eq("player_name", owner).maybeSingle();
-        const cur = Number(rrCur?.prestige_score ?? 0);
+        const cur = Number(rrCur?.prestige ?? 0);
         await sb.from("realm_resources")
-          .update({ prestige_score: cur + amount })
+          .update({ prestige: cur + amount })
           .eq("session_id", sessionId).eq("player_name", owner);
         mythicPrestige += amount;
       }
@@ -202,11 +207,14 @@ Deno.serve(async (req) => {
       phase8: { mythicPrestige },
       phase9: { deleted: phase9Deleted },
     };
-    await sb.from("world_layer_tick_guards")
-      .upsert({ session_id: sessionId, turn_number: turnNumber, result }, { onConflict: "session_id,turn_number" });
+    const {data:committed,error:commitError}=await database.rpc('apply_world_layer_plan',{
+      p_session:sessionId,p_turn:turnNumber,p_writes:projection.writes,p_result:result,
+    });
+    if(commitError)throw commitError;
+
 
     return new Response(
-      JSON.stringify({ ok: true, ...result }),
+      JSON.stringify({ ok: true, ...committed }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
