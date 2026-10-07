@@ -118,7 +118,17 @@ Deno.serve(async (req) => {
       await projectDiplomaticRelations(db,sessionId,turnNumber,results.worldTick.tensionRecords||[],results.worldTick.influenceRecords||[],!!results.worldTick.emittedEventsCount);
       return {done:true};
     });
-    await journal.atomic('diplomatic_memory',async db=>{await populateDiplomaticMemory(db,sessionId,turnNumber);return {done:true};});
+    const diploMemory=await journal.atomic('diplomatic_memory',async db=>{
+      const processedMsgIds=await populateDiplomaticMemory(db,sessionId,turnNumber);
+      return {done:true,processedMsgIds};
+    });
+    // Cursor bookkeeping lives outside the atomic plan: diplomacy_messages has no
+    // session_id and is not a fiscal table. Marking is idempotent, so a retry is safe.
+    if(diploMemory?.processedMsgIds?.length){
+      await supabase.from("diplomacy_messages")
+        .update({ processed_for_memory_turn: turnNumber })
+        .in("id", diploMemory.processedMsgIds);
+    }
     await journal.atomic('disposition',async db=>{await syncDispositionFromRelations(db,sessionId);return {done:true};});
     results.turnProgress=await journal.atomic('turn_progress',db=>advanceTurnProgress(db,sessionId,turnNumber));
 
@@ -2535,12 +2545,9 @@ async function populateDiplomaticMemory(supabase: any, sessionId: string, turnNu
     }
   }
 
-  // Mark processed
-  if (processedMsgIds.length > 0) {
-    await supabase.from("diplomacy_messages")
-      .update({ processed_for_memory_turn: turnNumber })
-      .in("id", processedMsgIds);
-  }
+  // Processed-message IDs are returned to the caller, which marks them with the
+  // real client after the atomic phase commits (diplomacy_messages is not a
+  // fiscal table and must not go through the buffered writer).
 
   // Deduplicate by faction_a + faction_b + memory_type (keep highest importance)
   const dedupMap = new Map<string, any>();
@@ -2556,6 +2563,7 @@ async function populateDiplomaticMemory(supabase: any, sessionId: string, turnNu
   if (finalEntries.length > 0) {
     await supabase.from("diplomatic_memory").insert(finalEntries);
   }
+  return processedMsgIds;
 }
 
 /**
