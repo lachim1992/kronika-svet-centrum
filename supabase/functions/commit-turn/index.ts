@@ -2563,6 +2563,7 @@ async function populateDiplomaticMemory(supabase: any, sessionId: string, turnNu
   if (finalEntries.length > 0) {
     await supabase.from("diplomatic_memory").insert(finalEntries);
   }
+  return processedMsgIds;
 }
 
 /**
