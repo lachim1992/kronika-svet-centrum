@@ -2545,12 +2545,9 @@ async function populateDiplomaticMemory(supabase: any, sessionId: string, turnNu
     }
   }
 
-  // Mark processed
-  if (processedMsgIds.length > 0) {
-    await supabase.from("diplomacy_messages")
-      .update({ processed_for_memory_turn: turnNumber })
-      .in("id", processedMsgIds);
-  }
+  // Processed-message IDs are returned to the caller, which marks them with the
+  // real client after the atomic phase commits (diplomacy_messages is not a
+  // fiscal table and must not go through the buffered writer).
 
   // Deduplicate by faction_a + faction_b + memory_type (keep highest importance)
   const dedupMap = new Map<string, any>();
