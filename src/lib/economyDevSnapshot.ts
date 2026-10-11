@@ -1,6 +1,9 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { GoodRow, ProducerRow, DemandRow, FlowRow, Anomaly, Totals, LedgerBalance, LedgerPrice, CityAccountRow } from "../../supabase/functions/economy-dev-snapshot/build";
-export type { GoodRow, ProducerRow, DemandRow, FlowRow, Anomaly, Totals, LedgerBalance, LedgerPrice, CityAccountRow };
+import type { GoodRow, ProducerRow, DemandRow, FlowRow, Anomaly, Totals, LedgerBalance, LedgerPrice, CityAccountRow, ProductChoiceRow } from "../../supabase/functions/economy-dev-snapshot/build";
+import type { CostRow, CostComponent, BomInput, CostComparison, SpecificGoodRow } from "../../supabase/functions/economy-dev-snapshot/costs";
+export type { GoodRow, ProducerRow, DemandRow, FlowRow, Anomaly, Totals, LedgerBalance, LedgerPrice, CityAccountRow, ProductChoiceRow, CostRow, CostComponent, BomInput, CostComparison, SpecificGoodRow };
+export { compareCosts } from "../../supabase/functions/economy-dev-snapshot/costs";
+export interface CatalogueRecipe { key: string; role: string; output: string; qty: number; inputs: { good: string; qty: number }[] }
 
 export interface Capped<T> { rows: T[]; total: number; truncated: boolean }
 export interface CityRow { id: string; name: string; owner: string; cell: string; population: number | null; totals: Totals;
@@ -16,6 +19,7 @@ export interface EconomyDevSnapshot {
   state?: { guards: { turn_number: number; status: string; started_at: string | null; finished_at: string | null; error: string | null; resumable: boolean | null }[];
     journal: { turn_number: number; phase: string; completed_at: string }[]; refreshLock: { locked_at: string; locked_by: string | null } | null };
   cities?: CityRow[]; world?: Totals; goods?: GoodRow[]; producers?: Capped<ProducerRow>; demand?: Capped<DemandRow>;
+  costs?: Capped<CostRow>; specific?: SpecificGoodRow[]; catalogueRecipes?: CatalogueRecipe[];
   flows?: Capped<FlowRow>; edges?: Capped<{ id: string; from: string; to: string; capacity: number; used: number }>;
   prices?: Capped<LedgerPrice>; balances?: Capped<LedgerBalance>; famous?: { city: string; good: string }[]; anomalies?: Anomaly[];
   fiscal?: { source: string; realms: Record<string, number | string | null>[]; capitalStock: { city_id: string; stock: number; last_delta: number; last_turn: number }[] };
