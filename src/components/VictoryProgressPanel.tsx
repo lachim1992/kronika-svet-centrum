@@ -47,24 +47,14 @@ const VictoryProgressPanel = ({ sessionId, currentPlayerName, currentTurn, onVic
   const handleEndStory = async () => {
     setEnding(true);
     try {
-      await supabase.from("game_sessions").update({
-        victory_status: "won",
-        victory_winner: currentPlayerName,
-        victory_data: { type: "story", ended_turn: currentTurn },
-      } as any).eq("id", sessionId);
-
-      await supabase.from("chronicle_entries").insert({
-        session_id: sessionId,
-        turn_from: currentTurn,
-        turn_to: currentTurn,
-        text: `**V roce ${currentTurn} uzavřel ${currentPlayerName} kapitolu dějin svého světa.** Příběh jeho říše se stává legendou předávanou z generace na generaci.`,
-        source_type: "system",
-      });
+      const { error } = await supabase.rpc("end_story_session", { p_session: sessionId });
+      if (error) throw error;
 
       toast.success("Hra ukončena!");
       onVictory?.();
-    } catch {
-      toast.error("Nepodařilo se ukončit hru");
+    } catch (e) {
+      const msg = (e as { message?: string })?.message || "";
+      toast.error(msg.includes("creator") ? "Příběh může ukončit jen zakladatel hry nebo správce." : "Nepodařilo se ukončit hru");
     } finally {
       setEnding(false);
     }

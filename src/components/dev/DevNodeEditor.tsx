@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -331,7 +332,7 @@ const DevNodeEditor = ({ sessionId, onRefetch }: Props) => {
       if (patch.node_class === "major") patch.is_major = true;
       else if (patch.node_class === "minor" || patch.node_class === "transit") patch.is_major = false;
       
-      const { error } = await supabase.from("province_nodes").update(patch).eq("id", selectedNodeId);
+      const { error } = await devAdminDb(sessionId).from("province_nodes").update(patch).eq("id", selectedNodeId);
       if (error) throw error;
       toast.success("Uzel uložen");
       fetchAll();
@@ -348,7 +349,7 @@ const DevNodeEditor = ({ sessionId, onRefetch }: Props) => {
     setSaving(true);
     try {
       const { id, ...patch } = editedCity as any;
-      const { error } = await supabase.from("cities").update(patch).eq("id", selectedCityId);
+      const { error } = await devAdminDb(sessionId).from("cities").update(patch).eq("id", selectedCityId);
       if (error) throw error;
       toast.success("Město uloženo");
       fetchAll();

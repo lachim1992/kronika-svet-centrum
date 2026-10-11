@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -112,7 +113,7 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
           .select("ai_description").eq("session_id", sessionId)
           .eq("entity_type", "province").eq("entity_id", prov.id).maybeSingle();
         if (w?.ai_description) {
-          await supabase.from("provinces").update({ ai_description: w.ai_description }).eq("id", prov.id);
+          await devAdminDb(sessionId).from("provinces").update({ ai_description: w.ai_description }).eq("id", prov.id);
         }
         hLog(`✅ Provincie: ${prov.name}`);
       } catch { hLog(`❌ Provincie: ${prov.name}`); }
@@ -130,7 +131,7 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
           .select("ai_description").eq("session_id", sessionId)
           .eq("entity_type", "region").eq("entity_id", reg.id).maybeSingle();
         if (w?.ai_description) {
-          await supabase.from("regions").update({ ai_description: w.ai_description }).eq("id", reg.id);
+          await devAdminDb(sessionId).from("regions").update({ ai_description: w.ai_description }).eq("id", reg.id);
         }
         hLog(`✅ Region: ${reg.name}`);
       } catch { hLog(`❌ Region: ${reg.name}`); }
@@ -151,7 +152,7 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
           },
         });
         if (data?.introduction) {
-          await supabase.from("cities").update({ flavor_prompt: data.introduction }).eq("id", city.id);
+          await devAdminDb(sessionId).from("cities").update({ flavor_prompt: data.introduction }).eq("id", city.id);
           hLog(`✅ Město: ${city.name}`);
         }
       } catch { hLog(`❌ Město: ${city.name}`); }
@@ -169,7 +170,7 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
           .select("ai_description").eq("session_id", sessionId)
           .eq("entity_type", "wonder").eq("entity_id", w.id).maybeSingle();
         if (we?.ai_description) {
-          await supabase.from("wonders").update({ description: we.ai_description }).eq("id", w.id);
+          await devAdminDb(sessionId).from("wonders").update({ description: we.ai_description }).eq("id", w.id);
         }
         hLog(`✅ Div: ${w.name}`);
       } catch { hLog(`❌ Div: ${w.name}`); }
@@ -187,7 +188,7 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
           .select("ai_description").eq("session_id", sessionId)
           .eq("entity_type", "person").eq("entity_id", p.id).maybeSingle();
         if (w?.ai_description) {
-          await supabase.from("great_persons").update({ bio: w.ai_description }).eq("id", p.id);
+          await devAdminDb(sessionId).from("great_persons").update({ bio: w.ai_description }).eq("id", p.id);
         }
         hLog(`✅ Osobnost: ${p.name}`);
       } catch { hLog(`❌ Osobnost: ${p.name}`); }

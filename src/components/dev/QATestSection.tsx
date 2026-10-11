@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -434,7 +435,7 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       const { data: countries } = await supabase.from("countries").select("id").eq("session_id", sessionId);
       let countryId = countries?.[0]?.id;
       if (!countryId) {
-        const { data: newC } = await supabase.from("countries").insert({
+        const { data: newC } = await devAdminDb(sessionId).from("countries").insert({
           session_id: sessionId, name: "Neznámý stát",
           description: "Automaticky vytvořený placeholder stát.",
         }).select().single();
@@ -445,7 +446,7 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       if (countryId) {
         const { data: orphanRegs } = await supabase.from("regions").select("id").eq("session_id", sessionId).is("country_id", null);
         for (const r of orphanRegs || []) {
-          await supabase.from("regions").update({ country_id: countryId }).eq("id", r.id);
+          await devAdminDb(sessionId).from("regions").update({ country_id: countryId }).eq("id", r.id);
           fixed++;
         }
       }
@@ -454,7 +455,7 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       let { data: regions } = await supabase.from("regions").select("id").eq("session_id", sessionId).limit(1);
       let regionId = regions?.[0]?.id;
       if (!regionId && countryId) {
-        const { data: newR } = await supabase.from("regions").insert({
+        const { data: newR } = await devAdminDb(sessionId).from("regions").insert({
           session_id: sessionId, name: "Neznámý region", country_id: countryId,
         }).select().single();
         if (newR) { regionId = newR.id; fixed++; }
@@ -464,7 +465,7 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       if (regionId) {
         const { data: orphanProvs } = await supabase.from("provinces").select("id").eq("session_id", sessionId).is("region_id", null);
         for (const p of orphanProvs || []) {
-          await supabase.from("provinces").update({ region_id: regionId }).eq("id", p.id);
+          await devAdminDb(sessionId).from("provinces").update({ region_id: regionId }).eq("id", p.id);
           fixed++;
         }
       }
@@ -473,7 +474,7 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       let { data: provs } = await supabase.from("provinces").select("id").eq("session_id", sessionId).limit(1);
       let provId = provs?.[0]?.id;
       if (!provId && regionId) {
-        const { data: newP } = await supabase.from("provinces").insert({
+        const { data: newP } = await devAdminDb(sessionId).from("provinces").insert({
           session_id: sessionId, name: "Neznámá provincie", region_id: regionId, owner_player: "",
         }).select().single();
         if (newP) { provId = newP.id; fixed++; }
@@ -483,7 +484,7 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       if (provId) {
         const { data: orphanCities } = await supabase.from("cities").select("id").eq("session_id", sessionId).is("province_id", null);
         for (const c of orphanCities || []) {
-          await supabase.from("cities").update({ province_id: provId }).eq("id", c.id);
+          await devAdminDb(sessionId).from("cities").update({ province_id: provId }).eq("id", c.id);
           fixed++;
         }
       }

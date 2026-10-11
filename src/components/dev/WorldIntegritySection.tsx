@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -87,7 +88,7 @@ const WorldIntegritySection = ({ sessionId, onRefetch }: Props) => {
           countryId = existing[0].id;
           addLog(`📌 Používám existující stát: ${countryId.slice(0, 8)}`);
         } else {
-          const { data: newCountry } = await supabase.from("countries").insert({
+          const { data: newCountry } = await devAdminDb(sessionId).from("countries").insert({
             session_id: sessionId, name: "Výchozí stát", ruler_player: null,
             description: "Automaticky vytvořený stát pro opravu hierarchie.",
           }).select().single();
@@ -96,7 +97,7 @@ const WorldIntegritySection = ({ sessionId, onRefetch }: Props) => {
 
         if (countryId) {
           for (const reg of report.regionsWithoutCountry) {
-            await supabase.from("regions").update({ country_id: countryId }).eq("id", reg.id);
+            await devAdminDb(sessionId).from("regions").update({ country_id: countryId }).eq("id", reg.id);
             addLog(`🔗 Region "${reg.name}" → stát`);
           }
         }
@@ -107,7 +108,7 @@ const WorldIntegritySection = ({ sessionId, onRefetch }: Props) => {
         const { data: regions } = await supabase.from("regions").select("id, name").eq("session_id", sessionId).limit(1);
         if (regions?.length) {
           for (const prov of report.provincesWithoutRegion) {
-            await supabase.from("provinces").update({ region_id: regions[0].id }).eq("id", prov.id);
+            await devAdminDb(sessionId).from("provinces").update({ region_id: regions[0].id }).eq("id", prov.id);
             addLog(`🔗 Provincie "${prov.name}" → region "${regions[0].name}"`);
           }
         } else {
@@ -121,7 +122,7 @@ const WorldIntegritySection = ({ sessionId, onRefetch }: Props) => {
         if (!provinces?.length) {
           // Create a default province
           const { data: regions } = await supabase.from("regions").select("id").eq("session_id", sessionId).limit(1);
-          const { data: newProv } = await supabase.from("provinces").insert({
+          const { data: newProv } = await devAdminDb(sessionId).from("provinces").insert({
             session_id: sessionId, name: "Výchozí provincie", owner_player: "system",
             region_id: regions?.[0]?.id || null,
           }).select("id, name").single();
@@ -132,7 +133,7 @@ const WorldIntegritySection = ({ sessionId, onRefetch }: Props) => {
         }
         if (provinces?.length) {
           for (const city of report.citiesWithoutProvince) {
-            await supabase.from("cities").update({ province_id: provinces[0].id }).eq("id", city.id);
+            await devAdminDb(sessionId).from("cities").update({ province_id: provinces[0].id }).eq("id", city.id);
             addLog(`🔗 Město "${city.name}" → provincie "${provinces[0].name}"`);
           }
         }
@@ -141,14 +142,14 @@ const WorldIntegritySection = ({ sessionId, onRefetch }: Props) => {
       // 4) Delete orphaned wiki entries
       if (report.orphanedWiki.length > 0) {
         for (const w of report.orphanedWiki) {
-          await supabase.from("wiki_entries").delete().eq("id", w.id);
+          await devAdminDb(sessionId).from("wiki_entries").delete().eq("id", w.id);
           addLog(`🗑️ Smazán sirotčí wiki záznam: "${w.name}"`);
         }
       }
 
       // 5) Log to simulation_log
       try {
-        await supabase.from("simulation_log").insert({
+        await devAdminDb(sessionId).from("simulation_log").insert({
           session_id: sessionId,
           year_start: 0, year_end: 0,
           events_generated: 0,

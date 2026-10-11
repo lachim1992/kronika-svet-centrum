@@ -1,7 +1,6 @@
 # Files exempt from client-side write gates
 # Dev tools (always exempt)
 src/components/dev/DevPlayerEditor.tsx
-src/components/AdminMonitorPanel.tsx
 # Deferred to Sprint B (movement/deployment commands)
 src/components/military/DeployBattlePanel.tsx
 src/components/WorldHexMap.tsx
@@ -14,5 +13,6 @@ src/components/CityManagement.tsx
 # Now DENIED to clients (backend/RPC only): realm_resources (except owner mobilization_rate, army_sigil_confirmed),
 # game_sessions turn columns (current_turn, resolving_turn, turn_closed_*, world_seed, room_code),
 # game_players (except own turn_closed), and every table in drizzle/migrations/0002_harden_access_rules_20261011.sql sections 4-5.
-# Dev tools that wrote those directly (DevPlayerEditor, SimulationSection/LocalSimulationSection current_turn,
-# AdminMonitorPanel realm delete, EconomyQASection realm insert, legacy advanceTurn) now fail closed by design.
+# Admin/dev panel writes go through the admin-only admin-dev-write function (src/lib/devAdminDb.ts):
+# admin role, session scope, table allowlist, no turn/victory columns, audited in admin_audit_log.
+# SimulationSection, LocalSimulationSection, AdminMonitorPanel and advanceTurn were removed (unreachable/legacy).

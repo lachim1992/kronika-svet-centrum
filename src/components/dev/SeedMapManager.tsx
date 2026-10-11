@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -320,20 +321,20 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
   const regenerateMap = useCallback(async () => {
     setRegenerating(true);
     try {
-      const { error: delErr } = await supabase
+      const { error: delErr } = await devAdminDb(sessionId)
         .from("province_hexes")
         .delete()
         .eq("session_id", sessionId);
       if (delErr) throw delErr;
 
-      const { error: seedErr } = await supabase
+      const { error: seedErr } = await devAdminDb(sessionId)
         .from("game_sessions")
         .update({ world_seed: crypto.randomUUID() })
         .eq("id", sessionId);
       if (seedErr) throw seedErr;
 
       // Sync dimensions to world_foundations
-      await supabase
+      await devAdminDb(sessionId)
         .from("world_foundations")
         .update({ map_width: settings.width, map_height: settings.height } as any)
         .eq("session_id", sessionId);
@@ -465,7 +466,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
     setSavingFeedback(true);
     try {
       // Save feedback with style_key
-      await supabase.from("map_gen_feedback").insert([{
+      await devAdminDb(sessionId).from("map_gen_feedback").insert([{
         session_id: sessionId,
         user_id: user.id,
         feedback_type: "rating",
@@ -489,7 +490,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
       const newAvg = ((existing?.avg_rating || 0) * (existing?.total_ratings || 0) + rating) / newTotal;
       const allNotes = [...(existing?.style_notes || []), ...styleNotes].slice(-20);
 
-      const { error } = await supabase.from("map_gen_preferences").upsert({
+      const { error } = await devAdminDb(sessionId).from("map_gen_preferences").upsert({
         user_id: user.id,
         style_key: currentStyleKey,
         preferred_land_ratio: settings.targetLandRatio,
@@ -510,7 +511,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
       const gTotal = (gExisting?.total_ratings || 0) + 1;
       const gAvg = ((gExisting?.avg_rating || 0) * (gExisting?.total_ratings || 0) + rating) / gTotal;
       const gNotes = [...(gExisting?.style_notes || []), ...styleNotes].slice(-20);
-      await supabase.from("map_gen_preferences").upsert({
+      await devAdminDb(sessionId).from("map_gen_preferences").upsert({
         user_id: user.id,
         style_key: "global",
         style_notes: gNotes,
@@ -542,7 +543,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
       : `Bad patch: "${entry.request}" — ${entry.result.patch.intent}`;
 
     try {
-      await supabase.from("map_gen_feedback").insert([{
+      await devAdminDb(sessionId).from("map_gen_feedback").insert([{
         session_id: sessionId,
         user_id: user.id,
         feedback_type: "patch_feedback",
@@ -556,7 +557,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
       // Append to per-style notes
       const existing = learnedPrefs;
       const allNotes = [...(existing?.style_notes || []), note].slice(-20);
-      await supabase.from("map_gen_preferences").upsert({
+      await devAdminDb(sessionId).from("map_gen_preferences").upsert({
         user_id: user.id,
         style_key: currentStyleKey,
         style_notes: allNotes,

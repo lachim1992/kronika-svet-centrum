@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -135,7 +136,7 @@ const DevPlayerEditor = ({ sessionId, onRefetch }: Props) => {
   const saveRealm = async () => {
     if (!realm?.id) return;
     setSaving(true);
-    const { error } = await supabase.from("realm_resources").update(realm).eq("id", realm.id);
+    const { error } = await devAdminDb(sessionId).from("realm_resources").update(realm).eq("id", realm.id);
     setSaving(false);
     if (error) { toast.error("Chyba: " + error.message); return; }
     toast.success("Realm uložen");
@@ -144,7 +145,7 @@ const DevPlayerEditor = ({ sessionId, onRefetch }: Props) => {
 
   // ── Save single player_resource row
   const saveResource = async (r: any) => {
-    const { error } = await supabase.from("player_resources").update({
+    const { error } = await devAdminDb(sessionId).from("player_resources").update({
       stockpile: r.stockpile, income: r.income, upkeep: r.upkeep,
     }).eq("id", r.id);
     if (error) toast.error(error.message);
@@ -153,7 +154,7 @@ const DevPlayerEditor = ({ sessionId, onRefetch }: Props) => {
 
   // ── Save stack
   const saveStack = async (s: any) => {
-    const { error } = await supabase.from("military_stacks").update({
+    const { error } = await devAdminDb(sessionId).from("military_stacks").update({
       morale: s.morale, power: s.power, stance: s.stance,
       formation_type: s.formation_type, is_deployed: s.is_deployed,
     }).eq("id", s.id);
@@ -163,7 +164,7 @@ const DevPlayerEditor = ({ sessionId, onRefetch }: Props) => {
 
   // ── Save composition unit
   const saveUnit = async (u: any) => {
-    const { error } = await supabase.from("military_stack_composition").update({
+    const { error } = await devAdminDb(sessionId).from("military_stack_composition").update({
       manpower: u.manpower, quality: u.quality, equipment_level: u.equipment_level,
     }).eq("id", u.id);
     if (error) toast.error(error.message);
@@ -172,7 +173,7 @@ const DevPlayerEditor = ({ sessionId, onRefetch }: Props) => {
 
   // ── Save AI faction
   const saveFaction = async (f: any) => {
-    const { error } = await supabase.from("ai_factions").update({
+    const { error } = await devAdminDb(sessionId).from("ai_factions").update({
       personality: f.personality, is_active: f.is_active,
       disposition: f.disposition, goals: f.goals, resources_snapshot: f.resources_snapshot,
     }).eq("id", f.id);
