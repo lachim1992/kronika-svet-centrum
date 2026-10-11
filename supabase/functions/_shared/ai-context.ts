@@ -659,9 +659,19 @@ export async function createAIContext(
  * Includes: biome distribution, chokepoints, rivers, mountain barriers, city positions,
  * AND node graph topology with flow data.
  */
+interface StrategicHexRow { q: number; r: number; biome_family: string; has_river: boolean; has_bridge: boolean;
+  coastal: boolean; is_passable: boolean; owner_player: string | null; province_id: string | null }
+interface StrategicNodeRow { id: string; name: string; node_type: string; node_class?: string | null; node_score?: number | null;
+  collapse_severity?: number | null; is_major: boolean; parent_node_id: string | null; controlled_by: string | null;
+  production_output: number | null; wealth_output: number | null; faith_output?: number | null; capacity_score: number | null;
+  importance_score: number | null; hex_q: number; hex_r: number; flow_role: string | null; garrison_strength: number | null;
+  fortification_level: number | null; city_id: string | null; strategic_resource_type?: string | null }
+interface StrategicRouteRow { node_a: string; node_b: string; route_type: string; capacity_value: number | null;
+  control_state: string; damage_level: number }
+
 async function buildStrategicMapContext(client: SupabaseClient, sessionId: string): Promise<string | null> {
   // Load hex summary stats + node graph
-  const [{ data: hexes }, { data: provinces }, { data: cities }, { data: nodeData }, { data: routeData }, { data: supplyData }] = await Promise.all([
+  const [{ data: hexRows }, { data: provinces }, { data: cities }, { data: nodeRows }, { data: routeRows }, { data: supplyData }] = await Promise.all([
     client.from("province_hexes")
       .select("q, r, biome_family, has_river, has_bridge, coastal, is_passable, owner_player, province_id")
       .eq("session_id", sessionId).limit(4000),
@@ -683,6 +693,10 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
       .order("turn_number", { ascending: false }).limit(500),
   ]);
 
+  // Untyped client boundary: the selected columns above define these row shapes.
+  const hexes = hexRows as StrategicHexRow[] | null;
+  const nodeData = (nodeRows ?? []) as StrategicNodeRow[];
+  const routeData = routeRows as StrategicRouteRow[] | null;
   if (!hexes || hexes.length === 0) return null;
 
   // Biome distribution
