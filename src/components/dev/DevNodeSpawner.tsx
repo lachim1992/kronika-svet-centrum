@@ -153,14 +153,12 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
 
   const handleDelete = async (nodeId: string) => {
     // Delete related routes first, then the node
-    await devAdminDb(sessionId).from("province_routes")
-      .delete()
-      .eq("session_id", sessionId)
-      .or(`node_a.eq.${nodeId},node_b.eq.${nodeId}`);
-    await devAdminDb(sessionId).from("flow_paths")
-      .delete()
-      .eq("session_id", sessionId)
-      .or(`node_a.eq.${nodeId},node_b.eq.${nodeId}`);
+    for (const col of ["node_a", "node_b"]) {
+      await devAdminDb(sessionId).from("province_routes").delete().eq("session_id", sessionId).eq(col, nodeId);
+    }
+    for (const col of ["node_a", "node_b"]) {
+      await devAdminDb(sessionId).from("flow_paths").delete().eq("session_id", sessionId).eq(col, nodeId);
+    }
     const { error } = await devAdminDb(sessionId).from("province_nodes").delete().eq("id", nodeId);
     if (error) {
       toast.error("Nelze smazat: " + error.message);
