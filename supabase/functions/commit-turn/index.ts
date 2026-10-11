@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
 
       // First: trigger AI respond for any AI side that hasn't acted yet
       const { data: aiFactionRows } = await supabase.from("ai_factions").select("faction_name").eq("session_id", sessionId).eq("is_active", true);
-      const aiPlayers = new Set((aiFactionRows || []).map(r => r.faction_name));
+      const aiPlayers = new Set((aiFactionRows || []).map((r: any) => r.faction_name));
       for (const lb of (unresolvedLobbies || [])) {
         try {
           if (aiPlayers.has(lb.attacker_player) && !lb.attacker_ready) {

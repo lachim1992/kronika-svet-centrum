@@ -43,14 +43,14 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
   add('population','Obyvatelstvo','lidí','Součet obyvatel vlastních měst.',cities.map(c=>({id:c.id,label:c.name,city:c.id,value:c.population})));
   // LABOR MARKET. Obyvatelstvo nevyrábí zboží; dodává práci do míst, která zaměstnávají.
   const labor=(ledger.labor||[]).filter((l:any)=>owned.has(l.city));
-  add('jobs_capacity','Pracovní místa','míst','Součet pracovních míst, která vytvářejí budovy, čtvrti a uzly.',labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.jobs_capacity})));
-  add('employed','Zaměstnaní','lidí','Skutečně obsazená pracovní místa; nikdo není zaměstnán dvakrát.',labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.employed_total})));
-  add('unemployed','Nezaměstnaní','lidí','Nabídka práce, pro kterou ve městě nejsou pracovní místa.',labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.unemployed_total})));
-  add('vacancies','Neobsazená místa','míst','Pracovní místa, pro která chybí lidé.',labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.vacancies_total})));
+  add('jobs_capacity','Pracovní místa','míst','Součet pracovních míst, která vytvářejí budovy, čtvrti a uzly.',labor.map((l:any)=>({id:l.city,label:names.get(l.city)??String(l.city),city:l.city,value:l.jobs_capacity})));
+  add('employed','Zaměstnaní','lidí','Skutečně obsazená pracovní místa; nikdo není zaměstnán dvakrát.',labor.map((l:any)=>({id:l.city,label:names.get(l.city)??String(l.city),city:l.city,value:l.employed_total})));
+  add('unemployed','Nezaměstnaní','lidí','Nabídka práce, pro kterou ve městě nejsou pracovní místa.',labor.map((l:any)=>({id:l.city,label:names.get(l.city)??String(l.city),city:l.city,value:l.unemployed_total})));
+  add('vacancies','Neobsazená místa','míst','Pracovní místa, pro která chybí lidé.',labor.map((l:any)=>({id:l.city,label:names.get(l.city)??String(l.city),city:l.city,value:l.vacancies_total})));
   const laborSupplyTotal=labor.reduce((s:number,l:any)=>s+l.available_workforce,0),employedTotal=labor.reduce((s:number,l:any)=>s+l.employed_total,0);
   add('employment_rate','Zaměstnanost','%','Podíl zaměstnané pracovní síly říše.',[],laborSupplyTotal?employedTotal/laborSupplyTotal*100:null);
   add('structural_unemployed','Strukturální nezaměstnanost','lidí','Lidé bez práce v okamžiku, kdy jinde ve stejném městě stojí prázdná pracovní místa — nabídka práce má jinou odbornost než volná místa.',
-    labor.map((l:any)=>({id:l.city,label:names.get(l.city),city:l.city,value:l.structural_unemployed||0})));
+    labor.map((l:any)=>({id:l.city,label:names.get(l.city)??String(l.city),city:l.city,value:l.structural_unemployed||0})));
   // STRUCTURAL MISMATCH ALERT. Idle people next to empty jobs is a fixable problem, not a shortage.
   for(const l of labor as any[]){
     const stranded=Number(l.structural_unemployed||0);
