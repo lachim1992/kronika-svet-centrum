@@ -12,13 +12,14 @@ type Result<T = any> = { data: T | null; error: { message: string } | null };
 class AdminWrite implements PromiseLike<Result> {
   private filters: Filter[] = [];
   private selectCols?: string;
-  private single: "one" | "maybe" | null = null;
+  private mode: "one" | "maybe" | null = null;
   constructor(
     private sessionId: string,
     private table: string,
     private action: "insert" | "upsert" | "update" | "delete",
     private values?: unknown,
     private onConflict?: string,
+    private ignoreDuplicates?: boolean,
   ) {}
   eq(column: string, value: unknown) { this.filters.push({ op: "eq", column, value }); return this; }
   neq(column: string, value: unknown) { this.filters.push({ op: "neq", column, value }); return this; }
@@ -26,15 +27,14 @@ class AdminWrite implements PromiseLike<Result> {
   in(column: string, value: unknown[]) { this.filters.push({ op: "in", column, value }); return this; }
   is(column: string, value: null) { this.filters.push({ op: "is", column, value }); return this; }
   select(cols = "*") { this.selectCols = cols; return this; }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  single() { this.single = "one"; if (!this.selectCols) this.selectCols = "*"; return this as PromiseLike<Result<any>> & AdminWrite; }
-  maybeSingle() { this.single = "maybe"; if (!this.selectCols) this.selectCols = "*"; return this; }
+  single() { this.mode = "one"; if (!this.selectCols) this.selectCols = "*"; return this; }
+  maybeSingle() { this.mode = "maybe"; if (!this.selectCols) this.selectCols = "*"; return this; }
 
   private async run(): Promise<Result> {
     const { data, error } = await supabase.functions.invoke("admin-dev-write", {
       body: {
         sessionId: this.sessionId, table: this.table, action: this.action,
-        values: this.values, filters: this.filters, select: this.selectCols, onConflict: this.onConflict,
+        values: this.values, filters: this.filters, select: this.selectCols, onConflict: this.onConflict, ignoreDuplicates: this.ignoreDuplicates,
       },
     });
     if (error) {
@@ -44,8 +44,8 @@ class AdminWrite implements PromiseLike<Result> {
     }
     if (data?.error) return { data: null, error: { message: String(data.error) } };
     let rows = data?.data ?? null;
-    if (this.single && Array.isArray(rows)) {
-      if (this.single === "one" && rows.length !== 1) return { data: null, error: { message: "Expected one row" } };
+    if (this.mode && Array.isArray(rows)) {
+      if (this.mode === "one" && rows.length !== 1) return { data: null, error: { message: "Expected one row" } };
       rows = rows[0] ?? null;
     }
     return { data: rows, error: null };
@@ -60,7 +60,7 @@ export function devAdminDb(sessionId: string) {
     from(table: string) {
       return {
         insert: (values: unknown) => new AdminWrite(sessionId, table, "insert", values),
-        upsert: (values: unknown, opts?: { onConflict?: string }) => new AdminWrite(sessionId, table, "upsert", values, opts?.onConflict),
+        upsert: (values: unknown, opts?: { onConflict?: string; ignoreDuplicates?: boolean }) => new AdminWrite(sessionId, table, "upsert", values, opts?.onConflict, opts?.ignoreDuplicates),
         update: (values: unknown) => new AdminWrite(sessionId, table, "update", values),
         delete: () => new AdminWrite(sessionId, table, "delete"),
       };

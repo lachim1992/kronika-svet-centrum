@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
 
     let q: any = db.from(op.table);
     if (op.action === "insert") q = q.insert(op.values);
-    else if (op.action === "upsert") q = q.upsert(op.values, op.onConflict ? { onConflict: op.onConflict } : undefined);
+    else if (op.action === "upsert") q = q.upsert(op.values, { onConflict: op.onConflict, ignoreDuplicates: op.ignoreDuplicates });
     else if (op.action === "update") q = q.update(op.values);
     else q = q.delete();
     if (op.action === "update" || op.action === "delete") {

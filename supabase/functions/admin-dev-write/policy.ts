@@ -12,6 +12,7 @@ export interface AdminOp {
   filters: Filter[];
   select?: string;
   onConflict?: string;
+  ignoreDuplicates?: boolean;
 }
 
 type Scope = "session" | "composition" | "user" | "session_row";
@@ -103,5 +104,5 @@ export function validateAdminOp(body: unknown, userId: string): Result {
     if (!filters.some((f) => f.column === col)) filters.push({ op: "eq", column: col, value: scope === "user" ? userId : sessionId });
   }
 
-  return { ok: true, op: { sessionId, table, action, values, filters, select: b.select as string | undefined, onConflict: b.onConflict as string | undefined } };
+  return { ok: true, op: { sessionId, table, action, values, filters, select: b.select as string | undefined, onConflict: b.onConflict as string | undefined, ignoreDuplicates: b.ignoreDuplicates === true } };
 }
