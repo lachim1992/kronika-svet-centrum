@@ -10,6 +10,8 @@ const corsHeaders = {
 
 const MAX_TIER1_TEAMS = 20;
 
+interface TeamRatingRow { attack_rating: number; defense_rating: number; tactics_rating: number; discipline_rating: number }
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -47,7 +49,7 @@ Deno.serve(async (req) => {
 
     const tier1 = tierMap.get(1) || [];
     if (tier1.length > MAX_TIER1_TEAMS) {
-      tier1.sort((a, b) => (b.attack_rating + b.defense_rating + b.tactics_rating + b.discipline_rating) - (a.attack_rating + a.defense_rating + a.tactics_rating + a.discipline_rating));
+      tier1.sort((a: TeamRatingRow, b: TeamRatingRow) => (b.attack_rating + b.defense_rating + b.tactics_rating + b.discipline_rating) - (a.attack_rating + a.defense_rating + a.tactics_rating + a.discipline_rating));
       tierMap.set(1, tier1.slice(0, MAX_TIER1_TEAMS));
       const t2 = tierMap.get(2) || [];
       for (const r of tier1.slice(MAX_TIER1_TEAMS)) {
@@ -535,7 +537,7 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
   }
 
   const roundNumber = nextMatches[0].round_number;
-  const roundMatches = nextMatches.filter(m => m.round_number === roundNumber);
+  const roundMatches = nextMatches.filter((m: { round_number: number }) => m.round_number === roundNumber);
   const teamMap = new Map(tierTeams.map(t => [t.id, t]));
   const teamIds = tierTeams.map(t => t.id);
   const { data: allPlayers } = await sb.from("league_players").select("*").in("team_id", teamIds);

@@ -186,6 +186,8 @@ Napětí: ${tension} (rozdíl: ${rollDiff.toFixed(1)})`;
  * games-resolve-discipline: Resolve ONE discipline for a festival.
  * Called by the host, updates DB + broadcasts via Realtime.
  */
+interface ParticipantNameRow { id: string; player_name: string }
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -343,7 +345,7 @@ Deno.serve(async (req) => {
 
     const medalTally: Record<string, { gold: number; silver: number; bronze: number }> = {};
     for (const r of (allResults || [])) {
-      const p = participants.find(pp => pp.id === r.participant_id);
+      const p = (participants as ParticipantNameRow[]).find((pp: ParticipantNameRow) => pp.id === r.participant_id);
       if (!p) continue;
       if (!medalTally[p.player_name]) medalTally[p.player_name] = { gold: 0, silver: 0, bronze: 0 };
       if (r.medal === "gold") medalTally[p.player_name].gold++;
@@ -375,7 +377,8 @@ Deno.serve(async (req) => {
     const { data: allReveals } = await sb.from("games_discipline_reveals")
       .select("discipline_id, status").eq("festival_id", festival_id).eq("status", "resolved");
 
-    const allResolved = (allDiscs || []).every(d => (allReveals || []).some(r => r.discipline_id === d.id));
+    const allResolved = ((allDiscs || []) as { id: string }[]).every((d: { id: string }) =>
+      ((allReveals || []) as { discipline_id: string }[]).some((r: { discipline_id: string }) => r.discipline_id === d.id));
 
     // Do NOT auto-conclude — host clicks "Uzavřít hry" button
 

@@ -21,6 +21,13 @@ const corsHeaders = {
  *
  * Input: { session_id, player_name, festival_id, action, selected_student_ids? }
  */
+/** Columns of academy_students used here (rows come from an untyped client). */
+interface StudentRow { id: string; name: string; specialty: string; traits: string[]; strength: number; endurance: number;
+  agility: number; tactics: number; charisma: number; portrait_url: string | null; bio: string | null;
+  academies?: { name: string; infrastructure: number; trainer_level: number; nutrition: number; [profile: string]: unknown } }
+interface DisciplineScore { discipline_key: string; discipline_name: string; score: number }
+interface RankedStudent { student: StudentRow; totalScore: number; results: DisciplineScore[] }
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -70,12 +77,12 @@ Deno.serve(async (req) => {
           .select("*").eq("festival_id", festival_id).eq("player_name", player_name);
 
         // Get unique student IDs
-        const studentIds = [...new Set((qualRows || []).map(q => q.student_id))];
+        const studentIds = [...new Set(((qualRows || []) as { student_id: string }[]).map((q: { student_id: string }) => q.student_id))];
         const { data: studentsData } = await sb.from("academy_students")
           .select("*, academies!inner(name)")
           .in("id", studentIds);
 
-        const studentMap = new Map<string, any>((studentsData || []).map(s => [s.id, s]));
+        const studentMap = new Map<string, any>(((studentsData || []) as StudentRow[]).map((s: StudentRow) => [s.id, s] as [string, StudentRow]));
 
         // Aggregate per student
         const studentAgg: Record<string, { rank: number; totalScore: number; disciplines: any[] }> = {};
@@ -120,12 +127,13 @@ Deno.serve(async (req) => {
       }
 
       // Get all graduated or promoted students for this player (promoted = previously nominated, still eligible)
-      const { data: graduates } = await sb.from("academy_students")
+      const { data: graduateRows } = await sb.from("academy_students")
         .select("*, academies!inner(name, profile_athletics, profile_combat, profile_culture, profile_strategy, infrastructure, trainer_level, nutrition)")
         .eq("session_id", session_id)
         .eq("player_name", player_name)
         .in("status", ["graduated", "promoted"]);
 
+      const graduates = graduateRows as StudentRow[] | null;
       if (!graduates || graduates.length === 0) {
         // Soft fallback: no crash on frontend, just inform the player.
         return new Response(JSON.stringify({
@@ -151,7 +159,7 @@ Deno.serve(async (req) => {
       const studentScores: Map<string, { totalScore: number; results: any[] }> = new Map();
 
       for (const student of graduates) {
-        const discResults: any[] = [];
+        const discResults: DisciplineScore[] = [];
         let totalScore = 0;
 
         for (const disc of disciplines) {
@@ -195,7 +203,7 @@ Deno.serve(async (req) => {
 
       // Rank students by total score
       const ranked = graduates
-        .map(s => ({
+        .map((s: StudentRow) => ({
           student: s,
           totalScore: studentScores.get(s.id)?.totalScore || 0,
           results: studentScores.get(s.id)?.results || [],
@@ -223,7 +231,7 @@ Deno.serve(async (req) => {
       await sb.from("games_qualifications").insert(insertRows);
 
       // Return ranked results with student info
-      const response = ranked.map((r, idx) => ({
+      const response = ranked.map((r: RankedStudent, idx: number) => ({
         rank: idx + 1,
         student_id: r.student.id,
         student_name: r.student.name,
@@ -252,12 +260,13 @@ Deno.serve(async (req) => {
     if (action === "select") {
       let ids: string[];
       try { ids = nominationIds(selected_student_ids); }
-      catch (error) { return Response.json({error: error.message}, {status: 400, headers: corsHeaders}); }
+      catch (error) { return Response.json({error: error instanceof Error ? error.message : String(error)}, {status: 400, headers: corsHeaders}); }
       // Validate the complete replacement before touching the existing nomination.
-      const {data: students, error: studentsError} = await sb.from("academy_students")
+      const {data: studentRows, error: studentsError} = await sb.from("academy_students")
         .select("*").in("id", ids).eq("session_id", session_id).eq("player_name", player_name)
         .in("status", ["graduated", "promoted"]);
       if (studentsError) throw studentsError;
+      const students = studentRows as StudentRow[] | null;
       if (!students || students.length !== ids.length) {
         return Response.json({error: "Některý z vybraných sportovců není dostupný nebo vám nepatří."}, {status: 400, headers: corsHeaders});
       }
@@ -274,7 +283,7 @@ Deno.serve(async (req) => {
 
       const {error: nominationError} = await sb.rpc("replace_games_nomination", {
         p_session_id: session_id, p_festival_id: festival_id, p_player_name: player_name,
-        p_participants: students.map(student => ({student_id: student.id, city_id: bestCity?.id || null,
+        p_participants: students.map((student: StudentRow) => ({student_id: student.id, city_id: bestCity?.id || null,
           training_bonus: infraBonus + 10, city_infrastructure_bonus: infraBonus, civ_modifier: civMod * 10})),
       });
       if (nominationError) throw nominationError;
@@ -283,19 +292,19 @@ Deno.serve(async (req) => {
       await sb.from("game_events").insert({
         session_id,
         event_type: "national_team_selected",
-        note: `${player_name} nominoval ${students.length} atletů na Velké hry: ${students.map(s => s.name).join(", ")}.`,
+        note: `${player_name} nominoval ${students.length} atletů na Velké hry: ${students.map((s: StudentRow) => s.name).join(", ")}.`,
         player: player_name,
         turn_number: festival.announced_turn,
         confirmed: true,
         reference: {
           festival_id,
-          athletes: students.map(s => ({ id: s.id, name: s.name, specialty: s.specialty })),
+          athletes: students.map((s: StudentRow) => ({ id: s.id, name: s.name, specialty: s.specialty })),
         },
       });
 
       return new Response(JSON.stringify({
         ok: true,
-        selected: students.map(s => ({ id: s.id, name: s.name, specialty: s.specialty })),
+        selected: students.map((s: StudentRow) => ({ id: s.id, name: s.name, specialty: s.specialty })),
         count: students.length,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

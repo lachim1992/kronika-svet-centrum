@@ -167,6 +167,8 @@ Odpověz POUZE textem reportáže, každý řádek na novém řádku. Žádný J
 /**
  * games-resolve: Resolve all disciplines for a festival.
  */
+interface ParticipantNameRow { id: string; athlete_name: string; player_name: string }
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -418,7 +420,7 @@ Deno.serve(async (req) => {
       championId = sortedTally[0].participantId;
       addReveal("champion_announce", {
         name: sortedTally[0].player, // Player name (empire)
-        athleteName: participants.find(p => p.id === championId)?.athlete_name,
+        athleteName: (participants as ParticipantNameRow[] | null)?.find((p: ParticipantNameRow) => p.id === championId)?.athlete_name,
         medals: sortedTally[0]
       }, 6000, 3);
     }
