@@ -171,7 +171,7 @@ export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow
   for (const d of demand) {
     const b = balanceBy.get(k(d.city, d.good)); const pr = priceBy.get(k(d.city, d.good)); const ch = choiceBy.get(k(d.city, d.good));
     const total = n(b?.demand), unmet = n(b?.unmet_demand), served = Math.max(0, total - unmet);
-    const imported = Math.max(0, n(b?.imported) - n(b?.lost_spoilage) * 0); // imported incl. transit loss as recorded
+    const imported = n(b?.imported); // ledger records transit loss as import + loss
     const fromImport = Math.min(served, Math.max(0, n(b?.imported)));
     const origin = ch?.fame_origin ?? null;
     const reach = origin ? (origin === d.city || famousInbound.get(k(d.city, d.good))?.has(origin) || false) : null;
@@ -246,7 +246,6 @@ export function runChecks(i: CheckInput): Anomaly[] {
   for (const p of i.prices) if (n(p.local_price) < 0) push({ severity: "broken", check: "negative_price", message: "Záporná cena", entity: { city: p.city, good: p.good }, observed: p.local_price, expected: "≥ 0", filter: { tab: "goods", good: p.good } });
   for (const p of i.producers) {
     if (p.realized > p.capacity + TOL && p.capacity > 0) push({ severity: "broken", check: "production_above_capacity", message: "Výroba nad kapacitou", entity: { producer: p.id, city: p.city }, observed: { realized: p.realized, capacity: p.capacity }, expected: "realized ≤ capacity", filter: { tab: "producers", producer: p.id } });
-    if (p.realized > TOL && p.inputs.some((x) => x.required != null && n(x.supplied) + TOL < n(x.required) * 0 )) { /* no-op guard */ }
     if (p.realized > TOL && p.inputs.length && p.inputs.some((x) => x.supplied != null && n(x.supplied) <= TOL))
       push({ severity: "broken", check: "output_without_input", message: "Výstup bez dodaného vstupu", entity: { producer: p.id, city: p.city }, observed: p.inputs, expected: "každý vstup > 0 při výrobě", filter: { tab: "producers", producer: p.id } });
     if (p.realized > TOL && p.capacity <= TOL) push({ severity: "broken", check: "output_without_capacity", message: "Výstup bez kapacity", entity: { producer: p.id }, observed: p.realized, expected: "capacity > 0", filter: { tab: "producers", producer: p.id } });
@@ -265,7 +264,8 @@ export function runChecks(i: CheckInput): Anomaly[] {
     if (f.delivered > f.qty + TOL || f.qty < -TOL) push({ severity: "broken", check: "flow_quantity", message: "Dodáno více než odesláno", entity: { flow: String(f.index) }, observed: { qty: f.qty, delivered: f.delivered }, expected: "0 ≤ delivered ≤ qty", filter: { tab: "flows", flow: f.index } });
     for (const e of f.edge_capacity) {
       if (e.capacity == null) push({ severity: "warning", check: "flow_unknown_edge", message: "Hrana toku chybí ve snapshotu", entity: { flow: String(f.index), edge: e.id }, observed: e.id, expected: "hrana ve snapshot.edges", filter: { tab: "flows", flow: f.index } });
-      else if (e.used_total > e.capacity * Math.max(1, 1) * 1e6) { /* bulk-weighted reservation; raw qty can't exceed by this much */ }
+      // Engine reserves qty×max(1,bulk) per edge, so raw qty above capacity is a definite violation.
+      else if (e.used_total > e.capacity + TOL) push({ severity: "broken", check: "flow_beyond_capacity", message: "Tok přes kapacitu hrany", entity: { flow: String(f.index), edge: e.id }, observed: { used: e.used_total, capacity: e.capacity }, expected: "Σqty ≤ capacity", filter: { tab: "flows", flow: f.index } });
     }
     if (f.planned.length) for (const pl of f.planned) if (f.landed_unit_cost != null && Math.abs(pl.expected_cost - f.landed_unit_cost) > 0.05 * Math.max(1, f.landed_unit_cost))
       push({ severity: "warning", check: "planned_vs_actual_cost", message: "Plánovaná landed cena se liší od skutečné", entity: { flow: String(f.index), producer: pl.producer }, observed: { expected: pl.expected_cost, actual: f.landed_unit_cost }, expected: "|expected − actual| ≤ 5 %", filter: { tab: "flows", flow: f.index } });
