@@ -8,6 +8,13 @@
       "when": 1791719746833,
       "tag": "0000_apply_reviewed_turn_atomicity_20260926",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791720196259,
+      "tag": "0001_restore_owner_scoped_management_reports",
+      "breakpoints": true
     }
   ]
 }
