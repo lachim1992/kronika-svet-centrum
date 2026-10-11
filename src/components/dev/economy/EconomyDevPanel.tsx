@@ -38,7 +38,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
   const s = query.data;
   const cityName = useMemo(() => new Map((s?.cities || []).map((c) => [c.id, c.name])), [s]);
   const cityOwner = useMemo(() => new Map((s?.cities || []).map((c) => [c.id, c.owner])), [s]);
-  const cn = (id: string) => cityName.get(id) || id.slice(0, 8);
+  const cn = (id: string) => cityName.get(id) || String(id ?? "—").slice(0, 8);
   const anomalyKeys = useMemo(() => new Set((s?.anomalies || []).flatMap((a) => [a.entity.city, a.entity.good, a.entity.producer, a.entity.flow].filter(Boolean) as string[])), [s]);
   const match = (c?: string, g?: string, extra = "") => (!city || c === city) && (!good || g === good) && (!realm || (c && cityOwner.get(c) === realm))
     && (!q || `${c ? cn(c) : ""} ${g || ""} ${extra}`.toLowerCase().includes(q.toLowerCase()))
@@ -64,7 +64,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
   if (query.isLoading) return <div className="flex items-center gap-2 text-sm text-muted-foreground p-4"><Loader2 className="h-4 w-4 animate-spin" /> Načítám diagnostický snapshot…</div>;
   if (query.isError) return <div className="p-4 text-sm text-destructive">Data nedostupná: {(query.error as Error).message} <Button size="sm" variant="outline" onClick={() => query.refetch()}>Zkusit znovu</Button></div>;
   if (!s) return null;
-  const realms = [...new Set((s.cities || []).map((c) => c.owner))].sort();
+  const realms = [...new Set((s.cities || []).map((c) => c.owner || "—"))].sort();
 
   return (
     <div className="space-y-3 text-xs">
@@ -109,9 +109,9 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
         </TabsContent>
 
         <TabsContent value="producers">
-          <Grid source={SRC + " .snapshot.producers ⨝ .diagnostics"} capped={s.producers} rows={(s.producers?.rows || []).filter((p) => match(p.city, p.output_good, p.id)).sort((a, b) => cn(a.city).localeCompare(cn(b.city)) || a.node.localeCompare(b.node))}
+          <Grid source={SRC + " .snapshot.producers ⨝ .diagnostics"} capped={s.producers} rows={(s.producers?.rows || []).filter((p) => match(p.city, p.output_good, p.id)).sort((a, b) => cn(a.city).localeCompare(cn(b.city)) || (a.node || "").localeCompare(b.node || ""))}
             onRow={(p) => setDetail({ title: `Výrobce ${p.recipe} @ ${cn(p.city)}`, source: "result.snapshot.producers[id], result.diagnostics[producer]", data: p })}
-            cols={[["Říše", (p) => cityOwner.get(p.city) || "—"], ["Město", (p) => cn(p.city)], ["Uzel", (p) => p.node.slice(0, 8)], ["Kanál", (p) => p.channel], ["Receptura", (p) => p.recipe], ["Vstupy→výstup", (p) => `${p.inputs.map((i) => i.good).join("+") || "—"} → ${p.output_good}`],
+            cols={[["Říše", (p) => cityOwner.get(p.city) || "—"], ["Město", (p) => cn(p.city)], ["Uzel", (p) => (p.node || "—").slice(0, 8)], ["Kanál", (p) => p.channel], ["Receptura", (p) => p.recipe], ["Vstupy→výstup", (p) => `${p.inputs.map((i) => i.good).join("+") || "—"} → ${p.output_good}`],
               ["Kapacita", (p) => f(p.capacity)], ["Místa/obsaz.", (p) => p.jobs_capacity == null ? "—" : `${f(p.employed, 0)}/${f(p.jobs_capacity, 0)}`], ["Potenciál", (p) => f(p.potential_output)], ["Skutečně", (p) => f(p.realized)], ["Využití", (p) => pct(p.utilization)],
               ["Vstupy kryty", (p) => pct(p.input_coverage)], ["Náklad", (p) => f(p.cost)], ["Mat. marže", (p) => f(p.margin)], ["Ztráta", (p) => f(p.lost)], ["Důvod", (p) => p.lost_reason || "—"], ["AUTO", (p) => p.auto_flag || "—"]]} />
         </TabsContent>
