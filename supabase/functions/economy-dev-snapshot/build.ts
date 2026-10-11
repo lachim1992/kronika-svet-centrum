@@ -3,7 +3,10 @@
 // refresh-economy). No economy formula is recomputed here: every quantity is
 // copied or summed from canonical ledger fields; diagnostics are invariant checks.
 
-export const SCHEMA_VERSION = "economy-dev-snapshot/1";
+import { buildCosts, buildSpecific, type MarginBlock, type FameEntry, type VariantCatalogueRow } from "./costs.ts";
+export * from "./costs.ts";
+
+export const SCHEMA_VERSION = "economy-dev-snapshot/2";
 export const TOL = 1e-6;
 export const ROW_LIMIT = 2000;
 
@@ -28,7 +31,7 @@ export interface LedgerDemand { city: string; good: string; total: Num; channels
 export interface LedgerDiagnostic { producer: string; good: string; capacity: Num; realized: Num; factors: Record<string, Num>;
   jobs_capacity?: Num; employed?: Num; staffing_ratio?: Num; potential_output?: Num;
   inputs?: { good: string; required: Num; supplied: Num }[]; bottleneck?: string | null; blocked: string | null;
-  margin?: { cost?: Num; revenue?: Num; margin?: Num; margin_ratio?: Num; auto_flag?: string | null; unit_input_cost?: Num; unit_output_price?: Num } }
+  margin?: MarginBlock }
 export interface SnapshotProducer { id: string; city: string; node: string; cell?: string; channel: string; order?: string;
   source: boolean; capacity: Num; allocation?: Num; autoFlag?: string | null; expectedMarginProxy?: Num;
   recipe: { key: string; good: string; qty: Num; labor?: Num; inputs: { good: string; qty: Num }[] };
@@ -44,7 +47,7 @@ export interface CityAccountRow { city: string; city_gdp?: Num; goods_value_adde
 export interface LedgerResult {
   balances?: LedgerBalance[]; flows?: LedgerFlow[]; prices?: LedgerPrice[]; demand?: LedgerDemand[];
   diagnostics?: LedgerDiagnostic[]; metrics?: { city: string; roles?: string[]; [k: string]: unknown }[];
-  productChoice?: ProductChoiceRow[]; cityAccounts?: CityAccountRow[]; famous?: { city: string; good: string }[];
+  productChoice?: ProductChoiceRow[]; cityAccounts?: CityAccountRow[]; famous?: FameEntry[];
   budgetMode?: string;
   snapshot?: { turn?: number; cities?: SnapshotCity[]; producers?: SnapshotProducer[]; edges?: SnapshotEdge[];
     fame?: { city: string; good: string }[]; blockedTrade?: unknown[] };
@@ -100,7 +103,7 @@ const CHANNEL_CATEGORY: Record<string, string> = {
   industrial_operational: "industrial", construction: "construction", institutional: "state", military: "state",
 };
 
-export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow[] | null) {
+export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow[] | null, variants: VariantCatalogueRow[] = []) {
   const balances = result.balances || []; const flows = result.flows || []; const prices = result.prices || [];
   const demand = result.demand || []; const diags = result.diagnostics || [];
   const snap = result.snapshot || {}; const producers = snap.producers || []; const cities = snap.cities || [];
@@ -219,7 +222,11 @@ export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow
 
   const world = emptyTotals(); for (const b of balances) addTotals(world, b);
   const anomalies = runChecks({ balances, flows: flowRows, producers: producerRows, demand, cityIds, prices, choice, famousOrigins, famousInbound, edgeBy });
-  return { goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
+  const owners = new Map(cities.map((c) => [c.id, c.owner]));
+  const costs = buildCosts({ producers, diagnostics: diags, prices, famous: result.famous || [], owners });
+  const recipesUsing = (good: string) => [...new Set(producers.filter((p) => (p.recipe.inputs || []).some((i) => i.good === good)).map((p) => p.recipe.key))];
+  const specific = buildSpecific({ famous: result.famous || [], variants, owners, balances, flows, choice, prices, costs, recipesUsing });
+  return { costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
     edges: edges.map((e) => ({ id: e.id, from: e.from, to: e.to, capacity: n(e.capacity), used: edgeUse.get(e.id) || 0 })) };
 }
 
