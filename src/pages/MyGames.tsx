@@ -106,11 +106,9 @@ const MyGames = () => {
     if (!joinCode.trim() || !playerName.trim() || !user) { toast.error("Vyplňte všechna pole"); return; }
     setJoining(true);
 
-    const { data: session } = await supabase
-      .from("game_sessions")
-      .select("*")
-      .eq("room_code", joinCode.toUpperCase())
-      .single();
+    // Sessions are member-scoped; the room code is resolved by a narrow lookup function.
+    const { data: found } = await supabase.rpc("find_session_by_room_code", { p_code: joinCode });
+    const session = found?.[0];
 
     if (!session) { toast.error("Hra nenalezena"); setJoining(false); return; }
 
