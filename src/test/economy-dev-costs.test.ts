@@ -112,7 +112,7 @@ describe("goodsEconomy diagnostic v2 (observational landed parts)", () => {
     expect(JSON.stringify(r1)).toBe(JSON.stringify(r2));
     const d = r1.diagnostics.find((x) => x.producer === "mill") as unknown as CostInputDiag;
     const line = d.margin?.inputs?.[0];
-    if (!line || !(line.imported_qty > 0)) return; // no import in this fixture → nothing to check
+    expect(line!.imported_qty).toBeGreaterThan(0);
     expect(d.margin!.diagnostic_version).toBe(2);
     const sum = Object.values(line.landed_parts!).reduce((a, b) => a + b, 0);
     expect(sum).toBeCloseTo(line.landed_unit_cost!, 9);
