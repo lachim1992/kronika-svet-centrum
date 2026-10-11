@@ -8,7 +8,7 @@ describe("game_sessions client write boundary", () => {
   it("revokes all client UPDATE on game_sessions and drops the member update policy", () => {
     expect(latest).toContain("REVOKE UPDATE ON public.game_sessions FROM authenticated");
     expect(latest).toContain("DROP POLICY IF EXISTS game_sessions_member_lobby_update");
-    const later = readdirSync(dir).filter((f) => f > "0003").map((f) => readFileSync(`${dir}/${f}`, "utf8")).join("\n");
+    const later = readdirSync(dir).filter((f) => f.endsWith(".sql") && f > "0003_close_session_lobby_and_admin_audit.sql").map((f) => readFileSync(`${dir}/${f}`, "utf8")).join("\n");
     expect(later).not.toMatch(/GRANT UPDATE[^;]*ON public\.game_sessions TO authenticated/);
   });
   it("lobby and story RPCs require creator or admin", () => {
