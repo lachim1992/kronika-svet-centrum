@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
     const { data: cities } = await supabase.from("cities").select("*")
       .eq("session_id", sessionId).eq("owner_player", playerName);
     const myCities = cities || [];
-    const cityIds = myCities.map(c => c.id);
+    const cityIds = myCities.map((c: any) => c.id);
 
     // ── LAYER B: FOOD & CONSUMPTION (post-trade city_market_baskets) ──
     // staple_food is the SSOT for food. local_supply ALREADY contains imports folded
@@ -411,13 +411,13 @@ Deno.serve(async (req) => {
       .select("id, unit_count, soldiers, is_active, player_name, owner_player, upkeep_food, upkeep_gold, morale, power, assignment, assigned_route_id, construction_progress")
       .eq("session_id", sessionId).eq("is_active", true);
     if (stacksError) throw stacksError;
-    const stacks=(sessionStacks||[]).filter(s=>(s.owner_player??s.player_name)===playerName);
+    const stacks=(sessionStacks||[]).filter((s: any)=>(s.owner_player??s.player_name)===playerName);
     const totalSoldiers = actualSoldiers(stacks || []);
     const mobRate = realm.mobilization_rate ?? 0.1;
     const { activePopRaw, effectiveRatio, effectiveActivePop, mobilized, workforce, workforceRatio } =
       computeWorkforceBreakdown(myCities, mobRate, activePopModifier, maxMobModifier, totalSoldiers);
-    const totalPopulation = myCities.reduce((n, c) => n + (c.population_total || 0), 0);
-    const totalWarriors = myCities.reduce((n, c) => n + (c.population_warriors || 0), 0);
+    const totalPopulation = myCities.reduce((n: number, c: any) => n + (c.population_total || 0), 0);
+    const totalWarriors = myCities.reduce((n: number, c: any) => n + (c.population_warriors || 0), 0);
     const warriorRatio = totalPopulation > 0 ? totalWarriors / totalPopulation : 0;
     const mobProductionPenalty = mobilized * MOB_PRODUCTION_PENALTY_RATE;
     const mobWealthPenalty = mobilized * MOB_WEALTH_PENALTY_RATE;
@@ -446,7 +446,7 @@ Deno.serve(async (req) => {
       .eq("session_id", sessionId)
       .eq("construction_state", "under_construction");
 
-    const myUCRoutes = (playerRoutesUC || []).filter(r => ((r.metadata as any)?.built_by) === playerName);
+    const myUCRoutes = (playerRoutesUC || []).filter((r: any) => ((r.metadata as any)?.built_by) === playerName);
 
     for (const route of myUCRoutes) {
       const md = (route.metadata || {}) as any;
@@ -462,7 +462,7 @@ Deno.serve(async (req) => {
 
       // Optional: zachovej i přiřazené stacky pro logging, ale nedávají bonus.
       const assignedStacks = (stacks || []).filter(
-        s => s.assigned_route_id === route.id && s.assignment === "construction",
+        (s: any) => s.assigned_route_id === route.id && s.assignment === "construction",
       );
 
       const workThisTurn = workforcePerTurn;
@@ -1114,15 +1114,10 @@ Deno.serve(async (req) => {
         const prestigeMoraleDrift = prestigeEffects.moraleBonus * 0.2; // Prestige slowly boosts morale
         const newMorale = Math.max(0, Math.min(100, Math.round(currentMorale + moraleDrift + prestigeMoraleDrift)));
 
-        // Strategic combat power bonus (iron, obsidian)
-        const basePower = s.combat_power || s.unit_count || 0;
-        const adjustedPower = Math.round(basePower * strategicBonuses.combat_mult);
-
-        if (newMorale !== currentMorale || adjustedPower !== basePower) {
-          await supabase.from("military_stacks").update({
-            morale: newMorale,
-            combat_power: adjustedPower,
-          }).eq("id", s.id);
+        // Strategic combat bonuses (iron, obsidian) are applied at battle resolution;
+        // military_stacks has no combat_power column and stored power must not compound per turn.
+        if (newMorale !== currentMorale) {
+          await supabase.from("military_stacks").update({ morale: newMorale }).eq("id", s.id);
         }
       }
       logEntries.push(`⚔️ Armáda: morále×${faithMoraleMult.toFixed(2)} síla×${strategicBonuses.combat_mult.toFixed(2)} prestiž+${prestigeEffects.moraleBonus}`);
@@ -1164,7 +1159,7 @@ Deno.serve(async (req) => {
       .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
     if (factions) {
       for (const f of factions) {
-        const city = myCities.find(c => c.id === f.city_id);
+        const city = myCities.find((c: any) => c.id === f.city_id);
         if (!city) continue;
 
         let satDrift = 0, loyDrift = 0;
@@ -1276,7 +1271,7 @@ Deno.serve(async (req) => {
       .select("id", { count: "exact", head: true })
       .eq("session_id", sessionId).eq("is_ai_generated", true).eq("status", "completed")
       .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
-    const polisCount = myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length;
+    const polisCount = myCities.filter((c: any) => c.settlement_level === "polis" || c.settlement_level === "metropolis").length;
     const culturalPrestige = Math.min(100,
       (typeof wonderCount === 'number' ? wonderCount : 0) * 20 +
       (typeof uniqueCount === 'number' ? uniqueCount : 0) * 3 +
@@ -1287,7 +1282,7 @@ Deno.serve(async (req) => {
 
     // Economic prestige: wealth flow, trade routes, market levels
     const activeTradeCount = (activeTradeRoutes || []).length;
-    const totalMarketLevel = myCities.reduce((s, c) => s + (c.market_level || 0), 0);
+    const totalMarketLevel = myCities.reduce((s: number, c: any) => s + (c.market_level || 0), 0);
     const economicPrestige = Math.min(100,
       Number((realm as any).economy_detail?.fame_prestige || 0) +
       Math.floor(wealthIncome / 10) +
@@ -1556,7 +1551,7 @@ Deno.serve(async (req) => {
     }
 
     // Pop tax derived from goods layer (kept for backward compat in computed_modifiers)
-    const goodsPopTax = Math.round(totalPopulation * 0.002 * (1 + myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1));
+    const goodsPopTax = Math.round(totalPopulation * 0.002 * (1 + myCities.filter((c: any) => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1));
 
     const treasury = treasuryBreakdown({
       opening: Number(realm.gold_reserve || 0), closingBeforeRounding: newGoldReserve,

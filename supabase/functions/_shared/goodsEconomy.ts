@@ -79,7 +79,7 @@ export interface PriceRow { city: string; good: string; base_price: number; loca
   scarcity_factor: number; quality_factor: number; fame_factor: number; coverage: number;
   demand: number; supply: number; imported: number; substitutability: number }
 
-const n = (x: number) => Number.isFinite(x) ? Math.max(0,x) : 0;
+const n = (x: number | undefined | null) => typeof x === "number" && Number.isFinite(x) ? Math.max(0,x) : 0;
 const clamp = (x: number) => Math.max(0,Math.min(1,x));
 const key = (city: string, good: string) => `${city}::${good}`;
 export const produced = (b: Balance) => b.produced_household+b.produced_node+b.produced_facility+b.produced_district;
