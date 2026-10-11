@@ -25,7 +25,8 @@ const corsHeaders = {
 interface StudentRow { id: string; name: string; specialty: string; traits: string[]; strength: number; endurance: number;
   agility: number; tactics: number; charisma: number; portrait_url: string | null; bio: string | null;
   academies?: { name: string; infrastructure: number; trainer_level: number; nutrition: number; [profile: string]: unknown } }
-interface RankedStudent { student: StudentRow; totalScore: number; results: any[] }
+interface DisciplineScore { discipline_key: string; discipline_name: string; score: number }
+interface RankedStudent { student: StudentRow; totalScore: number; results: DisciplineScore[] }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -158,7 +159,7 @@ Deno.serve(async (req) => {
       const studentScores: Map<string, { totalScore: number; results: any[] }> = new Map();
 
       for (const student of graduates) {
-        const discResults: any[] = [];
+        const discResults: DisciplineScore[] = [];
         let totalScore = 0;
 
         for (const disc of disciplines) {
