@@ -9,3 +9,10 @@ src/components/WorldHexMap.tsx
 src/lib/turnEngine.ts
 # CityManagement — deferred read surface (independent realm fetch)
 src/components/CityManagement.tsx
+
+# 2026-10-11 access hardening: remaining client writes are session-member scoped (not anon, not cross-session).
+# Now DENIED to clients (backend/RPC only): realm_resources (except owner mobilization_rate, army_sigil_confirmed),
+# game_sessions turn columns (current_turn, resolving_turn, turn_closed_*, world_seed, room_code),
+# game_players (except own turn_closed), and every table in drizzle/migrations/0002_harden_access_rules_20261011.sql sections 4-5.
+# Dev tools that wrote those directly (DevPlayerEditor, SimulationSection/LocalSimulationSection current_turn,
+# AdminMonitorPanel realm delete, EconomyQASection realm insert, legacy advanceTurn) now fail closed by design.
