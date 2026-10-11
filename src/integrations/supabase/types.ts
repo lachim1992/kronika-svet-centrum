@@ -12537,6 +12537,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      find_session_by_room_code: {
+        Args: { p_code: string }
+        Returns: {
+          id: string
+          max_players: number
+          player_count: number
+        }[]
+      }
       finish_turn_resolution: {
         Args: {
           p_player: string

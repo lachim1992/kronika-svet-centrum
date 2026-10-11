@@ -15,6 +15,13 @@
       "when": 1791720196259,
       "tag": "0001_restore_owner_scoped_management_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791721306709,
+      "tag": "0002_harden_access_rules_20261011",
+      "breakpoints": true
     }
   ]
 }
