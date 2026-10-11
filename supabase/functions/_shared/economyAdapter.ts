@@ -7,6 +7,7 @@ import { buildManagementReport } from './management.ts';
 import { BASKET_KEYS, basketSpec, needBand, alertPriority, shortageEffect, basketSeverity } from './demandModel.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
 import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
+import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass } from './landedRoute.ts';
 import { autoAllocationDetail, craftsmanship, expectedInputCost, PRODUCT_MARKET } from './productMarket.ts';
 
 const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
@@ -308,34 +309,36 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    * same-pass prices; actual sourcing in goodsEconomy remains authoritative.
    */
   {
-    const adj=new Map<string,[string,number][]>();
-    for(const e of edges){(adj.get(e.from)||adj.set(e.from,[]).get(e.from)!).push([e.to,nonnegative(e.cost)]);(adj.get(e.to)||adj.set(e.to,[]).get(e.to)!).push([e.from,nonnegative(e.cost)]);}
-    const distCache=new Map<string,Map<string,number>>();
-    const distFrom=(cell:string)=>{let d=distCache.get(cell);if(d)return d;d=new Map([[cell,0]]);const done=new Set<string>();
-      for(;;){let cur:string|null=null,best=Infinity;for(const [k,v] of d)if(!done.has(k)&&v<best){best=v;cur=k;}
-        if(cur==null)break;done.add(cur);for(const [to,w] of adj.get(cur)||[])if(best+w<(d.get(to)??Infinity))d.set(to,best+w);}
-      distCache.set(cell,d);return d;};
+    // Same landed-route model as actual sourcing (landedRoute.ts): good-specific bulk, perishability,
+    // water efficiency, transshipment, risk, tolls, losses; zero-capacity edges are absent.
+    const routeGraph=buildRouteGraph(edges);const trees=new Map<string,ReturnType<typeof shortestTree<Edge>>>();
+    const pathFor=(from:string,to:string,g:any)=>{const tk=`${from}:${routeFrictionClass(g)}`;let t=trees.get(tk);
+      if(!t){t=shortestTree(routeGraph,from,g);trees.set(tk,t);}return tracePath(t,from,to,g);};
     const blocked=new Set(db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).flatMap(w=>[`${w.declaring_player}|${w.target_player}`,`${w.target_player}|${w.declaring_player}`]));
     const producedPrior=new Set((prior?.balances||[]).filter((b:any)=>produced(b)>0).map((b:any)=>`${b.city}::${b.good}`));
     const supplies=(city:string,good:string)=>producedPrior.has(`${city}::${good}`)||producers.some(p=>p.city===city&&p.recipe.good===good);
-    const costCache=new Map<string,{cost:number;source:string}>();
-    const expected=(city:string,good:string)=>{const k=`${city}::${good}`;let v=costCache.get(k);if(v)return v.cost;
-      const dst=cityMap.get(city)!,base=nonnegative(goodMap.get(good)?.price);
+    const priorStored=new Set((prior?.balances||[]).filter((b:any)=>nonnegative(b.stored)>0).map((b:any)=>`${b.city}::${b.good}`));
+    const costCache=new Map<string,{cost:number;source:string;available:boolean}>();
+    const expectedDetail=(city:string,good:string)=>{const k=`${city}::${good}`;let v=costCache.get(k);if(v)return v;
+      const dst=cityMap.get(city)!,gd=goodMap.get(good),base=nonnegative(gd?.price);
       const tariff=(IDEOLOGIES[dst.ideology]||IDEOLOGIES.customary_local).tariff;
-      const suppliers=cities.filter(s=>s.id!==city&&supplies(s.id,good)&&!blocked.has(`${s.owner}|${dst.owner}`)).flatMap(s=>{
-        const d=distFrom(s.cell).get(dst.cell);if(d==null)return [];
-        return [{city:s.id,sourcePrice:refPrice(s.id,good),transport:d*(IDEOLOGIES[s.ideology]||IDEOLOGIES.customary_local).merchantFriction,tolls:0,tariffRate:tariff,risk:0,loss:0}];});
-      const hasLocal=supplies(city,good)||priorPrice.has(k);
-      v=expectedInputCost(hasLocal?refPrice(city,good):Infinity,suppliers,base);
-      if(!Number.isFinite(v.cost))v={cost:refPrice(city,good),source:'reference'};
-      costCache.set(k,v);return v.cost;};
+      const suppliers=gd?cities.filter(s=>s.id!==city&&supplies(s.id,good)&&!blocked.has(`${s.owner}|${dst.owner}`)).flatMap(s=>{
+        const p=pathFor(s.cell,dst.cell,gd);if(!usablePath(p))return [];
+        return [{city:s.id,sourcePrice:refPrice(s.id,good),transport:p.cost*(IDEOLOGIES[s.ideology]||IDEOLOGIES.customary_local).merchantFriction,
+          tolls:p.tolls,tariffRate:tariff,risk:p.risk,loss:p.loss}];}):[];
+      // Local means physical local supply (producer or carried stock), not merely a quoted price.
+      const hasLocal=supplies(city,good)||priorStored.has(k);
+      v=expectedInputCost(hasLocal?refPrice(city,good):null,suppliers,base,refPrice(city,good));
+      costCache.set(k,v);return v;};
+    const expected=(city:string,good:string)=>expectedDetail(city,good).cost;
     const byId=new Map(producers.map(p=>[p.id,p]));
     for(const g of autoGroups){
-      const margins=g.candidates.map(r=>marginRatio(g.city,r,expected));
-      const d=autoAllocationDetail(g.candidates.map((r,i)=>({key:String(i),necessity:g.weights[i],marginRatio:margins[i],essential:essential(r)})));
+      const avail=g.candidates.map(r=>(r.input_items||[]).every((x:any)=>expectedDetail(g.city,x.key??x.good_key).available));
+      const margins=g.candidates.map((r,i)=>avail[i]?marginRatio(g.city,r,expected):-1);
+      const d=autoAllocationDetail(g.candidates.map((r,i)=>({key:String(i),necessity:g.weights[i],marginRatio:margins[i],essential:essential(r),inputsAvailable:avail[i]})));
       const w=g.candidates.map((_,i)=>d.weights[String(i)]),norm=Math.max(w.reduce((s,x)=>s+x,0),g.weights.reduce((s,x)=>s+x,0));
       g.ids.forEach((id,i)=>{const p=byId.get(id);if(!p)return;p.allocation=norm>0?w[i]/norm:0;p.autoFlag=d.flags[String(i)];p.expectedMarginProxy=margins[i];
-        (p as any).expectedInputSources=Object.fromEntries((g.candidates[i].input_items||[]).map((x:any)=>{const gk=x.key??x.good_key;expected(g.city,gk);return [gk,costCache.get(`${g.city}::${gk}`)];}));});
+        (p as any).expectedInputSources=Object.fromEntries((g.candidates[i].input_items||[]).map((x:any)=>{const gk=x.key??x.good_key;return [gk,expectedDetail(g.city,gk)];}));});
     }
     for(let i=producers.length-1;i>=0;i--)if(!(producers[i].allocation>0))producers.splice(i,1);
   }

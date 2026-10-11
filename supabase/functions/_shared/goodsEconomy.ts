@@ -175,6 +175,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(p===null)return null;
     return {...p,capacity:Math.min(...p.edges.map(e=>(e.capacity-(ignoreReservations?0:reserved.get(e.id)||0))/Math.max(1,g.bulk)),Infinity)};
   };
+  const bestFame=(dst:City,g:Good)=>{let best={fame:0,origin:null as string|null};
+    for(const f of snapshot.fame)if(f.good===g.key&&f.created!=null&&f.fame>best.fame&&fameReachable(f,dst,g))best={fame:f.fame,origin:f.city};return best;};
   const tradeBlocked=(a:City,b:City)=>!!snapshot.blockedTrade?.some(([x,y])=>(a.owner===x&&b.owner===y)||(a.owner===y&&b.owner===x));
   /** Origin-specific, route-reachable fame: an unreachable or war-blocked brand never shapes demand. */
   const fameReachable=(f:Fame,dst:City,g:Good)=>{if(f.city===dst.id)return true;const o=cityById.get(f.city);
@@ -362,10 +364,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const offerTotal=offer.reduce((a,b)=>a+b,0);
       const avgPrice=options.reduce((a,g)=>a+refPrice(g),0)/options.length;
       const shares=demandShares(options.map((g,i)=>({good:g.key,basket,referencePrice:refPrice(g),basketAveragePrice:avgPrice,
-        quality:stock(c.id,g.key).quality,fame:Math.max(0,...snapshot.fame.filter(f=>f.good===g.key&&f.created!=null&&fameReachable(f,c,g)).map(f=>f.fame),0),
+        quality:stock(c.id,g.key).quality,fame:bestFame(c,g).fame,
         familiarity:snapshot.familiarity?.[c.id]?.[g.key]??0,prevalence:offerTotal>0?offer[i]/offerTotal:1/options.length,
         coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
-      for(const s of shares)choice.push({city:c.id,basket,...s,reference_price:refPrice(goodByKey.get(s.good)!),functional_value:functionalValue(s.good,basket)});
+      for(const s of shares)choice.push({city:c.id,basket,...s,fame_origin:bestFame(c,goodByKey.get(s.good)!).origin,reference_price:refPrice(goodByKey.get(s.good)!),functional_value:functionalValue(s.good,basket)});
       const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
       plans.push({basket,spec,options,shareOf:new Map(shares.map(s=>[s.good,s.share])),channels:basketDemandChannels(basket,{...input,weightedPop})});
     }
