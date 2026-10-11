@@ -450,7 +450,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       .sort((a,b)=>(a.path.cost+a.path.tolls)-(b.path.cost+b.path.tolls)||b.surplus-a.surplus||a.city.id.localeCompare(b.city.id))
       .map(x=>x.city);
   };
-  const acquisition=new Map<string,Map<string,{qty:number;cost:number;suppliers:any[];chosen:string|null}>>();
+  // OBSERVATIONAL ONLY (diagnostic v2): per-unit landed components accumulated from the same
+  // landed() values already used for ranking/costing. Never read by any decision.
+  const LANDED_PARTS=['source','transport','tolls','tariff','risk','loss_cost'] as const;
+  type LandedParts=Record<typeof LANDED_PARTS[number],number>;
+  const acquisition=new Map<string,Map<string,{qty:number;cost:number;suppliers:any[];chosen:string|null;parts:LandedParts}>>();
   for(let pass=0;pending.size&&pass<C.maxProductionPasses;pass++){
     let progress=false;
     for(const [id,p] of pending){const c=cityById.get(p.city),g=goodByKey.get(p.recipe.good);if(!c||!g)throw Error(`Invalid producer ${id}`);
@@ -493,11 +497,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
           .map(s=>({s,cost:landed(s,c,ig)})).filter(x=>!!x.cost)
           .sort((a,b)=>a.cost!.landed-b.cost!.landed||a.s.id.localeCompare(b.s.id));
         const acq=acquisition.get(id)||new Map();acquisition.set(id,acq);
-        const rec=acq.get(i.good)||{qty:0,cost:0,suppliers:suppliers.slice(0,3).map(x=>({city:x.s.id,landed:x.cost!.landed,...x.cost})),chosen:null as string|null};acq.set(i.good,rec);
+        const rec=acq.get(i.good)||{qty:0,cost:0,suppliers:suppliers.slice(0,3).map(x=>({city:x.s.id,landed:x.cost!.landed,...x.cost})),chosen:null as string|null,parts:{source:0,transport:0,tolls:0,tariff:0,risk:0,loss_cost:0}};acq.set(i.good,rec);
         for(const {s,cost} of suppliers){if(missing<C.minLot)break;
           const sb=stock(s.id,ig.key);if(sb.quality<p.recipe.minQuality)continue;
           const got=transfer(s,c,ig,missing,'production_input',hubs.has(key(s.id,ig.key))?[hubs.get(key(s.id,ig.key))!]:[],Math.max(foodReserve(s,ig),sb.demand-sb.consumed_household-sb.consumed_state,0));
-          if(got>0){rec.qty+=got;rec.cost+=got*cost!.landed;rec.chosen ??= s.id;}
+          if(got>0){rec.qty+=got;rec.cost+=got*cost!.landed;rec.chosen ??= s.id;for(const part of LANDED_PARTS)rec.parts[part]+=got*cost![part];}
           missing-=got;}
         const supplied=Math.min(required,usable());
         inputs.push({good:i.good,required,supplied});
@@ -644,11 +648,13 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const cost=imported*(landedUnit??local)+(qty-imported)*local;
       const cheaper=a?.suppliers.find(x=>x.city!==a.chosen&&landedUnit!=null&&x.landed<landedUnit-C.epsilon)||null;
       return {good:i.good,qty,price:qty>0?cost/qty:local,local_price:local,imported_qty:imported,landed_unit_cost:landedUnit,
-        chosen_supplier:a?.chosen??null,cheaper_supplier:cheaper?{city:cheaper.city,landed:cheaper.landed}:null};});
+        chosen_supplier:a?.chosen??null,cheaper_supplier:cheaper?{city:cheaper.city,landed:cheaper.landed}:null,
+        landed_parts:a&&a.qty>0?Object.fromEntries(LANDED_PARTS.map(k=>[k,a.parts[k]/a.qty])):null,
+        ranked_suppliers:a?a.suppliers.map(x=>({city:x.city,landed:x.landed,source:x.source,transport:x.transport,tolls:x.tolls,tariff:x.tariff,risk:x.risk,loss_cost:x.loss_cost})):null};});
     const outPrice=priceOf(p.city,p.recipe.good);
     const m=recipeMargin(d.realized,outPrice,lines);
     (d as any).margin={...m,unit_output_price:outPrice,unit_input_cost:d.realized>0?m.cost/d.realized:0,inputs:lines,
-      order:p.order||'auto',loss_warning:m.margin<0,auto_flag:p.autoFlag??null,expected_margin_proxy:p.expectedMarginProxy??null};}
+      diagnostic_version:2,order:p.order||'auto',loss_warning:m.margin<0,auto_flag:p.autoFlag??null,expected_margin_proxy:p.expectedMarginProxy??null};}
   // CITY ACCOUNTS (derived flows; no private wealth stock, no fiscal writes).
   const accounts=cities.map(c=>{const own=goods.map(g=>({g,b:stock(c.id,g.key)}));
     const comp=(g:Good)=>componentsOf(c.id,g.key);
