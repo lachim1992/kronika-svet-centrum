@@ -12,6 +12,8 @@ import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Loader2, RefreshCw, Copy, Download } from "lucide-react";
 import { toast } from "sonner";
+import { Grid } from "./Grid";
+import { Costs, Specific } from "./CostViews";
 import { fetchEconomyDevSnapshot, toCsv, type EconomyDevSnapshot, type Totals, type FlowRow } from "@/lib/economyDevSnapshot";
 
 const SRC = "economy_turn_ledgers.result (goodsEconomy)";
@@ -32,6 +34,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
   const realm = sp.get("edv_realm") || "", q = sp.get("edv_q") || "", warnOnly = sp.get("edv_warn") === "1";
   const turnParam = sp.get("edv_turn"); const turn = turnParam ? Number(turnParam) : null;
   const [detail, setDetail] = useState<Detail>(null);
+  const setMany = (kv: Record<string, string | null>) => { const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(kv)) { if (v) n.set(k, v); else n.delete(k); } setSp(n, { replace: true }); };
 
   const query = useQuery({ queryKey: ["economy-dev-snapshot", sessionId, turn], queryFn: () => fetchEconomyDevSnapshot(sessionId, turn),
     staleTime: Infinity, refetchOnWindowFocus: false, retry: false });
@@ -54,6 +57,8 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
       case "flows": return (s.flows?.rows || []).filter((x) => match(x.source, x.good) || match(x.destination, x.good));
       case "cities": return (s.cities || []).filter((c) => match(c.id)).map((c) => ({ ...c, totals: c.totals }));
       case "anomalies": return s.anomalies || [];
+      case "costs": return (s.costs?.rows || []).filter((r) => match(r.city, r.output_good, r.producer)).map(({ bom, components, ...r }) => ({ ...r, bom: JSON.stringify(bom), components: JSON.stringify(components) }));
+      case "specific": return s.specific || [];
       default: return s.goods || [];
     }
   };
@@ -95,7 +100,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
       {s.reason ? <p className="text-muted-foreground p-3">Data nedostupná: {s.reason}</p> : (
       <Tabs value={tab} onValueChange={(v) => setP("edv_tab", v)}>
         <TabsList className="flex flex-wrap h-auto">
-          {[["overview", "Přehled"], ["goods", "Zboží"], ["producers", "Výrobci"], ["demand", "Poptávka"], ["flows", "Toky"], ["cities", "Města"], ["chain", "Řetězec"], ["anomalies", `Anomálie (${s.anomalies?.length ?? 0})`]]
+          {[["overview", "Přehled"], ["goods", "Zboží"], ["producers", "Výrobci"], ["demand", "Poptávka"], ["flows", "Toky"], ["cities", "Města"], ["costs", "Náklady"], ["specific", "Specifické zboží"], ["chain", "Řetězec"], ["anomalies", `Anomálie (${s.anomalies?.length ?? 0})`]]
             .map(([v, l]) => <TabsTrigger key={v} value={v} className="text-xs">{l}</TabsTrigger>)}
         </TabsList>
 
@@ -135,6 +140,9 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
           <FiscalBlock s={s} />
         </TabsContent>
 
+        <TabsContent value="costs"><Costs s={s} cn={cn} match={match} sp={sp} setP={setP} setMany={setMany} /></TabsContent>
+        <TabsContent value="specific"><Specific s={s} cn={cn} match={match} sp={sp} setP={setP} setMany={setMany} /></TabsContent>
+
         <TabsContent value="chain"><Chain s={s} cn={cn} city={city} good={good} /></TabsContent>
 
         <TabsContent value="anomalies">
@@ -152,28 +160,6 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
           <pre className="text-[10px] whitespace-pre-wrap break-all mt-2 bg-muted/30 p-2 rounded">{JSON.stringify(detail?.data, null, 2)}</pre>
         </SheetContent>
       </Sheet>
-    </div>
-  );
-}
-
-type Col<T> = [string, (r: T) => React.ReactNode];
-function Grid<T>({ rows, cols, onRow, source, capped, empty = "Žádné řádky (nula, ne chybějící data)." }: { rows: T[]; cols: Col<T>[]; onRow?: (r: T) => void; source: string; capped?: { total: number; truncated: boolean }; empty?: string }) {
-  const [sort, setSort] = useState<{ i: number; dir: 1 | -1 } | null>(null);
-  const [limit, setLimit] = useState(300);
-  const sorted = useMemo(() => { if (!sort) return rows; const g = cols[sort.i][1];
-    const v = (r: T) => { const x = g(r); const s = typeof x === "string" ? x : String(x ?? ""); const n = parseFloat(s); return Number.isFinite(n) && /^-?[\d.]/.test(s) ? n : s; };
-    return [...rows].sort((a, b) => { const x = v(a), y = v(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; }); }, [rows, sort, cols]);
-  return (
-    <div className="space-y-1">
-      <p className="text-[10px] text-muted-foreground">Zdroj: {source} · {rows.length} řádků{capped?.truncated ? ` (server ořízl z ${capped.total})` : ""}</p>
-      {!rows.length ? <p className="text-muted-foreground p-2">{empty}</p> : (
-      <div className="overflow-auto max-h-[60vh] border rounded">
-        <table className="w-full text-[11px]">
-          <thead className="sticky top-0 bg-card"><tr>{cols.map(([h], i) => <th key={h} className="px-2 py-1 text-left font-semibold whitespace-nowrap cursor-pointer" onClick={() => setSort({ i, dir: sort?.i === i && sort.dir === 1 ? -1 : 1 })}>{h}{sort?.i === i ? (sort.dir === 1 ? " ▲" : " ▼") : ""}</th>)}</tr></thead>
-          <tbody>{sorted.slice(0, limit).map((r, ri) => <tr key={ri} className="border-t hover:bg-muted/30 cursor-pointer" onClick={() => onRow?.(r)}>{cols.map(([h, g]) => <td key={h} className="px-2 py-0.5 whitespace-nowrap tabular-nums">{g(r)}</td>)}</tr>)}</tbody>
-        </table>
-        {sorted.length > limit && <Button size="sm" variant="ghost" onClick={() => setLimit(limit + 300)}>Zobrazit dalších ({sorted.length - limit})</Button>}
-      </div>)}
     </div>
   );
 }

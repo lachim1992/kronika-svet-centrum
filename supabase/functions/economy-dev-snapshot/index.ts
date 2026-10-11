@@ -4,7 +4,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { AuthError } from "../_shared/sessionAuth.ts";
 import { authorizeAdmin, parseRequest } from "./auth.ts";
-import { buildSnapshot, ROW_LIMIT, SCHEMA_VERSION, type CityAccountRow, type LedgerResult } from "./build.ts";
+import { buildSnapshot, ROW_LIMIT, SCHEMA_VERSION, type CityAccountRow, type LedgerResult, type VariantCatalogueRow } from "./build.ts";
+import { RECIPES } from "../_shared/productionCatalog.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,7 +43,7 @@ Deno.serve(async (req) => {
       lastCommittedTurn: lastCommitted, selectedTurn: turn, availableTurns: turns };
     if (turn == null) return json({ meta, ledger: null, reason: "Session nemá žádný goods ledger" });
 
-    const [ledgerRes, prevRes, guardRes, journalRes, lockRes, realmRes, legacyRes, capRes] = await Promise.all([
+    const [ledgerRes, prevRes, guardRes, journalRes, lockRes, realmRes, legacyRes, capRes, variantRes] = await Promise.all([
       db.from("economy_turn_ledgers").select("turn_number, committed, created_at, result").eq("session_id", sessionId).eq("turn_number", turn).maybeSingle(),
       db.from("economy_turn_ledgers").select("turn_number, result->cityAccounts").eq("session_id", sessionId).eq("committed", true).lt("turn_number", turn).order("turn_number", { ascending: false }).limit(1).maybeSingle(),
       db.from("turn_execution_guards").select("turn_number, status, started_at, finished_at, error, resumable").eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(5),
@@ -51,13 +52,14 @@ Deno.serve(async (req) => {
       db.from("realm_resources").select("player_name, gold_reserve, last_processed_turn, legitimacy, total_wealth, goods_wealth_fiscal, wealth_pop_tax, wealth_domestic_market, military_gold_upkeep, total_gdp, value_added_gdp, tax_rate_poll, tax_rate_market").eq("session_id", sessionId),
       db.from("trade_routes").select("status, amount_per_turn, gold_per_turn").eq("session_id", sessionId),
       db.from("city_capital_stock").select("city_id, stock, last_delta, last_turn").eq("session_id", sessionId),
+      db.from("good_variants").select("id, parent_good_key, variant_key, display_name, quality_modifier, prestige_modifier, cultural_origin").order("parent_good_key"),
     ]);
-    for (const r of [ledgerRes, prevRes, guardRes, journalRes, lockRes, realmRes, legacyRes, capRes]) if (r.error) throw r.error;
+    for (const r of [ledgerRes, prevRes, guardRes, journalRes, lockRes, realmRes, legacyRes, capRes, variantRes]) if (r.error) throw r.error;
     if (!ledgerRes.data) return json({ meta, ledger: null, reason: `Ledger pro tah ${turn} neexistuje` });
 
     const result = (ledgerRes.data.result || {}) as LedgerResult;
     const prevAccounts = ((prevRes.data as { cityAccounts?: CityAccountRow[] } | null)?.cityAccounts) ?? null;
-    const built = buildSnapshot(result, prevAccounts);
+    const built = buildSnapshot(result, prevAccounts, (variantRes.data || []) as VariantCatalogueRow[]);
     const legacy = (legacyRes.data || []) as { status: string; amount_per_turn: number | null; gold_per_turn: number | null }[];
     const active = legacy.filter((l) => l.status === "active");
 
@@ -66,6 +68,8 @@ Deno.serve(async (req) => {
         budgetMode: result.budgetMode ?? null, previousAccountsTurn: (prevRes.data as { turn_number?: number } | null)?.turn_number ?? null,
         rowLimit: ROW_LIMIT },
       state: { guards: guardRes.data || [], journal: journalRes.data || [], refreshLock: lockRes.data || null },
+      costs: cap(built.costs), specific: built.specific,
+      catalogueRecipes: RECIPES.map((r) => ({ key: r.key, role: r.role, output: r.output, qty: r.qty, inputs: r.inputs })),
       cities: built.cities, world: built.world, goods: built.goods,
       producers: cap(built.producers), demand: cap(built.demand), flows: cap(built.flows), edges: cap(built.edges),
       prices: cap(result.prices || []), balances: cap(result.balances || []),
