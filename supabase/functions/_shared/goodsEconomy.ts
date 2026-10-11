@@ -1,3 +1,4 @@
+import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass, type RoutePath } from './landedRoute.ts';
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { computeWorkforceBreakdown } from './manpower.ts';
 import { demandShares, functionalValue, substitutionEfficiency, discretionaryBudgetScale, cityAccounts, recipeMargin, productMeta, landedInputCost, outputQuality, tradeServiceVolumes, tradeServiceValue, prosperityIndex, capitalStockDelta, PRODUCT_MARKET, type CityAccounts } from './productMarket.ts';
@@ -159,34 +160,25 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       src[channel]=Math.max(0,src[channel]-removed*share);dst[channel]+=added*share;}
   };
 
-  const graph=new Map<string,Edge[]>();const reserved=new Map<string,number>();
-  for(const e of [...snapshot.edges].sort((a,b)=>a.id.localeCompare(b.id))){if(e.capacity<=0)continue;
-    graph.set(e.from,[...(graph.get(e.from)||[]),e]);graph.set(e.to,[...(graph.get(e.to)||[]),{...e,from:e.to,to:e.from}]);}
-  type Path={cells:string[];edges:Edge[];cost:number;capacity:number;loss:number;tolls:number};
+  const graph=buildRouteGraph(snapshot.edges);const reserved=new Map<string,number>();
+  type Path=RoutePath<Edge>;
   const routeCache=new Map<string,Path|null>();
   const routeTrees=new Map<string,{dist:Map<string,number>;prev:Map<string,Edge>}>();
+  // Shared landed-route model (landedRoute.ts): the same path/cost AUTO planning estimates with.
   const route=(from:string,to:string,g:Good,ignoreReservations=false):Path|null=>{
-    const frictionClass=`${g.bulk}:${g.perishability}:${g.transshipment}`;
+    const frictionClass=routeFrictionClass(g);
     const k=`${from}>${to}:${frictionClass}`;
-    const cached=routeCache.get(k);if(cached!==undefined){if(cached===null)return null;
-      return {...cached,capacity:Math.min(...cached.edges.map(e=>(e.capacity-(ignoreReservations?0:reserved.get(e.id)||0))/Math.max(1,g.bulk)),Infinity)};}
-    const treeKey=`${from}:${frictionClass}`;
-    let tree=routeTrees.get(treeKey);
-    if(!tree){
-    const dist=new Map([[from,0]]),prev=new Map<string,Edge>(),open=new Set([from]);
-    const edgeCost=(e:Edge)=>n(e.cost)*Math.max(0.01,g.bulk)*(e.mode==='river'||e.mode==='sea'?C.waterBulkEfficiency:1)*C.transportUnitCost+
-      n(e.risk)+n(e.toll)+n(e.border)+g.perishability*n(e.cost)+g.transshipment*C.transshipmentCost;
-    while(open.size){const u=[...open].sort((a,b)=>dist.get(a)!-dist.get(b)!||a.localeCompare(b))[0];open.delete(u);
-      for(const e of graph.get(u)||[]){const d=dist.get(u)!+edgeCost(e);if(d<(dist.get(e.to)??Infinity)){dist.set(e.to,d);prev.set(e.to,e);open.add(e.to);}}}
-    tree={dist,prev};routeTrees.set(treeKey,tree);
-    }
-    const {dist,prev}=tree;
-    if(!dist.has(to)){routeCache.set(k,null);return null;}let u=to;const edges:Edge[]=[],cells=[to];
-    while(u!==from){const e=prev.get(u);if(!e)return null;edges.unshift(e);u=e.from;cells.unshift(u);}
-    const p={cells,edges,cost:dist.get(to)!,capacity:Math.min(...edges.map(e=>e.capacity/Math.max(1,g.bulk)),Infinity),
-      loss:clamp(edges.reduce((a,e)=>a+e.cost*g.perishability,0)),tolls:edges.reduce((a,e)=>a+e.toll,0)};routeCache.set(k,p);
-    return {...p,capacity:Math.min(...edges.map(e=>(e.capacity-(ignoreReservations?0:reserved.get(e.id)||0))/Math.max(1,g.bulk)),Infinity)};
+    let p=routeCache.get(k);
+    if(p===undefined){const treeKey=`${from}:${frictionClass}`;let tree=routeTrees.get(treeKey);
+      if(!tree){tree=shortestTree(graph,from,g);routeTrees.set(treeKey,tree);}
+      p=tracePath(tree,from,to,g);routeCache.set(k,p);}
+    if(p===null)return null;
+    return {...p,capacity:Math.min(...p.edges.map(e=>(e.capacity-(ignoreReservations?0:reserved.get(e.id)||0))/Math.max(1,g.bulk)),Infinity)};
   };
+  const tradeBlocked=(a:City,b:City)=>!!snapshot.blockedTrade?.some(([x,y])=>(a.owner===x&&b.owner===y)||(a.owner===y&&b.owner===x));
+  /** Origin-specific, route-reachable fame: an unreachable or war-blocked brand never shapes demand. */
+  const fameReachable=(f:Fame,dst:City,g:Good)=>{if(f.city===dst.id)return true;const o=cityById.get(f.city);
+    return !!o&&!tradeBlocked(o,dst)&&usablePath(route(o.cell,dst.cell,g,true));};
   const service=(c:City)=>c.market*C.marketPull+c.storage*C.storagePull+c.admin*C.adminPull+(graph.get(c.cell)?.length||0)*C.centralityPull;
   const hubs=new Map<string,string>();
   // Nearest better serviced centers, per friction class; no name/population-based tiers.
@@ -200,9 +192,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const landed=(src:City,dst:City,g:Good)=>{const p=route(src.cell,dst.cell,g);if(!p||p.loss>=1||p.capacity<=0)return null;
     const policy=IDEOLOGIES[src.ideology]||IDEOLOGIES.customary_local,targetPolicy=IDEOLOGIES[dst.ideology]||IDEOLOGIES.customary_local;
     return landedInputCost({sourcePrice:priceOf(src.id,g.key),transport:p.cost*policy.merchantFriction,tolls:p.tolls,
-      tariffRate:targetPolicy.tariff,destinationPrice:priceOf(dst.id,g.key),risk:p.edges.reduce((a,e)=>a+n(e.risk),0),loss:p.loss});};
+      tariffRate:targetPolicy.tariff,destinationPrice:priceOf(dst.id,g.key),risk:p.risk,loss:p.loss});};
   const transfer=(src:City,dst:City,g:Good,wanted:number,reason:string,via:string[]=[],keep=0)=>{
-    if(snapshot.blockedTrade?.some(([a,b])=>(src.owner===a&&dst.owner===b)||(src.owner===b&&dst.owner===a)))return 0;
+    if(tradeBlocked(src,dst))return 0;
     if(src.id===dst.id||wanted<C.minLot)return 0;const p=route(src.cell,dst.cell,g);if(!p||p.loss>=1)return 0;
     const policy=IDEOLOGIES[src.ideology]||IDEOLOGIES.customary_local;
     const targetPolicy=IDEOLOGIES[dst.ideology]||IDEOLOGIES.customary_local;
@@ -370,7 +362,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const offerTotal=offer.reduce((a,b)=>a+b,0);
       const avgPrice=options.reduce((a,g)=>a+refPrice(g),0)/options.length;
       const shares=demandShares(options.map((g,i)=>({good:g.key,basket,referencePrice:refPrice(g),basketAveragePrice:avgPrice,
-        quality:stock(c.id,g.key).quality,fame:Math.max(0,...snapshot.fame.filter(f=>f.good===g.key&&f.created!=null).map(f=>f.fame),0),
+        quality:stock(c.id,g.key).quality,fame:Math.max(0,...snapshot.fame.filter(f=>f.good===g.key&&f.created!=null&&fameReachable(f,c,g)).map(f=>f.fame),0),
         familiarity:snapshot.familiarity?.[c.id]?.[g.key]??0,prevalence:offerTotal>0?offer[i]/offerTotal:1/options.length,
         coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
       for(const s of shares)choice.push({city:c.id,basket,...s,reference_price:refPrice(goodByKey.get(s.good)!),functional_value:functionalValue(s.good,basket)});
@@ -380,7 +372,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     // PASS 2 — one hard monetary cap for household_discretionary + fame at reference prices.
     let planned=0;
     for(const pl of plans)for(const g of pl.options)planned+=pl.channels.household_discretionary*(pl.shareOf.get(g.key)??0)/functionalValue(g.key,pl.basket)*refPrice(g);
-    if(c.market>0)for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0&&f.city!==c.id)){const g=goodByKey.get(f.good);if(!g||!cityById.has(f.city))continue;
+    if(c.market>0)for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0&&f.city!==c.id)){const g=goodByKey.get(f.good);if(!g||!cityById.has(f.city)||!fameReachable(f,c,g))continue;
       planned+=c.population*C.fameDemand*f.fame/100*refPrice(g)*(1+C.famePremium*f.fame/100);}
     const cap=discretionaryBudgetScale(planned,budget?.discretionary_budget);
     budgetCaps.set(c.id,{planned_spend:planned,budget:budget?.discretionary_budget??null,scale:cap.scale,funded_spend:planned*cap.scale,constrained:cap.constrained,mode:cap.mode});
@@ -591,7 +583,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // Reputation creates origin-specific additional demand, fulfilled only by that brand.
   for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0)){
     const origin=cityById.get(f.city),g=goodByKey.get(f.good);if(!origin||!g)continue;
-    for(const c of cities.filter(c=>c.id!==origin.id&&c.market>0)){
+    for(const c of cities.filter(c=>c.id!==origin.id&&c.market>0&&fameReachable(f,c,g))){
       const wanted=c.population*C.fameDemand*f.fame/100*(budgetCaps.get(c.id)?.scale??1);
       const b=stock(c.id,g.key);b.demand+=wanted;addChannel(c.id,g.key,'fame',wanted);
       const delivered=transfer(origin,c,g,wanted,'famous_good_demand',[],stock(origin.id,g.key).demand*C.reserveTurns);
