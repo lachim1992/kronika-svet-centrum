@@ -4557,6 +4557,7 @@ export type Database = {
           max_players: number
           player1_name: string
           player2_name: string
+          resolving_turn: number | null
           room_code: string
           tier: string
           turn_closed_p1: boolean
@@ -4579,6 +4580,7 @@ export type Database = {
           max_players?: number
           player1_name?: string
           player2_name?: string
+          resolving_turn?: number | null
           room_code: string
           tier?: string
           turn_closed_p1?: boolean
@@ -4601,6 +4603,7 @@ export type Database = {
           max_players?: number
           player1_name?: string
           player2_name?: string
+          resolving_turn?: number | null
           room_code?: string
           tier?: string
           turn_closed_p1?: boolean
@@ -11169,8 +11172,10 @@ export type Database = {
       turn_execution_guards: {
         Row: {
           error: string | null
+          execution_token: string | null
           finished_at: string | null
           report: Json
+          resumable: boolean
           session_id: string
           started_at: string
           status: string
@@ -11178,8 +11183,10 @@ export type Database = {
         }
         Insert: {
           error?: string | null
+          execution_token?: string | null
           finished_at?: string | null
           report?: Json
+          resumable?: boolean
           session_id: string
           started_at?: string
           status: string
@@ -11187,8 +11194,10 @@ export type Database = {
         }
         Update: {
           error?: string | null
+          execution_token?: string | null
           finished_at?: string | null
           report?: Json
+          resumable?: boolean
           session_id?: string
           started_at?: string
           status?: string
@@ -11199,6 +11208,38 @@ export type Database = {
             foreignKeyName: "turn_execution_guards_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: true
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      turn_phase_journal: {
+        Row: {
+          completed_at: string
+          phase: string
+          result: Json
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          completed_at?: string
+          phase: string
+          result?: Json
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          completed_at?: string
+          phase?: string
+          result?: Json
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "turn_phase_journal_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
             referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
@@ -12419,8 +12460,35 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_economy_refresh_lock: {
+        Args: { p_session: string }
+        Returns: boolean
+      }
       acquire_turn_execution: {
         Args: { p_session: string; p_turn: number }
+        Returns: boolean
+      }
+      apply_atomic_turn_phase: {
+        Args: {
+          p_phase: string
+          p_result: Json
+          p_session: string
+          p_token: string
+          p_turn: number
+          p_writes: Json
+        }
+        Returns: Json
+      }
+      apply_goods_fiscal_plan: {
+        Args: {
+          p_capex_delta: number
+          p_gold_delta: number
+          p_patch: Json
+          p_player: string
+          p_session: string
+          p_turn: number
+          p_writes: Json
+        }
         Returns: boolean
       }
       apply_goods_fiscal_turn: {
@@ -12434,12 +12502,49 @@ export type Database = {
         }
         Returns: boolean
       }
+      apply_turn_write_batch: {
+        Args: { p_session: string; p_writes: Json }
+        Returns: undefined
+      }
+      apply_world_layer_plan: {
+        Args: {
+          p_result: Json
+          p_session: string
+          p_turn: number
+          p_writes: Json
+        }
+        Returns: Json
+      }
+      begin_turn_resolution: {
+        Args: { p_session: string; p_turn: number }
+        Returns: string
+      }
       cleanup_route_events: {
         Args: { p_current_turn: number; p_session_id: string }
         Returns: undefined
       }
       commit_goods_economy_ledger: {
         Args: { p_session: string; p_turn: number }
+        Returns: undefined
+      }
+      complete_turn_phase: {
+        Args: {
+          p_phase: string
+          p_result: Json
+          p_session: string
+          p_token: string
+          p_turn: number
+        }
+        Returns: undefined
+      }
+      finish_turn_resolution: {
+        Args: {
+          p_player: string
+          p_report: Json
+          p_session: string
+          p_token: string
+          p_turn: number
+        }
         Returns: undefined
       }
       has_role: {

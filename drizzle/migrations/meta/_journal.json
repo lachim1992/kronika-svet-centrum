@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791719746833,
+      "tag": "0000_apply_reviewed_turn_atomicity_20260926",
+      "breakpoints": true
+    }
+  ]
+}
