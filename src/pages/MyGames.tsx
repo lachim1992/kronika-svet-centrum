@@ -125,12 +125,7 @@ const MyGames = () => {
       return;
     }
 
-    const { data: players } = await supabase
-      .from("game_players")
-      .select("*")
-      .eq("session_id", session.id);
-
-    const count = players?.length || 0;
+    const count = session.player_count || 0;
     if (count >= session.max_players) { toast.error("Hra je plná"); setJoining(false); return; }
 
     await supabase.from("game_players").insert({
