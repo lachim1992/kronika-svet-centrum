@@ -209,13 +209,13 @@ describe('P1 fame/product choice is origin-specific and route-reachable', () => 
 
 /* ================================ P1 — City accounts via secure read model ================================ */
 describe('P1 CityAccountsPanel reads only the owner-scoped management RPC', () => {
-  const src = readFileSync('src/components/economy/CityAccountsPanel.tsx', 'utf8');
+  const panel = readFileSync('src/components/economy/CityAccountsPanel.tsx', 'utf8');
   it('no direct economy_turn_ledgers query, uses useManagementReport, shows an error state', () => {
-    expect(src).not.toMatch(/economy_turn_ledgers/);
-    expect(src).not.toMatch(/\.from\(/);
-    expect(src).toMatch(/useManagementReport/);
-    expect(src).toMatch(/role="alert"/);
-    expect(src).not.toMatch(/return null;\s*\n\s*\n\s*return \(/); // no silent null for an empty/failed read
+    expect(panel).not.toMatch(/economy_turn_ledgers/);
+    expect(panel).not.toMatch(/\.from\(/);
+    expect(panel).toMatch(/useManagementReport/);
+    expect(panel).toMatch(/role="alert"/);
+    expect(panel).not.toMatch(/return null;\s*\n\s*\n\s*return \(/); // no silent null for an empty/failed read
   });
   it('the hook reads read_economy_management, never the raw ledger', () => {
     const hook = readFileSync('src/hooks/useManagementReport.ts', 'utf8');
