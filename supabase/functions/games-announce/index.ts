@@ -21,6 +21,8 @@ const corsHeaders = {
  *
  * Input: { session_id, player_name, type: "olympic" | "local_*", city_id?, turn_number }
  */
+interface StackXpRow { id: string; morale: number | null; experience: number | null }
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -373,7 +375,7 @@ Deno.serve(async (req) => {
 
       // Find champion unit
       if (stacks && stacks.length > 0) {
-        const best = stacks.sort((a, b) => (b.experience || 0) - (a.experience || 0))[0];
+        const best = (stacks as StackXpRow[]).sort((a: StackXpRow, b: StackXpRow) => (b.experience || 0) - (a.experience || 0))[0];
         festivalResults.champions.push(`Nejzkušenější jednotka: ID ${best.id}`);
       }
     }

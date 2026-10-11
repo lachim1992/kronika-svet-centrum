@@ -15,6 +15,8 @@ const corsHeaders = {
  *
  * Input: { session_id, festival_id, turn_number }
  */
+interface BidRow { player_name: string; total_bid_score: number; city_id: string }
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -122,14 +124,14 @@ Deno.serve(async (req) => {
         host_player: hostCity.owner_player,
         winning_score: winnerBid.total_bid_score,
         bids_count: bids.length,
-        all_candidates: bids.map(b => ({ player: b.player_name, score: b.total_bid_score })),
+        all_candidates: (bids as BidRow[]).map((b: BidRow) => ({ player: b.player_name, score: b.total_bid_score })),
       },
     });
 
     return new Response(JSON.stringify({
       ok: true,
       host: { city: hostCity.name, player: hostCity.owner_player, score: winnerBid.total_bid_score },
-      bids: bids.map(b => ({ player: b.player_name, score: b.total_bid_score, city_id: b.city_id })),
+      bids: (bids as BidRow[]).map((b: BidRow) => ({ player: b.player_name, score: b.total_bid_score, city_id: b.city_id })),
       method: "candidacy",
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
