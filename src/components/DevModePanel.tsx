@@ -20,6 +20,7 @@ import ProvinceGraphPanel from "@/components/dev/ProvinceGraphPanel";
 import HexNodeMechanicsPanel from "@/components/dev/HexNodeMechanicsPanel";
 import DevRoadSpeedupPanel from "@/components/dev/DevRoadSpeedupPanel";
 import RuralPopulationShadowPanel from "@/components/dev/RuralPopulationShadowPanel";
+import EconomyDevPanel from "@/components/dev/economy/EconomyDevPanel";
 import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
@@ -139,6 +140,13 @@ const DevModePanel = ({
           </div>
         </div>
       </DevSection>
+
+      {/* ECONOMY DEV MODE (admin-only, read-only diagnostics) */}
+      {perms.canRunServerDevTools && (
+        <DevSection icon={<Activity className="h-4 w-4" />} title="Ekonomika — diagnostika" badge="Read-only, admin">
+          <EconomyDevPanel sessionId={sessionId} />
+        </DevSection>
+      )}
 
       {/* ECONOMY */}
       <DevSection icon={<Package className="h-4 w-4" />} title="Economy" badge="Goods v4.1">
