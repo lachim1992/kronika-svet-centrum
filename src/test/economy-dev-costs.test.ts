@@ -92,3 +92,30 @@ describe("economy dev costs (read-only projection)", () => {
     expect(out.costs).toEqual([]); expect(out.specific).toEqual([]);
   });
 });
+
+import { resolveGoodsEconomy, type Good, type City, type Producer, type Snapshot } from "../../supabase/functions/_shared/goodsEconomy";
+import { ECONOMY } from "../../supabase/functions/_shared/economyConfig";
+
+describe("goodsEconomy diagnostic v2 (observational landed parts)", () => {
+  const L = 1 / ECONOMY.workersPerLaborUnit;
+  const good = (key: string, basket: string, price: number, stage: string, finalUse: boolean): Good => ({ key, basket, price, stage, storable: true, bulk: 1, density: 30, perishability: 0, storageLoss: 0, storageCost: 0, substitutability: 1, strategic: 0, prestige: 0, transshipment: 0, finalUse });
+  const city = (id: string, x: number): City => ({ id, owner: "p", name: id, cell: `${x},0`, population: 1000, classes: { peasants: 800, burghers: 200 }, soldiers: 0, stability: 1, irrigation: 0, labor: { farming: 0.4, crafting: 0.3, logistics: 0.2, administration: 0.1 }, market: 3, storage: 3, commercialBaseline: 0, admin: 0, security: 1, guild: 0, ideology: "open_merchant", coastal: false });
+  const snap = (): Snapshot => ({ turn: 2, cities: [city("a", 0), city("b", 1)],
+    goods: [good("raw_grain", "staple_food", 1, "raw", false), good("flour", "staple_food", 3, "intermediate", true)],
+    producers: [
+      { id: "grain", city: "a", channel: "node", capacity: 200, jobs: 200, recipe: { key: "grow", good: "raw_grain", qty: 1, inputs: [], labor: L, quality: 0, minQuality: 0 }, allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: true, distinctive: false },
+      { id: "mill", city: "b", channel: "facility", capacity: 20, jobs: 20, recipe: { key: "mill", good: "flour", qty: 1, inputs: [{ good: "raw_grain", qty: 2 }], labor: L, quality: 0, minQuality: 0 }, allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: false, distinctive: false } as Producer,
+    ], edges: [{ id: "r", from: "0,0", to: "1,0", cost: 1, capacity: 500, mode: "road", risk: 0.1, toll: 0.2, border: 0 }], opening: [], fame: [] });
+
+  it("records per-unit landed parts that sum to the engine's landed unit cost, deterministically", () => {
+    const r1 = resolveGoodsEconomy(snap()), r2 = resolveGoodsEconomy(snap());
+    expect(JSON.stringify(r1)).toBe(JSON.stringify(r2));
+    const d = r1.diagnostics.find((x) => x.producer === "mill") as unknown as CostInputDiag;
+    const line = d.margin?.inputs?.[0];
+    if (!line || !(line.imported_qty > 0)) return; // no import in this fixture → nothing to check
+    expect(d.margin!.diagnostic_version).toBe(2);
+    const sum = Object.values(line.landed_parts!).reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(line.landed_unit_cost!, 9);
+    expect(line.chosen_supplier).toBe("a");
+  });
+});
