@@ -438,7 +438,8 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
 
     setGenerating(true);
     try {
-      await supabase.from("game_sessions").update({ init_status: "generating" } as any).eq("id", sessionId);
+      const { error: genErr } = await supabase.rpc("set_session_generation_status", { p_session: sessionId, p_status: "generating" });
+      if (genErr) throw genErr;
 
       // Fire-and-forget — don't await the response (it can timeout on long generations)
       // The realtime listener on game_sessions will detect init_status="ready" and call onGameStart()
@@ -453,7 +454,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       toast.info("Generování světa spuštěno — čekáme na dokončení...");
     } catch (e: any) {
       toast.error("Generování světa selhalo: " + e.message);
-      await supabase.from("game_sessions").update({ init_status: "lobby" } as any).eq("id", sessionId);
+      await supabase.rpc("set_session_generation_status", { p_session: sessionId, p_status: "lobby" });
       setGenerating(false);
     }
     // Don't setGenerating(false) — wait for realtime listener to detect completion

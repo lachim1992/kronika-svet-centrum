@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Database, Sprout } from "lucide-react";
@@ -56,9 +57,9 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
       for (let i = 0; i < 6; i++) {
         const pName = PLAYER_NAMES[i];
         if (!existingNames.has(pName)) {
-          await supabase.from("game_players").insert({ session_id: sessionId, player_name: pName, player_number: i + 1 });
+          await devAdminDb(sessionId).from("game_players").insert({ session_id: sessionId, player_name: pName, player_number: i + 1 });
           for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
-            await supabase.from("player_resources").insert({
+            await devAdminDb(sessionId).from("player_resources").insert({
               session_id: sessionId, player_name: pName, resource_type: rt,
               income: 2 + Math.floor(Math.random() * 3),
               upkeep: Math.floor(Math.random() * 2),
@@ -69,7 +70,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
         }
       }
 
-      await supabase.from("game_sessions").update({ player1_name: PLAYER_NAMES[0], player2_name: PLAYER_NAMES[1], max_players: 10 }).eq("id", sessionId);
+      await devAdminDb(sessionId).from("game_sessions").update({ player1_name: PLAYER_NAMES[0], player2_name: PLAYER_NAMES[1], max_players: 10 }).eq("id", sessionId);
 
       // Provinces
       const provinceIds: Record<string, string> = {};
@@ -78,7 +79,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
           const provName = PROVINCE_NAMES[i * 2 + j];
           const { data: existing } = await supabase.from("provinces").select("id").eq("session_id", sessionId).eq("name", provName).maybeSingle();
           if (existing) { provinceIds[provName] = existing.id; continue; }
-          const { data } = await supabase.from("provinces").insert({ session_id: sessionId, name: provName, owner_player: PLAYER_NAMES[i] }).select().single();
+          const { data } = await devAdminDb(sessionId).from("provinces").insert({ session_id: sessionId, name: provName, owner_player: PLAYER_NAMES[i] }).select().single();
           if (data) provinceIds[provName] = data.id;
         }
       }
@@ -94,7 +95,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
           const { data: existing } = await supabase.from("cities").select("id").eq("session_id", sessionId).eq("name", cName).maybeSingle();
           if (existing) continue;
           const prov = j < 3 ? prov1 : prov2;
-          await supabase.from("cities").insert({
+          await devAdminDb(sessionId).from("cities").insert({
             session_id: sessionId, name: cName, owner_player: PLAYER_NAMES[i],
             province: prov, province_id: provinceIds[prov] || null, level: "Osada", tags: [], founded_round: 1,
           });
@@ -105,7 +106,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
       // City states
       for (const cs of CITY_STATE_NAMES) {
         const { data: existing } = await supabase.from("city_states").select("id").eq("session_id", sessionId).eq("name", cs.name).maybeSingle();
-        if (!existing) await supabase.from("city_states").insert({ session_id: sessionId, name: cs.name, type: cs.type });
+        if (!existing) await devAdminDb(sessionId).from("city_states").insert({ session_id: sessionId, name: cs.name, type: cs.type });
       }
 
       // Wonders
@@ -116,7 +117,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
           const wName = WONDER_NAMES[i * 2 + w] || `Div-${i * 2 + w}`;
           const { data: existing } = await supabase.from("wonders").select("id").eq("session_id", sessionId).eq("name", wName).maybeSingle();
           if (existing) continue;
-          await supabase.from("wonders").insert({
+          await devAdminDb(sessionId).from("wonders").insert({
             session_id: sessionId, name: wName, owner_player: PLAYER_NAMES[i],
             city_name: pCities[w % Math.max(1, pCities.length)]?.name || "", era: w === 0 ? "Ancient" : "Classical",
             status: "planned", description: `${wName} – plánovaný div světa.`,
@@ -130,7 +131,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
         const { data: existing } = await supabase.from("great_persons").select("id").eq("session_id", sessionId).eq("name", personName).maybeSingle();
         if (existing) continue;
         const pCities = (allCities || []).filter(c => c.owner_player === PLAYER_NAMES[i]);
-        await supabase.from("great_persons").insert({
+        await devAdminDb(sessionId).from("great_persons").insert({
           session_id: sessionId, name: personName, player_name: PLAYER_NAMES[i],
           person_type: PERSON_TYPES[i], city_id: pCities[0]?.id || null, born_round: 1, is_alive: true,
           bio: `Legendární ${PERSON_TYPES[i].toLowerCase()} sloužící říši ${PLAYER_NAMES[i]}.`,
@@ -139,7 +140,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
 
       // Civilizations
       for (const p of PLAYER_NAMES) {
-        await supabase.from("civilizations").upsert({
+        await devAdminDb(sessionId).from("civilizations").upsert({
           session_id: sessionId, player_name: p, civ_name: `Říše ${p}`,
           core_myth: `Pradávné proroctví o slávě ${p}.`,
           architectural_style: pick(["Kamenný", "Dřevěný", "Cihlový", "Mramorový"]),
@@ -167,7 +168,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
       let countryId: string | null = null;
 
       if (!existingCountries?.length) {
-        const { data: country } = await supabase.from("countries").insert({
+        const { data: country } = await devAdminDb(sessionId).from("countries").insert({
           session_id: sessionId, name: "Starý kontinent", ruler_player: null,
           description: "Prastarý kontinent, kolébka civilizací. Z jeho útrob povstaly první říše.",
         }).select().single();
@@ -181,7 +182,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
       if (countryId) {
         const { data: orphanRegions } = await supabase.from("regions").select("id, name").eq("session_id", sessionId).is("country_id", null);
         for (const reg of orphanRegions || []) {
-          await supabase.from("regions").update({ country_id: countryId }).eq("id", reg.id);
+          await devAdminDb(sessionId).from("regions").update({ country_id: countryId }).eq("id", reg.id);
           addLog(`🔗 Region "${reg.name}" → stát`);
         }
       }
@@ -191,7 +192,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
       if (regions?.length) {
         const { data: orphanProvs } = await supabase.from("provinces").select("id, name").eq("session_id", sessionId).is("region_id", null);
         for (const prov of orphanProvs || []) {
-          await supabase.from("provinces").update({ region_id: regions[0].id }).eq("id", prov.id);
+          await devAdminDb(sessionId).from("provinces").update({ region_id: regions[0].id }).eq("id", prov.id);
           addLog(`🔗 Provincie "${prov.name}" → region`);
         }
       }
@@ -201,7 +202,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
       if (provinces?.length) {
         const { data: orphanCities } = await supabase.from("cities").select("id, name").eq("session_id", sessionId).is("province_id", null);
         for (const city of orphanCities || []) {
-          await supabase.from("cities").update({ province_id: provinces[0].id }).eq("id", city.id);
+          await devAdminDb(sessionId).from("cities").update({ province_id: provinces[0].id }).eq("id", city.id);
           addLog(`🔗 Město "${city.name}" → provincie`);
         }
       }

@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { derivedChainSteps } from "../_shared/derivedChain.ts";
+import { AuthError, authorizeSessionCaller } from "../_shared/sessionAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,6 +79,17 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     sb = createClient(supabaseUrl, serviceKey);
+
+    // Caller must be a session member, an admin, or an internal service call.
+    try {
+      await authorizeSessionCaller(req, sb, session_id);
+    } catch (e) {
+      if (e instanceof AuthError) {
+        return new Response(JSON.stringify({ error: e.message }),
+          { status: e.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      throw e;
+    }
 
     const {data:acquired,error:lockError}=await sb.rpc('acquire_economy_refresh_lock',{p_session:session_id});
     if(lockError)throw lockError;

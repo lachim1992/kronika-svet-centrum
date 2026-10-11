@@ -314,9 +314,8 @@ export async function joinGameSession(roomCode: string, playerName: string): Pro
   });
   if (plErr) { console.error(plErr); return null; }
 
-  if (nextNumber === 2) {
-    await supabase.from("game_sessions").update({ player2_name: playerName }).eq("id", session.id);
-  }
+  // Seat names on game_sessions are derived server-side from game_players.
+  await supabase.rpc("sync_session_player_names", { p_session: session.id });
 
   // initPlayerResources REMOVED (Sprint 1, Krok 2) — canonical state is realm_resources
   return session;
@@ -424,7 +423,7 @@ export async function updateCityState(id: string, updates: { mood?: string; infl
 // ---- Session State ----
 
 export async function updateEpochStyle(sessionId: string, epochStyle: string) {
-  const { error } = await supabase.from("game_sessions").update({ epoch_style: epochStyle }).eq("id", sessionId);
+  const { error } = await supabase.rpc("update_session_lobby", { p_session: sessionId, p_epoch_style: epochStyle });
   if (error) console.error(error);
 }
 
@@ -435,14 +434,7 @@ export async function closeTurnForPlayer(sessionId: string, playerNumber: number
   // Legacy p1/p2 columns removed — using game_players.turn_closed only
 }
 
-export async function advanceTurn(sessionId: string, currentTurn: number) {
-  await supabase.from("game_players").update({ turn_closed: false }).eq("session_id", sessionId);
-
-  const { error } = await supabase.from("game_sessions").update({
-    current_turn: currentTurn + 1, turn_closed_p1: false, turn_closed_p2: false,
-  }).eq("id", sessionId);
-  if (error) console.error(error);
-}
+// advanceTurn removed: turns advance only through the canonical commit-turn function.
 
 // ---- Cities ----
 

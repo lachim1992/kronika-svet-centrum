@@ -366,6 +366,48 @@ export type Database = {
           },
         ]
       }
+      admin_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          error: string | null
+          filters: Json | null
+          id: string
+          ok: boolean
+          payload: Json | null
+          rows_affected: number | null
+          session_id: string
+          table_name: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          error?: string | null
+          filters?: Json | null
+          id?: string
+          ok: boolean
+          payload?: Json | null
+          rows_affected?: number | null
+          session_id: string
+          table_name: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          error?: string | null
+          filters?: Json | null
+          id?: string
+          ok?: boolean
+          payload?: Json | null
+          rows_affected?: number | null
+          session_id?: string
+          table_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ai_faction_turn_summary: {
         Row: {
           actions_executed: number | null
@@ -12537,6 +12579,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      end_story_session: { Args: { p_session: string }; Returns: Json }
       find_session_by_room_code: {
         Args: { p_code: string }
         Returns: {
@@ -12574,8 +12617,24 @@ export type Database = {
         Args: { p_payload: Json; p_session: string; p_turn: number }
         Returns: undefined
       }
+      set_session_generation_status: {
+        Args: { p_session: string; p_status: string }
+        Returns: undefined
+      }
+      sync_session_player_names: {
+        Args: { p_session: string }
+        Returns: undefined
+      }
       update_goods_management_reports: {
         Args: { p_reports: Json; p_session: string; p_turn: number }
+        Returns: undefined
+      }
+      update_session_lobby: {
+        Args: {
+          p_epoch_style?: string
+          p_max_players?: number
+          p_session: string
+        }
         Returns: undefined
       }
     }

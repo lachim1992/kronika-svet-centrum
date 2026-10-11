@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -236,7 +237,7 @@ const FormulaTunerPanel = ({ sessionId }: Props) => {
       for (const gk of allGroupKeys) {
         const vals = overrides[gk];
         if (vals && Object.keys(vals).length > 0) {
-          const { error } = await supabase
+          const { error } = await devAdminDb(sessionId)
             .from("economy_overrides")
             .upsert({
               session_id: sessionId,
@@ -247,7 +248,7 @@ const FormulaTunerPanel = ({ sessionId }: Props) => {
           if (error) throw error;
         } else {
           // Delete override if reset to defaults
-          await supabase
+          await devAdminDb(sessionId)
             .from("economy_overrides")
             .delete()
             .eq("session_id", sessionId)

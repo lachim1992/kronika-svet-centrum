@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createRoute as createRouteUtil, getRouteDefaults } from "@/lib/routeDefaults";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -101,7 +102,7 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
         if (microDef) spawnedResource = rollStrategicResource(microDef);
       }
 
-      const { data, error } = await supabase.from("province_nodes").insert({
+      const { data, error } = await devAdminDb(sessionId).from("province_nodes").insert({
         session_id: sessionId,
         name,
         hex_q: hexQ,
@@ -152,15 +153,13 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
 
   const handleDelete = async (nodeId: string) => {
     // Delete related routes first, then the node
-    await supabase.from("province_routes")
-      .delete()
-      .eq("session_id", sessionId)
-      .or(`node_a.eq.${nodeId},node_b.eq.${nodeId}`);
-    await supabase.from("flow_paths")
-      .delete()
-      .eq("session_id", sessionId)
-      .or(`node_a.eq.${nodeId},node_b.eq.${nodeId}`);
-    const { error } = await supabase.from("province_nodes").delete().eq("id", nodeId);
+    for (const col of ["node_a", "node_b"]) {
+      await devAdminDb(sessionId).from("province_routes").delete().eq("session_id", sessionId).eq(col, nodeId);
+    }
+    for (const col of ["node_a", "node_b"]) {
+      await devAdminDb(sessionId).from("flow_paths").delete().eq("session_id", sessionId).eq(col, nodeId);
+    }
+    const { error } = await devAdminDb(sessionId).from("province_nodes").delete().eq("id", nodeId);
     if (error) {
       toast.error("Nelze smazat: " + error.message);
     } else {

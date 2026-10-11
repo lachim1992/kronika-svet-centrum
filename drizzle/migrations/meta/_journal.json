@@ -22,6 +22,13 @@
       "when": 1791721306709,
       "tag": "0002_harden_access_rules_20261011",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791722456508,
+      "tag": "0003_close_session_lobby_and_admin_audit",
+      "breakpoints": true
     }
   ]
 }

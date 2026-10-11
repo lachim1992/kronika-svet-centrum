@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { devAdminDb } from "@/lib/devAdminDb";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -148,8 +149,8 @@ const EconomyQASection = ({ sessionId, onRefetch }: Props) => {
       // Get players
       const { data: players } = await supabase.from("game_players").select("player_name").eq("session_id", sessionId);
       for (const p of (players || [])) {
-        await supabase.from("realm_resources").insert({ session_id: sessionId, player_name: p.player_name });
-        await supabase.from("realm_infrastructure").insert({ session_id: sessionId, player_name: p.player_name });
+        await devAdminDb(sessionId).from("realm_resources").insert({ session_id: sessionId, player_name: p.player_name });
+        await devAdminDb(sessionId).from("realm_infrastructure").insert({ session_id: sessionId, player_name: p.player_name });
       }
 
       toast.success("Realm data zaseta");
@@ -201,7 +202,7 @@ const EconomyQASection = ({ sessionId, onRefetch }: Props) => {
         };
 
         for (const [resType, income] of Object.entries(incomes)) {
-          const { data: updated } = await supabase
+          const { data: updated } = await devAdminDb(sessionId)
             .from("player_resources")
             .update({ income, updated_at: new Date().toISOString() })
             .eq("session_id", sessionId)
@@ -210,7 +211,7 @@ const EconomyQASection = ({ sessionId, onRefetch }: Props) => {
             .select("id");
 
           if (!updated || updated.length === 0) {
-            await supabase.from("player_resources").insert({
+            await devAdminDb(sessionId).from("player_resources").insert({
               session_id: sessionId,
               player_name: p.player_name.toLowerCase(),
               resource_type: resType,

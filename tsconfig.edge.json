@@ -14,6 +14,7 @@
     "supabase/functions/process-turn/index.ts",
     "supabase/functions/preview-economy/index.ts",
     "supabase/functions/refresh-economy/index.ts",
+    "supabase/functions/admin-dev-write/index.ts",
     "supabase/functions/recompute-all/index.ts",
     "supabase/functions/aggregate-realm-totals/index.ts",
     "supabase/functions/compute-province-routes/index.ts",
