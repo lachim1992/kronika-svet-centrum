@@ -67,7 +67,7 @@ Po potvrzení fyzické fáze ekonomický retry neopakuje demografii, pohyb, AI a
 
 Práce se přiděluje jedním dvouprůchodovým algoritmem v `goodsEconomy.ts`: nejdřív sektorově, poté omezenou mobilitou. Základ běžné budovy je 100/200/400 míst podle úrovně, startovní provozy mají vlastní posádky. Aktuální `workersPerLaborUnit=40` je herní kalibrace, nikoli empirická konstanta.
 
-Preference používají ceny a spotřebu z minulého committed tahu. Podkoše normalizují průměrnou atraktivitu, takže přidání dvaceti variant automaticky nezvětší potřebu koše dvacetkrát. `functional_value` převádí funkční potřebu na množství. Úplná metadata a jemná kalibrace celého katalogu zůstávají obsahovou prací.
+AUTO plánování i skutečné sourcing používají společný `landedRoute.ts` (objem, kazivost, vodní efektivita, překládka, riziko, mýto, ztráty, cla, obchodní tření). Chybějící/nedosažitelný/válkou blokovaný vstup je nedostupný, nikdy zdarma, a receptura s ním nedostane AUTO váhu. Marže receptury je materiálová (příspěvková), nikoli čistý zisk — mzdy a režie zatím nejsou modelovány. Sláva ovlivňuje volbu produktu jen u dosažitelného původu. Preference používají ceny a spotřebu z minulého committed tahu. Podkoše normalizují průměrnou atraktivitu, takže přidání dvaceti variant automaticky nezvětší potřebu koše dvacetkrát. `functional_value` převádí funkční potřebu na množství. Úplná metadata a jemná kalibrace celého katalogu zůstávají obsahovou prací.
 
 Příjem domácností používá jediný globální `PRODUCT_MARKET.incomeUnitFactor`; nikdy se nenásobí místním CPI. Kupní síla, náklady základního koše, affordability a reálná kupní síla jsou samostatné toky. Faktor je normalizační konvence, kterou musí ověřit dlouhodobé simulace.
 
