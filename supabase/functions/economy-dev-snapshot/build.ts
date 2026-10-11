@@ -190,7 +190,7 @@ export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow
   for (const f of flows) for (const e of f.edges || []) edgeUse.set(e, (edgeUse.get(e) || 0) + n(f.qty));
   const plannedBy = new Map<string, { producer: string; expected_cost: Num; expected_source: string }[]>();
   for (const p of producers) for (const [good, es] of Object.entries(p.expectedInputSources || {})) {
-    if (!es.available) continue; const key = `${es.source}>${p.city}::${good}`;
+    if (!es.available || es.source === 'local') continue; const key = `${es.source}>${p.city}::${good}`;
     const arr = plannedBy.get(key) || []; arr.push({ producer: p.id, expected_cost: es.cost, expected_source: es.source }); plannedBy.set(key, arr); }
   const flowRows: FlowRow[] = flows.map((f, index) => ({ ...f, index,
     landed_unit_cost: n(f.delivered) > TOL ? (n(f.qty) * n(f.source_price) + n(f.transport_cost) + n(f.tolls)) / n(f.delivered) : null,
@@ -272,7 +272,7 @@ export function runChecks(i: CheckInput): Anomaly[] {
     if (f.famous) { const [oc] = f.famous.split("::"); if (oc !== f.source) push({ severity: "broken", check: "famous_origin_mismatch", message: "Slavné zboží z jiného než původního města", entity: { flow: String(f.index) }, observed: { famous: f.famous, source: f.source }, expected: "famous origin = source", filter: { tab: "flows", flow: f.index } }); }
   }
   // Planned remote supplier with no realized delivery → surfaced (not hidden) as a sourcing gap.
-  for (const p of i.producers) for (const x of p.inputs) if (x.expected_available && x.expected_source && x.expected_source !== p.city && p.realized > TOL) {
+  for (const p of i.producers) for (const x of p.inputs) if (x.expected_available && x.expected_source && x.expected_source !== 'local' && x.expected_source !== p.city && p.realized > TOL) {
     const got = i.flows.some((f) => f.source === x.expected_source && f.destination === p.city && f.good === x.good);
     if (!got) push({ severity: "warning", check: "planned_supplier_not_realized", message: "Plánovaný vzdálený dodavatel nedodal", entity: { producer: p.id, good: x.good, supplier: x.expected_source }, observed: { realized_flow: false }, expected: "tok dodavatel → město", filter: { tab: "chain", city: p.city, good: p.output_good } });
   }

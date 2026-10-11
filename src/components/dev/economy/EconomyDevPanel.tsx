@@ -259,8 +259,8 @@ function Chain({ s, cn, city, good }: { s: EconomyDevSnapshot; cn: (id: string) 
           {p.inputs.length ? p.inputs.map((i, idx) => { const actual = flows.filter((x) => x.destination === city && x.good === i.good);
             return <div key={i.good} className={`pl-3 border-l-2 ${idx === blockIdx ? "border-destructive" : "border-border"}`}>
               <p>{idx === blockIdx && <Badge variant="destructive" className="mr-1">první omezení</Badge>}{i.good}: potřeba {f(i.required)} / dodáno {f(i.supplied)} ({i.qty_per_run}/běh)</p>
-              <p className="text-muted-foreground">Plán: {i.expected_source ? `${i.expected_source === city ? "místní" : cn(i.expected_source)} @ ${f(i.expected_cost)}` : "—"} ({i.expected_available == null ? "bez plánu" : i.expected_available ? "dostupné" : "nedostupné"})
-                · Skutečně: {actual.length ? actual.map((x) => `${cn(x.source)} ${f(x.delivered, 3)} @ ${f(x.landed_unit_cost)}`).join("; ") : `bez dovozu${i.expected_source && i.expected_source !== city ? " — plánovaný vzdálený dodavatel nedodal" : " (místní zdroj)"}`}</p>
+              <p className="text-muted-foreground">Plán: {i.expected_source ? `${i.expected_source === city || i.expected_source === "local" ? "místní" : cn(i.expected_source)} @ ${f(i.expected_cost)}` : "—"} ({i.expected_available == null ? "bez plánu" : i.expected_available ? "dostupné" : "nedostupné"})
+                · Skutečně: {actual.length ? actual.map((x) => `${cn(x.source)} ${f(x.delivered, 3)} @ ${f(x.landed_unit_cost)}`).join("; ") : `bez dovozu${i.expected_source && i.expected_source !== city && i.expected_source !== "local" ? " — plánovaný vzdálený dodavatel nedodal" : " (místní zdroj)"}`}</p>
             </div>; }) : <p className="pl-3 text-muted-foreground">Bez vstupů (zdrojová receptura).</p>}
         </div>); })}
       <div className="border rounded p-2"><p className="font-semibold">Následní uživatelé / poptávka</p>
