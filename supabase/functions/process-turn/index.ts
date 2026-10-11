@@ -1114,15 +1114,10 @@ Deno.serve(async (req) => {
         const prestigeMoraleDrift = prestigeEffects.moraleBonus * 0.2; // Prestige slowly boosts morale
         const newMorale = Math.max(0, Math.min(100, Math.round(currentMorale + moraleDrift + prestigeMoraleDrift)));
 
-        // Strategic combat power bonus (iron, obsidian)
-        const basePower = s.combat_power || s.unit_count || 0;
-        const adjustedPower = Math.round(basePower * strategicBonuses.combat_mult);
-
-        if (newMorale !== currentMorale || adjustedPower !== basePower) {
-          await supabase.from("military_stacks").update({
-            morale: newMorale,
-            combat_power: adjustedPower,
-          }).eq("id", s.id);
+        // Strategic combat bonuses (iron, obsidian) are applied at battle resolution;
+        // military_stacks has no combat_power column and stored power must not compound per turn.
+        if (newMorale !== currentMorale) {
+          await supabase.from("military_stacks").update({ morale: newMorale }).eq("id", s.id);
         }
       }
       logEntries.push(`⚔️ Armáda: morále×${faithMoraleMult.toFixed(2)} síla×${strategicBonuses.combat_mult.toFixed(2)} prestiž+${prestigeEffects.moraleBonus}`);
