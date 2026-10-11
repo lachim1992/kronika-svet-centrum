@@ -34,6 +34,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
   const realm = sp.get("edv_realm") || "", q = sp.get("edv_q") || "", warnOnly = sp.get("edv_warn") === "1";
   const turnParam = sp.get("edv_turn"); const turn = turnParam ? Number(turnParam) : null;
   const [detail, setDetail] = useState<Detail>(null);
+  const setMany = (kv: Record<string, string | null>) => { const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(kv)) { if (v) n.set(k, v); else n.delete(k); } setSp(n, { replace: true }); };
 
   const query = useQuery({ queryKey: ["economy-dev-snapshot", sessionId, turn], queryFn: () => fetchEconomyDevSnapshot(sessionId, turn),
     staleTime: Infinity, refetchOnWindowFocus: false, retry: false });
@@ -56,6 +57,8 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
       case "flows": return (s.flows?.rows || []).filter((x) => match(x.source, x.good) || match(x.destination, x.good));
       case "cities": return (s.cities || []).filter((c) => match(c.id)).map((c) => ({ ...c, totals: c.totals }));
       case "anomalies": return s.anomalies || [];
+      case "costs": return (s.costs?.rows || []).filter((r) => match(r.city, r.output_good, r.producer)).map(({ bom, components, ...r }) => ({ ...r, bom: JSON.stringify(bom), components: JSON.stringify(components) }));
+      case "specific": return s.specific || [];
       default: return s.goods || [];
     }
   };
@@ -97,7 +100,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
       {s.reason ? <p className="text-muted-foreground p-3">Data nedostupná: {s.reason}</p> : (
       <Tabs value={tab} onValueChange={(v) => setP("edv_tab", v)}>
         <TabsList className="flex flex-wrap h-auto">
-          {[["overview", "Přehled"], ["goods", "Zboží"], ["producers", "Výrobci"], ["demand", "Poptávka"], ["flows", "Toky"], ["cities", "Města"], ["chain", "Řetězec"], ["anomalies", `Anomálie (${s.anomalies?.length ?? 0})`]]
+          {[["overview", "Přehled"], ["goods", "Zboží"], ["producers", "Výrobci"], ["demand", "Poptávka"], ["flows", "Toky"], ["cities", "Města"], ["costs", "Náklady"], ["specific", "Specifické zboží"], ["chain", "Řetězec"], ["anomalies", `Anomálie (${s.anomalies?.length ?? 0})`]]
             .map(([v, l]) => <TabsTrigger key={v} value={v} className="text-xs">{l}</TabsTrigger>)}
         </TabsList>
 
@@ -136,6 +139,9 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
               ["Affordab.", (c) => f(c.accounts?.affordability as number)], ["Prosperita", (c) => f(c.accounts?.prosperity as number)], ["Kapitál", (c) => f(c.accounts?.capital_stock as number)], ["Role", (c) => c.roles?.join(", ") || "—"], ["Top nedostatky", (c) => c.shortages.slice(0, 2).map((x) => x.good).join(", ") || "—"]]} />
           <FiscalBlock s={s} />
         </TabsContent>
+
+        <TabsContent value="costs"><Costs s={s} cn={cn} match={match} sp={sp} setP={setP} setMany={setMany} /></TabsContent>
+        <TabsContent value="specific"><Specific s={s} cn={cn} match={match} sp={sp} setP={setP} setMany={setMany} /></TabsContent>
 
         <TabsContent value="chain"><Chain s={s} cn={cn} city={city} good={good} /></TabsContent>
 
