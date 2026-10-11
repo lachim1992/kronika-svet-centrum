@@ -126,9 +126,10 @@ describe('4. AUTO uses expected landed input cost (adapter integration)', () => 
     expect(p.expectedInputSources.iron.source).toBe('b');
   });
   it('b) same remote iron with prohibitive transport → AUTO drops the loss-making arms', async () => {
-    expect(await forge(30)).toBeUndefined();
+    // Planning now prices the route like actual sourcing (bulk × transportUnitCost), so 'prohibitive' needs friction 100.
+    expect(await forge(100)).toBeUndefined();
   });
   it('c) PREFER/LOCK keep their semantics regardless of expected margin', async () => {
-    for (const mode of ['lock', 'prefer']) { const p = await forge(30, mode); expect(p).toBeTruthy(); expect(p.order).toBe(mode); }
+    for (const mode of ['lock', 'prefer']) { const p = await forge(100, mode); expect(p).toBeTruthy(); expect(p.order).toBe(mode); }
   });
 });

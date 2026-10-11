@@ -113,17 +113,19 @@ export function landedInputCost(i: { sourcePrice: number; transport: number; tol
  *                                     flagged emergency_unprofitable_production
  * Callers normalise by max(Σweights, Σnecessity) so a floor never expands to full capacity.
  */
-export function autoAllocationDetail(options: { key: string; necessity: number; marginRatio: number; essential?: boolean }[]) {
-  const M = PRODUCT_MARKET, anyProfitable = options.some(o => o.marginRatio > 0);
-  const weights: Record<string, number> = {}, flags: Record<string, 'emergency_unprofitable_production' | 'auto_loss_stopped' | null> = {};
+export function autoAllocationDetail(options: { key: string; necessity: number; marginRatio: number; essential?: boolean; inputsAvailable?: boolean }[]) {
+  const M = PRODUCT_MARKET, anyProfitable = options.some(o => o.inputsAvailable !== false && o.marginRatio > 0);
+  const weights: Record<string, number> = {}, flags: Record<string, 'emergency_unprofitable_production' | 'auto_loss_stopped' | 'auto_input_unavailable' | null> = {};
   for (const o of options) {
+    // A recipe with any unavailable required input gets ZERO AUTO weight — even if essential.
+    if (o.inputsAvailable === false) { weights[o.key] = 0; flags[o.key] = 'auto_input_unavailable'; continue; }
     if (o.marginRatio > 0) { weights[o.key] = pos(o.necessity) * (1 + M.autoMarginWeight * Math.min(1, o.marginRatio)); flags[o.key] = null; }
     else if (o.essential && !anyProfitable) { weights[o.key] = pos(o.necessity) * M.autoEmergencyFloor; flags[o.key] = 'emergency_unprofitable_production'; }
     else { weights[o.key] = M.autoLossFloor; flags[o.key] = 'auto_loss_stopped'; }
   }
   return { weights, flags };
 }
-export function autoAllocation(options: { key: string; necessity: number; marginRatio: number; essential?: boolean }[]) {
+export function autoAllocation(options: { key: string; necessity: number; marginRatio: number; essential?: boolean; inputsAvailable?: boolean }[]) {
   return autoAllocationDetail(options).weights;
 }
 
@@ -165,16 +167,19 @@ export function tradeServiceValue(i: { local_exchange: number; import_export: nu
 
 /**
  * Expected landed input cost for AUTO (read-only, previous committed / reference prices, never the
- * same pass): cheapest of the local reference price and every reachable supplier's landed cost.
- * A proxy — actual sourcing in goodsEconomy stays authoritative.
+ * same pass): cheapest of local supply and every reachable supplier's landed cost.
+ * `local` is null (or non-finite) when the city has NO local supply: a missing input is then
+ * `available:false` with cost Infinity — never zero-cost, never priced from the catalogue.
+ * Suppliers must already be route-filtered (landedRoute.usablePath, no war block).
  */
-export function expectedInputCost(local: number, suppliers: { city: string; sourcePrice: number; transport: number; tolls: number;
-  tariffRate: number; risk: number; loss: number }[], basePrice: number) {
-  let best = { cost: pos(local), source: 'local' as string };
+export function expectedInputCost(local: number | null, suppliers: { city: string; sourcePrice: number; transport: number; tolls: number;
+  tariffRate: number; risk: number; loss: number }[], basePrice: number, destinationPrice?: number) {
+  const hasLocal = local != null && Number.isFinite(local);
+  let best = { cost: hasLocal ? pos(local) : Infinity, source: hasLocal ? 'local' : 'unavailable' as string, available: hasLocal };
   for (const s of suppliers) {
-    const l = landedInputCost({ ...s, destinationPrice: local }).landed;
-    if (l > pos(basePrice) * PRODUCT_MARKET.maxLandedInputMultiple) continue;
-    if (l < best.cost - 1e-9) best = { cost: l, source: s.city };
+    const l = landedInputCost({ ...s, destinationPrice: hasLocal ? local! : (destinationPrice ?? s.sourcePrice) }).landed;
+    if (!Number.isFinite(l) || l > pos(basePrice) * PRODUCT_MARKET.maxLandedInputMultiple) continue;
+    if (l < best.cost - 1e-9) best = { cost: l, source: s.city, available: true };
   }
   return best;
 }

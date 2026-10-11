@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { Fragment, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useManagementReport } from "@/hooks/useManagementReport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -15,28 +16,27 @@ const f = (x: number | undefined, d = 1) => (Number.isFinite(x) ? Number(x).toFi
 const pct = (x: number | undefined) => (Number.isFinite(x) ? `${Math.round(Number(x) * 100)} %` : "—");
 
 export default function CityAccountsPanel({ sessionId, currentTurn, cities, currentPlayerName }: Props) {
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [choice, setChoice] = useState<any[]>([]);
-  const [mode, setMode] = useState<string>("");
   const [open, setOpen] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data } = await (supabase as any).from("economy_turn_ledgers")
-        .select("accounts:result->cityAccounts, choice:result->productChoice, mode:result->budgetMode")
-        .eq("session_id", sessionId).eq("turn_number", currentTurn).maybeSingle();
-      if (cancelled) return;
-      setAccounts(((data as any)?.accounts as any[]) || []);
-      setChoice(((data as any)?.choice as any[]) || []);
-      setMode(String((data as any)?.mode || ""));
-    })();
-    return () => { cancelled = true; };
-  }, [sessionId, currentTurn]);
+  // Authorized owner-scoped read model only (read_economy_management RPC); raw ledgers are not readable.
+  // react-query keys by session/player/turn, so a stale response for an older turn never overwrites.
+  const { data, error, isLoading, refetch } = useManagementReport(sessionId, currentPlayerName, currentTurn);
+  const report: any = data?.report;
+  const accounts: any[] = report?.cityAccounts || [];
+  const choice: any[] = report?.productChoice || [];
+  const mode = String(report?.budgetMode || "");
 
   const mine = cities.filter(c => c.owner_player === currentPlayerName);
   const rows = mine.map(c => ({ city: c, a: accounts.find(a => a.city === c.id) })).filter(r => r.a);
-  if (!rows.length) return null;
+  if (error) return (
+    <Card><CardContent className="p-4 text-sm space-y-2" role="alert">
+      <p className="text-destructive">Městské účty se nepodařilo načíst: {String((error as any)?.message || error)}</p>
+      <Button size="sm" variant="outline" onClick={() => refetch()}>Zkusit znovu</Button>
+    </CardContent></Card>);
+  if (isLoading) return null;
+  if (!rows.length) return (
+    <Card><CardContent className="p-4 text-sm text-muted-foreground">
+      Městské účty zatím nejsou k dispozici{report ? " — tento uložený přehled je ze starší verze ekonomiky a objeví se po další uzávěrce tahu." : " — přehled vzniká až po uzavření tahu."}
+    </CardContent></Card>);
 
   return (
     <Card>

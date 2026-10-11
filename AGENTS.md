@@ -10,3 +10,5 @@
 - Trade-service GDP uses `productMarket.tradeServiceVolumes` at catalogue prices; never feed nominal flow.gross_value into constant-price service GDP.
 - `finish_turn_resolution` alone publishes the calendar after mandatory phases. `resolving_turn` is the internal economy target; refresh/player commands must not overlap it.
 - Turn-phase/fiscal planners buffer writes; SQL applies effects and completion guards atomically. Do not add direct fiscal writes outside the plan. External combat/AI interrupted before the physical checkpoint remain fail-closed; never mark partial ticks completed just to unblock the game.
+- Route pricing for both actual sourcing (goodsEconomy) and AUTO planning (economyAdapter) lives only in `_shared/landedRoute.ts`; a missing/unreachable/war-blocked input is `available:false`, never zero-cost — so planning can never rank suppliers differently from the physical solver.
+- City accounts/product choice reach the UI only inside the owner-scoped management report (`read_economy_management`); authenticated users never read `economy_turn_ledgers` directly.

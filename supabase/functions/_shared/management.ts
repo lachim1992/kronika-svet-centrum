@@ -5,7 +5,7 @@ import {basketSpec,alertPriority,shortageEffect,basketSeverity} from './demandMo
 export interface Contribution {id:string;label:string;value:number;city?:string;good?:string;route?:string}
 export interface Metric {key:string;label:string;value:number|null;previous:number|null;unit:string;definition:string;sources:Contribution[];assumption?:string}
 export interface ManagementAlert {id:string;severity:'critical'|'warning'|'opportunity'|'info';category:string;entity_type:string;entity_id:string;metric:string;current_value:number;threshold:number;reason:string;destination:string;levers:string[]}
-export interface ManagementReport {turn:number;player:string;metrics:Metric[];alerts:ManagementAlert[];cities:any[];producers:any[];labor:any[];flows:any[];goods:any[];famous:any[];routes:any[];prices:any[];history:{turn:number;metrics:Record<string,number|null>}[]}
+export interface ManagementReport {turn:number;player:string;metrics:Metric[];alerts:ManagementAlert[];cities:any[];producers:any[];labor:any[];flows:any[];goods:any[];famous:any[];routes:any[];prices:any[];cityAccounts?:any[];productChoice?:any[];budgetMode?:string;history:{turn:number;metrics:Record<string,number|null>}[]}
 type Ledger=ReturnType<typeof resolveGoodsEconomy>;
 const sum=<T>(rows:T[],f:(row:T)=>number)=>rows.reduce((n,row)=>n+f(row),0);
 
@@ -107,5 +107,7 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
   const cityReports=cities.map(c=>({...ledger.metrics.find(m=>m.city===c.id),id:c.id,name:c.name,cell:c.cell,population:c.population,stability:c.stability*100,workforce:ledger.workforce[c.id],labor:labor.find((l:any)=>l.city===c.id),balances:balances.filter(b=>b.city===c.id),prices:prices.filter(p=>p.city===c.id),hinterlands:ledger.hinterlands.filter(h=>h.city===c.id||h.hub===c.id)}));
   const routes=snapshot.edges.filter(e=>flows.some(f=>f.edges.includes(e.id))).map(e=>({...e,used:sum(flows.filter(f=>f.edges.includes(e.id)),f=>f.qty*Math.max(1,goods.get(f.good)!.bulk)),handled_value:sum(flows.filter(f=>f.edges.includes(e.id)),f=>f.gross_value)}));
   const history=[...(previous?.history||[]).filter(h=>h.turn<snapshot.turn),{turn:snapshot.turn,metrics:Object.fromEntries(metrics.map(m=>[m.key,m.value]))}].slice(-10);
-  return {turn:snapshot.turn,player,metrics,alerts,cities:cityReports,producers,labor,flows:flows.map(f=>({...f,source_name:names.get(f.source)||'Zahraniční dodavatel',destination_name:names.get(f.destination)||'Zahraniční odběratel'})),goods:snapshot.goods,famous:ledger.famous.filter(f=>owned.has(f.city)),routes,prices,history};
+  return {turn:snapshot.turn,player,metrics,alerts,cities:cityReports,producers,labor,flows:flows.map(f=>({...f,source_name:names.get(f.source)||'Zahraniční dodavatel',destination_name:names.get(f.destination)||'Zahraniční odběratel'})),goods:snapshot.goods,famous:ledger.famous.filter(f=>owned.has(f.city)),routes,prices,history,
+    // Owner-scoped city accounts for the secure read model (read_economy_management); UI never reads the raw ledger.
+    cityAccounts:((ledger as any).cityAccounts||[]).filter((a:any)=>owned.has(a.city)),productChoice:((ledger as any).productChoice||[]).filter((x:any)=>owned.has(x.city)),budgetMode:(ledger as any).budgetMode};
 }
