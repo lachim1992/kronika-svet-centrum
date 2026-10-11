@@ -22,7 +22,7 @@ const corsHeaders = {
  * Input: { session_id, player_name, festival_id, action, selected_student_ids? }
  */
 /** Columns of academy_students used here (rows come from an untyped client). */
-interface StudentRow { id: string; name: string; specialty: string; traits: unknown; strength: number; endurance: number;
+interface StudentRow { id: string; name: string; specialty: string; traits: string[]; strength: number; endurance: number;
   agility: number; tactics: number; charisma: number; portrait_url: string | null; bio: string | null;
   academies?: { name: string; infrastructure: number; trainer_level: number; nutrition: number; [profile: string]: unknown } }
 interface RankedStudent { student: StudentRow; totalScore: number; results: any[] }
