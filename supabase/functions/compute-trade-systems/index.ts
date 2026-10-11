@@ -307,7 +307,18 @@ Deno.serve(async (req) => {
     }
 
     if (emitEvents && eventsToInsert.length > 0) {
-      const { error: evErr } = await sb.from("world_events").insert(eventsToInsert);
+      // world_events has no event_type/payload/turn_number columns: map onto the real schema.
+      const TITLES: Record<string, string> = { trade_system_formed: "Vznikl obchodní systém", trade_system_merged: "Obchodní systémy se spojily",
+        trade_system_dissolved: "Obchodní systém zanikl", trade_system_split: "Obchodní systém se rozpadl" };
+      const rows = eventsToInsert.map((e: any, i: number) => {
+        const key = String(e.payload?.system_key ?? e.payload?.old_system_key ?? i);
+        return { session_id, title: TITLES[e.event_type] || e.event_type, created_turn: e.turn_number,
+          slug: `${e.event_type}-t${e.turn_number}-${key}-${i}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-").slice(0, 180),
+          summary: `${TITLES[e.event_type] || e.event_type} (${e.payload?.node_count ?? 0} uzlů)`,
+          event_category: "economy", created_by_type: "system", tags: ["trade_system", e.event_type],
+          references: [e.payload] };
+      });
+      const { error: evErr } = await sb.from("world_events").insert(rows);
       if (evErr) console.warn("world_events insert failed:", evErr.message);
     } else if (!emitEvents && eventsToInsert.length > 0) {
       console.log(`[derived-only] suppressed ${eventsToInsert.length} world_events (emit_events=false)`);
