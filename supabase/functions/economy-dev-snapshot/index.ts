@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       db.from("economy_turn_ledgers").select("turn_number, committed, created_at, result").eq("session_id", sessionId).eq("turn_number", turn).maybeSingle(),
       db.from("economy_turn_ledgers").select("turn_number, result->cityAccounts").eq("session_id", sessionId).eq("committed", true).lt("turn_number", turn).order("turn_number", { ascending: false }).limit(1).maybeSingle(),
       db.from("turn_execution_guards").select("turn_number, status, started_at, finished_at, error, resumable").eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(5),
-      db.from("turn_phase_journal").select("turn_number, phase, completed_at").eq("session_id", sessionId).in("turn_number", [turn, turn + 1]).order("completed_at"),
+      db.from("turn_phase_journal").select("turn_number, phase, completed_at").eq("session_id", sessionId).in("turn_number", [turn - 1, turn]).order("completed_at"),
       db.from("economy_recompute_locks").select("locked_at, locked_by, updated_at").eq("session_id", sessionId).maybeSingle(),
       db.from("realm_resources").select("player_name, gold_reserve, last_processed_turn, legitimacy, total_wealth, goods_wealth_fiscal, wealth_pop_tax, wealth_domestic_market, military_gold_upkeep, total_gdp, value_added_gdp, tax_rate_poll, tax_rate_market").eq("session_id", sessionId),
       db.from("trade_routes").select("status, amount_per_turn, gold_per_turn").eq("session_id", sessionId),
