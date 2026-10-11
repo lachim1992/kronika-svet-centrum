@@ -1,3 +1,4 @@
+/// <reference path="../../scripts/edge-globals.d.ts" />
 import { describe, it, expect, vi } from "vitest";
 import { buildSnapshot, residualOf, type LedgerBalance, type LedgerResult } from "../../supabase/functions/economy-dev-snapshot/build";
 
