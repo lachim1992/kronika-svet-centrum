@@ -192,8 +192,12 @@ export function craftsmanship(level: unknown, tags: string[] = [], guild = 0) {
 }
 
 /** Output quality: recipe bonus + craftsmanship, processed goods bounded by input quality. */
-export function outputQuality(i: { recipeBonus: number; craft: number; source: boolean; minInputQuality: number }) {
-  const craft = pos(i.craft);
+/**
+ * Output quality. City ideology scales CRAFTSMANSHIP before the inheritance ceiling, so a
+ * processed good (flour, bread) can never exceed its weakest input + headroom, no matter the city.
+ */
+export function outputQuality(i: { recipeBonus: number; craft: number; source: boolean; minInputQuality: number; craftFactor?: number }) {
+  const craft = pos(i.craft) * (i.craftFactor ?? 1);
   const bounded = i.source ? craft : Math.min(craft, pos(i.minInputQuality) + PRODUCT_MARKET.qualityInheritanceHeadroom);
   return Math.min(PRODUCT_MARKET.maxQuality, pos(i.recipeBonus) + bounded);
 }

@@ -518,8 +518,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         const shipped=amount/(1-(inputPaths.get(i.good)?.loss||0));
         b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;minQuality=Math.min(minQuality,b.quality);
         inputValue+=shipped*goodByKey.get(i.good)!.price*(1+b.quality*C.qualityPremium);}
-      const quality=Math.min(PRODUCT_MARKET.maxQuality,outputQuality({recipeBonus:p.recipe.quality,craft:p.craft??c.guild,source:p.source,
-        minInputQuality:Number.isFinite(minQuality)?minQuality:0})*(IDEOLOGIES[c.ideology]?.quality||1));
+      const quality=outputQuality({recipeBonus:p.recipe.quality,craft:p.craft??c.guild,source:p.source,
+        minInputQuality:Number.isFinite(minQuality)?minQuality:0,craftFactor:IDEOLOGIES[c.ideology]?.quality||1});
       const b=stock(c.id,g.key);add(b,qty,quality,p.channel,p.source);b.intermediate_value+=inputValue;
       b.lost_spoilage+=qty*(delivery?.loss||0);
       for(const [edge,load] of loadByEdge)reserved.set(edge,(reserved.get(edge)||0)+qty*load);
