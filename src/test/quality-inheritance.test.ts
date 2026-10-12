@@ -7,7 +7,7 @@ const good = (key: string, basket: string, price: number): Good => ({
   key, basket, price, stage: 'intermediate', storable: true, bulk: 1, density: 30, perishability: 0,
   storageLoss: 0, storageCost: 0, substitutability: 1, strategic: 0, prestige: 0, transshipment: 0,
 });
-const city = (ideology: string, guild: number): City => ({
+const city = (ideology: City['ideology'], guild: number): City => ({
   id: 'c', owner: 'p', name: 'c', cell: '0,0', population: 1000, classes: { peasants: 1000 }, soldiers: 0,
   stability: 1, irrigation: 0, labor: {}, market: 2, storage: 10, admin: 0, security: 1, guild, ideology, coastal: false,
 });
@@ -16,7 +16,7 @@ const producer = (id: string, g: string, inputs: { good: string; qty: number }[]
   recipe: { key: id, good: g, qty: 1, inputs, labor: 1, quality: 0, minQuality: 0 },
   allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: inputs.length === 0, distinctive: false,
 });
-function chain(ideology: string, grainCraft: number, craft: number): Snapshot {
+function chain(ideology: City['ideology'], grainCraft: number, craft: number): Snapshot {
   return {
     turn: 1, cities: [city(ideology, craft)], edges: [], opening: [], fame: [],
     goods: [good('raw_grain', 'staple_food', 1), good('flour', 'staple_food', 2), good('baked_staples', 'staple_food', 4)],
