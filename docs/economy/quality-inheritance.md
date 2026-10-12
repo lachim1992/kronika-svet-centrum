@@ -18,3 +18,9 @@ Test: `src/test/quality-inheritance.test.ts`.
 - Source quality ignores land fertility/irrigation (`irrigation` affects quantity only).
 - Headroom is global; per-recipe headroom (e.g. a master bakery) is not modelled.
 - Live ledgers committed before this change keep their old quality values (no retroactive repair).
+
+## Regression tests (2026-10-12, after 1097e5b8)
+`src/test/quality-inheritance.test.ts` now also runs the real solver with grain crafted at 0/0.5/1/2 plus a quality-3 opening lot.
+It checks flour ≤ grain + headroom, bread ≤ flour + headroom, and that fame changes only `fame_factor`, never `quality_factor`
+(local price = base × scarcity × quality × fame, each applied once). Result: 7/7 passed, no new bug found, no engine change.
+Next task: per-lot provenance for imported grain (see remaining tasks).

@@ -41,3 +41,32 @@ describe('quality inheritance grain → flour → bread', () => {
     expect(outputQuality({ recipeBonus: 0, craft: 3, source: true, minInputQuality: 0, craftFactor: 1.1 })).toBe(PRODUCT_MARKET.maxQuality);
   });
 });
+
+describe('regression: mixed grain qualities through the real solver', () => {
+  const H = PRODUCT_MARKET.qualityInheritanceHeadroom;
+  for (const grainCraft of [0, 0.5, 1, 2]) {
+    it(`grain craft ${grainCraft}: flour ≤ grain+H, bread ≤ flour+H, all ≤ max`, () => {
+      const s = chain('guild_chartered', grainCraft, 3);
+      s.opening = [{ city: 'c', good: 'raw_grain', qty: 20, quality: 3 }]; // mix a high-quality lot in
+      const r = resolveGoodsEconomy(s);
+      const qq = (g: string) => r.balances.find((b) => b.good === g)!.quality;
+      const grain = qq('raw_grain'), flour = qq('flour'), bread = qq('baked_staples');
+      expect(flour).toBeLessThanOrEqual(Math.min(grain + H, PRODUCT_MARKET.maxQuality) + 1e-9);
+      expect(bread).toBeLessThanOrEqual(Math.min(flour + H, PRODUCT_MARKET.maxQuality) + 1e-9);
+    });
+  }
+
+  it('quality factor is applied once and independently of fame', () => {
+    const s = chain('open_merchant', 1, 1);
+    const base = resolveGoodsEconomy(s).prices.find((p) => p.good === 'baked_staples')!;
+    s.fame = [{ city: 'c', good: 'baked_staples', name: 'x', streak: 5, fame: 50, quality: 3, created: 1, turn: 1 }];
+    const famed = resolveGoodsEconomy(s).prices.find((p) => p.good === 'baked_staples')!;
+    for (const p of [base, famed]) {
+      expect(p.quality_factor).toBeCloseTo(1 + famed.quality_factor - 1, 9);
+      expect(p.local_price).toBeCloseTo(p.base_price * p.scarcity_factor * p.quality_factor * p.fame_factor, 9);
+    }
+    expect(famed.fame_factor).toBeGreaterThan(1);
+    expect(famed.quality_factor).toBeCloseTo(base.quality_factor, 9); // fame never inflates quality
+  });
+});
+
