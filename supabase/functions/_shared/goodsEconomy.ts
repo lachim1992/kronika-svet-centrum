@@ -93,8 +93,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const diagnostics: {producer:string; good:string; capacity:number; realized:number; factors:Record<string,number>;
     jobs_capacity?:number; employed?:number; staffing_ratio?:number; potential_output?:number;
     inputs?:{good:string;required:number;supplied:number}[]; bottleneck?:string|null;
-    blocked:string|null; delivery_path?:string[]}[]=[];
-  const priorFame=new Map(snapshot.fame.map(f=>[key(f.city,f.good),f]));
+    blocked:string|null; delivery_path?:string[];
+    /** Observational: quality and origin city of the lots this producer actually consumed. */
+    input_lots?:{good:string;qty:number;quality:number;origins:Record<string,number>}[]}[]=[];
   const stock=(city:string,good:string):Balance=>{
     if(!cityById.has(city)||!goodByKey.has(good)) throw Error(`Invalid economy reference ${city}/${good}`);
     const k=key(city,good);let b=balances.get(k);
@@ -103,8 +104,29 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       unmet_demand:0,demand:0,quality:1,gross_output_value:0,intermediate_value:0,extraction_value:0,capex:0};balances.set(k,b)}return b;
   };
   const available=(b:Balance)=>Math.max(0,b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage);
+  // QUALITY LOTS: an in-pass composition of each balance's physical stock (not a second ledger —
+  // quantities always equal available(b)). Each lot keeps its quality and origin city. Drains that
+  // are not lot-aware (households, state, spoilage) remove proportionally; producers and exports
+  // draw actual lots FIFO, so consumed quality is that of the batch used, not the city average.
+  type Lot={qty:number;quality:number;origin:string};
+  const lots=new Map<Balance,Lot[]>();
+  const syncLots=(b:Balance)=>{const l=lots.get(b)||[];lots.set(b,l);const total=l.reduce((s,x)=>s+x.qty,0),avail=available(b);
+    if(total>C.epsilon&&Math.abs(total-avail)>1e-12){const f=avail/total;for(const x of l)x.qty*=f;}
+    else if(total<=C.epsilon&&avail>C.epsilon){l.length=0;l.push({qty:avail,quality:b.quality,origin:b.city});}
+    for(let i=l.length-1;i>=0;i--)if(l[i].qty<=1e-12)l.splice(i,1);return l;};
+  const requality=(b:Balance)=>{const l=lots.get(b)||[],t=l.reduce((s,x)=>s+x.qty,0);
+    if(t>C.epsilon)b.quality=l.reduce((s,x)=>s+x.qty*x.quality,0)/t;};
+  /** Call BEFORE the ledger counters change: adds a lot to the current composition. */
+  const pushLot=(b:Balance,qty:number,quality:number,origin:string)=>{if(qty<=0)return;const l=syncLots(b);
+    const same=l.find(x=>x.origin===origin&&Math.abs(x.quality-quality)<1e-12);if(same)same.qty+=qty;else l.push({qty,quality,origin});
+    const t=l.reduce((s,x)=>s+x.qty,0);b.quality=l.reduce((s,x)=>s+x.qty*x.quality,0)/t;};
+  /** Call BEFORE the ledger counters change: removes `amount` FIFO and returns the drawn lots. */
+  const drawLots=(b:Balance,amount:number):Lot[]=>{const l=syncLots(b),out:Lot[]=[];let rest=amount;
+    while(rest>1e-12&&l.length){const x=l[0],take=Math.min(x.qty,rest);out.push({...x,qty:take});x.qty-=take;rest-=take;if(x.qty<=1e-12)l.shift();}
+    if(rest>1e-12)out.push({qty:rest,quality:b.quality,origin:b.city});return out;};
+  const lotQuality=(d:Lot[],fallback:number)=>{const t=d.reduce((s,x)=>s+x.qty,0);return t>0?d.reduce((s,x)=>s+x.qty*x.quality,0)/t:fallback;};
   const add=(b:Balance,qty:number,quality:number,channel:Channel,source=false)=>{
-    const before=available(b);b.quality=(before*b.quality+qty*quality)/(before+qty||1);
+    pushLot(b,qty,quality,b.city);
     b[`produced_${channel}`]+=qty;b.gross_output_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
     if(source)b.extraction_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
   };
