@@ -153,7 +153,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const priceOf=(city:string,good:string)=>priceDetail(city,good).local_price;
 
   for(const o of snapshot.opening){const b=stock(o.city,o.good),g=goodByKey.get(o.good)!;
-    b.quality=(b.opening*b.quality+n(o.qty)*n(o.quality))/(b.opening+n(o.qty)||1);b.opening+=n(o.qty);
+    pushLot(b,n(o.qty),n(o.quality),o.city);b.opening+=n(o.qty);
     b.lost_spoilage+=n(o.qty)*clamp(g.storageLoss/(1+cityById.get(o.city)!.storage));}
   const workforce=new Map(cities.map(c=>[c.id,computeWorkforceBreakdown([{
     population_peasants:c.classes.peasants,population_burghers:c.classes.burghers,
@@ -248,12 +248,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const saleUnit=reason==='production_input'?unit:destinationWTP;
     const qty=Math.min(Math.max(0,available(b)-keep),wanted/(1-p.loss),p.capacity)*targetPolicy.imports;
     if(qty<C.minLot)return 0;const delivered=qty*(1-p.loss),before=available(db);
-    b.exported+=qty;db.imported+=delivered;db.quality=(before*db.quality+delivered*b.quality)/(before+delivered);
+    void before;const drawn=drawLots(b,qty),shippedQuality=lotQuality(drawn,b.quality);
+    for(const x of drawn)pushLot(db,x.qty*delivered/qty,x.quality,x.origin); // lots keep origin + quality in transit
+    b.exported+=qty;db.imported+=delivered;requality(b);
     // Lost transport quantity is recorded at destination as import+loss for conservation.
     db.imported+=qty-delivered;db.lost_spoilage+=qty-delivered;
     for(const e of p.edges)reserved.set(e.id,(reserved.get(e.id)||0)+qty*Math.max(1,g.bulk));
     const tolls=qty*(p.tolls+saleUnit*targetPolicy.tariff);
-    flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:b.quality,gross_value:delivered*saleUnit,
+    flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:shippedQuality,gross_value:delivered*saleUnit,
       transport_cost:qty*transport,tolls,net_value:delivered*saleUnit-qty*transport-tolls,reason:branded&&reason==='household_consumption'?'famous_good_demand':reason,
       path:p.cells,edges:p.edges.map(e=>e.id),via_hubs:via.filter(id=>p.cells.includes(cityById.get(id)?.cell||'')),famous:branded?key(src.id,g.key):null,
       source_price:sourcePrice,destination_price:destinationPrice,destination_wtp:destinationWTP,expected_margin:margin*delivered});return delivered;
@@ -535,11 +537,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       for(const [edge,load] of loadByEdge){const e=snapshot.edges.find(e=>e.id===edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
       if(qty<=C.epsilon){if(desired<=C.epsilon){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,...labor,inputs,
         blocked:jobs>C.epsilon&&staffed<=C.epsilon?'no_workers':'capacity_labor_or_staffing'});pending.delete(id);}continue;}
-      let inputValue=0,minQuality=Infinity;
+      let inputValue=0,minQuality=Infinity;const inputLots:NonNullable<typeof diagnostics[number]['input_lots']>=[];
       for(const i of p.recipe.inputs){const b=stock(c.id,i.good),amount=qty*i.qty/p.recipe.qty;
         const shipped=amount/(1-(inputPaths.get(i.good)?.loss||0));
-        b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;minQuality=Math.min(minQuality,b.quality);
-        inputValue+=shipped*goodByKey.get(i.good)!.price*(1+b.quality*C.qualityPremium);}
+        // Quality of the batch actually drawn (FIFO lots), not the average of all city stock.
+        const drawn=drawLots(b,shipped),usedQuality=lotQuality(drawn,b.quality),origins:Record<string,number>={};
+        for(const x of drawn)origins[x.origin]=(origins[x.origin]||0)+x.qty;
+        inputLots.push({good:i.good,qty:shipped,quality:usedQuality,origins});
+        b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;requality(b);minQuality=Math.min(minQuality,usedQuality);
+        inputValue+=shipped*goodByKey.get(i.good)!.price*(1+usedQuality*C.qualityPremium);}
       const quality=outputQuality({recipeBonus:p.recipe.quality,craft:p.craft??c.guild,source:p.source,
         minInputQuality:Number.isFinite(minQuality)?minQuality:0,craftFactor:IDEOLOGIES[c.ideology]?.quality||1});
       const b=stock(c.id,g.key);add(b,qty,quality,p.channel,p.source);b.intermediate_value+=inputValue;
