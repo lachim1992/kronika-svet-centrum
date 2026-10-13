@@ -553,7 +553,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       for(const [edge,load] of loadByEdge)reserved.set(edge,(reserved.get(edge)||0)+qty*load);
       const total=(realized.get(id)||0)+qty;realized.set(id,total);
       const diagnostic={producer:id,good:g.key,capacity:p.capacity,realized:total,factors:{...factors,inputs:target?total/target:0},
-        ...labor,inputs,bottleneck:total>=target-C.epsilon?null:bottleneck,delivery_path:delivery?.cells,blocked:null};
+        ...labor,inputs,input_lots:inputLots,bottleneck:total>=target-C.epsilon?null:bottleneck,delivery_path:delivery?.cells,blocked:null};
       const index=diagnostics.findIndex(d=>d.producer===id);
       if(index>=0)diagnostics[index]=diagnostic;else diagnostics.push(diagnostic);
       if(total>=target-C.epsilon)pending.delete(id);
