@@ -96,6 +96,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     blocked:string|null; delivery_path?:string[];
     /** Observational: quality and origin city of the lots this producer actually consumed. */
     input_lots?:{good:string;qty:number;quality:number;origins:Record<string,number>}[]}[]=[];
+  const priorFame=new Map(snapshot.fame.map(f=>[key(f.city,f.good),f]));
   const stock=(city:string,good:string):Balance=>{
     if(!cityById.has(city)||!goodByKey.has(good)) throw Error(`Invalid economy reference ${city}/${good}`);
     const k=key(city,good);let b=balances.get(k);
