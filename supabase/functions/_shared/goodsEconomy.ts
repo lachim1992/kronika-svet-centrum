@@ -93,7 +93,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const diagnostics: {producer:string; good:string; capacity:number; realized:number; factors:Record<string,number>;
     jobs_capacity?:number; employed?:number; staffing_ratio?:number; potential_output?:number;
     inputs?:{good:string;required:number;supplied:number}[]; bottleneck?:string|null;
-    blocked:string|null; delivery_path?:string[]}[]=[];
+    blocked:string|null; delivery_path?:string[];
+    /** Observational: quality and origin city of the lots this producer actually consumed. */
+    input_lots?:{good:string;qty:number;quality:number;origins:Record<string,number>}[]}[]=[];
   const priorFame=new Map(snapshot.fame.map(f=>[key(f.city,f.good),f]));
   const stock=(city:string,good:string):Balance=>{
     if(!cityById.has(city)||!goodByKey.has(good)) throw Error(`Invalid economy reference ${city}/${good}`);
@@ -103,8 +105,29 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       unmet_demand:0,demand:0,quality:1,gross_output_value:0,intermediate_value:0,extraction_value:0,capex:0};balances.set(k,b)}return b;
   };
   const available=(b:Balance)=>Math.max(0,b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage);
+  // QUALITY LOTS: an in-pass composition of each balance's physical stock (not a second ledger —
+  // quantities always equal available(b)). Each lot keeps its quality and origin city. Drains that
+  // are not lot-aware (households, state, spoilage) remove proportionally; producers and exports
+  // draw actual lots FIFO, so consumed quality is that of the batch used, not the city average.
+  type Lot={qty:number;quality:number;origin:string};
+  const lots=new Map<Balance,Lot[]>();
+  const syncLots=(b:Balance)=>{const l=lots.get(b)||[];lots.set(b,l);const total=l.reduce((s,x)=>s+x.qty,0),avail=available(b);
+    if(total>C.epsilon&&Math.abs(total-avail)>1e-12){const f=avail/total;for(const x of l)x.qty*=f;}
+    else if(total<=C.epsilon&&avail>C.epsilon){l.length=0;l.push({qty:avail,quality:b.quality,origin:b.city});}
+    for(let i=l.length-1;i>=0;i--)if(l[i].qty<=1e-12)l.splice(i,1);return l;};
+  const requality=(b:Balance)=>{const l=lots.get(b)||[],t=l.reduce((s,x)=>s+x.qty,0);
+    if(t>C.epsilon)b.quality=l.reduce((s,x)=>s+x.qty*x.quality,0)/t;};
+  /** Call BEFORE the ledger counters change: adds a lot to the current composition. */
+  const pushLot=(b:Balance,qty:number,quality:number,origin:string)=>{if(qty<=0)return;const l=syncLots(b);
+    const same=l.find(x=>x.origin===origin&&Math.abs(x.quality-quality)<1e-12);if(same)same.qty+=qty;else l.push({qty,quality,origin});
+    const t=l.reduce((s,x)=>s+x.qty,0);b.quality=l.reduce((s,x)=>s+x.qty*x.quality,0)/t;};
+  /** Call BEFORE the ledger counters change: removes `amount` FIFO and returns the drawn lots. */
+  const drawLots=(b:Balance,amount:number):Lot[]=>{const l=syncLots(b),out:Lot[]=[];let rest=amount;
+    while(rest>1e-12&&l.length){const x=l[0],take=Math.min(x.qty,rest);out.push({...x,qty:take});x.qty-=take;rest-=take;if(x.qty<=1e-12)l.shift();}
+    if(rest>1e-12)out.push({qty:rest,quality:b.quality,origin:b.city});return out;};
+  const lotQuality=(d:Lot[],fallback:number)=>{const t=d.reduce((s,x)=>s+x.qty,0);return t>0?d.reduce((s,x)=>s+x.qty*x.quality,0)/t:fallback;};
   const add=(b:Balance,qty:number,quality:number,channel:Channel,source=false)=>{
-    const before=available(b);b.quality=(before*b.quality+qty*quality)/(before+qty||1);
+    pushLot(b,qty,quality,b.city);
     b[`produced_${channel}`]+=qty;b.gross_output_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
     if(source)b.extraction_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
   };
@@ -131,7 +154,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const priceOf=(city:string,good:string)=>priceDetail(city,good).local_price;
 
   for(const o of snapshot.opening){const b=stock(o.city,o.good),g=goodByKey.get(o.good)!;
-    b.quality=(b.opening*b.quality+n(o.qty)*n(o.quality))/(b.opening+n(o.qty)||1);b.opening+=n(o.qty);
+    pushLot(b,n(o.qty),n(o.quality),o.city);b.opening+=n(o.qty);
     b.lost_spoilage+=n(o.qty)*clamp(g.storageLoss/(1+cityById.get(o.city)!.storage));}
   const workforce=new Map(cities.map(c=>[c.id,computeWorkforceBreakdown([{
     population_peasants:c.classes.peasants,population_burghers:c.classes.burghers,
@@ -226,12 +249,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const saleUnit=reason==='production_input'?unit:destinationWTP;
     const qty=Math.min(Math.max(0,available(b)-keep),wanted/(1-p.loss),p.capacity)*targetPolicy.imports;
     if(qty<C.minLot)return 0;const delivered=qty*(1-p.loss),before=available(db);
-    b.exported+=qty;db.imported+=delivered;db.quality=(before*db.quality+delivered*b.quality)/(before+delivered);
+    void before;const drawn=drawLots(b,qty),shippedQuality=lotQuality(drawn,b.quality);
+    for(const x of drawn)pushLot(db,x.qty*delivered/qty,x.quality,x.origin); // lots keep origin + quality in transit
+    b.exported+=qty;db.imported+=delivered;requality(b);
     // Lost transport quantity is recorded at destination as import+loss for conservation.
     db.imported+=qty-delivered;db.lost_spoilage+=qty-delivered;
     for(const e of p.edges)reserved.set(e.id,(reserved.get(e.id)||0)+qty*Math.max(1,g.bulk));
     const tolls=qty*(p.tolls+saleUnit*targetPolicy.tariff);
-    flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:b.quality,gross_value:delivered*saleUnit,
+    flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:shippedQuality,gross_value:delivered*saleUnit,
       transport_cost:qty*transport,tolls,net_value:delivered*saleUnit-qty*transport-tolls,reason:branded&&reason==='household_consumption'?'famous_good_demand':reason,
       path:p.cells,edges:p.edges.map(e=>e.id),via_hubs:via.filter(id=>p.cells.includes(cityById.get(id)?.cell||'')),famous:branded?key(src.id,g.key):null,
       source_price:sourcePrice,destination_price:destinationPrice,destination_wtp:destinationWTP,expected_margin:margin*delivered});return delivered;
@@ -513,11 +538,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       for(const [edge,load] of loadByEdge){const e=snapshot.edges.find(e=>e.id===edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
       if(qty<=C.epsilon){if(desired<=C.epsilon){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,...labor,inputs,
         blocked:jobs>C.epsilon&&staffed<=C.epsilon?'no_workers':'capacity_labor_or_staffing'});pending.delete(id);}continue;}
-      let inputValue=0,minQuality=Infinity;
+      let inputValue=0,minQuality=Infinity;const inputLots:NonNullable<typeof diagnostics[number]['input_lots']>=[];
       for(const i of p.recipe.inputs){const b=stock(c.id,i.good),amount=qty*i.qty/p.recipe.qty;
         const shipped=amount/(1-(inputPaths.get(i.good)?.loss||0));
-        b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;minQuality=Math.min(minQuality,b.quality);
-        inputValue+=shipped*goodByKey.get(i.good)!.price*(1+b.quality*C.qualityPremium);}
+        // Quality of the batch actually drawn (FIFO lots), not the average of all city stock.
+        const drawn=drawLots(b,shipped),usedQuality=lotQuality(drawn,b.quality),origins:Record<string,number>={};
+        for(const x of drawn)origins[x.origin]=(origins[x.origin]||0)+x.qty;
+        inputLots.push({good:i.good,qty:shipped,quality:usedQuality,origins});
+        b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;requality(b);minQuality=Math.min(minQuality,usedQuality);
+        inputValue+=shipped*goodByKey.get(i.good)!.price*(1+usedQuality*C.qualityPremium);}
       const quality=outputQuality({recipeBonus:p.recipe.quality,craft:p.craft??c.guild,source:p.source,
         minInputQuality:Number.isFinite(minQuality)?minQuality:0,craftFactor:IDEOLOGIES[c.ideology]?.quality||1});
       const b=stock(c.id,g.key);add(b,qty,quality,p.channel,p.source);b.intermediate_value+=inputValue;
@@ -525,7 +554,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       for(const [edge,load] of loadByEdge)reserved.set(edge,(reserved.get(edge)||0)+qty*load);
       const total=(realized.get(id)||0)+qty;realized.set(id,total);
       const diagnostic={producer:id,good:g.key,capacity:p.capacity,realized:total,factors:{...factors,inputs:target?total/target:0},
-        ...labor,inputs,bottleneck:total>=target-C.epsilon?null:bottleneck,delivery_path:delivery?.cells,blocked:null};
+        ...labor,inputs,input_lots:inputLots,bottleneck:total>=target-C.epsilon?null:bottleneck,delivery_path:delivery?.cells,blocked:null};
       const index=diagnostics.findIndex(d=>d.producer===id);
       if(index>=0)diagnostics[index]=diagnostic;else diagnostics.push(diagnostic);
       if(total>=target-C.epsilon)pending.delete(id);
