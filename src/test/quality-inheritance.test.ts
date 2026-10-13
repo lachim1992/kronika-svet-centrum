@@ -70,3 +70,49 @@ describe('regression: mixed grain qualities through the real solver', () => {
   });
 });
 
+
+describe('quality lots: consumed batch quality and origin, not city average', () => {
+  const H = PRODUCT_MARKET.qualityInheritanceHeadroom;
+  const total = (r: ReturnType<typeof resolveGoodsEconomy>) => { for (const b of r.balances)
+    expect(b.opening + b.produced_household + b.produced_node + b.produced_facility + b.produced_district + b.imported)
+      .toBeCloseTo(b.exported + b.consumed_household + b.consumed_state + b.consumed_as_input + b.stored + b.capex + b.lost_spoilage, 7); };
+
+  it('mill uses the high-quality opening lot first; flour follows that batch, not the mixed average', () => {
+    // 10 grain of q3 in stock + harvested q0 grain. Average would be well below 3; the mill (capacity 10 → draws ~10) uses the q3 lot.
+    const s = chain('open_merchant', 0, 3);
+    s.producers = s.producers.map((p) => p.id === 'mill_grain' ? { ...p, capacity: 10 } : p.id === 'bake_staples' ? { ...p, capacity: 0 } : p);
+    s.opening = [{ city: 'c', good: 'raw_grain', qty: 10, quality: 3 }];
+    const r = resolveGoodsEconomy(s);
+    const mill = r.diagnostics.find((d) => d.producer === 'mill_grain')!;
+    const lot = mill.input_lots!.find((l) => l.good === 'raw_grain')!;
+    expect(lot.quality).toBeGreaterThan(2.9);
+    expect(lot.origins.c).toBeCloseTo(lot.qty, 9);
+    const grainAvg = r.balances.find((b) => b.good === 'raw_grain')!;
+    const flour = r.balances.find((b) => b.good === 'flour')!;
+    expect(flour.quality).toBeGreaterThan(grainAvg.quality); // old average-based rule would cap flour at avg+H
+    expect(flour.quality).toBeLessThanOrEqual(Math.min(lot.quality + H, PRODUCT_MARKET.maxQuality) + 1e-9);
+    total(r);
+  });
+
+  it('imported grain keeps its origin and quality into the mill and downstream bread', () => {
+    const a: City = { ...city('open_merchant', 0), id: 'a', name: 'a', cell: '0,0' };
+    const b: City = { ...city('open_merchant', 3), id: 'b', name: 'b', cell: '1,0', population: 10, classes: { peasants: 10 } };
+    const s: Snapshot = { turn: 1, cities: [a, b], fame: [], opening: [{ city: 'a', good: 'raw_grain', qty: 400, quality: 2 }],
+      edges: [{ id: 'r', from: '0,0', to: '1,0', cost: 1, capacity: 500, mode: 'road', risk: 0, toll: 0, border: 0 }],
+      goods: [good('raw_grain', 'staple_food', 1), good('flour', 'staple_food', 2), good('baked_staples', 'staple_food', 4)],
+      producers: [{ ...producer('mill_grain', 'flour', [{ good: 'raw_grain', qty: 1 }], 3), city: 'b', capacity: 10 },
+        { ...producer('bake_staples', 'baked_staples', [{ good: 'flour', qty: 1 }], 3), city: 'b', capacity: 5 }] };
+    const r = resolveGoodsEconomy(s);
+    const lot = r.diagnostics.find((d) => d.producer === 'mill_grain')!.input_lots?.find((l) => l.good === 'raw_grain');
+    expect(lot, 'mill must run on imported grain').toBeTruthy();
+    expect(lot!.origins.a).toBeCloseTo(lot!.qty, 9);
+    expect(lot!.quality).toBeCloseTo(2, 9);
+    const flow = r.flows.find((f) => f.good === 'raw_grain' && f.destination === 'b')!;
+    expect(flow.quality).toBeCloseTo(2, 9);
+    const flour = r.balances.find((x) => x.city === 'b' && x.good === 'flour')!;
+    const bread = r.balances.find((x) => x.city === 'b' && x.good === 'baked_staples')!;
+    expect(flour.quality).toBeLessThanOrEqual(Math.min(2 + H, PRODUCT_MARKET.maxQuality) + 1e-9);
+    expect(bread.quality).toBeLessThanOrEqual(Math.min(flour.quality + H, PRODUCT_MARKET.maxQuality) + 1e-9);
+    total(r);
+  });
+});
