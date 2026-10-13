@@ -49,10 +49,11 @@ describe('regression: mixed grain qualities through the real solver', () => {
       const s = chain('guild_chartered', grainCraft, 3);
       s.opening = [{ city: 'c', good: 'raw_grain', qty: 20, quality: 3 }]; // mix a high-quality lot in
       const r = resolveGoodsEconomy(s);
+      // Cap applies to the batch actually consumed (input_lots), not the city's remaining average.
+      const used = (p: string, g: string) => r.diagnostics.find((d) => d.producer === p)!.input_lots!.find((l) => l.good === g)!.quality;
       const qq = (g: string) => r.balances.find((b) => b.good === g)!.quality;
-      const grain = qq('raw_grain'), flour = qq('flour'), bread = qq('baked_staples');
-      expect(flour).toBeLessThanOrEqual(Math.min(grain + H, PRODUCT_MARKET.maxQuality) + 1e-9);
-      expect(bread).toBeLessThanOrEqual(Math.min(flour + H, PRODUCT_MARKET.maxQuality) + 1e-9);
+      expect(qq('flour')).toBeLessThanOrEqual(Math.min(used('mill_grain', 'raw_grain') + H, PRODUCT_MARKET.maxQuality) + 1e-9);
+      expect(qq('baked_staples')).toBeLessThanOrEqual(Math.min(used('bake_staples', 'flour') + H, PRODUCT_MARKET.maxQuality) + 1e-9);
     });
   }
 
