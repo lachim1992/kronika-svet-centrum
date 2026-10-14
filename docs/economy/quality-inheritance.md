@@ -47,3 +47,10 @@ Full suite: 554 passed, 3 skipped; app and edge type checks clean. Not deployed.
 - Household/state consumption does not choose by quality; `recipe.minQuality` still tests the remaining average before drawing.
 - Per-recipe headroom, land-based source quality and recipe-specific input weights are still open.
 Next task: persist lot composition (quality + origin) into the next turn's opening stock.
+
+## 2026-10-14 — lots persist across turns
+- `Balance.stored_lots` (closing batch composition of `stored`; capex/spoilage drain proportionally) → `economyAdapter` passes it as `Opening.lots` of the next turn. Same ledger row (`economy_turn_ledgers.result.balances`), no parallel ledger.
+- Opening lots are accepted only if they sum to `qty`; otherwise one lot at the average quality (no invented units). Old ledgers without lots fall back the same way.
+- Tests: two-turn material balance + carried origin/quality into the mill; mismatch fallback. Full suite 556 passed / 3 skipped.
+- Remaining gaps: inventory bootstrap (`city_inventory`) has no origin; FIFO only (no quality/cost choice); minQuality still checks city average; per-recipe headroom, land-based raw quality, recipe input weights open; not deployed.
+- Next task: deploy compute-trade-flows/process-turn and verify `stored_lots` appears in a TEST02 ledger after one committed turn.
