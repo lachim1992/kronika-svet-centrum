@@ -160,8 +160,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   for(const o of snapshot.opening){const b=stock(o.city,o.good),g=goodByKey.get(o.good)!;
     const ol=(o.lots||[]).filter(x=>n(x.qty)>0),olq=ol.reduce((s,x)=>s+n(x.qty),0);
     // Carried lots are trusted only when they reconcile with the canonical quantity; else one lot.
-    if(ol.length&&Math.abs(olq-n(o.qty))<=1e-6*Math.max(1,n(o.qty)))for(const x of ol)pushLot(b,n(x.qty)*n(o.qty)/olq,n(x.quality),x.origin||o.city);
-    else pushLot(b,n(o.qty),n(o.quality),o.city);b.opening+=n(o.qty);
+    if(ol.length&&Math.abs(olq-n(o.qty))<=1e-6*Math.max(1,n(o.qty)))for(const x of ol){const q=n(x.qty)*n(o.qty)/olq;pushLot(b,q,n(x.quality),x.origin||o.city);b.opening+=q;}
+    else{pushLot(b,n(o.qty),n(o.quality),o.city);b.opening+=n(o.qty);}
     b.lost_spoilage+=n(o.qty)*clamp(g.storageLoss/(1+cityById.get(o.city)!.storage));}
   const workforce=new Map(cities.map(c=>[c.id,computeWorkforceBreakdown([{
     population_peasants:c.classes.peasants,population_burghers:c.classes.burghers,
