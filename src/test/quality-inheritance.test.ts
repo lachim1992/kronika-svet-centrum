@@ -117,3 +117,38 @@ describe('quality lots: consumed batch quality and origin, not city average', ()
     total(r);
   });
 });
+
+describe('quality lots persist across turns via opening.lots', () => {
+  it('two-turn: stored lots carry qty, quality and origin; material balance closes both turns', () => {
+    const a: City = { ...city('open_merchant', 0), id: 'a', name: 'a', cell: '0,0', population: 10, classes: { peasants: 10 } };
+    const s1: Snapshot = { turn: 1, cities: [a], fame: [], edges: [],
+      opening: [{ city: 'a', good: 'raw_grain', qty: 5, quality: 1.5, lots: [{ qty: 3, quality: 3, origin: 'b' }, { qty: 2, quality: 0, origin: 'a' }] }],
+      goods: [good('raw_grain', 'staple_food', 1)], producers: [] };
+    const r1 = resolveGoodsEconomy(s1);
+    const b1 = r1.balances.find((x) => x.good === 'raw_grain')!;
+    const sum = (l: { qty: number }[]) => l.reduce((t, x) => t + x.qty, 0);
+    expect(sum(b1.stored_lots!)).toBeCloseTo(b1.stored, 9);
+    expect(b1.stored_lots!.some((l) => l.origin === 'b' && l.quality === 3)).toBe(true);
+    // Turn 2: opening built exactly as economyAdapter does from the prior ledger.
+    const s2: Snapshot = { ...s1, turn: 2, opening: r1.balances.map((b) => ({ city: b.city, good: b.good, qty: b.stored, quality: b.quality, lots: b.stored_lots })),
+      producers: [{ ...producer('mill_grain', 'flour', [{ good: 'raw_grain', qty: 1 }], 3), city: 'a', capacity: 1 }],
+      goods: [good('raw_grain', 'staple_food', 1), good('flour', 'staple_food', 2)] };
+    const r2 = resolveGoodsEconomy(s2);
+    const lot = r2.diagnostics.find((d) => d.producer === 'mill_grain')!.input_lots!.find((l) => l.good === 'raw_grain')!;
+    expect(lot.origins.b).toBeCloseTo(lot.qty, 9); // FIFO draws the carried imported q3 batch first
+    expect(lot.quality).toBeCloseTo(3, 9);
+    const g2 = r2.balances.find((x) => x.good === 'raw_grain')!;
+    expect(g2.opening).toBeCloseTo(b1.stored, 9);
+    for (const r of [r1, r2]) for (const b of r.balances)
+      expect(b.opening + b.produced_household + b.produced_node + b.produced_facility + b.produced_district + b.imported)
+        .toBeCloseTo(b.exported + b.consumed_household + b.consumed_state + b.consumed_as_input + b.stored + b.capex + b.lost_spoilage, 7);
+  });
+  it('mismatched carried lots fall back to a single lot (no invented units)', () => {
+    const a: City = { ...city('open_merchant', 0), id: 'a', name: 'a', population: 10, classes: { peasants: 10 } };
+    const r = resolveGoodsEconomy({ turn: 1, cities: [a], fame: [], edges: [], producers: [], goods: [good('raw_grain', 'staple_food', 1)],
+      opening: [{ city: 'a', good: 'raw_grain', qty: 5, quality: 1, lots: [{ qty: 50, quality: 3, origin: 'x' }] }] });
+    const b = r.balances[0];
+    expect(b.opening).toBe(5);
+    expect(b.stored_lots!.every((l) => l.origin === 'a')).toBe(true);
+  });
+});
