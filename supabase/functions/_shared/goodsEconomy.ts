@@ -55,7 +55,9 @@ export interface CityLabor { city: string; population: number; economically_acti
 export interface Edge { id: string; from: string; to: string; cost: number; capacity: number;
   mode: 'road'|'river'|'sea'|'spur'; risk: number; toll: number; border: number }
 export interface Fame { city: string; good: string; name: string; streak: number; fame: number; quality: number; created: number|null; turn: number }
-export interface Opening { city: string; good: string; qty: number; quality: number }
+export interface OpeningLot { qty: number; quality: number; origin: string }
+/** `lots` (optional) carries the previous turn's closing batch composition; must sum to qty. */
+export interface Opening { city: string; good: string; qty: number; quality: number; lots?: OpeningLot[] }
 export interface Snapshot { turn: number; goods: Good[]; cities: City[]; producers: Producer[]; edges: Edge[]; opening: Opening[]; fame: Fame[]; blockedTrade?: [string,string][];
   /** Last COMMITTED turn's consumption share per city × good (read-only history, never written by refresh). */
   familiarity?: Record<string, Record<string, number>>;
@@ -68,6 +70,8 @@ export interface Snapshot { turn: number; goods: Good[]; cities: City[]; produce
 export interface Balance { city: string; good: string; opening: number; produced_household: number; produced_node: number;
   produced_facility: number; produced_district: number; consumed_household: number; consumed_state: number;
   consumed_as_input: number; imported: number; exported: number; stored: number; lost_spoilage: number;
+  /** Closing batch composition of `stored` (sums to stored); next turn's Opening.lots. */
+  stored_lots?: OpeningLot[];
   unmet_demand: number; demand: number; quality: number; gross_output_value: number; intermediate_value: number;
   extraction_value: number; capex: number }
 export interface Flow { good: string; source: string; destination: string; qty: number; delivered: number; quality: number;
@@ -154,7 +158,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const priceOf=(city:string,good:string)=>priceDetail(city,good).local_price;
 
   for(const o of snapshot.opening){const b=stock(o.city,o.good),g=goodByKey.get(o.good)!;
-    pushLot(b,n(o.qty),n(o.quality),o.city);b.opening+=n(o.qty);
+    const ol=(o.lots||[]).filter(x=>n(x.qty)>0),olq=ol.reduce((s,x)=>s+n(x.qty),0);
+    // Carried lots are trusted only when they reconcile with the canonical quantity; else one lot.
+    if(ol.length&&Math.abs(olq-n(o.qty))<=1e-6*Math.max(1,n(o.qty)))for(const x of ol)pushLot(b,n(x.qty)*n(o.qty)/olq,n(x.quality),x.origin||o.city);
+    else pushLot(b,n(o.qty),n(o.quality),o.city);b.opening+=n(o.qty);
     b.lost_spoilage+=n(o.qty)*clamp(g.storageLoss/(1+cityById.get(o.city)!.storage));}
   const workforce=new Map(cities.map(c=>[c.id,computeWorkforceBreakdown([{
     population_peasants:c.classes.peasants,population_burghers:c.classes.burghers,
@@ -659,6 +666,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     b.unmet_demand=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     b.capex=(C.capexGoods as readonly string[]).includes(g.key)?Math.max(0,available(b)-b.demand*C.reserveTurns):0;
     const remaining=available(b)-b.capex;b.stored=g.storable?Math.min(remaining,storage/Math.max(1,g.bulk)):0;storage-=b.stored*Math.max(1,g.bulk);
+    { const l=syncLots(b),avail=available(b),f=avail>C.epsilon?b.stored/avail:0; // capex/spoilage drain proportionally
+      b.stored_lots=b.stored>0?l.map(x=>({qty:x.qty*f,quality:x.quality,origin:x.origin})).filter(x=>x.qty>1e-12):[]; }
     b.lost_spoilage+=Math.max(0,remaining-b.stored);
     const residual=b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage-b.stored-b.capex;
     if(Math.abs(residual)>1e-6)throw Error(`Goods conservation failed ${key(c.id,g.key)}: ${residual}`);

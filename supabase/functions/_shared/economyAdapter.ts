@@ -342,7 +342,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     }
     for(let i=producers.length-1;i>=0;i--)if(!(producers[i].allocation>0))producers.splice(i,1);
   }
-  let opening=prior?.balances?.filter((b:any)=>cityMap.has(b.city)).map((b:any)=>({city:b.city,good:b.good,qty:b.stored,quality:b.quality}))??current?.result?.opening??current?.opening;
+  let opening=prior?.balances?.filter((b:any)=>cityMap.has(b.city)).map((b:any)=>({city:b.city,good:b.good,qty:b.stored,quality:b.quality,lots:b.stored_lots}))??current?.result?.opening??current?.opening;
   if(!opening){
     opening=[];
     // First adoption preserves existing inventories. Subsequent refreshes reuse
