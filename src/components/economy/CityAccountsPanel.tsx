@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Badge } from "@/components/ui/badge";
+import EconomyFieldList from "./EconomyFieldList";
+import { BASIS_LABEL } from "@/lib/economyFieldContract";
 
 /**
  * Read-only view of the canonical city accounts and product choice written by the goods engine.
@@ -44,8 +46,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
         <CardTitle className="text-sm flex items-center gap-2">
           Městské účty
           <InfoTip>
-            HDP města = přidaná hodnota (výstup − vstupy). Příjem domácností je odhad: podíl práce a místního
-            kapitálu z HDP minus daně. Kupní síla = utracená část příjmu. Cenový index = cena základního koše
+            HDP města = přidaná hodnota (výstup − vstupy). Příjem z práce = mzdy skutečně vyplacené při minulé uzávěrce tahu, nebo odhad z HDP, dokud vyúčtování neproběhlo (viz sloupec Základ). Příjem z majetku je zatím odhad. Obojí minus daně. Kupní síla = utracená část příjmu. Cenový index = cena základního koše
             v místních cenách vůči základním cenám. Mezera dostupnosti = kolik peněz chybí na základní koš,
             i když zboží fyzicky je. Rozmanitost jen zvyšuje spokojenost, nikdy nevytváří hlad.
             Městský kapitál je zásoba produktivního majetku města — není to kupní síla domácností ani pokladna. Soukromé bohatství domácností se zatím nemodeluje.
@@ -58,7 +59,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
           <TableHeader>
             <TableRow>
               <TableHead>Město</TableHead><TableHead>HDP</TableHead><TableHead>Příjem po daních</TableHead>
-              <TableHead>Kupní síla</TableHead><TableHead>Základní koš</TableHead><TableHead>Cenový index</TableHead>
+              <TableHead>Kupní síla</TableHead><TableHead title="Zda příjem z práce vychází ze skutečně vyplacených mezd, nebo z odhadu">Základ</TableHead><TableHead>Základní koš</TableHead><TableHead>Cenový index</TableHead>
               <TableHead>Reálná kupní síla</TableHead><TableHead>Volný rozpočet</TableHead>
               <TableHead>Pokrytí potřeb</TableHead><TableHead>Mezera dostupnosti</TableHead><TableHead>Rozmanitost jídla</TableHead><TableHead>Prosperita</TableHead><TableHead title="Akumulovaná zásoba produktivního majetku města (odhad). NENÍ kupní síla domácností a NENÍ státní pokladna.">Městský kapitál</TableHead>
             </TableRow>
@@ -71,6 +72,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
                   <TableCell>{f(a.city_gdp)}</TableCell>
                   <TableCell>{f(a.disposable_income)}</TableCell>
                   <TableCell>{f(a.purchasing_power)}</TableCell>
+                  <TableCell><Badge variant={a.labor_income_basis === 'settled_wages' ? 'secondary' : 'outline'} className="text-[10px]">{a.labor_income_basis ? BASIS_LABEL[a.labor_income_basis] ?? a.labor_income_basis : 'chybí'}</Badge></TableCell>
                   <TableCell>{f(a.basic_basket_cost)}</TableCell>
                   <TableCell>{f(a.price_index, 2)}</TableCell>
                   <TableCell>{f(a.real_purchasing_power)}</TableCell>
@@ -83,7 +85,7 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
                 </TableRow>
                 {open === city.id && (
                   <TableRow key={`${city.id}-d`}>
-                    <TableCell colSpan={13} className="text-xs bg-muted/30">
+                    <TableCell colSpan={14} className="text-xs bg-muted/30">
                       <div className="mb-1 text-muted-foreground">
                         Příčiny: daně {f(a.household_taxes)} · ceny index {f(a.price_index, 2)} · přání volných nákupů {f(a.discretionary_wish)},
                         zaplaceno {pct(a.discretionary_ratio)}{a.discretionary_cap ? ` · strop rozpočtu: plán ${f(a.discretionary_cap.planned_spend)} → ${pct(a.discretionary_cap.scale)}${a.discretionary_cap.mode === 'bootstrap_unconstrained' ? ' (bez omezení, první výpočet)' : ''}` : ''}
@@ -94,6 +96,8 @@ export default function CityAccountsPanel({ sessionId, currentTurn, cities, curr
                         příjem práce {f(a.labor_income)} · příjem z majetku {f(a.capital_income)} · dostupnost {pct(a.affordability)}
                         <span className="block text-muted-foreground">HDP = přidaná hodnota ve stálých cenách; kupní síla = peněžní tok (× globální faktor {f(a.income_unit_factor, 3)}); dostupnost = kupní síla / cena základního koše.</span>
                       </div>
+                      <div className="font-medium mb-1">Mzdy a příjmy domácností</div>
+                      <div className="mb-2"><EconomyFieldList row={a} /></div>
                       <div className="font-medium mb-1">Proč lidé volí dané zboží (násobky, 1 = neutrální)</div>
                       <div className="grid grid-cols-12 gap-1">
                         <span>zboží</span><span>podkoš</span><span>podíl podkoše</span><span>v podkoši</span><span>podíl</span><span>obliba</span><span>region</span><span>zvyk</span><span>novost</span><span>kvalita</span><span>věhlas</span><span>cena</span>
