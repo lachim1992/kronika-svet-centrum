@@ -104,3 +104,29 @@ was wrong. Risk noted: craft_jewelry needs raw_ore ≥ 2, but source quality com
 
 ## Next task
 A/B/C classification of inputs in the existing production catalogue (contract field + audit test), no new ledger.
+
+## Checkpoint: A/B/C input classes (after a0f29f5)
+Verified first: a0f29f5 contained only the eligible-lot supplier ranking + docs (2 tests); no A/B/C existed
+(only city-level tool coverage/wear in goodsEconomy), so nothing was duplicated.
+- New contract `_shared/inputKinds.ts`: `kind` = material (A, default) | factor (B) | operating (C), `wear`,
+  `factorFloor` 0.6, `defaultWear` 0.05, `consumedPerBatch`, `factorMultiplier`, `parseInputItem`.
+- goodsEconomy: A unchanged. C consumed and gating like A, but excluded from minQuality and the quality
+  ceiling. B: requirement = capacity × allocation × qty/batch, claimed per city/good (no shared counting),
+  saturating productivity `floor + (1−floor)·coverage` in `factors.capital`; only `wear × qty` per batch is
+  drawn from lots (`input_lots[].kind='factor'`) and valued in intermediate consumption. Producers with an
+  explicit tools factor are excluded from `toolWearOf`/`toolFactor` (no double charge).
+- Adapter (AUTO expected cost, availability) and Dev Mode BOM use `consumedPerBatch`; B factors never mark
+  a recipe unavailable or block catalogue reachability.
+- Catalogue + DB (migration 0004): `mill_grain` = A raw_grain 3, B metalwork_tools 1 (wear 0.05).
+  bake_staples is NOT given a C fuel input in the live catalogue yet (would hard-gate staple bread before a
+  fuel-supply audit); C is verified in solver tests only.
+- Tests `src/test/input-kinds.test.ts` (6): wear-only consumption + balance + cost line; floor/saturation/half
+  coverage; two mills cannot share tools; fuel consumed per batch and binding; q0 fuel neither caps bread
+  quality nor is blocked by minQuality 2; catalogue contract/audit/reachability.
+- Full vitest 570 passed / 0 failed / 3 skipped; deno check of goodsEconomy, economyAdapter, process-turn,
+  economy-dev-snapshot, compute-trade-flows, refresh-economy clean. Pre-existing unrelated type errors when
+  checking all `_shared/*.ts` at once: buildCatalog.ts:245, terrain.ts:620. Not deployed.
+
+### Next task
+Fuel-supply audit (peat/charcoal reachability per start region), then add C fuel to bake_staples/smelting
+via migration; classify remaining recipes (pottery/tools as B where appropriate) one chain at a time.
