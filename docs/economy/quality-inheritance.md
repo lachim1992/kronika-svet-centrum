@@ -54,3 +54,10 @@ Next task: persist lot composition (quality + origin) into the next turn's openi
 - Tests: two-turn material balance + carried origin/quality into the mill; mismatch fallback. Full suite 556 passed / 3 skipped.
 - Remaining gaps: inventory bootstrap (`city_inventory`) has no origin; FIFO only (no quality/cost choice); minQuality still checks city average; per-recipe headroom, land-based raw quality, recipe input weights open; not deployed.
 - Next task: deploy compute-trade-flows/process-turn and verify `stored_lots` appears in a TEST02 ledger after one committed turn.
+
+## 2026-10-15 — minQuality checks the allocated lots
+- Audit of 580a6c8: the two-turn test passes. Storage cap, capex and spoilage drain lots proportionally, so `stored_lots` sums to `stored` and keeps quality/origin shares (new storage-cap test). No bug found.
+- `recipe.minQuality` no longer compares the city average. Usable input = lots with quality ≥ minQuality (`eligibleQty`). The producer draws FIFO **only from those lots** (`drawLots(..., minQ)`). Lower-quality lots stay in stock, so nothing is consumed twice and no new ledger is added. The 0..3 scale is unchanged.
+- Tests: q0+q3 mix with minQuality 2 (average 1.5) mills only the q3 batch; with only q0/q1 stock and minQuality 2, nothing is produced and the grain is untouched.
+- Remaining gaps: remote suppliers are still pre-filtered by their average quality, and `transfer` ships FIFO without a quality filter. Imported low-quality lots arrive, but they are never used for that recipe. Every catalogue recipe still has minQuality = 0. The `city_inventory` bootstrap has no origin. Not deployed.
+- Next task: quality-filtered remote sourcing (supplier eligibility + transfer by minQuality).
