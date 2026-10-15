@@ -231,3 +231,42 @@ describe('minQuality across two turns (carried lots)', () => {
         .toBeCloseTo(b.exported + b.consumed_household + b.consumed_state + b.consumed_as_input + b.stored + b.capex + b.lost_spoilage, 7);
   });
 });
+
+describe('quality-filtered remote sourcing (two cities)', () => {
+  const H = PRODUCT_MARKET.qualityInheritanceHeadroom;
+  const run = (lots: { qty: number; quality: number; origin: string }[]) => {
+    const a: City = { ...city('open_merchant', 0), id: 'a', name: 'a', cell: '0,0', population: 10, classes: { peasants: 10 } };
+    const b: City = { ...city('open_merchant', 3), id: 'b', name: 'b', cell: '1,0', population: 10, classes: { peasants: 10 } };
+    const mill = { ...producer('mill_grain', 'flour', [{ good: 'raw_grain', qty: 1 }], 3), city: 'b', capacity: 10 };
+    mill.recipe = { ...mill.recipe, minQuality: 2 };
+    const qty = lots.reduce((t, l) => t + l.qty, 0);
+    return resolveGoodsEconomy({ turn: 1, cities: [a, b], fame: [], producers: [mill],
+      opening: [{ city: 'a', good: 'raw_grain', qty, quality: lots.reduce((t, l) => t + l.qty * l.quality, 0) / qty, lots }],
+      edges: [{ id: 'r', from: '0,0', to: '1,0', cost: 1, capacity: 500, mode: 'road', risk: 0, toll: 0, border: 0 }],
+      goods: [good('raw_grain', 'staple_food', 1), good('flour', 'staple_food', 2)] });
+  };
+  const closes = (r: ReturnType<typeof resolveGoodsEconomy>) => { for (const b of r.balances)
+    expect(b.opening + b.produced_household + b.produced_node + b.produced_facility + b.produced_district + b.imported)
+      .toBeCloseTo(b.exported + b.consumed_household + b.consumed_state + b.consumed_as_input + b.stored + b.capex + b.lost_spoilage, 7); };
+
+  it('supplier with q0 (oldest) + q3 lots ships only q3; mill consumes q3 of origin a', () => {
+    const r = run([{ qty: 200, quality: 0, origin: 'a' }, { qty: 200, quality: 3, origin: 'x' }]);
+    const flows = r.flows.filter((f) => f.good === 'raw_grain' && f.destination === 'b');
+    expect(flows.length).toBeGreaterThan(0);
+    for (const f of flows) expect(f.quality).toBeCloseTo(3, 9); // average 1.5 / FIFO q0 never shipped
+    const lot = r.diagnostics.find((d) => d.producer === 'mill_grain')!.input_lots!.find((l) => l.good === 'raw_grain')!;
+    expect(lot.quality).toBeCloseTo(3, 9);
+    expect(lot.origins.x).toBeCloseTo(lot.qty, 9); // provenance preserved through transit
+    const src = r.balances.find((x) => x.city === 'a' && x.good === 'raw_grain')!;
+    expect(src.exported).toBeLessThanOrEqual(200 + 1e-9);
+    expect(r.balances.find((x) => x.city === 'b' && x.good === 'flour')!.quality).toBeLessThanOrEqual(Math.min(3 + H, PRODUCT_MARKET.maxQuality) + 1e-9);
+    closes(r);
+  });
+
+  it('supplier holding only q0 lots is skipped: no import, no flour', () => {
+    const r = run([{ qty: 400, quality: 0, origin: 'a' }]);
+    expect(r.flows.filter((f) => f.good === 'raw_grain' && f.reason === 'production_input')).toHaveLength(0);
+    expect(r.balances.find((x) => x.city === 'b' && x.good === 'flour')?.produced_node ?? 0).toBe(0);
+    closes(r);
+  });
+});

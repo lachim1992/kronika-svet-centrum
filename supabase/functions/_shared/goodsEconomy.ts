@@ -229,7 +229,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const policy=IDEOLOGIES[src.ideology]||IDEOLOGIES.customary_local,targetPolicy=IDEOLOGIES[dst.ideology]||IDEOLOGIES.customary_local;
     return landedInputCost({sourcePrice:priceOf(src.id,g.key),transport:p.cost*policy.merchantFriction,tolls:p.tolls,
       tariffRate:targetPolicy.tariff,destinationPrice:priceOf(dst.id,g.key),risk:p.risk,loss:p.loss});};
-  const transfer=(src:City,dst:City,g:Good,wanted:number,reason:string,via:string[]=[],keep=0)=>{
+  const transfer=(src:City,dst:City,g:Good,wanted:number,reason:string,via:string[]=[],keep=0,minQ=-Infinity)=>{
     if(tradeBlocked(src,dst))return 0;
     if(src.id===dst.id||wanted<C.minLot)return 0;const p=route(src.cell,dst.cell,g);if(!p||p.loss>=1)return 0;
     const policy=IDEOLOGIES[src.ideology]||IDEOLOGIES.customary_local;
@@ -258,9 +258,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       ||(landed(src,dst,g)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple))return 0;
     // Realised sale value per delivered unit (gross trade — never GDP; only service margin is VA).
     const saleUnit=reason==='production_input'?unit:destinationWTP;
-    const qty=Math.min(Math.max(0,available(b)-keep),wanted/(1-p.loss),p.capacity)*targetPolicy.imports;
+    // Quality-filtered sourcing: only lots meeting the buyer recipe's minQuality may be shipped.
+    const shippable=minQ>0?Math.min(available(b)-keep,eligibleQty(b,minQ)):available(b)-keep;
+    const qty=Math.min(Math.max(0,shippable),wanted/(1-p.loss),p.capacity)*targetPolicy.imports;
     if(qty<C.minLot)return 0;const delivered=qty*(1-p.loss),before=available(db);
-    void before;const drawn=drawLots(b,qty),shippedQuality=lotQuality(drawn,b.quality);
+    void before;const drawn=drawLots(b,qty,minQ),shippedQuality=lotQuality(drawn,b.quality);
     for(const x of drawn)pushLot(db,x.qty*delivered/qty,x.quality,x.origin); // lots keep origin + quality in transit
     b.exported+=qty;db.imported+=delivered;requality(b);
     // Lost transport quantity is recorded at destination as import+loss for conservation.
@@ -535,8 +537,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         const acq=acquisition.get(id)||new Map();acquisition.set(id,acq);
         const rec=acq.get(i.good)||{qty:0,cost:0,suppliers:suppliers.slice(0,3).map(x=>({city:x.s.id,landed:x.cost!.landed,...x.cost})),chosen:null as string|null,parts:{source:0,transport:0,tolls:0,tariff:0,risk:0,loss_cost:0}};acq.set(i.good,rec);
         for(const {s,cost} of suppliers){if(missing<C.minLot)break;
-          const sb=stock(s.id,ig.key);if(sb.quality<p.recipe.minQuality)continue;
-          const got=transfer(s,c,ig,missing,'production_input',hubs.has(key(s.id,ig.key))?[hubs.get(key(s.id,ig.key))!]:[],Math.max(foodReserve(s,ig),sb.demand-sb.consumed_household-sb.consumed_state,0));
+          const sb=stock(s.id,ig.key);if(eligibleQty(sb,p.recipe.minQuality)<C.minLot)continue;
+          const got=transfer(s,c,ig,missing,'production_input',hubs.has(key(s.id,ig.key))?[hubs.get(key(s.id,ig.key))!]:[],Math.max(foodReserve(s,ig),sb.demand-sb.consumed_household-sb.consumed_state,0),p.recipe.minQuality);
           if(got>0){rec.qty+=got;rec.cost+=got*cost!.landed;rec.chosen ??= s.id;for(const part of LANDED_PARTS)rec.parts[part]+=got*cost![part];}
           missing-=got;}
         const supplied=Math.min(required,usable());
