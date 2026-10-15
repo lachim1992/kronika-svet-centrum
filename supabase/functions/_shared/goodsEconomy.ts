@@ -745,6 +745,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     (d as any).margin={...m,...account,unit_output_price:outPrice,unit_input_cost:d.realized>0?m.cost/d.realized:0,inputs:lines,
       diagnostic_version:3,order:p.order||'auto',loss_warning:m.margin<0,auto_flag:p.autoFlag??null,expected_margin_proxy:p.expectedMarginProxy??null};}
   // CITY ACCOUNTS (derived flows; no private wealth stock, no fiscal writes).
+  const marginOf=(cid:string)=>diagnostics.filter(d=>recipeOf.get(d.producer)?.city===cid).map(d=>(d as any).margin).filter(Boolean);
+  const producerPayroll=(cid:string)=>marginOf(cid).reduce((t:number,m:any)=>t+n(m.payroll),0);
+  const producerSurplus=(cid:string)=>marginOf(cid).reduce((t:number,m:any)=>t+n(m.operating_surplus),0);
   const accounts=cities.map(c=>{const own=goods.map(g=>({g,b:stock(c.id,g.key)}));
     const comp=(g:Good)=>componentsOf(c.id,g.key);
     const needs=own.filter(({g})=>basketSpec(g.basket)?.class==='critical_need'||basketSpec(g.basket)?.class==='basic_need')
@@ -767,7 +770,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const capital=capitalStockDelta({stock:n(c.capitalStock),valueAdded:acc.city_gdp,needCoverage:acc.physical_need_coverage,
       stability:c.stability,taxRate,devastated:!!c.devastated});
     return {...acc,goods_value_added:goodsVA,service_value_added:services.service_value_added,trade_services:services,
-      prosperity:prosperity.index,prosperity_parts:prosperity.parts,discretionary_cap:budgetCaps.get(c.id)??null,capital_stock:n(c.capitalStock),capital_candidate:capital};});
+      prosperity:prosperity.index,prosperity_parts:prosperity.parts,discretionary_cap:budgetCaps.get(c.id)??null,capital_stock:n(c.capitalStock),capital_candidate:capital,
+      // OBSERVED producer payroll (sum of margin.payroll) beside the labour-share proxy that still drives
+      // household income — reported for reconciliation, not yet the income source (balancing pending).
+      producer_payroll:producerPayroll(c.id),producer_operating_surplus:producerSurplus(c.id),wage_rate:lab?.wage_rate??null};});
   const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
     channels:{...channels},total:channelTotal(channels)}));
   return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),

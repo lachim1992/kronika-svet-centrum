@@ -134,3 +134,13 @@ describe('fully loaded producer account (wages + factor wear) in the canonical s
     expect(localWage({ supply: 100, vacancies: 50, unemployed: 0 })).toBeGreaterThan(localWage({ supply: 100, vacancies: 0, unemployed: 50 }));
   });
 });
+
+describe('city accounts report observed payroll (reconciliation)', () => {
+  it('producer_payroll equals the sum of producer payrolls in that city', () => {
+    const r = resolveGoodsEconomy(snap([MILL()], [{ city: 'c', good: 'raw_grain', qty: 300, quality: 0 }]));
+    const acc = (r as any).cityAccounts?.find((a: any) => a.city === 'c') ?? (r as any).accounts?.find((a: any) => a.city === 'c');
+    const pay = r.diagnostics.reduce((t, d) => t + ((d as any).margin?.payroll ?? 0), 0);
+    expect(acc.producer_payroll).toBeCloseTo(pay, 9);
+    expect(acc.producer_payroll).toBeGreaterThan(0);
+  });
+});
