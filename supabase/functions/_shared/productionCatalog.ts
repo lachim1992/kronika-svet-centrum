@@ -11,13 +11,15 @@
  * this file in sync; `auditProductionCatalog()` is executed by the test-suite.
  */
 
+import type { InputKind } from './inputKinds.ts';
 export type ProductionRole = 'source' | 'processing' | 'urban' | 'guild' | 'producer';
 
 export interface CatalogRecipe {
   key: string;
   role: ProductionRole;
   tags: string[];
-  inputs: { good: string; qty: number }[];
+  /** A/B/C class per input (inputKinds.ts); absent = 'material'. */
+  inputs: { good: string; qty: number; kind?: InputKind; wear?: number }[];
   output: string;
   qty: number;
 }
@@ -122,7 +124,9 @@ export const RECIPES: CatalogRecipe[] = [
   r('build_granary', 'producer', ['construction'], 'granary_storage', 2, [['lumber', 2]]),
   r('scribe_documents', 'producer', ['crafting'], 'scribed_documents', 1, [['raw_hide', 1]]),
   // processing (raw -> intermediate)
-  r('mill_grain', 'processing', ['milling'], 'flour', 2, [['raw_grain', 3]]),
+  // A: grain (BOM). B: metalwork_tools (millstone dressing/tools), 0.5 per capacity unit, 5 % wear per batch.
+  { ...r('mill_grain', 'processing', ['milling'], 'flour', 2, [['raw_grain', 3]]),
+    inputs: [{ good: 'raw_grain', qty: 3, kind: 'material' }, { good: 'metalwork_tools', qty: 1, kind: 'factor', wear: 0.05 }] },
   r('preserve_fish', 'processing', ['preserving'], 'preserved_food', 2, [['raw_fish', 2]]),
   r('preserve_food', 'processing', ['preserving'], 'preserved_food', 2, [['raw_meat', 1], ['raw_grain', 1]]),
   r('tan_leather', 'processing', ['tanning'], 'leather', 1, [['raw_hide', 2]]),
@@ -265,7 +269,8 @@ export function goodReachability(): ReachabilityEntry[] {
     for (const recipe of recipes) {
       const structures = producersOfRecipe(recipe.key);
       if (!structures.length) { best ??= { good, reachable: false, path: [recipe.key], blocker: `no_structure_for:${recipe.key}` }; continue; }
-      const inputs = recipe.inputs.map((i) => resolve(i.good, [...stack, good]));
+      // B factors are soft (productivity floor), so they never block reachability.
+      const inputs = recipe.inputs.filter((i) => i.kind !== 'factor').map((i) => resolve(i.good, [...stack, good]));
       const missing = inputs.find((i) => !i.reachable);
       if (missing) { best ??= { good, reachable: false, path: [recipe.key], blocker: missing.blocker }; continue; }
       const structure = structures[0];
@@ -287,6 +292,7 @@ export function auditProductionCatalog(): string[] {
     for (const input of recipe.inputs) {
       if (!goodByKey.has(input.good)) errors.push(`recipe ${recipe.key} consumes unknown good ${input.good}`);
     }
+    for (const input of recipe.inputs) if (input.kind === 'factor' && !(input.qty > 0)) errors.push(`recipe ${recipe.key} factor ${input.good} needs qty > 0`);
     if (recipe.role === 'source' && recipe.inputs.length) errors.push(`source recipe ${recipe.key} must have no inputs`);
     if (!producersOfRecipe(recipe.key).length) errors.push(`recipe ${recipe.key} has no producing structure`);
   }

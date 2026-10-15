@@ -6,6 +6,7 @@ import { IDEOLOGIES, BASKET_TIER, ECONOMY, normalizeLabor, INDUSTRIAL_INPUTS, HO
 import { buildManagementReport } from './management.ts';
 import { BASKET_KEYS, basketSpec, needBand, alertPriority, shortageEffect, basketSeverity } from './demandModel.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
+import { parseInputItem, consumedPerBatch, isFactor } from './inputKinds.ts';
 import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
 import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass } from './landedRoute.ts';
 import { autoAllocationDetail, craftsmanship, expectedInputCost, PRODUCT_MARKET } from './productMarket.ts';
@@ -129,7 +130,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     while(current&&!seen.has(current.id)){seen.add(current.id);if(current.session_id!==session||current.controlled_by!==node.controlled_by)return;
       const city=cityMap.get(current.city_id);if(city)return city.owner===node.controlled_by?city:undefined;current=nodeMap.get(current.parent_node_id);}};
     const recipe=(r:any)=>({key:r.recipe_key,good:r.output_good_key,qty:nonnegative(r.output_quantity),
-    inputs:(r.input_items||[]).map((i:any)=>({good:i.key??i.good_key,qty:nonnegative(i.qty??i.quantity)})),
+    inputs:(r.input_items||[]).map((i:any)=>parseInputItem(i,nonnegative)),
     labor:nonnegative(r.labor_cost),quality:nonnegative(r.quality_output_bonus),minQuality:nonnegative(r.min_quality_input)});
   const producers:Producer[]=[];
   /**
@@ -145,7 +146,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const priorPrice=new Map<string,number>((prior?.prices||[]).map((p:any)=>[`${p.city}::${p.good}`,nonnegative(p.local_price)]));
   const refPrice=(city:string,good:string)=>priorPrice.get(`${city}::${good}`)||nonnegative(goodMap.get(good)?.price);
   const marginRatio=(city:string,r:any,inputCost:(city:string,good:string)=>number=refPrice)=>{const out=nonnegative(r.output_quantity)*refPrice(city,r.output_good_key);
-    const cost=(r.input_items||[]).reduce((s:number,i:any)=>s+nonnegative(i.qty??i.quantity)*inputCost(city,i.key??i.good_key),0);
+    const cost=(r.input_items||[]).reduce((s:number,i:any)=>s+consumedPerBatch(parseInputItem(i,nonnegative))*inputCost(city,i.key??i.good_key),0); // B factors: wear only
     return out>0?(out-cost)/out:-1;};
   /** AUTO structures are finalised after the route graph exists (expected LANDED input cost). */
   const autoGroups:{city:string;candidates:any[];weights:number[];ids:string[]}[]=[];
@@ -333,7 +334,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const expected=(city:string,good:string)=>expectedDetail(city,good).cost;
     const byId=new Map(producers.map(p=>[p.id,p]));
     for(const g of autoGroups){
-      const avail=g.candidates.map(r=>(r.input_items||[]).every((x:any)=>expectedDetail(g.city,x.key??x.good_key).available));
+      const avail=g.candidates.map(r=>(r.input_items||[]).filter((x:any)=>!isFactor(x)).every((x:any)=>expectedDetail(g.city,x.key??x.good_key).available));
       const margins=g.candidates.map((r,i)=>avail[i]?marginRatio(g.city,r,expected):-1);
       const d=autoAllocationDetail(g.candidates.map((r,i)=>({key:String(i),necessity:g.weights[i],marginRatio:margins[i],essential:essential(r),inputsAvailable:avail[i]})));
       const w=g.candidates.map((_,i)=>d.weights[String(i)]),norm=Math.max(w.reduce((s,x)=>s+x,0),g.weights.reduce((s,x)=>s+x,0));
