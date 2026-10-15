@@ -504,9 +504,17 @@ export function localWage(l: { supply: number; vacancies: number; unemployed: nu
  * (compensation of employees), never intermediate consumption; operating surplus = VA − payroll.
  * Derived only: no fiscal write, no cash stock.
  */
-export function producerAccount(a: { realized: number; revenue: number; intermediate: number; capitalWear: number; employed: number; wage: number }) {
+export function producerAccount(a: { realized: number; revenue: number; intermediate: number; capitalWear: number; employed: number; wage: number;
+  material?: number; operating?: number }) {
   const payroll = pos(a.employed) * pos(a.wage), value_added = pos(a.revenue) - pos(a.intermediate);
-  const full_cost = pos(a.intermediate) + payroll, q = pos(a.realized);
-  return { payroll, wage_rate: pos(a.wage), capital_wear: pos(a.capitalWear), value_added, full_cost,
-    operating_surplus: value_added - payroll, unit_full_cost: q > 0 ? full_cost / q : null };
+  const full_cost = pos(a.intermediate) + payroll, q = pos(a.realized), per = (v: number) => q > 0 ? v / q : null;
+  // Cost build-up by input class. Payroll is IMPUTED (local wage × employed): no cash moves to
+  // households or out of any treasury, so it must never be reported as settled cashflow.
+  const material = pos(a.material ?? 0), operating = pos(a.operating ?? 0), factor_wear = pos(a.capitalWear);
+  return { payroll, wage_rate: pos(a.wage), capital_wear: factor_wear, value_added, full_cost,
+    operating_surplus: value_added - payroll, unit_full_cost: per(full_cost),
+    payroll_basis: 'imputed' as const, cash_settled: false as const,
+    labor_per_unit: per(pos(a.employed)),
+    cost_breakdown: { material, operating, factor_wear, payroll_imputed: payroll,
+      unit: { material: per(material), operating: per(operating), factor_wear: per(factor_wear), payroll_imputed: per(payroll) } } };
 }

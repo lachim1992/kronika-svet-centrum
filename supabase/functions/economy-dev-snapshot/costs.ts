@@ -32,7 +32,7 @@ export interface CostInputDiag { producer: string; realized: Num; potential_outp
 export interface CostInputPrice { city: string; good: string; base_price: Num; local_price: Num; scarcity_factor: Num; quality_factor: Num; fame_factor: Num; coverage: Num }
 export interface FameEntry { city: string; good: string; name?: string; fame?: Num; streak?: Num; created?: number | null; quality?: Num; turn?: number }
 
-export type Provenance = "producer_exact" | "city_level" | "planned_estimate" | "unavailable";
+export type Provenance = "producer_exact" | "city_level" | "planned_estimate" | "imputed" | "unavailable";
 export type ComponentStatus = "known" | "zero" | "unavailable";
 export interface CostComponent { key: string; label: string; per_unit: Num | null; status: ComponentStatus; provenance: Provenance; source_path: string; reason?: string }
 
@@ -117,7 +117,9 @@ export function buildCosts(a: { producers: CostInputProducer[]; diagnostics: Cos
       ...UNMODELLED.map((u): CostComponent => {
         // v3: payroll (local wage × employed) and explicit B-factor wear are stored per producer.
         if (active && u.key === "labor" && m?.payroll != null) { const v = n(m.payroll) / realized;
-          return { key: u.key, label: u.label, per_unit: v, status: v > EPS ? "known" : "zero", provenance: "producer_exact", source_path: "diagnostics[].margin.payroll" }; }
+          // Payroll is an imputed cost (wage × employed), NOT settled cash — never label it producer_exact.
+          return { key: u.key, label: u.label, per_unit: v, status: v > EPS ? "known" : "zero", provenance: "imputed", source_path: "diagnostics[].margin.payroll",
+            reason: "imputovaná mzda (místní mzda × zaměstnaní); neprobíhá peněžní výplata domácnostem" }; }
         if (active && u.key === "tool_wear" && m?.capital_wear != null && n(m.capital_wear) > EPS) { const v = n(m.capital_wear) / realized;
           return { key: u.key, label: u.label, per_unit: v, status: "known", provenance: "producer_exact", source_path: "diagnostics[].margin.capital_wear (již v místních vstupech)" }; }
         return { key: u.key, label: u.label, per_unit: null, status: "unavailable", provenance: "unavailable", source_path: "—", reason: u.reason }; }),
