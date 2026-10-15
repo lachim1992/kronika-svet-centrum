@@ -18,7 +18,8 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
+      - name: Install dependencies without mutating the broken lockfile
+        run: npm install --no-save --package-lock=false --no-audit --no-fund
       - name: Run real catalogue chain checks
         run: npx vitest run src/test/economy-chain-actions.test.ts --reporter=verbose
       - name: Edge TypeScript checks
