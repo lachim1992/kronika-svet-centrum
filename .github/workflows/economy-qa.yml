@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'src/test/economy-chain-actions.test.ts'
+      - 'src/test/economy-engine-actions.test.ts'
+      - 'supabase/functions/_shared/goodsEconomy.ts'
       - 'supabase/functions/_shared/productionCatalog.ts'
       - '.github/workflows/economy-qa.yml'
 permissions:
@@ -21,6 +23,6 @@ jobs:
       - name: Install dependencies without mutating the broken lockfile
         run: npm install --no-save --package-lock=false --no-audit --no-fund
       - name: Run real catalogue chain checks
-        run: npx vitest run src/test/economy-chain-actions.test.ts --reporter=verbose
+        run: npx vitest run src/test/economy-chain-actions.test.ts src/test/economy-engine-actions.test.ts --reporter=verbose
       - name: Edge TypeScript checks
         run: npm run typecheck:edge
