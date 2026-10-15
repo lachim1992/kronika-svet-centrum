@@ -34,4 +34,13 @@ describe('canonical wage settlement', () => {
     expect((again as any).replay).toBe(true);
     expect(again.cities[0].arrears_opening).toBe(0);
   });
+  it('reconciles imputed proxy labour income against settled cash without changing payment', () => {
+    const s = settleWages(4, [{ city: 'A', producer_payroll: 30, goods_value_added: 20, labor_income: 50 }, { city: 'B', producer_payroll: 5, goods_value_added: 10 }]);
+    conserved(s);
+    expect(s.cities[0]).toMatchObject({ wages_paid: 20, imputed_labor_income: 50, imputed_minus_settled: 30, settled_share_of_imputed: 0.4 });
+    expect(s.cities[1]).toMatchObject({ wages_paid: 5, imputed_labor_income: 0, settled_share_of_imputed: null });
+    expect(s.totals).toMatchObject({ imputed_labor_income: 50, imputed_minus_settled: 25 });
+    expect(s.household_income_basis).toBe('imputed_proxy');
+    expect(s.treasury_effect).toBe(0);
+  });
 });
