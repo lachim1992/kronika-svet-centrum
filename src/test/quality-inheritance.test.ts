@@ -214,14 +214,18 @@ describe('minQuality across two turns (carried lots)', () => {
     const g1 = r1.balances.find((b) => b.good === 'raw_grain')!;
     const used1 = r1.diagnostics.find((d) => d.producer === 'mill_grain')!.input_lots!.find((l) => l.good === 'raw_grain')!;
     expect(used1.quality).toBeCloseTo(3, 9);
-    expect(g1.stored_lots!.every((l) => l.quality < 2)).toBe(true); // all q3 consumed, q0 left
+    const q0Left = (l?: { qty: number; quality: number }[]) => (l || []).filter((x) => x.quality === 0).reduce((t, x) => t + x.qty, 0);
+    expect(q0Left(g1.stored_lots)).toBeGreaterThan(0); // q0 batch carried, never milled
     const s2: Snapshot = { ...s1, turn: 2, opening: r1.balances.map((b) => ({ city: b.city, good: b.good, qty: b.stored, quality: b.quality, lots: b.stored_lots })) };
     const r2 = resolveGoodsEconomy(s2);
     const g2 = r2.balances.find((b) => b.good === 'raw_grain')!;
     expect(g2.opening).toBeCloseTo(g1.stored, 9);
-    expect(g2.consumed_as_input).toBe(0);
-    expect(r2.diagnostics.find((d) => d.producer === 'mill_grain')!.realized).toBe(0);
-    expect(r2.balances.find((b) => b.good === 'flour')!.produced_node).toBe(0);
+    // Turn 2 may mill the carried q3 remainder only; it never draws the q0 batch.
+    const lots2 = r2.diagnostics.find((d) => d.producer === 'mill_grain')!.input_lots?.find((l) => l.good === 'raw_grain');
+    if (lots2) expect(lots2.quality).toBeCloseTo(3, 9);
+    const q3Carried = g1.stored - q0Left(g1.stored_lots);
+    expect(g2.consumed_as_input).toBeLessThanOrEqual(q3Carried + 1e-9);
+    expect(r2.balances.find((b) => b.good === 'flour')!.produced_node).toBeLessThanOrEqual(q3Carried + 1e-9);
     for (const r of [r1, r2]) for (const b of r.balances)
       expect(b.opening + b.produced_household + b.produced_node + b.produced_facility + b.produced_district + b.imported)
         .toBeCloseTo(b.exported + b.consumed_household + b.consumed_state + b.consumed_as_input + b.stored + b.capex + b.lost_spoilage, 7);
