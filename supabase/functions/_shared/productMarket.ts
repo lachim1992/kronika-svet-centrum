@@ -460,7 +460,10 @@ export function cityAccounts(i: CityAccountsInput) {
   const basicCostAtBase = i.needs.reduce((s, n) => s + pos(n.qty) * pos(n.basePrice), 0);
   const priceIndex = basicCostAtBase > 0 ? basicCost / basicCostAtBase : 1;
   const priceLevel = Math.max(0.05, priceIndex);
-  const laborIncome = gdp * M.laborShare * M.incomeUnitFactor;
+  // Authoritative: wages actually paid last committed turn (process-turn wage_settlement), same unit
+  // conversion as the proxy. Legacy fallback (first turn / no settlement): VA × laborShare proxy.
+  const settled = i.settledWageIncome == null ? null : pos(i.settledWageIncome);
+  const laborIncome = (settled ?? gdp * M.laborShare) * M.incomeUnitFactor;
   const capitalIncome = gdp * (1 - M.laborShare) * M.localCapitalShare * M.incomeUnitFactor;
   const grossIncome = laborIncome + capitalIncome;
   const taxes = grossIncome * clamp01(i.householdTaxRate);
@@ -488,8 +491,8 @@ export function cityAccounts(i: CityAccountsInput) {
     discretionary_wish: pos(i.discretionaryWish), discretionary_funded: discretionaryFunded,
     discretionary_ratio: discretionaryRatio, physical_need_coverage: physicalCoverage,
     affordability_gap: affordabilityGap, affordability, diversity,
-    proxy: true, private_wealth: null as null, labor_income_basis: 'imputed_proxy' as const,
-    settled_wage_income: i.settledWageIncome == null ? null : pos(i.settledWageIncome),
+    proxy: true, private_wealth: null as null, labor_income_basis: (settled == null ? 'imputed_proxy' : 'settled_wages') as 'imputed_proxy' | 'settled_wages',
+    settled_wage_income: settled,
     /** Settled cash wages ÷ unscaled proxy wage bill (VA × laborShare); 1 = proxy fully backed by paid wages. */
     settled_wage_ratio: i.settledWageIncome == null || gdp * M.laborShare <= 0 ? null : pos(i.settledWageIncome) / (gdp * M.laborShare),
   };
