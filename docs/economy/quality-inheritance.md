@@ -170,3 +170,10 @@ Household income from payroll + surplus distribution (balancing), money-flow clo
 building depreciation/overhead per producer, taxes per producer, C fuel in live catalogue (fuel supply first),
 B-factor imports, other recipes A/B/C, UI for players (Founder Safe Mode), AI use of producer accounts,
 0..100 quality migration, 200-turn simulation, TEST02 live verification.
+
+## Checkpoint 2026-10-15 — výrobní nákladová kalkulace A/B/C
+- Audit: canonical owner = `productMarket.producerAccount` volaný z `goodsEconomy` (margin, diagnostic_version 3). Žádná paralelní kalkulace.
+- `margin.cost_breakdown` = material (A) + operating (C) + factor_wear (B) = intermediate; `payroll_imputed`; jednotkové hodnoty; `labor_per_unit`.
+- Mzdy NEJSOU vypláceny: `payroll_basis:'imputed'`, `cash_settled:false`; Dev Mode ukazuje práci s provenance `imputed`, ne `producer_exact`.
+- Test: input-kinds.test.ts (součet tříd = intermediate, jednotkový full cost). 574 passed / 3 skipped.
+- Další krok: skutečné peněžní vyplácení mezd v process-turn (jediný fiskální writer) + příjmy domácností z mezd.
