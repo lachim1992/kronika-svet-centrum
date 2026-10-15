@@ -13,6 +13,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Loader2, RefreshCw, Copy, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Grid } from "./Grid";
+import EconomyFieldList from "@/components/economy/EconomyFieldList";
+import { fieldByKey, formatField } from "@/lib/economyFieldContract";
 import { Costs, Specific } from "./CostViews";
 import { fetchEconomyDevSnapshot, toCsv, type EconomyDevSnapshot, type Totals, type FlowRow } from "@/lib/economyDevSnapshot";
 
@@ -157,6 +159,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader><SheetTitle className="text-sm">{detail?.title}</SheetTitle></SheetHeader>
           <p className="text-[10px] text-muted-foreground mt-1">Zdroj: {detail?.source} · tah {s.meta.selectedTurn} · ledger {s.meta.ledgerCreatedAt}</p>
+          {(detail?.data as any)?.accounts && <div className="mt-2"><EconomyFieldList row={(detail?.data as any).accounts} showSource /></div>}
           <pre className="text-[10px] whitespace-pre-wrap break-all mt-2 bg-muted/30 p-2 rounded">{JSON.stringify(detail?.data, null, 2)}</pre>
         </SheetContent>
       </Sheet>

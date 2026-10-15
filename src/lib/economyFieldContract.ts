@@ -48,3 +48,9 @@ export function formatField(field: EconomyField, row: Record<string, unknown> | 
   if (field.kind === "ratio") return { text: `${Math.round(x * 100)} %`, missing: false };
   return { text: x.toFixed(field.kind === "index" ? 3 : 1), missing: false };
 }
+
+export const fieldByKey = (key: string): EconomyField => {
+  const f = CITY_ACCOUNT_FIELDS.find(x => x.key === key);
+  if (!f) throw new Error(`Unknown economy field ${key}`);
+  return f;
+};
