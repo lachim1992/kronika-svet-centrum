@@ -152,3 +152,52 @@ describe('quality lots persist across turns via opening.lots', () => {
     expect(b.stored_lots!.every((l) => l.origin === 'a')).toBe(true);
   });
 });
+
+describe('minQuality is checked on actually allocated lots', () => {
+  const H = PRODUCT_MARKET.qualityInheritanceHeadroom;
+  const one = (opening: Snapshot['opening'], minQuality: number, storage = 10) => {
+    const a: City = { ...city('open_merchant', 3), id: 'a', name: 'a', population: 10, classes: { peasants: 10 }, storage };
+    const mill = { ...producer('mill_grain', 'flour', [{ good: 'raw_grain', qty: 1 }], 3), city: 'a', capacity: 50 };
+    mill.recipe = { ...mill.recipe, minQuality };
+    return resolveGoodsEconomy({ turn: 1, cities: [a], fame: [], edges: [], producers: [mill], opening,
+      goods: [good('raw_grain', 'staple_food', 1), good('flour', 'staple_food', 2)] });
+  };
+  const closes = (r: ReturnType<typeof resolveGoodsEconomy>) => { for (const b of r.balances) {
+    expect(b.opening + b.produced_household + b.produced_node + b.produced_facility + b.produced_district + b.imported)
+      .toBeCloseTo(b.exported + b.consumed_household + b.consumed_state + b.consumed_as_input + b.stored + b.capex + b.lost_spoilage, 7);
+    if (b.stored_lots) expect(b.stored_lots.reduce((t, l) => t + l.qty, 0)).toBeCloseTo(b.stored, 9); } };
+
+  it('mixed q0 + q3 lots with minQuality 2: mill uses only the q3 lot (average 1.5 would have blocked it)', () => {
+    const r = one([{ city: 'a', good: 'raw_grain', qty: 20, quality: 1.5,
+      lots: [{ qty: 10, quality: 0, origin: 'a' }, { qty: 10, quality: 3, origin: 'b' }] }], 2);
+    const lot = r.diagnostics.find((d) => d.producer === 'mill_grain')!.input_lots!.find((l) => l.good === 'raw_grain')!;
+    expect(lot.qty).toBeGreaterThan(0);
+    expect(lot.qty).toBeLessThanOrEqual(10 + 1e-9);
+    expect(lot.quality).toBeCloseTo(3, 9);
+    expect(lot.origins.b).toBeCloseTo(lot.qty, 9);
+    const grain = r.balances.find((b) => b.good === 'raw_grain')!;
+    expect(grain.consumed_as_input).toBeLessThanOrEqual(10 + 1e-9); // q0 lot never consumed
+    expect((grain.stored_lots || []).filter((l) => l.quality === 0).reduce((t, l) => t + l.qty, 0)).toBeGreaterThan(0);
+    expect(r.balances.find((b) => b.good === 'flour')!.quality).toBeLessThanOrEqual(Math.min(3 + H, PRODUCT_MARKET.maxQuality) + 1e-9);
+    closes(r);
+  });
+
+  it('insufficient quality stock: only lots below minQuality → no production, grain untouched', () => {
+    const r = one([{ city: 'a', good: 'raw_grain', qty: 20, quality: 0.5,
+      lots: [{ qty: 10, quality: 0, origin: 'a' }, { qty: 10, quality: 1, origin: 'b' }] }], 2);
+    expect(r.diagnostics.find((d) => d.producer === 'mill_grain')!.realized).toBe(0);
+    expect(r.balances.find((b) => b.good === 'raw_grain')!.consumed_as_input).toBe(0);
+    expect(r.balances.find((b) => b.good === 'flour')?.produced_node ?? 0).toBe(0);
+    closes(r);
+  });
+
+  it('storage cap: stored lots sum to stored and keep quality/origin shares', () => {
+    const r = one([{ city: 'a', good: 'raw_grain', qty: 5000, quality: 1.5,
+      lots: [{ qty: 2500, quality: 0, origin: 'a' }, { qty: 2500, quality: 3, origin: 'b' }] }], 99, 0.01);
+    const g = r.balances.find((b) => b.good === 'raw_grain')!;
+    expect(g.stored).toBeLessThan(5000);
+    const byQ = (q: number) => g.stored_lots!.filter((l) => l.quality === q).reduce((t, l) => t + l.qty, 0);
+    if (g.stored > 0) expect(byQ(3) / g.stored).toBeCloseTo(0.5, 6);
+    closes(r);
+  });
+});
