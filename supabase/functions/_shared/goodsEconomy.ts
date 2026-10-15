@@ -126,9 +126,13 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const same=l.find(x=>x.origin===origin&&Math.abs(x.quality-quality)<1e-12);if(same)same.qty+=qty;else l.push({qty,quality,origin});
     const t=l.reduce((s,x)=>s+x.qty,0);b.quality=l.reduce((s,x)=>s+x.qty*x.quality,0)/t;};
   /** Call BEFORE the ledger counters change: removes `amount` FIFO and returns the drawn lots. */
-  const drawLots=(b:Balance,amount:number):Lot[]=>{const l=syncLots(b),out:Lot[]=[];let rest=amount;
-    while(rest>1e-12&&l.length){const x=l[0],take=Math.min(x.qty,rest);out.push({...x,qty:take});x.qty-=take;rest-=take;if(x.qty<=1e-12)l.shift();}
+  /** FIFO among lots with quality ≥ minQ (default: all lots). */
+  const drawLots=(b:Balance,amount:number,minQ=-Infinity):Lot[]=>{const l=syncLots(b),out:Lot[]=[];let rest=amount;
+    for(let i=0;rest>1e-12&&i<l.length;){const x=l[i];if(x.quality<minQ-1e-12){i++;continue;}
+      const take=Math.min(x.qty,rest);out.push({...x,qty:take});x.qty-=take;rest-=take;if(x.qty<=1e-12)l.splice(i,1);else i++;}
     if(rest>1e-12)out.push({qty:rest,quality:b.quality,origin:b.city});return out;};
+  /** Physical quantity in lots meeting a recipe's minimum quality (the actual allocatable batch). */
+  const eligibleQty=(b:Balance,minQ:number)=>minQ<=0?available(b):syncLots(b).reduce((t,x)=>t+(x.quality>=minQ-1e-12?x.qty:0),0);
   const lotQuality=(d:Lot[],fallback:number)=>{const t=d.reduce((s,x)=>s+x.qty,0);return t>0?d.reduce((s,x)=>s+x.qty*x.quality,0)/t:fallback;};
   const add=(b:Balance,qty:number,quality:number,channel:Channel,source=false)=>{
     pushLot(b,qty,quality,b.city);
@@ -520,8 +524,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       for(const i of p.recipe.inputs){const ig=goodByKey.get(i.good);if(!ig)throw Error(`Unknown input ${i.good}`);
         const deliveryRatio=1-(inputPaths.get(i.good)?.loss||0);
         const b=stock(c.id,i.good),required=desired*i.qty/Math.max(C.epsilon,p.recipe.qty)/deliveryRatio;
-        if(b.quality<p.recipe.minQuality&&available(b)>0){qty=0;bottleneck=i.good;inputs.push({good:i.good,required,supplied:0});break;}
-        const usable=()=>Math.max(0,available(b)-foodReserve(c,ig));
+        // minQuality is checked on the lots that would actually be allocated, not the city average.
+        const usable=()=>Math.max(0,Math.min(available(b)-foodReserve(c,ig),eligibleQty(b,p.recipe.minQuality)));
         let missing=Math.max(0,required-usable());
         // SOURCING: every eligible supplier (hinterland + reachable centers) ranked by LANDED cost,
         // subject to route capacity, source reserve, quality and diplomacy inside transfer().
@@ -549,7 +553,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       for(const i of p.recipe.inputs){const b=stock(c.id,i.good),amount=qty*i.qty/p.recipe.qty;
         const shipped=amount/(1-(inputPaths.get(i.good)?.loss||0));
         // Quality of the batch actually drawn (FIFO lots), not the average of all city stock.
-        const drawn=drawLots(b,shipped),usedQuality=lotQuality(drawn,b.quality),origins:Record<string,number>={};
+        const drawn=drawLots(b,shipped,p.recipe.minQuality),usedQuality=lotQuality(drawn,b.quality),origins:Record<string,number>={};
         for(const x of drawn)origins[x.origin]=(origins[x.origin]||0)+x.qty;
         inputLots.push({good:i.good,qty:shipped,quality:usedQuality,origins});
         b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;requality(b);minQuality=Math.min(minQuality,usedQuality);
