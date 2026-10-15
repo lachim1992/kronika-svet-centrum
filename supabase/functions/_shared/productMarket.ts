@@ -443,6 +443,8 @@ export interface CityAccountsInput {
   discretionaryWish: number;
   /** Per-basket consumed quantities per product, for diversity. */
   basketConsumption: Record<string, number[]>;
+  /** Wages actually paid last COMMITTED turn (wage_settlement). Reported only; income basis stays the proxy. */
+  settledWageIncome?: number | null;
 }
 
 /**
@@ -486,7 +488,10 @@ export function cityAccounts(i: CityAccountsInput) {
     discretionary_wish: pos(i.discretionaryWish), discretionary_funded: discretionaryFunded,
     discretionary_ratio: discretionaryRatio, physical_need_coverage: physicalCoverage,
     affordability_gap: affordabilityGap, affordability, diversity,
-    proxy: true, private_wealth: null as null,
+    proxy: true, private_wealth: null as null, labor_income_basis: 'imputed_proxy' as const,
+    settled_wage_income: i.settledWageIncome == null ? null : pos(i.settledWageIncome),
+    /** Settled cash wages ÷ unscaled proxy wage bill (VA × laborShare); 1 = proxy fully backed by paid wages. */
+    settled_wage_ratio: i.settledWageIncome == null || gdp * M.laborShare <= 0 ? null : pos(i.settledWageIncome) / (gdp * M.laborShare),
   };
 }
 export type CityAccounts = ReturnType<typeof cityAccounts>;
