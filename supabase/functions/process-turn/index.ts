@@ -8,6 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isNeedBasket, waterShortageImpact } from "../_shared/demandModel.ts";
 import { foodShortageImpact } from '../_shared/foodShortage.ts';
 import { routeUpkeepDueThisTurn } from '../_shared/routeUpkeep.ts';
+import { settleWages } from '../_shared/wageSettlement.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1615,6 +1616,10 @@ Deno.serve(async (req) => {
       technological_prestige: technologicalPrestige,
       // All computed gameplay modifiers for UI display
       computed_modifiers: {
+        // Producer → household wage transfer (private; treasury_effect 0). Applied once with the fiscal guard.
+        wage_settlement: settleWages(currentTurn,
+          myCities.map((c: any) => ({ city: c.id, ...(accountsByCity.get(c.id) || {}) })),
+          (realm as any)?.computed_modifiers?.wage_settlement),
         strategic: {
           combat_mult: Math.round(strategicBonuses.combat_mult * 1000) / 1000,
           wealth_mult: Math.round(strategicBonuses.wealth_mult * 1000) / 1000,

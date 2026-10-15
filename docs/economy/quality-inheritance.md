@@ -177,3 +177,11 @@ B-factor imports, other recipes A/B/C, UI for players (Founder Safe Mode), AI us
 - Mzdy NEJSOU vypláceny: `payroll_basis:'imputed'`, `cash_settled:false`; Dev Mode ukazuje práci s provenance `imputed`, ne `producer_exact`.
 - Test: input-kinds.test.ts (součet tříd = intermediate, jednotkový full cost). 574 passed / 3 skipped.
 - Další krok: skutečné peněžní vyplácení mezd v process-turn (jediný fiskální writer) + příjmy domácností z mezd.
+
+## Checkpoint — canonical wage settlement (2026-10-15)
+- New `_shared/wageSettlement.ts` (`settleWages`), called only by `process-turn`; result stored in `realm_resources.computed_modifiers.wage_settlement` through `apply_goods_fiscal_plan` (turn guard ⇒ a retry is a no-op; `settleWages` also returns the persisted record when `prior.turn === turn`).
+- Money flow: producer cash pool = city goods value added (revenue − purchased inputs) → wages paid = min(payroll due + arrears, pool) → household wage income = wages paid; rest = producer retained; unpaid = arrears carried to next turn. Treasury effect 0 (gold_reserve/turn_fiscal_delta unchanged) ⇒ no money created.
+- REAL (settled) values: wages_paid, household_wage_income, arrears, producer_retained (per realm, per city, per turn).
+- STILL IMPUTED: the payroll due itself (local wage × employed in goodsEconomy margin, `payroll_basis: 'imputed'`); the producer cash pool is a flow, not a persisted cash stock; household purchasing power in `cityAccounts` still uses the 65 % GDP proxy and does NOT yet read wage income (switch requires balancing).
+- refresh-economy untouched. Tests: `src/test/wage-settlement.test.ts` (conservation, 2-turn arrears, idempotence, no negatives). Full suite 574 passed / 3 skipped; `deno check process-turn` clean.
+- Next: feed previous committed `household_wage_income` into household purchasing power (replace proxy) behind a balancing test; persist producer cash stock.
