@@ -774,8 +774,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       stability:c.stability,taxRate,devastated:!!c.devastated});
     return {...acc,goods_value_added:goodsVA,service_value_added:services.service_value_added,trade_services:services,
       prosperity:prosperity.index,prosperity_parts:prosperity.parts,discretionary_cap:budgetCaps.get(c.id)??null,capital_stock:n(c.capitalStock),capital_candidate:capital,
-      // OBSERVED producer payroll (sum of margin.payroll) beside the labour-share proxy that still drives
-      // household income — reported for reconciliation, not yet the income source (balancing pending).
+      // Imputed producer payroll (sum of margin.payroll); household labour income uses SETTLED wages
+      // (snapshot.settledWages) when present. UI labels: src/lib/economyFieldContract.ts.
       producer_payroll:producerPayroll(c.id),producer_operating_surplus:producerSurplus(c.id),wage_rate:lab?.wage_rate??null};});
   const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
     channels:{...channels},total:channelTotal(channels)}));

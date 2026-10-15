@@ -33,6 +33,9 @@ export const CITY_ACCOUNT_UNMAPPED_OK = new Set([
   "city", "city_gdp", "basic_basket_cost", "price_index", "nominal_gdp", "price_level", "income_unit_factor",
   "discretionary_budget", "discretionary_wish", "discretionary_funded", "discretionary_ratio", "physical_need_coverage",
   "affordability_gap", "affordability", "diversity", "proxy", "private_wealth",
+  // goodsEconomy extras rendered in the main table / drilldown text
+  "goods_value_added", "service_value_added", "trade_services", "prosperity", "prosperity_parts", "discretionary_cap",
+  "capital_stock", "capital_candidate",
 ]);
 
 export const BASIS_LABEL: Record<string, string> = { settled_wages: "vyplacené mzdy", imputed_proxy: "odhad z HDP" };
