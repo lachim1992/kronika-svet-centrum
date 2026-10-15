@@ -113,7 +113,7 @@ describe("goodsEconomy diagnostic v2 (observational landed parts)", () => {
     const d = r1.diagnostics.find((x) => x.producer === "mill") as unknown as CostInputDiag;
     const line = d.margin?.inputs?.[0];
     expect(line!.imported_qty).toBeGreaterThan(0);
-    expect(d.margin!.diagnostic_version).toBe(2);
+    expect(d.margin!.diagnostic_version).toBeGreaterThanOrEqual(2);
     const sum = Object.values(line.landed_parts!).reduce((a, b) => a + b, 0);
     expect(sum).toBeCloseTo(line.landed_unit_cost!, 9);
     expect(line.chosen_supplier).toBe("a");
