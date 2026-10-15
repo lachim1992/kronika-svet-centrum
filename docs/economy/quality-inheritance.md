@@ -62,3 +62,15 @@ Next task: persist lot composition (quality + origin) into the next turn's openi
 - Remaining gaps: remote suppliers are still pre-filtered by their average quality, and `transfer` ships FIFO without a quality filter. Imported low-quality lots arrive, but they are never used for that recipe. Every catalogue recipe still has minQuality = 0. The `city_inventory` bootstrap has no origin. Not deployed.
 - Next task: quality-filtered remote sourcing (supplier eligibility + transfer by minQuality).
 - 2026-10-15 (2): two-turn minQuality test. Opening q0+q3 lots, minQuality 2. Turn 1 mills only q3, and the q0 lot is carried to turn 2 via `stored_lots`. Turn 2 consumes at most the carried q3 remainder, never the q0 batch, and the material balance closes in both turns. The adapter needed no change: `Opening.lots` is still built from `stored_lots`. Full suite 560 passed / 3 skipped; edge type check clean. Next task is unchanged: quality-filtered remote sourcing.
+
+## 2026-10-15 — quality-filtered remote sourcing
+- Input sourcing in `goodsEconomy` skips a supplier unless it holds ≥ `minLot` in lots with quality ≥ recipe `minQuality` (was: supplier city average).
+- `transfer(..., minQ)` caps the shipped quantity at the eligible lots and draws them FIFO among eligible lots only; origin and quality are kept in transit. Household/arbitrage transfers are unchanged (minQ = −∞).
+- Tests (two cities, mill minQuality 2): supplier with q0 (oldest) + q3 ships only q3, provenance `x` reaches the mill, balance closes; a supplier with only q0 is skipped (no import, no flour). 17/17 in `quality-inheritance.test.ts`.
+- Not deployed.
+
+### Remaining gaps
+- Landed-cost ranking (`landedRoute`) still prices the supplier at its average-quality price, not the eligible-lot price.
+- Catalogue recipes all have minQuality 0, so the rule is inert in live play until recipes set minimums.
+- Opening stock without carried lots has no origin; 0..100 scale migration, A/B/C factor split, wages/capital cost and value-added money flows remain open.
+Next task: price the eligible-lot quality in supplier ranking, then set real minQuality on bread/wine recipes via migration.
