@@ -706,7 +706,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       return {good:i.good,qty,price:qty>0?cost/qty:local,local_price:local,imported_qty:imported,landed_unit_cost:landedUnit,
         chosen_supplier:a?.chosen??null,cheaper_supplier:cheaper?{city:cheaper.city,landed:cheaper.landed}:null,
         landed_parts:a&&a.qty>0?Object.fromEntries(LANDED_PARTS.map(k=>[k,a.parts[k]/a.qty])):null,
-        ranked_suppliers:a?a.suppliers.map(x=>({city:x.city,landed:x.landed,source:x.source,transport:x.transport,tolls:x.tolls,tariff:x.tariff,risk:x.risk,loss_cost:x.loss_cost})):null};});
+        ranked_suppliers:a?a.suppliers.map(x=>({city:x.city,landed:x.landed,source:x.source,transport:x.transport,tolls:x.tolls,tariff:x.tariff,risk:x.risk,loss_cost:x.loss_cost,eligible_quality:x.eligible_quality,source_scarcity_factor:x.source_scarcity_factor,source_quality_factor:x.source_quality_factor})):null};});
     const outPrice=priceOf(p.city,p.recipe.good);
     const m=recipeMargin(d.realized,outPrice,lines);
     (d as any).margin={...m,unit_output_price:outPrice,unit_input_cost:d.realized>0?m.cost/d.realized:0,inputs:lines,
