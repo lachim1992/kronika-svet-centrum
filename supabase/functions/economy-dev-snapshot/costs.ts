@@ -22,6 +22,7 @@ export interface MarginLine { good: string; qty: Num; price: Num; local_price: N
   landed_parts?: LandedParts | null; ranked_suppliers?: ({ city: string; landed: Num } & Partial<LandedParts>)[] | null }
 export interface MarginBlock { cost?: Num; revenue?: Num; margin?: Num; margin_ratio?: Num; auto_flag?: string | null;
   unit_input_cost?: Num; unit_output_price?: Num; inputs?: MarginLine[]; diagnostic_version?: number;
+  payroll?: Num; wage_rate?: Num; capital_wear?: Num; operating_surplus?: Num; unit_full_cost?: Num | null; value_added?: Num;
   expected_margin_proxy?: Num | null; order?: string }
 
 export interface CostInputProducer { id: string; city: string; node: string; channel: string; recipe: { key: string; good: string; qty: Num; inputs: { good: string; qty: Num }[] };
@@ -113,7 +114,13 @@ export function buildCosts(a: { producers: CostInputProducer[]; diagnostics: Cos
         : { key: "local_inputs", label: "Místní vstupy", per_unit: null, status: "unavailable", provenance: "unavailable", source_path: "diagnostics[].margin.inputs", reason: active ? "chybí margin.inputs" : "výrobce nic nevyrobil" },
       comp("source", "Dovoz — cena u zdroje"), comp("transport", "Dovoz — doprava"), comp("tolls", "Dovoz — mýta"), comp("tariff", "Dovoz — clo"),
       comp("risk", "Dovoz — riziko"), comp("loss_cost", "Dovoz — ztráty na cestě"),
-      ...UNMODELLED.map((u): CostComponent => ({ key: u.key, label: u.label, per_unit: null, status: "unavailable", provenance: "unavailable", source_path: "—", reason: u.reason })),
+      ...UNMODELLED.map((u): CostComponent => {
+        // v3: payroll (local wage × employed) and explicit B-factor wear are stored per producer.
+        if (active && u.key === "labor" && m?.payroll != null) { const v = n(m.payroll) / realized;
+          return { key: u.key, label: u.label, per_unit: v, status: v > EPS ? "known" : "zero", provenance: "producer_exact", source_path: "diagnostics[].margin.payroll" }; }
+        if (active && u.key === "tool_wear" && m?.capital_wear != null && n(m.capital_wear) > EPS) { const v = n(m.capital_wear) / realized;
+          return { key: u.key, label: u.label, per_unit: v, status: "known", provenance: "producer_exact", source_path: "diagnostics[].margin.capital_wear (již v místních vstupech)" }; }
+        return { key: u.key, label: u.label, per_unit: null, status: "unavailable", provenance: "unavailable", source_path: "—", reason: u.reason }; }),
     ];
     const missing = components.filter((c) => c.status === "unavailable").map((c) => c.key);
     const fame = fameBy.get(k(p.city, p.recipe.good));
