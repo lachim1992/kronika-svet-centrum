@@ -76,7 +76,7 @@ export function buildCosts(a: { producers: CostInputProducer[]; diagnostics: Cos
     let plannedSum = 0, plannedComplete: boolean | null = hasInputs ? true : null;
     const bom: BomInput[] = (p.recipe.inputs || []).map((i) => {
       const line = lines.find((l) => l.good === i.good); const di = d?.inputs?.find((x) => x.good === i.good); const es = p.expectedInputSources?.[i.good];
-      const per = consumedPerBatch(i as any) / batch; // B factor: wear only (inputKinds) const plannedCost = es && es.available ? fin(es.cost) : null;
+      const per = consumedPerBatch(i as any) / batch; /* B factor: wear only */ const plannedCost = es && es.available ? fin(es.cost) : null;
       if (plannedCost == null) plannedComplete = false; else plannedSum += per * plannedCost;
       let consumed: Num | null = null, imp: Num | null = null, loc: Num | null = null, contrib: Num | null = null, aParts: LandedParts | null = null;
       let prov: Provenance = es ? "planned_estimate" : "unavailable"; let note: string | null = null;
