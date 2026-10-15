@@ -54,6 +54,10 @@ export const PRODUCT_MARKET = {
   landedRiskShare: 0.05,
   /** A factory refuses inputs whose landed cost exceeds this multiple of the base price. */
   maxLandedInputMultiple: 4,
+  /** LOCAL WAGE per employed worker per turn (catalogue money units). Calibrated so a typical staffed
+   *  extraction site keeps a positive operating surplus. Tightness = vacancies / labour supply raises it,
+   *  slack = unemployed / supply lowers it; bounded. */
+  wage: { base: 0.03, tightnessGain: 0.6, slackRelief: 0.4, floor: 0.6, ceiling: 2 },
   // ── AUTO PRODUCTION ──
   /** Weight of margin ratio vs basket necessity in AUTO allocation (bounded, no loop). */
   autoMarginWeight: 1,
@@ -486,3 +490,23 @@ export function cityAccounts(i: CityAccountsInput) {
   };
 }
 export type CityAccounts = ReturnType<typeof cityAccounts>;
+
+/** Endogenous local wage from the canonical labour market (goodsEconomy laborMetrics). */
+export function localWage(l: { supply: number; vacancies: number; unemployed: number }) {
+  const w = PRODUCT_MARKET.wage, sup = Math.max(1e-9, pos(l.supply));
+  const f = 1 + w.tightnessGain * pos(l.vacancies) / sup - w.slackRelief * pos(l.unemployed) / sup;
+  return w.base * Math.min(w.ceiling, Math.max(w.floor, f));
+}
+
+/**
+ * PRODUCER ACCOUNT (fully loaded, per producer per turn). Intermediate = sourced A/C inputs + B factor
+ * wear (already in `inputs`). Value added = revenue − intermediate. Payroll is part of value added
+ * (compensation of employees), never intermediate consumption; operating surplus = VA − payroll.
+ * Derived only: no fiscal write, no cash stock.
+ */
+export function producerAccount(a: { realized: number; revenue: number; intermediate: number; capitalWear: number; employed: number; wage: number }) {
+  const payroll = pos(a.employed) * pos(a.wage), value_added = pos(a.revenue) - pos(a.intermediate);
+  const full_cost = pos(a.intermediate) + payroll, q = pos(a.realized);
+  return { payroll, wage_rate: pos(a.wage), capital_wear: pos(a.capitalWear), value_added, full_cost,
+    operating_surplus: value_added - payroll, unit_full_cost: q > 0 ? full_cost / q : null };
+}

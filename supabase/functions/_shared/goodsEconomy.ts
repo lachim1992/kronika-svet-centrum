@@ -2,7 +2,7 @@ import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClas
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { isFactor, kindOf, wearOf, consumedPerBatch, factorMultiplier, type KindedInput } from './inputKinds.ts';
 import { computeWorkforceBreakdown } from './manpower.ts';
-import { demandShares, functionalValue, substitutionEfficiency, discretionaryBudgetScale, cityAccounts, recipeMargin, productMeta, landedInputCost, outputQuality, tradeServiceVolumes, tradeServiceValue, prosperityIndex, capitalStockDelta, PRODUCT_MARKET, type CityAccounts } from './productMarket.ts';
+import { demandShares, functionalValue, substitutionEfficiency, discretionaryBudgetScale, cityAccounts, recipeMargin, localWage, producerAccount, productMeta, landedInputCost, outputQuality, tradeServiceVolumes, tradeServiceValue, prosperityIndex, capitalStockDelta, PRODUCT_MARKET, type CityAccounts } from './productMarket.ts';
 import { BASKET_KEYS, DEMAND_CHANNELS, basketDemandChannels, basketSpec, channelTotal, emptyChannels,
   toolIntensityOf, toolProductivityMultiplier, DEMAND, type DemandChannel, type DemandInput } from './demandModel.ts';
 
@@ -44,6 +44,8 @@ export interface Producer { id: string; city: string; node?: string; cell?: stri
 export interface CityLabor { city: string; population: number; economically_active: number; available_workforce: number;
   employed_total: number; unemployed_total: number; jobs_capacity: number; vacancies_total: number;
   employment_rate: number; unemployment_rate: number;
+  /** Local wage per employed worker (productMarket.localWage). */
+  wage_rate?: number;
   /** Share of idle labour that can cross sectors this turn (guilds, administration, market, stability). */
   labor_mobility?: number;
   /** Workers who actually retrained into another sector this turn. */
@@ -372,7 +374,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       // People idle while jobs stand empty: the mismatch itself, not a general labour shortage.
       structural_unemployed:Math.min(unemployed,vacancies),
       employment_rate:supplyTotal>C.epsilon?employedTotal/supplyTotal:0,
-      unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors,service:serviceLabor.get(c.id)});
+      unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors,
+      wage_rate:localWage({supply:supplyTotal,vacancies,unemployed}),service:serviceLabor.get(c.id)});
   }
   /** employed / jobs_capacity, clamped. Automated producers without declared labour run at their own staffing. */
   const staffingRatio=(p:Producer)=>{const jobs=jobsOf(p);
@@ -736,8 +739,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         ranked_suppliers:a?a.suppliers.map(x=>({city:x.city,landed:x.landed,source:x.source,transport:x.transport,tolls:x.tolls,tariff:x.tariff,risk:x.risk,loss_cost:x.loss_cost,eligible_quality:x.eligible_quality,source_scarcity_factor:x.source_scarcity_factor,source_quality_factor:x.source_quality_factor})):null};});
     const outPrice=priceOf(p.city,p.recipe.good);
     const m=recipeMargin(d.realized,outPrice,lines);
-    (d as any).margin={...m,unit_output_price:outPrice,unit_input_cost:d.realized>0?m.cost/d.realized:0,inputs:lines,
-      diagnostic_version:2,order:p.order||'auto',loss_warning:m.margin<0,auto_flag:p.autoFlag??null,expected_margin_proxy:p.expectedMarginProxy??null};}
+    const capitalWear=lines.filter((_,k)=>isFactor(p.recipe.inputs[k])).reduce((t,l)=>t+l.qty*l.price,0);
+    const wage=laborMetrics.find(l=>l.city===p.city)?.wage_rate??0;
+    const account=producerAccount({realized:d.realized,revenue:m.revenue,intermediate:m.cost,capitalWear,employed:employed.get(p.id)||0,wage});
+    (d as any).margin={...m,...account,unit_output_price:outPrice,unit_input_cost:d.realized>0?m.cost/d.realized:0,inputs:lines,
+      diagnostic_version:3,order:p.order||'auto',loss_warning:m.margin<0,auto_flag:p.autoFlag??null,expected_margin_proxy:p.expectedMarginProxy??null};}
   // CITY ACCOUNTS (derived flows; no private wealth stock, no fiscal writes).
   const accounts=cities.map(c=>{const own=goods.map(g=>({g,b:stock(c.id,g.key)}));
     const comp=(g:Good)=>componentsOf(c.id,g.key);
