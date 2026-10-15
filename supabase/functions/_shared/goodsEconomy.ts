@@ -739,9 +739,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         ranked_suppliers:a?a.suppliers.map(x=>({city:x.city,landed:x.landed,source:x.source,transport:x.transport,tolls:x.tolls,tariff:x.tariff,risk:x.risk,loss_cost:x.loss_cost,eligible_quality:x.eligible_quality,source_scarcity_factor:x.source_scarcity_factor,source_quality_factor:x.source_quality_factor})):null};});
     const outPrice=priceOf(p.city,p.recipe.good);
     const m=recipeMargin(d.realized,outPrice,lines);
-    const capitalWear=lines.filter((_,k)=>isFactor(p.recipe.inputs[k])).reduce((t,l)=>t+l.qty*l.price,0);
+    const sumKind=(f:(i:any)=>boolean)=>lines.filter((_,k)=>f(p.recipe.inputs[k])).reduce((t,l)=>t+l.qty*l.price,0);
+    const capitalWear=sumKind(isFactor),operating=sumKind(i=>kindOf(i)==='operating'),material=sumKind(i=>kindOf(i)==='material');
     const wage=laborMetrics.find(l=>l.city===p.city)?.wage_rate??0;
-    const account=producerAccount({realized:d.realized,revenue:m.revenue,intermediate:m.cost,capitalWear,employed:employed.get(p.id)||0,wage});
+    const account=producerAccount({realized:d.realized,revenue:m.revenue,intermediate:m.cost,capitalWear,employed:employed.get(p.id)||0,wage,material,operating});
     (d as any).margin={...m,...account,unit_output_price:outPrice,unit_input_cost:d.realized>0?m.cost/d.realized:0,inputs:lines,
       diagnostic_version:3,order:p.order||'auto',loss_warning:m.margin<0,auto_flag:p.autoFlag??null,expected_margin_proxy:p.expectedMarginProxy??null};}
   // CITY ACCOUNTS (derived flows; no private wealth stock, no fiscal writes).

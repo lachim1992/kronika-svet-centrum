@@ -144,3 +144,19 @@ describe('city accounts report observed payroll (reconciliation)', () => {
     expect(acc.producer_payroll).toBeGreaterThan(0);
   });
 });
+
+describe('producer cost build-up by A/B/C class (imputed payroll is not cash)', () => {
+  it('material + operating + factor wear = intermediate; payroll flagged imputed, not cash-settled', () => {
+    const r = resolveGoodsEconomy(snap([MILL()], [{ city: 'c', good: 'raw_grain', qty: 300, quality: 0 }, { city: 'c', good: 'metalwork_tools', qty: 5, quality: 0 }]));
+    const d = r.diagnostics.find((x) => x.producer === 'mill_grain')! as any, m = d.margin, b = m.cost_breakdown;
+    expect(b.material + b.operating + b.factor_wear).toBeCloseTo(m.cost, 9);
+    expect(b.material).toBeGreaterThan(0);
+    expect(b.factor_wear).toBeCloseTo(m.capital_wear, 9);
+    expect(b.operating).toBe(0);
+    expect(b.payroll_imputed).toBeCloseTo(m.payroll, 9);
+    expect(m.payroll_basis).toBe('imputed');
+    expect(m.cash_settled).toBe(false);
+    expect(m.labor_per_unit).toBeCloseTo(d.employed / d.realized, 9);
+    expect(b.unit.material + b.unit.factor_wear + b.unit.payroll_imputed).toBeCloseTo(m.unit_full_cost, 9);
+  });
+});
