@@ -91,13 +91,20 @@ describe('product market layer', () => {
     expect(acc.affordability).toBeGreaterThan(0.6);
     expect(acc.affordability_gap).toBeLessThan(acc.basic_basket_cost * 0.4);
   });
-  it('settled wages are reported against the proxy wage bill without changing purchasing power', () => {
+  it('settled wages drive labour income when present; proxy is the explicit fallback', () => {
     const inp = { city: 'c', valueAdded: 100, householdTaxRate: 0.1, needs: [{ good: 'g', qty: 10, localPrice: 1, basePrice: 1, consumed: 10 }], discretionaryWish: 0, basketConsumption: {} };
     const none = cityAccounts(inp), paid = cityAccounts({ ...inp, settledWageIncome: 100 * PRODUCT_MARKET.laborShare / 2 });
     expect(none.settled_wage_income).toBeNull(); expect(none.settled_wage_ratio).toBeNull();
     expect(paid.settled_wage_ratio).toBeCloseTo(0.5, 9);
-    expect(paid.purchasing_power).toBe(none.purchasing_power);
-    expect(paid.labor_income_basis).toBe('imputed_proxy');
+    // Paid wages replace the proxy labour income; capital income keeps the proxy; no extra money.
+    expect(none.labor_income_basis).toBe('imputed_proxy');
+    expect(paid.labor_income_basis).toBe('settled_wages');
+    expect(paid.labor_income).toBeCloseTo(none.labor_income / 2, 9);
+    expect(paid.capital_income).toBe(none.capital_income);
+    expect(paid.purchasing_power).toBeLessThan(none.purchasing_power);
+    expect(paid.household_income).toBeCloseTo(paid.labor_income + paid.capital_income, 9);
+    const zero = cityAccounts({ ...inp, settledWageIncome: 0 });
+    expect(zero.labor_income).toBe(0); expect(zero.labor_income_basis).toBe('settled_wages');
     const s = base(); s.settledWages = { b: 7 };
     const acc = resolveGoodsEconomy(s).cityAccounts;
     expect(acc.find(a => a.city === 'b')!.settled_wage_income).toBe(7);
