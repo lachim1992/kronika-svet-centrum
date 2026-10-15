@@ -365,8 +365,11 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     if(t>0)(familiarity[b.city] ||= {})[b.good]=(nonnegative(b.consumed_household)+nonnegative(b.consumed_state))/t;}
   const budget=prior?.cityAccounts?Object.fromEntries(prior.cityAccounts.map((a:any)=>[a.city,{discretionary_ratio:nonnegative(a.discretionary_ratio),affordability:nonnegative(a.affordability),discretionary_budget:nonnegative(a.discretionary_budget)}])):undefined;
   const householdTaxRate=Object.fromEntries(db.realm_resources.map((r:any)=>[r.player_name,Math.min(0.9,nonnegative(r.tax_rate_domestic??0.1)+nonnegative(r.tax_rate_poll??0.002))]));
+  // Last committed wage settlement (process-turn); refresh only reads it.
+  const settledWages:Record<string,number>={};
+  for(const r of db.realm_resources as any[])for(const c of r?.computed_modifiers?.wage_settlement?.cities||[])if(c?.city)settledWages[c.city]=nonnegative(c.wages_paid);
   const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
-  const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,priorPrices,householdTaxRate,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
+  const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,priorPrices,householdTaxRate,settledWages,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
   const physical=resolveGoodsEconomy(snapshot);
   const management=Object.fromEntries(db.realm_resources.map(r=>[r.player_name,buildManagementReport(snapshot,physical,r,prior?.management?.[r.player_name])]));
   const result={...physical,opening,snapshot,management,contractNormalizations:contractNotes};

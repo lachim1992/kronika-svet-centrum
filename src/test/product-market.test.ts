@@ -91,4 +91,16 @@ describe('product market layer', () => {
     expect(acc.affordability).toBeGreaterThan(0.6);
     expect(acc.affordability_gap).toBeLessThan(acc.basic_basket_cost * 0.4);
   });
+  it('settled wages are reported against the proxy wage bill without changing purchasing power', () => {
+    const inp = { city: 'c', valueAdded: 100, householdTaxRate: 0.1, needs: [{ good: 'g', qty: 10, localPrice: 1, basePrice: 1, consumed: 10 }], discretionaryWish: 0, basketConsumption: {} };
+    const none = cityAccounts(inp), paid = cityAccounts({ ...inp, settledWageIncome: 100 * PRODUCT_MARKET.laborShare / 2 });
+    expect(none.settled_wage_income).toBeNull(); expect(none.settled_wage_ratio).toBeNull();
+    expect(paid.settled_wage_ratio).toBeCloseTo(0.5, 9);
+    expect(paid.purchasing_power).toBe(none.purchasing_power);
+    expect(paid.labor_income_basis).toBe('imputed_proxy');
+    const s = base(); s.settledWages = { b: 7 };
+    const acc = resolveGoodsEconomy(s).cityAccounts;
+    expect(acc.find(a => a.city === 'b')!.settled_wage_income).toBe(7);
+    expect(acc.find(a => a.city === 'a')!.settled_wage_income).toBeNull();
+  });
 });
