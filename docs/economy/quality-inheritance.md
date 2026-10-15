@@ -185,3 +185,9 @@ B-factor imports, other recipes A/B/C, UI for players (Founder Safe Mode), AI us
 - STILL IMPUTED: the payroll due itself (local wage × employed in goodsEconomy margin, `payroll_basis: 'imputed'`); the producer cash pool is a flow, not a persisted cash stock; household purchasing power in `cityAccounts` still uses the 65 % GDP proxy and does NOT yet read wage income (switch requires balancing).
 - refresh-economy untouched. Tests: `src/test/wage-settlement.test.ts` (conservation, 2-turn arrears, idempotence, no negatives). Full suite 574 passed / 3 skipped; `deno check process-turn` clean.
 - Next: feed previous committed `household_wage_income` into household purchasing power (replace proxy) behind a balancing test; persist producer cash stock.
+
+## Checkpoint 2026-10-15 — wage vs. purchasing-power reconciliation
+- `wageSettlement.ts` now records per city `imputed_labor_income` (cityAccounts proxy), `imputed_minus_settled`, `settled_share_of_imputed`; totals likewise; `household_income_basis: 'imputed_proxy'`.
+- Payment unchanged: treasury_effect 0, settled once by process-turn. Purchasing power still uses the imputed GDP proxy.
+- Test: wage-settlement reconciliation case. 578 passed / 3 skipped; process-turn deno check clean.
+- Next: once the gap is measured on TEST02, switch `cityAccounts` labour income to previous-turn settled wages (one lag, no same-pass loop) with recalibrated incomeUnitFactor.
