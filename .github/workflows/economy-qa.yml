@@ -1,0 +1,25 @@
+name: Chronicle Economy QA
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/test/economy-chain-actions.test.ts'
+      - 'supabase/functions/_shared/productionCatalog.ts'
+      - '.github/workflows/economy-qa.yml'
+permissions:
+  contents: read
+jobs:
+  economy-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Run real catalogue chain checks
+        run: npx vitest run src/test/economy-chain-actions.test.ts --reporter=verbose
+      - name: Edge TypeScript checks
+        run: npm run typecheck:edge
