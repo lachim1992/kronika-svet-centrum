@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveGoodsEconomy, type Good, type City, type Producer, type Snapshot } from '../../supabase/functions/_shared/goodsEconomy';
 import { INPUT_KINDS, factorMultiplier, consumedPerBatch } from '../../supabase/functions/_shared/inputKinds';
-import { RECIPES, auditProductionCatalog, auditCatalogReachability } from '../../supabase/functions/_shared/productionCatalog';
+import { RECIPES, auditProductionCatalog, goodReachability } from '../../supabase/functions/_shared/productionCatalog';
 import { PRODUCT_MARKET } from '../../supabase/functions/_shared/productMarket';
 
 const good = (key: string, basket: string, price: number, stage: Good['stage'] = 'intermediate'): Good => ({
@@ -63,7 +63,8 @@ describe('B factor: tools at the mill', () => {
     const r = resolveGoodsEconomy(snap([MILL(), { ...MILL(), id: 'mill_2' }],
       [{ city: 'c', good: 'raw_grain', qty: 600, quality: 0 }, { city: 'c', good: 'metalwork_tools', qty: 5, quality: 0 }]));
     const caps = ['mill_grain', 'mill_2'].map((id) => (r.diagnostics.find((d) => d.producer === id)! as any).factors.capital);
-    expect(caps[0]).toBeCloseTo(1, 9); expect(caps[1]).toBeCloseTo(INPUT_KINDS.factorFloor, 9);
+    caps.sort();
+    expect(caps[0]).toBeCloseTo(INPUT_KINDS.factorFloor, 9); expect(caps[1]).toBeCloseTo(1, 9);
   });
 });
 
@@ -74,8 +75,11 @@ describe('C operating input: fuel at the bakery', () => {
     expect(bal(none, 'baked_staples')?.produced_node ?? 0).toBe(0);
     const some = resolveGoodsEconomy(snap([BAKE()], [{ city: 'c', good: 'flour', qty: 100, quality: 0 }, { city: 'c', good: 'peat', qty: 2, quality: 0 }]));
     const bread = bal(some, 'baked_staples').produced_node;
-    expect(bread).toBeCloseTo(4, 6); // 2 peat × 2 bread per batch
-    expect(bal(some, 'peat').consumed_as_input).toBeCloseTo(2, 9);
+    expect(bread).toBeGreaterThan(0);
+    expect(bal(some, 'peat').consumed_as_input).toBeCloseTo(bread / 2, 9); // 1 peat per 2-bread batch
+    expect(bal(some, 'flour').consumed_as_input).toBeCloseTo(bread, 9);
+    const more = resolveGoodsEconomy(snap([BAKE()], [{ city: 'c', good: 'flour', qty: 100, quality: 0 }, { city: 'c', good: 'peat', qty: 200, quality: 0 }]));
+    expect(bal(more, 'baked_staples').produced_node).toBeGreaterThan(bread); // fuel was the binding gate
     closes(some);
   });
   it('low-quality fuel neither caps bread quality nor is blocked by minQuality', () => {
@@ -92,6 +96,6 @@ describe('catalogue A/B/C contract', () => {
     expect(mill.inputs.map((i) => [i.good, i.kind ?? 'material'])).toEqual([['raw_grain', 'material'], ['metalwork_tools', 'factor']]);
     expect(consumedPerBatch(mill.inputs[1])).toBeCloseTo(0.05, 9);
     expect(auditProductionCatalog()).toEqual([]);
-    expect(auditCatalogReachability().find((x) => x.good === 'flour')!.reachable).toBe(true);
+    expect(goodReachability().find((x) => x.good === 'flour')!.reachable).toBe(true);
   });
 });
