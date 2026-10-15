@@ -73,7 +73,7 @@ describe('C operating input: fuel at the bakery', () => {
   it('fuel is physically consumed per unit and gates output', () => {
     const none = resolveGoodsEconomy(snap([BAKE()], [{ city: 'c', good: 'flour', qty: 100, quality: 0 }]));
     expect(bal(none, 'baked_staples')?.produced_node ?? 0).toBe(0);
-    const some = resolveGoodsEconomy(snap([BAKE()], [{ city: 'c', good: 'flour', qty: 100, quality: 0 }, { city: 'c', good: 'peat', qty: 2, quality: 0 }]));
+    const some = resolveGoodsEconomy(snap([BAKE()], [{ city: 'c', good: 'flour', qty: 100, quality: 0 }, { city: 'c', good: 'peat', qty: 0.05, quality: 0 }]));
     const bread = bal(some, 'baked_staples').produced_node;
     expect(bread).toBeGreaterThan(0);
     expect(bal(some, 'peat').consumed_as_input).toBeCloseTo(bread / 2, 9); // 1 peat per 2-bread batch
