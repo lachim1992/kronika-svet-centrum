@@ -1,6 +1,7 @@
 /** Quality inheritance through grain → flour → bread, via the canonical solver. */
 import { describe, it, expect } from 'vitest';
 import { resolveGoodsEconomy, type Good, type City, type Producer, type Snapshot } from '../../supabase/functions/_shared/goodsEconomy';
+import { ECONOMY } from '../../supabase/functions/_shared/economyConfig';
 import { outputQuality, PRODUCT_MARKET } from '../../supabase/functions/_shared/productMarket';
 
 const good = (key: string, basket: string, price: number): Good => ({
@@ -295,7 +296,7 @@ describe('supplier ranking prices the eligible lots, not the city average', () =
     expect(first.eligible_quality).toBeCloseTo(2, 9); expect(second.eligible_quality).toBeCloseTo(3, 9);
     for (const s of line.ranked_suppliers) {
       // price decomposition: source = base × scarcity × (1 + q·premium); no fame; parts sum to landed
-      expect(s.source_quality_factor).toBeCloseTo(1 + s.eligible_quality * PRODUCT_MARKET.qualityPremium, 9);
+      expect(s.source_quality_factor).toBeCloseTo(1 + s.eligible_quality * ECONOMY.qualityPremium, 9);
       expect(s.source).toBeCloseTo(1 * s.source_scarcity_factor * s.source_quality_factor, 9);
       expect(s.source + s.transport + s.tolls + s.tariff + s.risk + s.loss_cost).toBeCloseTo(s.landed, 9);
     }
@@ -319,6 +320,6 @@ describe('supplier ranking prices the eligible lots, not the city average', () =
       edges: [{ id: 'e', from: '0,0', to: '1,0', cost: 1, capacity: 500, mode: 'road', risk: 0, toll: 0, border: 0 }],
       goods: [good('raw_grain', 'staple_food', 1), good('flour', 'staple_food', 2)] });
     const s = (r.diagnostics.find((x) => x.producer === 'mill_grain') as any).margin.inputs[0].ranked_suppliers[0];
-    expect(s.source).toBeCloseTo(s.source_scarcity_factor * (1 + PRODUCT_MARKET.qualityPremium), 9);
+    expect(s.source).toBeCloseTo(s.source_scarcity_factor * (1 + ECONOMY.qualityPremium), 9);
   });
 });
