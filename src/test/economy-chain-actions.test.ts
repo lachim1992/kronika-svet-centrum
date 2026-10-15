@@ -47,3 +47,42 @@ describe('Chronicle iron tools chain – catalogue integration smoke', () => {
     expect(inputs('smelt_iron')).toEqual(inputs('smelt_copper'));
   });
 });
+
+
+describe('Recipe-driven turn-by-turn stock simulation', () => {
+  const simulate = (initial: Record<string, number>, stages: string[], staffing = 1) => {
+    const stock: Record<string, number> = { ...initial };
+    const history: Array<{ recipe: string; produced: number; stock: Record<string, number> }> = [];
+    for (const key of stages) {
+      const r = recipe(key);
+      const batches = Math.min(staffing, ...r.inputs.filter(i => i.kind !== 'factor').map(i => (stock[i.good] || 0) / i.qty));
+      const produced = Math.max(0, batches) * r.qty;
+      for (const input of r.inputs.filter(i => i.kind !== 'factor')) {
+        stock[input.good] = (stock[input.good] || 0) - batches * input.qty;
+      }
+      stock[r.output] = (stock[r.output] || 0) + produced;
+      history.push({ recipe: key, produced, stock: { ...stock } });
+    }
+    return { stock, history };
+  };
+
+  it('makes two tools after extraction, smelting, lumber supply and smithing', () => {
+    const result = simulate({ lumber: 1 }, ['mine_iron', 'smelt_iron', 'forge_tools']);
+    expect(result.history.map(h => h.produced)).toEqual([2, 1, 2]);
+    expect(result.stock.metalwork_tools).toBe(2);
+    expect(result.stock.raw_ore).toBe(0);
+    expect(result.stock.iron_ingot).toBe(0);
+  });
+
+  it('blocks smithing without lumber, retaining its ingot', () => {
+    const result = simulate({}, ['mine_iron', 'smelt_iron', 'forge_tools']);
+    expect(result.stock.metalwork_tools).toBe(0);
+    expect(result.stock.iron_ingot).toBe(1);
+  });
+
+  it('limits all downstream output under 50 percent staffing', () => {
+    const result = simulate({ lumber: 1 }, ['mine_iron', 'smelt_iron', 'forge_tools'], 0.5);
+    expect(result.history.map(h => h.produced)).toEqual([1, 0.5, 1]);
+    expect(result.stock.metalwork_tools).toBe(1);
+  });
+});
