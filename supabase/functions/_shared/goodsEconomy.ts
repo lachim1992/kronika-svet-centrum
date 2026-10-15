@@ -540,8 +540,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         let missing=Math.max(0,required-usable());
         // SOURCING: every eligible supplier (hinterland + reachable centers) ranked by LANDED cost,
         // subject to route capacity, source reserve, quality and diplomacy inside transfer().
+        // Ranked at the price of the lots that would actually ship (eligible ≥ minQuality), not the city average.
+        const minQ=p.recipe.minQuality;
         const suppliers=[...inputSources(c,ig),...distantInputSources(c,ig)]
-          .map(s=>({s,cost:landed(s,c,ig)})).filter(x=>!!x.cost)
+          .filter(s=>minQ<=0||eligibleQty(stock(s.id,ig.key),minQ)>=C.minLot)
+          .map(s=>({s,cost:landed(s,c,ig,minQ,Math.max(missing,C.minLot))})).filter(x=>!!x.cost)
           .sort((a,b)=>a.cost!.landed-b.cost!.landed||a.s.id.localeCompare(b.s.id));
         const acq=acquisition.get(id)||new Map();acquisition.set(id,acq);
         const rec=acq.get(i.good)||{qty:0,cost:0,suppliers:suppliers.slice(0,3).map(x=>({city:x.s.id,landed:x.cost!.landed,...x.cost})),chosen:null as string|null,parts:{source:0,transport:0,tolls:0,tariff:0,risk:0,loss_cost:0}};acq.set(i.good,rec);
