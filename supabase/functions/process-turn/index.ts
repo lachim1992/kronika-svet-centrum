@@ -8,6 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isNeedBasket, waterShortageImpact } from "../_shared/demandModel.ts";
 import { foodShortageImpact } from '../_shared/foodShortage.ts';
 import { routeUpkeepDueThisTurn } from '../_shared/routeUpkeep.ts';
+import { settleWages } from '../_shared/wageSettlement.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
