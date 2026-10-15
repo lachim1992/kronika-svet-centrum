@@ -224,11 +224,20 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       if(a>score&&p.cost<C.regionalReach){best=h.id;score=a;}}
     if(best!==c.id)hubs.set(key(c.id,g.key),best);
   }
-  /** Canonical LANDED cost of one delivered unit of g from src to dst (productMarket.landedInputCost). */
-  const landed=(src:City,dst:City,g:Good)=>{const p=route(src.cell,dst.cell,g);if(!p||p.loss>=1||p.capacity<=0)return null;
+  /** Quality of the lots a FIFO draw of `amount` (only lots ≥ minQ) would take — read-only peek. */
+  const peekQuality=(b:Balance,amount:number,minQ=-Infinity)=>{let rest=amount,q=0,t=0;
+    for(const x of syncLots(b)){if(rest<=1e-12)break;if(x.quality<minQ-1e-12)continue;const take=Math.min(rest,x.qty);q+=take*x.quality;t+=take;rest-=take;}
+    return t>C.epsilon?q/t:b.quality;};
+  /** Canonical LANDED cost of one delivered unit of g from src to dst (productMarket.landedInputCost).
+   *  Factory input: the source price is valued at the quality of the lots that would actually ship
+   *  (eligible ≥ minQ, FIFO), NOT the city average, and never carries fame (fame = consumer WTP only).
+   *  base × scarcity × (1 + eligibleQuality × premium): quality applied exactly once. */
+  const landed=(src:City,dst:City,g:Good,minQ=-Infinity,wanted=Infinity)=>{const p=route(src.cell,dst.cell,g);if(!p||p.loss>=1||p.capacity<=0)return null;
     const policy=IDEOLOGIES[src.ideology]||IDEOLOGIES.customary_local,targetPolicy=IDEOLOGIES[dst.ideology]||IDEOLOGIES.customary_local;
-    return landedInputCost({sourcePrice:priceOf(src.id,g.key),transport:p.cost*policy.merchantFriction,tolls:p.tolls,
-      tariffRate:targetPolicy.tariff,destinationPrice:priceOf(dst.id,g.key),risk:p.risk,loss:p.loss});};
+    const sd=priceDetail(src.id,g.key),eq=peekQuality(stock(src.id,g.key),wanted,minQ),qf=1+eq*C.qualityPremium;
+    return {...landedInputCost({sourcePrice:sd.base_price*sd.scarcity_factor*qf,transport:p.cost*policy.merchantFriction,tolls:p.tolls,
+      tariffRate:targetPolicy.tariff,destinationPrice:priceOf(dst.id,g.key),risk:p.risk,loss:p.loss}),
+      eligible_quality:eq,source_scarcity_factor:sd.scarcity_factor,source_quality_factor:qf};};
   const transfer=(src:City,dst:City,g:Good,wanted:number,reason:string,via:string[]=[],keep=0,minQ=-Infinity)=>{
     if(tradeBlocked(src,dst))return 0;
     if(src.id===dst.id||wanted<C.minLot)return 0;const p=route(src.cell,dst.cell,g);if(!p||p.loss>=1)return 0;
@@ -255,7 +264,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return 0;
     // Factories are cost-driven: the physical haul must be worth the good, and the landed cost is capped.
     if(reason==='production_input'&&((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0
-      ||(landed(src,dst,g)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple))return 0;
+      ||(landed(src,dst,g,minQ,wanted)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple))return 0;
     // Realised sale value per delivered unit (gross trade — never GDP; only service margin is VA).
     const saleUnit=reason==='production_input'?unit:destinationWTP;
     // Quality-filtered sourcing: only lots meeting the buyer recipe's minQuality may be shipped.
