@@ -74,3 +74,33 @@ Next task: persist lot composition (quality + origin) into the next turn's openi
 - Catalogue recipes all have minQuality 0, so the rule is inert in live play until recipes set minimums.
 - Opening stock without carried lots has no origin; 0..100 scale migration, A/B/C factor split, wages/capital cost and value-added money flows remain open.
 Next task: price the eligible-lot quality in supplier ranking, then set real minQuality on bread/wine recipes via migration.
+
+## Change: supplier ranking at eligible-lot quality (after e3e7d1d)
+- `goodsEconomy.landed(src,dst,g,minQ,wanted)` now values the factory input source price at
+  `base × scarcity × (1 + eligibleQuality × qualityPremium)`, where `eligibleQuality` is a read-only
+  FIFO peek (`peekQuality`) of the lots ≥ recipe `minQuality` that would actually ship. The city
+  average quality and the fame factor are no longer part of the factory landed price (fame stays a
+  consumer-WTP effect only; quality applied exactly once).
+- Suppliers without ≥ `minLot` eligible lots are filtered out before ranking.
+- The transfer landed-cost cap uses the same eligible-lot price.
+- Diagnostics `margin.inputs[].ranked_suppliers[]` gain `eligible_quality`, `source_scarcity_factor`,
+  `source_quality_factor` (observational only).
+- Tests (`src/test/quality-inheritance.test.ts`): A (average 0.75, eligible q3) vs B (all q2), minQuality 2 →
+  B ranked first and chosen, all flows from B at q2, mill lot origin B, A exports 0, price parts sum to
+  landed, balance closes; famous source → factory source price carries no fame.
+
+## Catalogue minQuality (verified in DB, no change made)
+Live `production_recipes.min_quality_input` is already non-zero for guild/luxury recipes only:
+age_wine 1, bake_refined 1, build_luxury 1, craft_jewelry 2, craft_ritual 1, embroider_fine 1,
+forge_fine_arms 1, prepare_feast 1, weave_fine 1. All basic chains (mill_grain, bake_staples,
+press_wine, …) are 0, so the early economy is not gated. The earlier note "all recipes minQuality 0"
+was wrong. Risk noted: craft_jewelry needs raw_ore ≥ 2, but source quality comes only from craft
+(no land-based ore quality) — on TEST02 max raw_ore quality is 0, so jewelry is currently unreachable.
+
+## Remaining gaps
+- `productionCatalog.ts` mirror does not carry min_quality_input (DB authoritative; no audit test yet).
+- Jewelry ore gate vs missing land-based raw quality; FIFO only; no-origin bootstrap; 0..100 migration.
+- A/B/C input classification, wages/capital cost, value-added money flows — not started.
+
+## Next task
+A/B/C classification of inputs in the existing production catalogue (contract field + audit test), no new ledger.
