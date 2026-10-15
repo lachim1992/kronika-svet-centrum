@@ -130,3 +130,21 @@ Verified first: a0f29f5 contained only the eligible-lot supplier ranking + docs 
 ### Next task
 Fuel-supply audit (peat/charcoal reachability per start region), then add C fuel to bake_staples/smelting
 via migration; classify remaining recipes (pottery/tools as B where appropriate) one chain at a time.
+
+## Checkpoint: fuel audit + B-factor replacement demand
+- Re-verified: input-kinds (7) + quality-inheritance (19) tests pass; A/B/C already present — not rewritten.
+- Fuel audit TEST02 (latest ledger, 16 cities): peat produced in 2 cities (≈0.3/turn), charcoal in none,
+  no recipe consumes fuel. Decision: do NOT add C fuel to bake_staples yet — it would stop staple bread in
+  14/16 cities. Precondition: fuel sources reachable from every start region (map generation / peat+charcoal).
+- Defect fixed: excluding explicit-tool producers from city tool wear also removed their tools demand, so
+  nothing ever replaced worn mill tools. `factorToolDemandOf` now adds, per city, expected wear at staffed
+  capacity + (requirement − opening stock) in physical units, through the same industrial_operational
+  channel (divided by toolMaintenanceRate, so the channel yields exactly those units). Counted once.
+- Test: mill without tools → +5 + 0.25·staffing tools demand; with full stock → +0.25·staffing only.
+- Full vitest 571 passed / 0 failed / 3 skipped; edge check (goodsEconomy, commit-turn, compute-trade-flows,
+  economy-dev-snapshot) clean. Deployed commit-turn, compute-trade-flows, economy-dev-snapshot.
+  No fiscal writer added (solver only; refresh stays derived, process/commit-turn sole fiscal path).
+
+### Next task
+Factor sourcing: let B-factor gaps be filled by import through the existing transfer()/landed ranking
+(today only local tool stock counts), then live TEST02 refresh check of mill capital factor.
