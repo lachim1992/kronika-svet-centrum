@@ -191,3 +191,9 @@ B-factor imports, other recipes A/B/C, UI for players (Founder Safe Mode), AI us
 - Payment unchanged: treasury_effect 0, settled once by process-turn. Purchasing power still uses the imputed GDP proxy.
 - Test: wage-settlement reconciliation case. 578 passed / 3 skipped; process-turn deno check clean.
 - Next: once the gap is measured on TEST02, switch `cityAccounts` labour income to previous-turn settled wages (one lag, no same-pass loop) with recalibrated incomeUnitFactor.
+
+## Checkpoint 2026-10-15b — settled wages in city accounts (diagnostic)
+- economyAdapter reads last committed `realm_resources.computed_modifiers.wage_settlement.cities[].wages_paid` → `Snapshot.settledWages` (read-only; refresh never writes).
+- `cityAccounts` reports `settled_wage_income`, `settled_wage_ratio` (paid ÷ VA×laborShare), `labor_income_basis: 'imputed_proxy'`. Purchasing power unchanged.
+- Test in product-market.test.ts. 579 passed / 3 skipped; deno check clean (process-turn, commit-turn, compute-trade-flows, economy-dev-snapshot). Not deployed.
+- Next: measure settled_wage_ratio on TEST02, then make labour income = settled wages (one-turn lag) with recalibrated incomeUnitFactor; capital income from producer_retained distribution.
