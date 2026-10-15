@@ -197,3 +197,9 @@ B-factor imports, other recipes A/B/C, UI for players (Founder Safe Mode), AI us
 - `cityAccounts` reports `settled_wage_income`, `settled_wage_ratio` (paid ÷ VA×laborShare), `labor_income_basis: 'imputed_proxy'`. Purchasing power unchanged.
 - Test in product-market.test.ts. 579 passed / 3 skipped; deno check clean (process-turn, commit-turn, compute-trade-flows, economy-dev-snapshot). Not deployed.
 - Next: measure settled_wage_ratio on TEST02, then make labour income = settled wages (one-turn lag) with recalibrated incomeUnitFactor; capital income from producer_retained distribution.
+
+## Checkpoint 2026-10-15c — paid wages drive household labour income
+- `cityAccounts`: labour income = last committed `wages_paid` × incomeUnitFactor when a settlement exists (`labor_income_basis: 'settled_wages'`); otherwise legacy proxy VA×laborShare (`'imputed_proxy'`). Capital income still proxy.
+- No money creation: wages are only those already moved producer→household by process-turn; refresh reads, never writes. One-turn lag, no same-pass loop.
+- 579 passed / 3 skipped; deno check clean. Not deployed.
+- Limitations: incomeUnitFactor not recalibrated for paid wages (expect lower affordability where producers' cash < payroll); capital income not yet from producer_retained; settlement is per realm city list (cities without settlement fall back).
