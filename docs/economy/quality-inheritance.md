@@ -203,3 +203,9 @@ B-factor imports, other recipes A/B/C, UI for players (Founder Safe Mode), AI us
 - No money creation: wages are only those already moved producer→household by process-turn; refresh reads, never writes. One-turn lag, no same-pass loop.
 - 579 passed / 3 skipped; deno check clean. Not deployed.
 - Limitations: incomeUnitFactor not recalibrated for paid wages (expect lower affordability where producers' cash < payroll); capital income not yet from producer_retained; settlement is per realm city list (cities without settlement fall back).
+
+## Checkpoint 2026-10-15d — Economy tab + Dev Mode field contract
+- `src/lib/economyFieldContract.ts` maps the wage, household-income and producer-cost fields from cityAccounts; `EconomyFieldList` renders them in the Economy tab drilldown and the Dev Mode city detail (with source path). The Economy tab gets a "Základ" column, Dev Mode grid gets "Základ příjmu / Vypl. mzdy / Krytí mezd".
+- Missing field ("chybí"), not settled yet ("zatím není") and real 0 are shown differently.
+- Test `economy-field-contract.test.ts` fails on unmapped or stale cityAccounts keys. 583 passed / 3 skipped.
+- Gaps: contract covers cityAccounts only — not yet producer margin A/B/C rows (Dev Mode costs only, not Economy tab), lot origin/quality per balance, wage_settlement arrears/producer_retained (in realm_resources.computed_modifiers, not in management report), sourcing eligible_quality diagnostics.

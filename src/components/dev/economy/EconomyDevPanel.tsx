@@ -13,6 +13,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Loader2, RefreshCw, Copy, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Grid } from "./Grid";
+import EconomyFieldList from "@/components/economy/EconomyFieldList";
+import { fieldByKey, formatField } from "@/lib/economyFieldContract";
 import { Costs, Specific } from "./CostViews";
 import { fetchEconomyDevSnapshot, toCsv, type EconomyDevSnapshot, type Totals, type FlowRow } from "@/lib/economyDevSnapshot";
 
@@ -135,7 +137,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
           <Grid source={SRC + " .balances/.cityAccounts/.metrics; fiskál = realm_resources (process-turn)"} rows={(s.cities || []).filter((c) => match(c.id))}
             onRow={(c) => setDetail({ title: `Město ${c.name}`, source: "result.cityAccounts, result.metrics, result.balances, city_capital_stock", data: { ...c, balances: (s.balances?.rows || []).filter((b) => b.city === c.id), capital: s.fiscal?.capitalStock.find((x) => x.city_id === c.id) } })}
             cols={[["Město", (c) => c.name], ["Říše", (c) => c.owner], ["Výroba", (c) => f(c.totals.produced)], ["Spotřeba", (c) => f(c.totals.consumed_household + c.totals.consumed_state)], ["Vstupy", (c) => f(c.totals.consumed_as_input)], ["Dovoz/Vývoz", (c) => `${f(c.totals.imported)}/${f(c.totals.exported)}`], ["Δ zásob", (c) => f(c.totals.closing - c.totals.opening)],
-              ["HDP", (c) => f(c.accounts?.city_gdp)], ["Δ HDP", (c) => f(c.gdp_delta)], ["Příjem dom.", (c) => f(c.accounts?.household_income as number)], ["Kupní síla", (c) => f(c.accounts?.purchasing_power as number)], ["Cen. index", (c) => f(c.accounts?.price_index as number)], ["Reál. KS", (c) => f(c.accounts?.real_purchasing_power as number)],
+              ["HDP", (c) => f(c.accounts?.city_gdp)], ["Δ HDP", (c) => f(c.gdp_delta)], ["Příjem dom.", (c) => f(c.accounts?.household_income as number)], ["Základ příjmu", (c) => formatField(fieldByKey("labor_income_basis"), c.accounts).text], ["Vypl. mzdy", (c) => formatField(fieldByKey("settled_wage_income"), c.accounts).text], ["Krytí mezd", (c) => formatField(fieldByKey("settled_wage_ratio"), c.accounts).text], ["Kupní síla", (c) => f(c.accounts?.purchasing_power as number)], ["Cen. index", (c) => f(c.accounts?.price_index as number)], ["Reál. KS", (c) => f(c.accounts?.real_purchasing_power as number)],
               ["Affordab.", (c) => f(c.accounts?.affordability as number)], ["Prosperita", (c) => f(c.accounts?.prosperity as number)], ["Kapitál", (c) => f(c.accounts?.capital_stock as number)], ["Role", (c) => c.roles?.join(", ") || "—"], ["Top nedostatky", (c) => c.shortages.slice(0, 2).map((x) => x.good).join(", ") || "—"]]} />
           <FiscalBlock s={s} />
         </TabsContent>
@@ -157,6 +159,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader><SheetTitle className="text-sm">{detail?.title}</SheetTitle></SheetHeader>
           <p className="text-[10px] text-muted-foreground mt-1">Zdroj: {detail?.source} · tah {s.meta.selectedTurn} · ledger {s.meta.ledgerCreatedAt}</p>
+          {(detail?.data as any)?.accounts && <div className="mt-2"><EconomyFieldList row={(detail?.data as any).accounts} showSource /></div>}
           <pre className="text-[10px] whitespace-pre-wrap break-all mt-2 bg-muted/30 p-2 rounded">{JSON.stringify(detail?.data, null, 2)}</pre>
         </SheetContent>
       </Sheet>
