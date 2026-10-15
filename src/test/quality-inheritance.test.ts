@@ -270,3 +270,55 @@ describe('quality-filtered remote sourcing (two cities)', () => {
     closes(r);
   });
 });
+
+describe('supplier ranking prices the eligible lots, not the city average', () => {
+  const C3 = (id: string, cell: string, craft = 0): City => ({ ...city('open_merchant', craft), id, name: id, cell, population: 10, classes: { peasants: 10 } });
+  const lotOpening = (c: string, lots: { qty: number; quality: number; origin: string }[]) => {
+    const qty = lots.reduce((t, l) => t + l.qty, 0);
+    return { city: c, good: 'raw_grain', qty, quality: lots.reduce((t, l) => t + l.qty * l.quality, 0) / qty, lots };
+  };
+  it('A (cheap average, expensive q3 eligible lots) loses to B (cheaper q2 eligible lots)', () => {
+    const mill = { ...producer('mill_grain', 'flour', [{ good: 'raw_grain', qty: 1 }], 3), city: 'm', capacity: 10 };
+    mill.recipe = { ...mill.recipe, minQuality: 2 };
+    const edge = (id: string, from: string, to: string) => ({ id, from, to, cost: 1, capacity: 500, mode: 'road', risk: 0, toll: 0, border: 0 });
+    // A: average 0.75 (cheaper by average) but its only eligible lots are q3; B: all q2.
+    const r = resolveGoodsEconomy({ turn: 1, cities: [C3('a', '0,0'), C3('m', '1,0', 3), C3('b', '2,0')], fame: [], producers: [mill],
+      opening: [lotOpening('a', [{ qty: 300, quality: 0, origin: 'a' }, { qty: 100, quality: 3, origin: 'a' }]),
+        lotOpening('b', [{ qty: 400, quality: 2, origin: 'b' }])],
+      edges: [edge('ea', '0,0', '1,0'), edge('eb', '1,0', '2,0')],
+      goods: [good('raw_grain', 'staple_food', 1), good('flour', 'staple_food', 2)] });
+    const d = r.diagnostics.find((x) => x.producer === 'mill_grain')! as any;
+    const line = d.margin.inputs.find((l: any) => l.good === 'raw_grain');
+    expect(line.chosen_supplier).toBe('b');
+    const [first, second] = line.ranked_suppliers;
+    expect(first.city).toBe('b'); expect(second.city).toBe('a');
+    expect(first.eligible_quality).toBeCloseTo(2, 9); expect(second.eligible_quality).toBeCloseTo(3, 9);
+    for (const s of line.ranked_suppliers) {
+      // price decomposition: source = base × scarcity × (1 + q·premium); no fame; parts sum to landed
+      expect(s.source_quality_factor).toBeCloseTo(1 + s.eligible_quality * PRODUCT_MARKET.qualityPremium, 9);
+      expect(s.source).toBeCloseTo(1 * s.source_scarcity_factor * s.source_quality_factor, 9);
+      expect(s.source + s.transport + s.tolls + s.tariff + s.risk + s.loss_cost).toBeCloseTo(s.landed, 9);
+    }
+    expect(first.landed).toBeLessThan(second.landed);
+    const flows = r.flows.filter((f) => f.good === 'raw_grain' && f.destination === 'm');
+    expect(flows.length).toBeGreaterThan(0);
+    for (const f of flows) { expect(f.source).toBe('b'); expect(f.quality).toBeCloseTo(2, 9); }
+    const lot = d.input_lots.find((l: any) => l.good === 'raw_grain');
+    expect(lot.quality).toBeCloseTo(2, 9); expect(lot.origins.b).toBeCloseTo(lot.qty, 9);
+    expect(r.balances.find((x) => x.city === 'a' && x.good === 'raw_grain')!.exported).toBe(0);
+    for (const b of r.balances)
+      expect(b.opening + b.produced_household + b.produced_node + b.produced_facility + b.produced_district + b.imported)
+        .toBeCloseTo(b.exported + b.consumed_household + b.consumed_state + b.consumed_as_input + b.stored + b.capex + b.lost_spoilage, 7);
+  });
+
+  it('famous source: factory landed source price carries no fame premium', () => {
+    const mill = { ...producer('mill_grain', 'flour', [{ good: 'raw_grain', qty: 1 }], 3), city: 'm', capacity: 10 };
+    const r = resolveGoodsEconomy({ turn: 1, cities: [C3('a', '0,0'), C3('m', '1,0', 3)], producers: [mill],
+      fame: [{ city: 'a', good: 'raw_grain', name: 'x', streak: 5, fame: 80, quality: 1, created: 1, turn: 1 }],
+      opening: [lotOpening('a', [{ qty: 400, quality: 1, origin: 'a' }])],
+      edges: [{ id: 'e', from: '0,0', to: '1,0', cost: 1, capacity: 500, mode: 'road', risk: 0, toll: 0, border: 0 }],
+      goods: [good('raw_grain', 'staple_food', 1), good('flour', 'staple_food', 2)] });
+    const s = (r.diagnostics.find((x) => x.producer === 'mill_grain') as any).margin.inputs[0].ranked_suppliers[0];
+    expect(s.source).toBeCloseTo(s.source_scarcity_factor * (1 + PRODUCT_MARKET.qualityPremium), 9);
+  });
+});
