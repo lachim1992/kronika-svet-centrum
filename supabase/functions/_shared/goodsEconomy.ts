@@ -4,7 +4,7 @@ import { isFactor, kindOf, wearOf, consumedPerBatch, factorMultiplier, type Kind
 import { computeWorkforceBreakdown } from './manpower.ts';
 import { demandShares, functionalValue, substitutionEfficiency, discretionaryBudgetScale, cityAccounts, recipeMargin, productMeta, landedInputCost, outputQuality, tradeServiceVolumes, tradeServiceValue, prosperityIndex, capitalStockDelta, PRODUCT_MARKET, type CityAccounts } from './productMarket.ts';
 import { BASKET_KEYS, DEMAND_CHANNELS, basketDemandChannels, basketSpec, channelTotal, emptyChannels,
-  toolIntensityOf, toolProductivityMultiplier, type DemandChannel, type DemandInput } from './demandModel.ts';
+  toolIntensityOf, toolProductivityMultiplier, DEMAND, type DemandChannel, type DemandInput } from './demandModel.ts';
 
 export type Channel = 'household' | 'node' | 'facility' | 'district';
 export interface Good {
@@ -385,9 +385,17 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // demand for every substitute inside it.
   // A producer with an explicit B tools factor wears its own factor stock: never also city-level wear.
   const hasToolFactor=(p:Producer)=>p.recipe.inputs.some(i=>isFactor(i)&&goodByKey.get(i.good)?.basket==='tools');
+  /** DERIVED B-factor demand (physical units of tools): expected wear at staffed capacity plus the gap
+   *  between the factor requirement and opening stock. Expressed through the same industrial_operational
+   *  channel, so tools explicitly declared as a factor still create replacement demand — exactly once. */
+  const factorToolDemandOf=(c:City)=>{const need=new Map<string,{req:number;wear:number}>();
+    for(const p of producers)if(p.city===c.id)for(const f of p.recipe.inputs)if(isFactor(f)&&goodByKey.get(f.good)?.basket==='tools'){
+      const per=n(p.capacity)*clamp(p.allocation)*f.qty/Math.max(C.epsilon,p.recipe.qty),e=need.get(f.good)||{req:0,wear:0};
+      e.req+=per;e.wear+=per*staffingRatio(p)*wearOf(f);need.set(f.good,e);}
+    let total=0;for(const [g,e] of need)total+=e.wear+Math.max(0,e.req-stock(c.id,g).opening);return total;};
   const toolWearOf=(c:City)=>producers.filter(p=>p.city===c.id&&!hasToolFactor(p)).reduce((sum,p)=>{
     const basket=goodByKey.get(p.recipe.good)?.basket||'';
-    return sum+n(p.capacity)*clamp(p.allocation)*staffingRatio(p)*toolIntensityOf(basket);},0);
+    return sum+n(p.capacity)*clamp(p.allocation)*staffingRatio(p)*toolIntensityOf(basket);},0)+factorToolDemandOf(c)/DEMAND.toolMaintenanceRate;
   const stockVolumeOf=(c:City)=>goods.reduce((sum,g)=>sum+stock(c.id,g.key).opening*Math.max(1,g.bulk),0);
   for(const c of cities){
     const labor=laborMetrics.find(l=>l.city===c.id);

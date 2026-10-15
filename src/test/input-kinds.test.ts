@@ -99,3 +99,17 @@ describe('catalogue A/B/C contract', () => {
     expect(goodReachability().find((x) => x.good === 'flour')!.reachable).toBe(true);
   });
 });
+
+describe('B factor creates derived replacement demand (once)', () => {
+  const toolDemand = (r: ReturnType<typeof resolveGoodsEconomy>) => r.balances.filter((b) => b.good === 'metalwork_tools').reduce((s, b) => s + b.demand, 0);
+  it('mill without tools demands the requirement gap + wear; full stock demands only wear', () => {
+    const grain = { city: 'c', good: 'raw_grain', qty: 300, quality: 0 };
+    const re = resolveGoodsEconomy(snap([MILL()], [grain])), empty = toolDemand(re);
+    const staff = re.diagnostics.find((d) => d.producer === 'mill_grain')!.staffing_ratio!;
+    const full = toolDemand(resolveGoodsEconomy(snap([MILL()], [grain, { city: 'c', good: 'metalwork_tools', qty: 5, quality: 0 }])));
+    const none = toolDemand(resolveGoodsEconomy(snap([], [grain])));
+    // requirement = capacity 10 × 1/2 = 5; wear = 5 × 0.05 = 0.25 at full staffing
+    expect(empty - none).toBeCloseTo(5 + 0.25 * staff, 6);
+    expect(full - none).toBeCloseTo(0.25 * staff, 6);
+  });
+});
