@@ -148,3 +148,25 @@ via migration; classify remaining recipes (pottery/tools as B where appropriate)
 ### Next task
 Factor sourcing: let B-factor gaps be filled by import through the existing transfer()/landed ranking
 (today only local tool stock counts), then live TEST02 refresh check of mill capital factor.
+
+## Checkpoint: wages + fully loaded producer cost (after 8d35ac6)
+- Re-verified A/B/C: 571 tests green before changes; no defect found beyond the replacement-demand fix already in.
+- `productMarket.localWage` (base 0.03/worker/turn, +0.6×vacancy share, −0.4×unemployment share, bounded
+  0.6–2×) from the canonical labour market; `laborMetrics[].wage_rate`.
+- `productMarket.producerAccount`: payroll = employed × wage; value_added = revenue − intermediate (A/C inputs +
+  B wear); full_cost = intermediate + payroll; operating_surplus = VA − payroll; unit_full_cost; capital_wear
+  reported (already inside intermediate — charged once). Stored in `diagnostics[].margin` (diagnostic_version 3).
+- Dev Mode costs: "Práce (mzdy)" and "Opotřebení nástrojů" now known per producer when v3 data exists; capital
+  depreciation of buildings, overhead and taxes stay "nedostupné".
+- City accounts: `producer_payroll`, `producer_operating_surplus`, `wage_rate` reported for reconciliation.
+  Household income is STILL the labour-share GDP proxy — switching it to payroll changes affordability
+  game-wide and needs a balancing pass (open).
+- No fiscal writes: everything is ledger/diagnostic; process/commit-turn remain sole fiscal path; refresh derived.
+- Tests: 573 passed / 0 failed / 3 skipped; edge check clean. Deployed commit-turn, compute-trade-flows,
+  economy-dev-snapshot.
+
+### Remaining (honest)
+Household income from payroll + surplus distribution (balancing), money-flow closure (who pays wages in cash),
+building depreciation/overhead per producer, taxes per producer, C fuel in live catalogue (fuel supply first),
+B-factor imports, other recipes A/B/C, UI for players (Founder Safe Mode), AI use of producer accounts,
+0..100 quality migration, 200-turn simulation, TEST02 live verification.

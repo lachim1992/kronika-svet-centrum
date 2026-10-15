@@ -113,3 +113,34 @@ describe('B factor creates derived replacement demand (once)', () => {
     expect(full - none).toBeCloseTo(0.25 * staff, 6);
   });
 });
+
+describe('fully loaded producer account (wages + factor wear) in the canonical solver', () => {
+  it('payroll = employed × local wage; VA = revenue − intermediate; surplus = VA − payroll; tool wear inside intermediate', async () => {
+    const { localWage, PRODUCT_MARKET: PM } = await import('../../supabase/functions/_shared/productMarket');
+    const r = resolveGoodsEconomy(snap([MILL()], [{ city: 'c', good: 'raw_grain', qty: 300, quality: 0 }, { city: 'c', good: 'metalwork_tools', qty: 5, quality: 0 }]));
+    const d = r.diagnostics.find((x) => x.producer === 'mill_grain')! as any, m = d.margin, lab = r.labor.find((l) => l.city === 'c')!;
+    expect(m.diagnostic_version).toBe(3);
+    expect(lab.wage_rate).toBeGreaterThanOrEqual(PM.wage.base * PM.wage.floor - 1e-12);
+    expect(lab.wage_rate).toBeLessThanOrEqual(PM.wage.base * PM.wage.ceiling + 1e-12);
+    expect(m.payroll).toBeCloseTo(d.employed * lab.wage_rate, 9);
+    expect(m.value_added).toBeCloseTo(m.revenue - m.cost, 9);
+    expect(m.operating_surplus).toBeCloseTo(m.value_added - m.payroll, 9);
+    expect(m.full_cost).toBeCloseTo(m.cost + m.payroll, 9);
+    expect(m.unit_full_cost).toBeCloseTo(m.full_cost / d.realized, 9);
+    const toolLine = m.inputs.find((l: any) => l.good === 'metalwork_tools');
+    expect(m.capital_wear).toBeCloseTo(toolLine.qty * toolLine.price, 9);
+    expect(m.cost).toBeGreaterThanOrEqual(m.capital_wear); // wear is part of intermediate, charged once
+    // wage responds to the labour market
+    expect(localWage({ supply: 100, vacancies: 50, unemployed: 0 })).toBeGreaterThan(localWage({ supply: 100, vacancies: 0, unemployed: 50 }));
+  });
+});
+
+describe('city accounts report observed payroll (reconciliation)', () => {
+  it('producer_payroll equals the sum of producer payrolls in that city', () => {
+    const r = resolveGoodsEconomy(snap([MILL()], [{ city: 'c', good: 'raw_grain', qty: 300, quality: 0 }]));
+    const acc = (r as any).cityAccounts?.find((a: any) => a.city === 'c') ?? (r as any).accounts?.find((a: any) => a.city === 'c');
+    const pay = r.diagnostics.reduce((t, d) => t + ((d as any).margin?.payroll ?? 0), 0);
+    expect(acc.producer_payroll).toBeCloseTo(pay, 9);
+    expect(acc.producer_payroll).toBeGreaterThan(0);
+  });
+});
