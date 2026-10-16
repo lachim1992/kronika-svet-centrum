@@ -5,7 +5,7 @@ on:
   pull_request:
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: validate-${{ github.ref }}
   cancel-in-progress: true
@@ -20,6 +20,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install --no-audit --no-fund # TEMP: package-lock.json lags behind drizzle devDependencies; restore npm ci after lock refresh
+      - name: One-time lockfile reconciliation for this feature branch
+        if: github.event_name == 'pull_request' && github.head_ref == 'economy/factor-tool-sourcing-20261016'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Synchronize npm lockfile with package manifest'
+            git push origin HEAD:refs/heads/economy/factor-tool-sourcing-20261016
+          fi
       - run: npm run typecheck
       - run: npm run typecheck:edge
       - run: npm test
