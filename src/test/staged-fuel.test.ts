@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveGoodsEconomy, type Good, type City, type Producer, type Snapshot } from '../../supabase/functions/_shared/goodsEconomy';
 import { ECONOMY } from '../../supabase/functions/_shared/economyConfig';
-import { RECIPES, PRODUCTION_BUILDINGS, auditReachability } from '../../supabase/functions/_shared/productionCatalog';
+import { RECIPES, PRODUCTION_BUILDINGS, goodReachability } from '../../supabase/functions/_shared/productionCatalog';
 import { parseInputItem, fallbackOf } from '../../supabase/functions/_shared/inputKinds';
 
 const good = (key: string, basket: string, price: number, stage = 'final'): Good => ({ key, basket, price, stage, storable: true, bulk: 1, density: 30, perishability: 0, storageLoss: 0, storageCost: 0, substitutability: 1, strategic: 0, prestige: 0, transshipment: 0, finalUse: stage !== 'intermediate' });
@@ -18,7 +18,7 @@ describe('staged bakery fuel (peat/charcoal), no phantom fuel', () => {
   it('catalog: bake_staples burns peat OR charcoal with a 0.8 fallback; fuel goods have producing structures; bread stays reachable', () => {
     expect(bake.inputs.filter(i => fallbackOf(i) === 0.8).map(i => i.good)).toEqual(['peat', 'charcoal']);
     for (const r of ['cut_peat', 'burn_charcoal', 'fell_timber']) expect(PRODUCTION_BUILDINGS.some(b => b.levels.flat().includes(r)), r).toBe(true);
-    const reach = auditReachability();
+    const reach = goodReachability();
     for (const g of ['baked_staples', 'peat', 'charcoal']) expect(reach.find(e => e.good === g)?.reachable, g).toBe(true);
     expect(parseInputItem({ key: 'peat', qty: 1, kind: 'operating', fallback: 0.8 }, Number).fallback).toBe(0.8);
   });
