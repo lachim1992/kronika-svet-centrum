@@ -3,6 +3,7 @@
  * Uses unified AI context (createAIContext + invokeAI) for premise injection.
  */
 
+import { dispatchOutcome } from "./dispatchOutcome.ts";
 import { createAIContext, invokeAI, getServiceClient, corsHeaders, jsonResponse as json, errorResponse } from "../_shared/ai-context.ts";
 import { buildBasketSnapshot } from "../_shared/basket-context.ts";
 import { applyStackMove } from "../_shared/stackMovementCommand.ts";
