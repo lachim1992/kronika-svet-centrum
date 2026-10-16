@@ -4,6 +4,7 @@
  */
 
 import { dispatchOutcome } from "./dispatchOutcome.ts";
+import { chooseFuelBuild } from "../_shared/fuelGuidance.ts";
 import { createAIContext, invokeAI, getServiceClient, corsHeaders, jsonResponse as json, errorResponse } from "../_shared/ai-context.ts";
 import { buildBasketSnapshot } from "../_shared/basket-context.ts";
 import { applyStackMove } from "../_shared/stackMovementCommand.ts";
@@ -1095,6 +1096,23 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       "insufficient_resources", "ultimatum_required_first", "war_already_active", "no_active_war",
       "room_creation_failed",
     ]);
+    // Deterministic fuel remedy from the canonical ledger (no LLM): if bakeries lack fuel and the LLM
+    // planned no build, queue one validated BUILD_BUILDING. Success is only what command-dispatch accepts.
+    try {
+      result.actions = result.actions || [];
+      if (!result.actions.some((a: any) => a.actionType === "build_building")) {
+        const { data: led } = await supabase.from("economy_turn_ledgers").select("result")
+          .eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(1).maybeSingle();
+        const warnings = (led as any)?.result?.fuelGuidance || [];
+        if (warnings.length) {
+          const { data: tmpls } = await supabase.from("building_templates").select("name");
+          const names = new Set<string>((tmpls || []).map((t: any) => String(t.name).toLowerCase()));
+          const pick = chooseFuelBuild(warnings, factionName, names, (id) => (cities || []).find((c: any) => c.id === id)?.name);
+          if (pick) result.actions.unshift({ actionType: "build_building", buildingName: pick.buildingName, targetCity: pick.cityName,
+            description: `Palivo pro pekárny (${pick.good})`, narrativeNote: `Frakce ${factionName} zakládá ${pick.buildingName} v ${pick.cityName}, aby pekárny měly palivo.` });
+        }
+      }
+    } catch (e) { console.warn(`[ai-fuel] guidance skipped: ${e}`); }
     for (const action of (result.actions || []).slice(0, 8)) {
       try {
         const executed = await executeAction(
@@ -1102,7 +1120,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
           sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], realmRes,
         );
         const isFailure = typeof executed === "string"
-          && (FAILURE_RESULTS.has(executed) || executed.endsWith("_failed") || executed.startsWith("recruit_failed"));
+          && (FAILURE_RESULTS.has(executed) || executed.startsWith("rejected") || executed.endsWith("_failed") || executed.startsWith("recruit_failed"));
         executedActions.push({
           ...action,
           executed: !isFailure,
