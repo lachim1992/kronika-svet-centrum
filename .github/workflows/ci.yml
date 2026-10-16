@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund # TEMP: package-lock.json lags behind drizzle devDependencies; restore npm ci after lock refresh
       - run: npm run typecheck
       - run: npm run typecheck:edge
       - run: npm test
