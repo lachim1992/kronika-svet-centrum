@@ -209,3 +209,8 @@ B-factor imports, other recipes A/B/C, UI for players (Founder Safe Mode), AI us
 - Missing field ("chybí"), not settled yet ("zatím není") and real 0 are shown differently.
 - Test `economy-field-contract.test.ts` fails on unmapped or stale cityAccounts keys. 583 passed / 3 skipped.
 - Gaps: contract covers cityAccounts only — not yet producer margin A/B/C rows (Dev Mode costs only, not Economy tab), lot origin/quality per balance, wage_settlement arrears/producer_retained (in realm_resources.computed_modifiers, not in management report), sourcing eligible_quality diagnostics.
+
+## Status reconciliation (2026-10-16)
+- STALE above: "producer cash pool is a flow, not a persisted cash stock" and "persist producer cash stock" — DONE: wage_settlement now carries producer_cash_opening → producer_cash_closing per city (opening + value added − wages = closing, ≥ 0); arrears may be paid from the stock. Echoed into cityAccounts as `settled_producer_cash` (both Economy tab and Dev Mode via economyFieldContract).
+- STALE: line 211 gap on arrears/producer_retained/A/B/C in Economy tab — DONE (settled_wage_arrears, settled_producer_retained, ProducerCostDetails).
+- Still open: household ownership income from producer cash, income basis switch, affordability calibration. See roadmap.md phases.
