@@ -57,7 +57,7 @@ describe('producer cost field contract: direct canonical paths in both views', (
     snapshot.producers[1].recipe.inputs.push({ good: 'metalwork_tools', qty: 1, kind: 'factor', wear: 0.05 }, { good: 'fuel', qty: 1, kind: 'operating' });
     const ledger = resolveGoodsEconomy(snapshot), before = JSON.stringify(ledger);
     const report = buildManagementReport(snapshot, ledger, { player_name: 'p' });
-    const dev = buildSnapshot({ ...ledger, snapshot }, null);
+    const dev = buildSnapshot({ ...ledger, snapshot: { ...snapshot, producers: snapshot.producers.map(p => ({ ...p, node: p.node ?? '' })) } }, null);
     expect(report.producers.map(p => p.producer)).not.toContain('grain');
     const owner = report.producers.find(p => p.producer === 'flour');
     const diagnostic = ledger.diagnostics.find(d => d.producer === 'flour') as unknown as { margin: Record<string, unknown> };
