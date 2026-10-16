@@ -13,7 +13,7 @@
 - [x] Verify canonical projection regressions, tests/typecheck (589 total, 586 passed / 3 skipped)
 - [x] Echo committed wage arrears and producer retained cash into city accounts (both views)
 - [ ] Live TEST02 verification of Economy + Dev views (needs signed-in session)
-- &
+- [x] Persistent producer cash stock per city (wage_settlement producer_cash_opening/closing; arrears payable from stock; shown as "Hotovost výrobců (zásoba)" in both views)
 - [x] Ownership income payout at turn close: paid from producer cash AFTER wages, unpaid profit stays in cash (not arrears); surfaced as "Vyplacený podíl na zisku (uzávěrka)" in both views; treasury untouched; basis settled_reported
 - [ ] Capital income from producer_retained instead of GDP proxy (needs balancing)
 - [ ] C fuel for bakery once peat/charcoal supply exists
