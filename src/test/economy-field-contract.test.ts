@@ -77,7 +77,7 @@ describe('producer cost field contract: direct canonical paths in both views', (
     expect(developer?.canonical_margin).toBe(diagnostic.margin);
     for (const field of PRODUCER_COST_FIELDS) {
       expect(formatField(field, owner?.margin), field.key).toEqual(formatField(field, developer?.canonical_margin as Record<string, unknown>));
-      expect(formatField(field, owner?.margin).missing, field.key).toBe(false);
+      if (!field.key.startsWith('fuel_')) expect(formatField(field, owner?.margin).missing, field.key).toBe(false);
     }
     const breakdown = diagnostic.margin.cost_breakdown as { material: number; operating: number; factor_wear: number; payroll_imputed: number };
     expect(breakdown.material).toBeGreaterThan(0); expect(breakdown.operating).toBeGreaterThan(0); expect(breakdown.factor_wear).toBeGreaterThan(0);

@@ -62,6 +62,8 @@ export const PRODUCER_COST_FIELDS: EconomyField[] = [
   { key: "labor_per_unit", label: "Práce / ks", tip: "Pracovní náročnost podle skutečného obsazení výroby; bez výstupu není definována.", kind: "index", source: "diagnostics[].margin" },
   { key: "wage_rate", label: "Mzdová sazba", tip: "Místní sazba za pracovníka a tah.", kind: "index", source: "diagnostics[].margin" },
   { key: "operating_surplus", label: "Přebytek po odhadu mezd", tip: "Oceněný výstup minus spotřebované vstupy a odhad mezd; nikoli hotovostní zisk.", kind: "money", source: "diagnostics[].margin" },
+  { key: "fuel_coverage", label: "Krytí palivem", tip: "Podíl dávky vypálený skutečným palivem (rašelina/dřevěné uhlí) ze zásob města. Zbytek jde na otevřené ohniště s nižší výtěžností. „zatím není“ = receptura palivo nepoužívá.", kind: "ratio", source: "diagnostics[].fuel → margin" },
+  { key: "fuel_lost_output", label: "Ztráta výstupu bez paliva", tip: "Kusy, které se kvůli chybějícímu palivu nevyrobily ze stejného materiálu. Palivo se nikdy nevytváří z ničeho.", kind: "index", source: "diagnostics[].fuel → margin" },
   { key: "payroll_basis", label: "Základ mezd", tip: "Účet výrobce obsahuje odhad. Skutečné mzdy vyúčtovává odděleně pouze uzávěrka tahu.", kind: "basis", source: "diagnostics[].margin" },
   { key: "cash_settled", label: "Hotovost vyúčtovaná v kalkulaci", tip: "Tato kalkulace nepřevádí peníze. Výplaty z uzávěrky nejsou touto hodnotou nahrazovány.", kind: "boolean", source: "diagnostics[].margin" },
 ];

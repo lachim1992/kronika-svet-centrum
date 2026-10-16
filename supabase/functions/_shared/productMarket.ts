@@ -526,7 +526,9 @@ export function localWage(l: { supply: number; vacancies: number; unemployed: nu
  * Derived only: no fiscal write, no cash stock.
  */
 export function producerAccount(a: { realized: number; revenue: number; intermediate: number; capitalWear: number; employed: number; wage: number;
-  material?: number; operating?: number }) {
+  material?: number; operating?: number;
+  /** Staged fuel record from goodsEconomy (diagnostics[].fuel); absent = recipe has no staged fuel. */
+  fuel?: { coverage: number; lost_output: number } | null }) {
   const payroll = pos(a.employed) * pos(a.wage), value_added = pos(a.revenue) - pos(a.intermediate);
   const full_cost = pos(a.intermediate) + payroll, q = pos(a.realized), per = (v: number) => q > 0 ? v / q : null;
   // Cost build-up by input class. Payroll is IMPUTED (local wage × employed): no cash moves to
@@ -536,6 +538,8 @@ export function producerAccount(a: { realized: number; revenue: number; intermed
     operating_surplus: value_added - payroll, unit_full_cost: per(full_cost),
     payroll_basis: 'imputed' as const, cash_settled: false as const,
     labor_per_unit: per(pos(a.employed)),
+    /** Physical fuel coverage of the batch (null = recipe has no staged fuel) and output lost to the fallback. */
+    fuel_coverage: a.fuel ? a.fuel.coverage : null, fuel_lost_output: a.fuel ? pos(a.fuel.lost_output) : null,
     cost_breakdown: { material, operating, factor_wear, payroll_imputed: payroll,
       unit: { material: per(material), operating: per(operating), factor_wear: per(factor_wear), payroll_imputed: per(payroll) } } };
 }
