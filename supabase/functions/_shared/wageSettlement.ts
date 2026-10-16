@@ -13,7 +13,9 @@ export interface WageCityInput { city: string; producer_payroll?: number; goods_
   labor_income?: number;
   /** Imputed proxy ownership income from cityAccounts (capital share of GDP). Settled as a REAL
    *  payout from producer cash AFTER wages; reported only — household spending still uses the proxy. */
-  capital_income?: number }
+  capital_income?: number;
+  /** Imputed owner claim; preferred as due so settled-basis capital_income cannot feed back into its own due. */
+  ownership_income_claim?: number }
 export interface WageCitySettlement {
   city: string; payroll_due: number; arrears_opening: number; producer_cash_pool: number;
   wages_paid: number; household_wage_income: number; arrears_closing: number; producer_retained: number;
@@ -42,7 +44,7 @@ function build(turn: number, accounts: WageCityInput[], prior?: { cities?: WageC
     const paid = Math.min(due + open, pool + cashOpen);
     // Ownership income is paid only from cash left after wages; unpaid part is NOT carried as
     // arrears (profit is residual, not a debt) — it simply stays in producer cash.
-    const ownershipDue = pos(a.capital_income);
+    const ownershipDue = pos(a.ownership_income_claim ?? a.capital_income);
     const ownershipPaid = Math.min(ownershipDue, cashOpen + pool - paid);
     return { city: a.city, payroll_due: r(due), arrears_opening: r(open), producer_cash_pool: r(pool),
       wages_paid: r(paid), household_wage_income: r(paid), arrears_closing: r(due + open - paid), producer_retained: r(Math.max(0, pool - paid)),
@@ -56,8 +58,8 @@ function build(turn: number, accounts: WageCityInput[], prior?: { cities?: WageC
       arrears_closing: sum('arrears_closing'), producer_retained: sum('producer_retained'), producer_cash_pool: sum('producer_cash_pool'), producer_cash_closing: sum('producer_cash_closing'),
       ownership_income_due: sum('ownership_income_due'), ownership_income_paid: sum('ownership_income_paid'), ownership_unpaid: sum('ownership_unpaid'),
       imputed_labor_income: sum('imputed_labor_income'), imputed_minus_settled: sum('imputed_minus_settled') },
-    /** Household purchasing power still uses the imputed proxy; settled wages/ownership are reported, not yet spent. */
-    household_income_basis: 'imputed_proxy' as const,
-    /** Ownership payout is a real cash transfer out of producer cash, but only reported — households do not spend it yet. */
-    ownership_income_basis: 'settled_reported' as const };
+    /** Next turn's purchasing power uses these settled wages/ownership per city; proxy only where absent (legacy). */
+    household_income_basis: 'settled_when_available' as const,
+    /** Ownership payout is a real cash transfer out of producer cash and funds next turn's household income. */
+    ownership_income_basis: 'settled_spent' as const };
 }

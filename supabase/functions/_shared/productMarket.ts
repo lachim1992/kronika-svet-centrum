@@ -499,6 +499,8 @@ export function cityAccounts(i: CityAccountsInput) {
     affordability_gap: affordabilityGap, affordability, diversity,
     proxy: true, private_wealth: null as null, labor_income_basis: (settled == null ? 'imputed_proxy' : 'settled_wages') as 'imputed_proxy' | 'settled_wages',
     settled_wage_income: settled,
+    /** Imputed owner claim (VA × capital share, unit-converted) — the due amount process-turn settles; never spent. */
+    ownership_income_claim: gdp * (1 - M.laborShare) * M.localCapitalShare * M.incomeUnitFactor,
     capital_income_basis: (settledOwn == null ? 'imputed_proxy' : 'settled_ownership') as 'imputed_proxy' | 'settled_ownership',
     /** Settled cash wages ÷ unscaled proxy wage bill (VA × laborShare); 1 = proxy fully backed by paid wages. */
     settled_wage_ratio: i.settledWageIncome == null || gdp * M.laborShare <= 0 ? null : pos(i.settledWageIncome) / (gdp * M.laborShare),
