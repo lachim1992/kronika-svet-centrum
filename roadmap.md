@@ -9,7 +9,7 @@
 - [ ] Capital income from producer_retained instead of GDP proxy (needs balancing)
 - [ ] C fuel for bakery once peat/charcoal supply exists
 - [ ] Road/local infrastructure progress idempotent on turn retry (needs migration)
-- [ ] AI build result should reflect command-dispatch refusal
+- [x] AI build result reflects command-dispatch refusal ("rejected: …"), test ai-build-outcome.test.ts
 
 - [ ] Restore reliable Test01 turn closure after stale prior-turn execution guard
 - [ ] Verify canonical Test01 economy twice without fiscal or history drift
