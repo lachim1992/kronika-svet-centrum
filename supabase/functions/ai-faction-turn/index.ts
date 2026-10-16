@@ -1699,12 +1699,14 @@ async function executeAction(
     // ─── BUILD BUILDING ───
     case "build_building": {
       if (!action.buildingName || !action.targetCity) return "missing_params";
+      // Exact (case-insensitive) canonical template only; LLM wildcards/hallucinated names are rejected.
+      const exact = (s: string) => String(s).trim().replace(/[\\%_]/g, (m) => "\\" + m);
       const { data: tmpl } = await supabase.from("building_templates")
-        .select("*").ilike("name", action.buildingName).limit(1).maybeSingle();
+        .select("*").ilike("name", exact(action.buildingName)).limit(1).maybeSingle();
       if (!tmpl) return "template_not_found";
       const { data: city } = await supabase.from("cities")
         .select("id, name").eq("session_id", sessionId)
-        .eq("owner_player", factionName).ilike("name", action.targetCity).limit(1).maybeSingle();
+        .eq("owner_player", factionName).ilike("name", exact(action.targetCity)).limit(1).maybeSingle();
       if (!city) return "city_not_found";
 
       await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
