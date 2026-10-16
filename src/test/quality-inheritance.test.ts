@@ -281,7 +281,7 @@ describe('supplier ranking prices the eligible lots, not the city average', () =
   it('A (cheap average, expensive q3 eligible lots) loses to B (cheaper q2 eligible lots)', () => {
     const mill = { ...producer('mill_grain', 'flour', [{ good: 'raw_grain', qty: 1 }], 3), city: 'm', capacity: 10 };
     mill.recipe = { ...mill.recipe, minQuality: 2 };
-    const edge = (id: string, from: string, to: string) => ({ id, from, to, cost: 1, capacity: 500, mode: 'road', risk: 0, toll: 0, border: 0 });
+    const edge = (id: string, from: string, to: string) => ({ id, from, to, cost: 1, capacity: 500, mode: 'road' as const, risk: 0, toll: 0, border: 0 });
     // A: average 0.75 (cheaper by average) but its only eligible lots are q3; B: all q2.
     const r = resolveGoodsEconomy({ turn: 1, cities: [C3('a', '0,0'), C3('m', '1,0', 3), C3('b', '2,0')], fame: [], producers: [mill],
       opening: [lotOpening('a', [{ qty: 300, quality: 0, origin: 'a' }, { qty: 100, quality: 3, origin: 'a' }]),
