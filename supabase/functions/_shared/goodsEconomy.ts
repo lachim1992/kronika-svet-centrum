@@ -781,7 +781,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       // Echo of the last COMMITTED process-turn settlement (read-only; never recomputed here).
       settled_wage_arrears:snapshot.settlement?.[c.id]?.arrears_closing??null,
       settled_producer_retained:snapshot.settlement?.[c.id]?.producer_retained??null,
-      settled_producer_cash:snapshot.settlement?.[c.id]?.producer_cash_closing??null};});
+      settled_producer_cash:snapshot.settlement?.[c.id]?.producer_cash_closing??null,
+      settled_ownership_income:snapshot.settlement?.[c.id]?.ownership_income_paid??null};});
   const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
     channels:{...channels},total:channelTotal(channels)}));
   return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
