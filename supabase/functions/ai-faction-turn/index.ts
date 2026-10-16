@@ -1709,7 +1709,7 @@ async function executeAction(
         .eq("owner_player", factionName).ilike("name", exact(action.targetCity)).limit(1).maybeSingle();
       if (!city) return "city_not_found";
 
-      await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+      const buildRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
         commandType: "BUILD_BUILDING",
@@ -1721,7 +1721,7 @@ async function executeAction(
         },
         commandId,
       });
-      return "ok";
+      return dispatchOutcome(buildRes);
     }
 
     // ─── RECRUIT ARMY ───
