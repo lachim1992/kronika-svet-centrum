@@ -7,7 +7,7 @@ describe('settled owner income feeds purchasing power', () => {
   it('legacy game without settlement keeps the GDP proxy', () => {
     const a = cityAccounts(base);
     expect(a.capital_income_basis).toBe('imputed_proxy');
-    expect(a.capital_income).toBeCloseTo(a.ownership_income_claim, 9);
+    expect(a.capital_income).toBeCloseTo(a.ownership_income_claim * M.incomeUnitFactor, 9);
   });
   it('uses actually paid wages + ownership, no extra money', () => {
     const a = cityAccounts({ ...base, settledWageIncome: 30, settledOwnershipIncome: 5 });
