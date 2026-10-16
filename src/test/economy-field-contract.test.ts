@@ -36,7 +36,15 @@ describe('economy field contract (Economy tab + Dev Mode)', () => {
     expect(formatField(w, {})).toEqual({ text: 'chybí', missing: true });
     expect(formatField(w, { settled_wage_income: 0 })).toEqual({ text: '0.0', missing: false });
   });
-});
+  });
+  it('echoes committed arrears and producer retained cash per city without recomputing', () => {
+    const s = { ...snap(), settlement: { b: { arrears_closing: 1.5, producer_retained: 4 } } };
+    const acc = resolveGoodsEconomy(s).cityAccounts as Record<string, unknown>[];
+    const b = acc.find(x => x.city === 'b')!, a = acc.find(x => x.city === 'a')!;
+    expect(b.settled_wage_arrears).toBe(1.5);
+    expect(b.settled_producer_retained).toBe(4);
+    expect(a.settled_wage_arrears).toBeNull();
+  });
 
 describe('producer cost field contract: direct canonical paths in both views', () => {
   const paths = (r: Record<string, unknown>, prefix = ''): string[] => Object.entries(r).flatMap(([key, value]) => {
