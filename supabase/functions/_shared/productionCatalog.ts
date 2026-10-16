@@ -272,7 +272,7 @@ export function goodReachability(): ReachabilityEntry[] {
       const structures = producersOfRecipe(recipe.key);
       if (!structures.length) { best ??= { good, reachable: false, path: [recipe.key], blocker: `no_structure_for:${recipe.key}` }; continue; }
       // B factors are soft (productivity floor), so they never block reachability.
-      const inputs = recipe.inputs.filter((i) => i.kind !== 'factor').map((i) => resolve(i.good, [...stack, good]));
+      const inputs = recipe.inputs.filter((i) => i.kind !== 'factor' && i.fallback == null).map((i) => resolve(i.good, [...stack, good]));
       const missing = inputs.find((i) => !i.reachable);
       if (missing) { best ??= { good, reachable: false, path: [recipe.key], blocker: missing.blocker }; continue; }
       const structure = structures[0];
