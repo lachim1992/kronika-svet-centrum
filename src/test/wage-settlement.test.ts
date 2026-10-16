@@ -42,7 +42,7 @@ describe('canonical wage settlement', () => {
     expect(s.cities[0]).toMatchObject({ wages_paid: 20, imputed_labor_income: 50, imputed_minus_settled: 30, settled_share_of_imputed: 0.4 });
     expect(s.cities[1]).toMatchObject({ wages_paid: 5, imputed_labor_income: 0, settled_share_of_imputed: null });
     expect(s.totals).toMatchObject({ imputed_labor_income: 50, imputed_minus_settled: 25 });
-    expect(s.household_income_basis).toBe('imputed_proxy');
+    expect(s.household_income_basis).toBe('settled_when_available');
     expect(s.treasury_effect).toBe(0);
   });
   it('carries producer cash stock between turns and pays arrears from it', () => {
@@ -60,8 +60,8 @@ describe('canonical wage settlement', () => {
     conserved(t1);
     expect(t1.cities[0]).toMatchObject({ wages_paid: 30, ownership_income_due: 20, ownership_income_paid: 20, ownership_unpaid: 0, producer_cash_closing: 50 });
     expect(t1.totals.ownership_income_paid).toBe(20);
-    expect(t1.ownership_income_basis).toBe('settled_reported');
-    expect(t1.household_income_basis).toBe('imputed_proxy');
+    expect(t1.ownership_income_basis).toBe('settled_spent');
+    expect(t1.household_income_basis).toBe('settled_when_available');
     expect(t1.treasury_effect).toBe(0);
     // Tight cash: wages consume everything, ownership payout is 0 and NOT carried as arrears.
     const t2 = settleWages(2, [{ city: 'A', producer_payroll: 60, goods_value_added: 10, capital_income: 25 }], t1);

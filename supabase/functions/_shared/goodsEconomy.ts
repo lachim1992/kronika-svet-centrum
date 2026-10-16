@@ -72,6 +72,8 @@ export interface Snapshot { turn: number; goods: Good[]; cities: City[]; produce
   householdTaxRate?: Record<string, number>;
   /** Wages paid per city in the last COMMITTED turn (wage_settlement); diagnostic only. */
   settledWages?: Record<string, number>;
+  /** Ownership income actually paid last committed turn; absent for legacy settlements. */
+  settledOwnership?: Record<string, number>;
   settlement?: Record<string, { arrears_closing: number; producer_retained: number; producer_cash_closing?: number; ownership_income_paid?: number }> }
 export interface Balance { city: string; good: string; opening: number; produced_household: number; produced_node: number;
   produced_facility: number; produced_district: number; consumed_household: number; consumed_state: number;
@@ -765,7 +767,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const services=metrics.find(m=>m.city===c.id)!.trade_services;
     const taxRate=snapshot.householdTaxRate?.[c.owner]??0.1;
     const acc=cityAccounts({city:c.id,valueAdded:goodsVA+services.service_value_added,
-      householdTaxRate:taxRate,needs,discretionaryWish:wish,basketConsumption,settledWageIncome:snapshot.settledWages?.[c.id]??null});
+      householdTaxRate:taxRate,needs,discretionaryWish:wish,basketConsumption,settledWageIncome:snapshot.settledWages?.[c.id]??null,settledOwnershipIncome:snapshot.settledOwnership?.[c.id]??null});
     const lab=laborMetrics.find(l=>l.city===c.id);
     const prosperity=prosperityIndex({realPurchasingPowerPerCapita:c.population>0?acc.real_purchasing_power/c.population:0,
       employment:lab?lab.employment_rate:1,needCoverage:acc.physical_need_coverage,housingHeadroom:c.housingHeadroom??0.5,

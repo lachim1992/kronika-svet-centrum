@@ -17,7 +17,10 @@ export const CITY_ACCOUNT_FIELDS: EconomyField[] = [
   { key: "settled_wage_ratio", label: "Krytí mzdového odhadu", kind: "ratio", source: SRC,
     tip: "Vyplacené mzdy ÷ odhadovaný mzdový objem (přidaná hodnota × podíl práce). 100 % = odhad plně krytý skutečnými mzdami." },
   { key: "labor_income", label: "Příjem z práce", kind: "money", source: SRC, tip: "Mzdový příjem domácností převedený globálním faktorem; podle základu výše." },
-  { key: "capital_income", label: "Příjem z majetku", kind: "money", source: SRC, tip: "Zatím odhad z HDP (podíl místního kapitálu), ne rozdělený zisk výrobců." },
+  { key: "capital_income_basis", label: "Základ příjmu z majetku", kind: "basis", source: SRC,
+    tip: "Vyplacený podíl na zisku = skutečná výplata vlastníkům z hotovosti výrobců při minulé uzávěrce. Odhad = podíl HDP (starší hra / zatím žádná výplata)." },
+  { key: "capital_income", label: "Příjem z majetku", kind: "money", source: SRC, tip: "Podle základu výše: skutečně vyplacený podíl na zisku, nebo odhad z HDP." },
+  { key: "ownership_income_claim", label: "Nárok vlastníků (odhad)", kind: "money", source: SRC, tip: "Odhad podílu na zisku (HDP × podíl kapitálu). Uzávěrka ho vyplácí jen do výše hotovosti po mzdách; samo se neutrácí." },
   { key: "household_income", label: "Hrubý příjem domácností", kind: "money", source: SRC, tip: "Příjem z práce + příjem z majetku." },
   { key: "household_taxes", label: "Daně domácností", kind: "money", source: SRC, tip: "Daňový klín z hrubého příjmu." },
   { key: "disposable_income", label: "Příjem po daních", kind: "money", source: SRC, tip: "Hrubý příjem − daně." },
@@ -29,7 +32,7 @@ export const CITY_ACCOUNT_FIELDS: EconomyField[] = [
   { key: "settled_wage_arrears", label: "Dlužné mzdy (uzávěrka)", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Mzdy, které výrobci při poslední uzávěrce tahu nezaplatili; přenáší se do dalšího tahu." },
   { key: "settled_producer_retained", label: "Ponechaná hotovost výrobců", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Přidaná hodnota, která výrobcům zůstala po skutečné výplatě mezd při poslední uzávěrce." },
   { key: "settled_producer_cash", label: "Hotovost výrobců (zásoba)", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Trvalá hotovost výrobců po poslední uzávěrce: počáteční stav + přidaná hodnota − vyplacené mzdy − vyplacený podíl na zisku. Nikdy záporná." },
-  { key: "settled_ownership_income", label: "Vyplacený podíl na zisku (uzávěrka)", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Zisk výrobců skutečně vyplacený vlastníkům (domácnostem) při poslední uzávěrce, až po mzdách, z hotovosti výrobců. Nevyplacená část zůstává výrobcům — není to dluh. Domácnosti ji zatím neutrácejí (jen hlášeno)." },
+  { key: "settled_ownership_income", label: "Vyplacený podíl na zisku (uzávěrka)", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Zisk výrobců skutečně vyplacený vlastníkům (domácnostem) při poslední uzávěrce, až po mzdách, z hotovosti výrobců. Nevyplacená část zůstává výrobcům — není to dluh. Od dalšího tahu tvoří příjem z majetku domácností." },
 ];
 
 /** Engine fields intentionally shown elsewhere (main table / drilldown text) or internal. */
@@ -65,7 +68,7 @@ export const PRODUCER_COST_FIELDS: EconomyField[] = [
 export const PRODUCER_COST_UNMAPPED_OK = new Set(["payroll", "capital_wear", "value_added"]);
 export type ProducerCostRecord = Record<string, unknown>;
 
-export const BASIS_LABEL: Record<string, string> = { settled_wages: "vyplacené mzdy", imputed_proxy: "odhad z HDP", imputed: "odhad, nikoli výplata" };
+export const BASIS_LABEL: Record<string, string> = { settled_wages: "vyplacené mzdy", imputed_proxy: "odhad z HDP", imputed: "odhad, nikoli výplata", settled_ownership: "vyplacený podíl na zisku" };
 
 /** null/undefined = field missing (older ledger or not yet settled) — never shown as 0. */
 export function formatField(field: EconomyField, row: Record<string, unknown> | null | undefined): { text: string; missing: boolean } {

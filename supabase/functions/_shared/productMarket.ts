@@ -445,6 +445,8 @@ export interface CityAccountsInput {
   basketConsumption: Record<string, number[]>;
   /** Wages actually paid last COMMITTED turn (wage_settlement). Reported only; income basis stays the proxy. */
   settledWageIncome?: number | null;
+  /** Owner income actually paid last COMMITTED turn out of producer cash; null = legacy proxy. */
+  settledOwnershipIncome?: number | null;
 }
 
 /**
@@ -464,7 +466,11 @@ export function cityAccounts(i: CityAccountsInput) {
   // conversion as the proxy. Legacy fallback (first turn / no settlement): VA × laborShare proxy.
   const settled = i.settledWageIncome == null ? null : pos(i.settledWageIncome);
   const laborIncome = (settled ?? gdp * M.laborShare) * M.incomeUnitFactor;
-  const capitalIncome = gdp * (1 - M.laborShare) * M.localCapitalShare * M.incomeUnitFactor;
+  // Owner income: cash actually paid out of producer cash after wages (same unit factor). Both settled
+  // flows are bounded by producer cash, so wages + ownership can never exceed money producers had.
+  // Legacy fallback: VA × capital share proxy.
+  const settledOwn = i.settledOwnershipIncome == null ? null : pos(i.settledOwnershipIncome);
+  const capitalIncome = (settledOwn ?? gdp * (1 - M.laborShare) * M.localCapitalShare) * M.incomeUnitFactor;
   const grossIncome = laborIncome + capitalIncome;
   const taxes = grossIncome * clamp01(i.householdTaxRate);
   const disposable = grossIncome - taxes;
@@ -493,6 +499,9 @@ export function cityAccounts(i: CityAccountsInput) {
     affordability_gap: affordabilityGap, affordability, diversity,
     proxy: true, private_wealth: null as null, labor_income_basis: (settled == null ? 'imputed_proxy' : 'settled_wages') as 'imputed_proxy' | 'settled_wages',
     settled_wage_income: settled,
+    /** Imputed owner claim (VA × capital share, unit-converted) — the due amount process-turn settles; never spent. */
+    ownership_income_claim: gdp * (1 - M.laborShare) * M.localCapitalShare * M.incomeUnitFactor,
+    capital_income_basis: (settledOwn == null ? 'imputed_proxy' : 'settled_ownership') as 'imputed_proxy' | 'settled_ownership',
     /** Settled cash wages ÷ unscaled proxy wage bill (VA × laborShare); 1 = proxy fully backed by paid wages. */
     settled_wage_ratio: i.settledWageIncome == null || gdp * M.laborShare <= 0 ? null : pos(i.settledWageIncome) / (gdp * M.laborShare),
   };
