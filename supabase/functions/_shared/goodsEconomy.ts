@@ -1,3 +1,4 @@
+import { fuelGuidance } from './fuelGuidance.ts';
 import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass, type RoutePath } from './landedRoute.ts';
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { isFactor, isStaged, fallbackOf, kindOf, wearOf, consumedPerBatch, factorMultiplier, type KindedInput } from './inputKinds.ts';

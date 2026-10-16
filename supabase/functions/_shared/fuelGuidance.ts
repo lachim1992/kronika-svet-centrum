@@ -52,11 +52,12 @@ export function fuelGuidance(snapshot: any, ledger: any): FuelWarning[] {
       .map(g => ({ city: s.id, good: g, stored: stored(s.id, g), same_owner: s.owner === c.owner })))
       .filter(s => s.stored > MIN).sort((a, b) => Number(b.same_owner) - Number(a.same_owner) || b.stored - a.stored || a.city.localeCompare(b.city));
     const timber = stocks.raw_timber > MIN || produced(cityId, 'raw_timber');
+    const has = (recipe: string) => [...producers.values()].some(p => p.city === cityId && String(p.recipe?.key || '').endsWith(recipe));
     const remedies: FuelRemedy[] = [];
-    if (goods.includes('peat')) remedies.push({ kind: 'build', target: FUEL_CHAIN.peat.building, recipe: FUEL_CHAIN.peat.recipe, good: 'peat', feasible: true,
-      reason: 'Zdrojová stavba bez vstupů; rašelina se těží přímo.' });
-    if (goods.includes('charcoal')) remedies.push({ kind: 'build', target: FUEL_CHAIN.charcoal.building, recipe: FUEL_CHAIN.charcoal.recipe, good: 'charcoal', feasible: timber,
-      reason: timber ? 'Město má vlastní dřevo (zásoba nebo těžba).' : 'Chybí dřevo: nejdřív Dřevorubecký tábor, jinak uhlířství nemá co pálit.' });
+    if (goods.includes('peat')) remedies.push({ kind: 'build', target: FUEL_CHAIN.peat.building, recipe: FUEL_CHAIN.peat.recipe, good: 'peat', feasible: !has('cut_peat'),
+      reason: has('cut_peat') ? 'Těžba rašeliny už ve městě existuje; zkontrolujte pracovníky a trasu.' : 'Zdrojová stavba bez vstupů; rašelina se těží přímo.' });
+    if (goods.includes('charcoal')) remedies.push({ kind: 'build', target: FUEL_CHAIN.charcoal.building, recipe: FUEL_CHAIN.charcoal.recipe, good: 'charcoal', feasible: timber && !has('burn_charcoal'),
+      reason: has('burn_charcoal') ? 'Uhlířství už existuje; zkontrolujte dodávky dřeva.' : timber ? 'Město má vlastní dřevo (zásoba nebo těžba).' : 'Chybí dřevo: nejdřív Dřevorubecký tábor, jinak uhlířství nemá co pálit.' });
     for (const s of suppliers.slice(0, 3)) remedies.push({ kind: 'import', target: s.city, good: s.good, feasible: true,
       reason: `${cities.get(s.city)?.name || s.city} má ${s.stored.toFixed(1)} ks, ale palivo nedorazilo — chybí použitelná trasa nebo obchod${s.same_owner ? '' : ' (cizí říše)'}.` });
     out.push({ city: cityId, owner: c.owner, producers: e.ids.sort(), coverage: e.batch > 0 ? (e.batch - e.unfueled) / e.batch : 1,
