@@ -72,7 +72,7 @@ export interface Snapshot { turn: number; goods: Good[]; cities: City[]; produce
   householdTaxRate?: Record<string, number>;
   /** Wages paid per city in the last COMMITTED turn (wage_settlement); diagnostic only. */
   settledWages?: Record<string, number>;
-  settlement?: Record<string, { arrears_closing: number; producer_retained: number; producer_cash_closing?: number }> }
+  settlement?: Record<string, { arrears_closing: number; producer_retained: number; producer_cash_closing?: number; ownership_income_paid?: number }> }
 export interface Balance { city: string; good: string; opening: number; produced_household: number; produced_node: number;
   produced_facility: number; produced_district: number; consumed_household: number; consumed_state: number;
   consumed_as_input: number; imported: number; exported: number; stored: number; lost_spoilage: number;
