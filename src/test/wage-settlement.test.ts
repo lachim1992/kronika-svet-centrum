@@ -2,11 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { settleWages } from '../../supabase/functions/_shared/wageSettlement';
 
 const conserved = (s: ReturnType<typeof settleWages>) => s.cities.forEach(c => {
-  expect(c.producer_cash_opening + c.producer_cash_pool).toBeCloseTo(c.wages_paid + c.producer_cash_closing);
+  expect(c.producer_cash_opening + c.producer_cash_pool).toBeCloseTo(c.wages_paid + c.ownership_income_paid + c.producer_cash_closing);
   expect(c.producer_cash_closing).toBeGreaterThanOrEqual(0);
   expect(c.payroll_due + c.arrears_opening - c.wages_paid).toBeCloseTo(c.arrears_closing);
   expect(c.household_wage_income).toBe(c.wages_paid);
-  for (const v of [c.wages_paid, c.arrears_closing, c.producer_retained]) expect(v).toBeGreaterThanOrEqual(0);
+  expect(c.ownership_income_due - c.ownership_income_paid).toBeCloseTo(c.ownership_unpaid);
+  for (const v of [c.wages_paid, c.arrears_closing, c.producer_retained, c.ownership_income_paid, c.ownership_unpaid]) expect(v).toBeGreaterThanOrEqual(0);
 });
 
 describe('canonical wage settlement', () => {
@@ -52,5 +53,27 @@ describe('canonical wage settlement', () => {
     conserved(t2);
     expect(t2.cities[0]).toMatchObject({ producer_cash_opening: 40, wages_paid: 30, arrears_closing: 0, producer_cash_closing: 15, producer_retained: 0 });
     expect(settleWages(2, [], t2).cities[0].producer_cash_closing).toBe(15);
+  });
+  it('pays ownership income from producer cash AFTER wages; unpaid profit is not a debt', () => {
+    // Plenty of cash: wages first, then the full ownership payout; closing keeps the rest.
+    const t1 = settleWages(1, [{ city: 'A', producer_payroll: 30, goods_value_added: 100, capital_income: 20 }]);
+    conserved(t1);
+    expect(t1.cities[0]).toMatchObject({ wages_paid: 30, ownership_income_due: 20, ownership_income_paid: 20, ownership_unpaid: 0, producer_cash_closing: 50 });
+    expect(t1.totals.ownership_income_paid).toBe(20);
+    expect(t1.ownership_income_basis).toBe('settled_reported');
+    expect(t1.household_income_basis).toBe('imputed_proxy');
+    expect(t1.treasury_effect).toBe(0);
+    // Tight cash: wages consume everything, ownership payout is 0 and NOT carried as arrears.
+    const t2 = settleWages(2, [{ city: 'A', producer_payroll: 60, goods_value_added: 10, capital_income: 25 }], t1);
+    conserved(t2);
+    expect(t2.cities[0]).toMatchObject({ wages_paid: 60, arrears_closing: 0, ownership_income_paid: 0, ownership_unpaid: 25, producer_cash_closing: 0 });
+    const t3 = settleWages(3, [{ city: 'A', producer_payroll: 0, goods_value_added: 10, capital_income: 25 }], t2);
+    conserved(t3);
+    // The unpaid 25 from turn 2 does not come back: only this turn's due is paid.
+    expect(t3.cities[0]).toMatchObject({ ownership_income_due: 25, ownership_income_paid: 10, ownership_unpaid: 15, producer_cash_closing: 0 });
+    // No capital_income input → behaviour identical to before (backward compatible).
+    const legacy = settleWages(4, [{ city: 'A', producer_payroll: 10, goods_value_added: 50 }]);
+    conserved(legacy);
+    expect(legacy.cities[0]).toMatchObject({ ownership_income_due: 0, ownership_income_paid: 0, producer_cash_closing: 40 });
   });
 });

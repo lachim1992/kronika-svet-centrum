@@ -1,7 +1,7 @@
 # Map-first square-grid roadmap
 
 ## Economy 2.0 completion phases (ordered; each depends on the previous)
-1. Producer cash & wages — [x] settlement, arrears, retained, persistent cash stock; [ ] household ownership income from producer cash (replaces GDP proxy); [ ] affordability calibration of incomeUnitFactor; [ ] switch household_income_basis to settled
+1. Producer cash & wages — [x] settlement, arrears, retained, persistent cash stock; [x] household ownership income settled from producer cash (settled_ownership_income, reported only — households do not spend it yet); [ ] replace GDP-proxy capital_income in purchasing power (needs balancing); [ ] affordability calibration of incomeUnitFactor; [ ] switch household_income_basis to settled
 2. Reachable A/B/C BOM chains — [ ] fuel sources (peat/charcoal) before fuel-gating bread; [ ] tools import/wear; [ ] typed ores/clay/water + stocks
 3. Prices & trade — [x] FIFO lots/origin, eligible-lot landed ranking; [ ] input-cost pass-through; [ ] quality 0–100 migration; [ ] competitive trade
 4. GDP & capital — [ ] nominal/real value added reconciliation, depreciation, producer taxes, household wealth (no legacy ledgers)
@@ -14,6 +14,7 @@
 - [x] Echo committed wage arrears and producer retained cash into city accounts (both views)
 - [ ] Live TEST02 verification of Economy + Dev views (needs signed-in session)
 - [x] Persistent producer cash stock per city (wage_settlement producer_cash_opening/closing; arrears payable from stock; shown as "Hotovost výrobců (zásoba)" in both views)
+- [x] Ownership income payout at turn close: paid from producer cash AFTER wages, unpaid profit stays in cash (not arrears); surfaced as "Vyplacený podíl na zisku (uzávěrka)" in both views; treasury untouched; basis settled_reported
 - [ ] Capital income from producer_retained instead of GDP proxy (needs balancing)
 - [ ] C fuel for bakery once peat/charcoal supply exists
 - [x] Road/local infrastructure progress idempotent on turn retry (last_progress_turn guard, migration 0005, test construction-retry.test.ts)

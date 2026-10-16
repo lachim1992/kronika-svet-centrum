@@ -28,7 +28,8 @@ export const CITY_ACCOUNT_FIELDS: EconomyField[] = [
   { key: "wage_rate", label: "Mzdová sazba", kind: "index", source: SRC, tip: "Místní mzda za pracovníka a tah z trhu práce." },
   { key: "settled_wage_arrears", label: "Dlužné mzdy (uzávěrka)", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Mzdy, které výrobci při poslední uzávěrce tahu nezaplatili; přenáší se do dalšího tahu." },
   { key: "settled_producer_retained", label: "Ponechaná hotovost výrobců", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Přidaná hodnota, která výrobcům zůstala po skutečné výplatě mezd při poslední uzávěrce." },
-  { key: "settled_producer_cash", label: "Hotovost výrobců (zásoba)", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Trvalá hotovost výrobců po poslední uzávěrce: počáteční stav + přidaná hodnota − vyplacené mzdy. Nikdy záporná." },
+  { key: "settled_producer_cash", label: "Hotovost výrobců (zásoba)", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Trvalá hotovost výrobců po poslední uzávěrce: počáteční stav + přidaná hodnota − vyplacené mzdy − vyplacený podíl na zisku. Nikdy záporná." },
+  { key: "settled_ownership_income", label: "Vyplacený podíl na zisku (uzávěrka)", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Zisk výrobců skutečně vyplacený vlastníkům (domácnostem) při poslední uzávěrce, až po mzdách, z hotovosti výrobců. Nevyplacená část zůstává výrobcům — není to dluh. Domácnosti ji zatím neutrácejí (jen hlášeno)." },
 ];
 
 /** Engine fields intentionally shown elsewhere (main table / drilldown text) or internal. */
