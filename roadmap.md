@@ -8,7 +8,7 @@
 - [ ] Persistent producer cash balance (retained currently a per-turn flow)
 - [ ] Capital income from producer_retained instead of GDP proxy (needs balancing)
 - [ ] C fuel for bakery once peat/charcoal supply exists
-- [ ] Road/local infrastructure progress idempotent on turn retry (needs migration)
+- [x] Road/local infrastructure progress idempotent on turn retry (last_progress_turn guard, migration 0005, test construction-retry.test.ts)
 - [x] AI build result reflects command-dispatch refusal ("rejected: …"), test ai-build-outcome.test.ts
 
 - [ ] Restore reliable Test01 turn closure after stale prior-turn execution guard

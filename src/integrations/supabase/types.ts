@@ -9460,6 +9460,7 @@ export type Database = {
           cost_production: number
           created_at: string
           id: string
+          last_progress_turn: number | null
           level: number
           owner_player: string
           path_cells: Json
@@ -9479,6 +9480,7 @@ export type Database = {
           cost_production?: number
           created_at?: string
           id?: string
+          last_progress_turn?: number | null
           level: number
           owner_player: string
           path_cells?: Json
@@ -9498,6 +9500,7 @@ export type Database = {
           cost_production?: number
           created_at?: string
           id?: string
+          last_progress_turn?: number | null
           level?: number
           owner_player?: string
           path_cells?: Json
@@ -10324,6 +10327,7 @@ export type Database = {
           grid_x: number
           grid_y: number
           id: string
+          last_progress_turn: number | null
           level: number
           owner_player: string
           progress: number
@@ -10339,6 +10343,7 @@ export type Database = {
           grid_x: number
           grid_y: number
           id?: string
+          last_progress_turn?: number | null
           level?: number
           owner_player: string
           progress?: number
@@ -10354,6 +10359,7 @@ export type Database = {
           grid_x?: number
           grid_y?: number
           id?: string
+          last_progress_turn?: number | null
           level?: number
           owner_player?: string
           progress?: number

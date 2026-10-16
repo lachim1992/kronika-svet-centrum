@@ -24,6 +24,7 @@ import { ensureSingleCapital } from "../_shared/capital.ts";
 import { advanceTurnProgress } from "../_shared/turnProgress.ts";
 import { derivedChainSteps } from "../_shared/derivedChain.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
+import { constructionStep, notAdvancedIn } from "./constructionProgress.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -622,20 +623,26 @@ Deno.serve(async (req) => {
     // Advance local square infrastructure. Each closed turn contributes one step;
     // target level 2 takes two turns and target level 3 takes three turns.
     const { data: localRoadProjects } = await supabase.from("tile_infrastructure")
-      .select("id, grid_x, grid_y, owner_player, target_level, progress")
+      .select("id, grid_x, grid_y, owner_player, target_level, progress, last_progress_turn")
       .eq("session_id", sessionId).eq("status", "building");
     for (const project of localRoadProjects || []) {
       const target = Number(project.target_level || 1);
-      const nextProgress = Math.min(100, Number(project.progress || 0) + Math.ceil(100 / target));
-      const complete = nextProgress >= 100;
+      const step = constructionStep(project.progress, target, (project as any).last_progress_turn, turnNumber);
+      if (!step) continue;
+      const nextProgress = step.progress;
+      const complete = step.complete;
       const infrastructureUpdate: Record<string, unknown> = {
         progress: nextProgress,
         status: complete ? "completed" : "building",
         target_level: complete ? null : target,
         completed_turn: complete ? turnNumber : null,
+        last_progress_turn: turnNumber,
       };
       if (complete) infrastructureUpdate.level = target;
-      await supabase.from("tile_infrastructure").update(infrastructureUpdate).eq("id", project.id);
+      // Conditional update: a retried/concurrent turn cannot advance the same project twice.
+      const { data: advanced } = await supabase.from("tile_infrastructure").update(infrastructureUpdate)
+        .eq("id", project.id).eq("status", "building").or(notAdvancedIn(turnNumber)).select("id");
+      if (!advanced?.length) continue;
       if (complete) await safeInsert(supabase.from("game_events").insert({
         session_id: sessionId, turn_number: turnNumber, player: project.owner_player,
         actor_type: "system", event_type: "construction", confirmed: true, truth_state: "canon",
@@ -652,12 +659,14 @@ Deno.serve(async (req) => {
     // does not yet carry an upkeep-funding link to realm treasuries; only
     // construction progression and completion are handled conservatively.
     const { data: roadProjects } = await supabase.from("road_projects")
-      .select("id, owner_player, level, path_cells, progress, total_work, work_done")
+      .select("id, owner_player, level, path_cells, progress, total_work, work_done, last_progress_turn")
       .eq("session_id", sessionId).eq("status", "building");
     for (const project of roadProjects || []) {
       const level = Number(project.level || 1);
-      const nextProgress = Math.min(100, Number(project.progress || 0) + Math.ceil(100 / level));
-      const complete = nextProgress >= 100;
+      const step = constructionStep(project.progress, level, (project as any).last_progress_turn, turnNumber);
+      if (!step) continue;
+      const nextProgress = step.progress;
+      const complete = step.complete;
       const totalWork = Number(project.total_work || 1);
       const nextWorkDone = complete ? totalWork : Math.min(totalWork, Math.ceil((totalWork * nextProgress) / 100));
       const projectUpdate: Record<string, unknown> = {
@@ -665,8 +674,11 @@ Deno.serve(async (req) => {
         work_done: nextWorkDone,
         status: complete ? "completed" : "building",
         completed_turn: complete ? turnNumber : null,
+        last_progress_turn: turnNumber,
       };
-      await supabase.from("road_projects").update(projectUpdate).eq("id", project.id);
+      const { data: advancedRoad } = await supabase.from("road_projects").update(projectUpdate)
+        .eq("id", project.id).eq("status", "building").or(notAdvancedIn(turnNumber)).select("id");
+      if (!advancedRoad?.length) continue;
       if (complete) {
         await supabase.from("road_segments")
           .update({ status: "completed", progress: 100 })
