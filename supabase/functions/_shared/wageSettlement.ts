@@ -1,3 +1,4 @@
+import { PRODUCT_MARKET } from './productMarket.ts';
 /**
  * WAGE SETTLEMENT — canonical private-sector payroll transfer, settled once per turn by process-turn.
  *
@@ -14,8 +15,10 @@ export interface WageCityInput { city: string; producer_payroll?: number; goods_
   /** Imputed proxy ownership income from cityAccounts (capital share of GDP). Settled as a REAL
    *  payout from producer cash AFTER wages; reported only — household spending still uses the proxy. */
   capital_income?: number;
-  /** Imputed owner claim; preferred as due so settled-basis capital_income cannot feed back into its own due. */
+  /** Diagnostic GDP-proxy claim (cash units). Not used for the due amount. */
   ownership_income_claim?: number }
+/** Local households own this share of producers' after-wage profit (same constant as the proxy). */
+const OWNER_SHARE = PRODUCT_MARKET.localCapitalShare;
 export interface WageCitySettlement {
   city: string; payroll_due: number; arrears_opening: number; producer_cash_pool: number;
   wages_paid: number; household_wage_income: number; arrears_closing: number; producer_retained: number;
@@ -44,7 +47,9 @@ function build(turn: number, accounts: WageCityInput[], prior?: { cities?: WageC
     const paid = Math.min(due + open, pool + cashOpen);
     // Ownership income is paid only from cash left after wages; unpaid part is NOT carried as
     // arrears (profit is residual, not a debt) — it simply stays in producer cash.
-    const ownershipDue = pos(a.ownership_income_claim ?? a.capital_income);
+    // Due = owners' share of this turn's REAL after-wage profit, in cash units (never unit-converted income,
+    // which previously double-applied incomeUnitFactor once spent).
+    const ownershipDue = OWNER_SHARE * Math.max(0, pool - due);
     const ownershipPaid = Math.min(ownershipDue, cashOpen + pool - paid);
     return { city: a.city, payroll_due: r(due), arrears_opening: r(open), producer_cash_pool: r(pool),
       wages_paid: r(paid), household_wage_income: r(paid), arrears_closing: r(due + open - paid), producer_retained: r(Math.max(0, pool - paid)),
