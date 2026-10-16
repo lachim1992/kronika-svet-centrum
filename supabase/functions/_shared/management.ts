@@ -5,7 +5,7 @@ import {basketSpec,alertPriority,shortageEffect,basketSeverity} from './demandMo
 export interface Contribution {id:string;label:string;value:number;city?:string;good?:string;route?:string}
 export interface Metric {key:string;label:string;value:number|null;previous:number|null;unit:string;definition:string;sources:Contribution[];assumption?:string}
 export interface ManagementAlert {id:string;severity:'critical'|'warning'|'opportunity'|'info';category:string;entity_type:string;entity_id:string;metric:string;current_value:number;threshold:number;reason:string;destination:string;levers:string[]}
-export interface ManagementReport {turn:number;player:string;metrics:Metric[];alerts:ManagementAlert[];cities:any[];producers:any[];labor:any[];flows:any[];goods:any[];famous:any[];routes:any[];prices:any[];cityAccounts?:any[];productChoice?:any[];budgetMode?:string;history:{turn:number;metrics:Record<string,number|null>}[]}
+export interface ManagementReport {turn:number;player:string;metrics:Metric[];alerts:ManagementAlert[];cities:any[];producers:any[];labor:any[];flows:any[];goods:any[];famous:any[];routes:any[];prices:any[];cityAccounts?:any[];productChoice?:any[];fuel_guidance?:any[];budgetMode?:string;history:{turn:number;metrics:Record<string,number|null>}[]}
 type Ledger=ReturnType<typeof resolveGoodsEconomy>;
 const sum=<T>(rows:T[],f:(row:T)=>number)=>rows.reduce((n,row)=>n+f(row),0);
 
@@ -102,6 +102,10 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
         :spec.class==='discretionary'||spec.class==='luxury'?['Využít tržní příležitost']
         :['Prověřit vstupy a dodávky']});}
   for(const d of producers)if(d.blocked)alerts.push({id:d.producer,severity:'warning',category:'production',entity_type:'node',entity_id:d.node||d.city,metric:d.good,current_value:d.realized,threshold:d.capacity,reason:`${names.get(d.city)} · ${d.good}: ${d.blocked}`,destination:'economy',levers:['Prověřit vstupy','Změnit objednávku','Otevřít pracovní sílu']});
+  const fuelWarnings=((ledger as any).fuelGuidance||[]).filter((w:any)=>owned.has(w.city));
+  for(const w of fuelWarnings)alerts.push({id:`fuel:${w.city}`,severity:w.coverage<0.5?'critical':'warning',category:'production',entity_type:'city',entity_id:w.city,metric:'fuel_coverage',current_value:w.coverage,threshold:1,
+    reason:`${names.get(w.city)} · pekárna bez paliva (${w.missing_goods.join(' / ')}): ${Math.round(w.coverage*100)} % dávky s palivem, ztráta ${w.lost_output.toFixed(1)} ks.`,destination:'economy',
+    levers:w.remedies.filter((r:any)=>r.feasible).map((r:any)=>r.kind==='build'?`Postavit ${r.target}`:`Dovézt ${r.good} z ${r.target}`)});
   for(const f of ledger.famous.filter(f=>owned.has(f.city)&&f.created===null))alerts.push({id:`fame:${f.city}:${f.good}`,severity:'opportunity',category:'trade',entity_type:'city',entity_id:f.city,metric:'fame_streak',current_value:f.streak,threshold:3,reason:`${names.get(f.city)} · ${f.good}: ${f.streak} úspěšných tahů k proslulému výrobku.`,destination:'economy',levers:['Zajistit vstupy a vývoz']});
   const rank={critical:0,warning:1,opportunity:2,info:3};alerts.sort((a,b)=>rank[a.severity]-rank[b.severity]||a.id.localeCompare(b.id));
   const cityReports=cities.map(c=>({...ledger.metrics.find(m=>m.city===c.id),id:c.id,name:c.name,cell:c.cell,population:c.population,stability:c.stability*100,workforce:ledger.workforce[c.id],labor:labor.find((l:any)=>l.city===c.id),balances:balances.filter(b=>b.city===c.id),prices:prices.filter(p=>p.city===c.id),hinterlands:ledger.hinterlands.filter(h=>h.city===c.id||h.hub===c.id)}));
@@ -109,5 +113,5 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
   const history=[...(previous?.history||[]).filter(h=>h.turn<snapshot.turn),{turn:snapshot.turn,metrics:Object.fromEntries(metrics.map(m=>[m.key,m.value]))}].slice(-10);
   return {turn:snapshot.turn,player,metrics,alerts,cities:cityReports,producers,labor,flows:flows.map(f=>({...f,source_name:names.get(f.source)||'Zahraniční dodavatel',destination_name:names.get(f.destination)||'Zahraniční odběratel'})),goods:snapshot.goods,famous:ledger.famous.filter(f=>owned.has(f.city)),routes,prices,history,
     // Owner-scoped city accounts for the secure read model (read_economy_management); UI never reads the raw ledger.
-    cityAccounts:((ledger as any).cityAccounts||[]).filter((a:any)=>owned.has(a.city)),productChoice:((ledger as any).productChoice||[]).filter((x:any)=>owned.has(x.city)),budgetMode:(ledger as any).budgetMode};
+    fuel_guidance:fuelWarnings,cityAccounts:((ledger as any).cityAccounts||[]).filter((a:any)=>owned.has(a.city)),productChoice:((ledger as any).productChoice||[]).filter((x:any)=>owned.has(x.city)),budgetMode:(ledger as any).budgetMode};
 }

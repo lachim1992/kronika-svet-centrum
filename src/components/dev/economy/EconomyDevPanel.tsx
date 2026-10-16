@@ -16,6 +16,7 @@ import { Grid } from "./Grid";
 import EconomyFieldList from "@/components/economy/EconomyFieldList";
 import { fieldByKey, formatField } from "@/lib/economyFieldContract";
 import { Costs, Specific } from "./CostViews";
+import FuelGuidancePanel from "@/components/economy/FuelGuidancePanel";
 import { fetchEconomyDevSnapshot, toCsv, type EconomyDevSnapshot, type Totals, type FlowRow } from "@/lib/economyDevSnapshot";
 
 const SRC = "economy_turn_ledgers.result (goodsEconomy)";
@@ -142,7 +143,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
           <FiscalBlock s={s} />
         </TabsContent>
 
-        <TabsContent value="costs"><Costs s={s} cn={cn} match={match} sp={sp} setP={setP} setMany={setMany} /></TabsContent>
+        <TabsContent value="costs"><FuelGuidancePanel warnings={s.fuel_guidance} name={cn} showSource /><Costs s={s} cn={cn} match={match} sp={sp} setP={setP} setMany={setMany} /></TabsContent>
         <TabsContent value="specific"><Specific s={s} cn={cn} match={match} sp={sp} setP={setP} setMany={setMany} /></TabsContent>
 
         <TabsContent value="chain"><Chain s={s} cn={cn} city={city} good={good} /></TabsContent>

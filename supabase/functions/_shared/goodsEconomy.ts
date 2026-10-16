@@ -1,3 +1,4 @@
+import { fuelGuidance } from './fuelGuidance.ts';
 import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass, type RoutePath } from './landedRoute.ts';
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { isFactor, isStaged, fallbackOf, kindOf, wearOf, consumedPerBatch, factorMultiplier, type KindedInput } from './inputKinds.ts';
@@ -809,7 +810,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       settled_ownership_income:snapshot.settlement?.[c.id]?.ownership_income_paid??null};});
   const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
     channels:{...channels},total:channelTotal(channels)}));
-  return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
+  // Read-only fuel guidance from the same ledger (both views + AI); never alters stock.
+  const fuelAdvice=fuelGuidance(snapshot,{balances:[...balances.values()],diagnostics});
+  return {fuelGuidance:fuelAdvice,balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
     workforce:Object.fromEntries(workforce),labor:laborMetrics,demand,
     toolCoverage:Object.fromEntries(toolCoverage),productChoice:choice,cityAccounts:accounts,
     budgetMode:snapshot.budget?'previous_committed_turn':'bootstrap_unconstrained'};

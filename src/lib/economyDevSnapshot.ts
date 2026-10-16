@@ -19,6 +19,7 @@ export interface EconomyDevSnapshot {
   state?: { guards: { turn_number: number; status: string; started_at: string | null; finished_at: string | null; error: string | null; resumable: boolean | null }[];
     journal: { turn_number: number; phase: string; completed_at: string }[]; refreshLock: { locked_at: string; locked_by: string | null } | null };
   cities?: CityRow[]; world?: Totals; goods?: GoodRow[]; producers?: Capped<ProducerRow>; demand?: Capped<DemandRow>;
+  fuel_guidance?: import('../../supabase/functions/_shared/fuelGuidance').FuelWarning[];
   costs?: Capped<CostRow>; specific?: SpecificGoodRow[]; catalogueRecipes?: CatalogueRecipe[];
   flows?: Capped<FlowRow>; edges?: Capped<{ id: string; from: string; to: string; capacity: number; used: number }>;
   prices?: Capped<LedgerPrice>; balances?: Capped<LedgerBalance>; famous?: { city: string; good: string }[]; anomalies?: Anomaly[];

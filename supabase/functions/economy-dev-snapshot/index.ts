@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
         budgetMode: result.budgetMode ?? null, previousAccountsTurn: (prevRes.data as { turn_number?: number } | null)?.turn_number ?? null,
         rowLimit: ROW_LIMIT },
       state: { guards: guardRes.data || [], journal: journalRes.data || [], refreshLock: lockRes.data || null },
-      costs: cap(built.costs), specific: built.specific,
+      fuel_guidance: built.fuel_guidance, costs: cap(built.costs), specific: built.specific,
       catalogueRecipes: RECIPES.map((r) => ({ key: r.key, role: r.role, output: r.output, qty: r.qty, inputs: r.inputs })),
       cities: built.cities, world: built.world, goods: built.goods,
       producers: cap(built.producers), demand: cap(built.demand), flows: cap(built.flows), edges: cap(built.edges),
