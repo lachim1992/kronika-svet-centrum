@@ -693,8 +693,13 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       blocked:unreachable?'missing_input_route':'missing_inputs'});
   }
 
+  // Claimed B factors remain productive capital after this turn: industrial demand may
+  // request their acquisition, but must NOT consume their entire stock as household goods.
+  // Only explicit B wear above may destroy them. Other tools without B claims still
+  // fulfill normal industrial operational consumption.
+  const uncommittedStock=(b:Balance)=>Math.max(0,available(b)-(factorClaims.get(key(b.city,b.good))||0));
   const consume=(c:City,g:Good)=>{const b=stock(c.id,g.key),missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
-    const qty=Math.min(available(b),missing),state=Math.min(qty,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
+    const qty=Math.min(uncommittedStock(b),missing),state=Math.min(qty,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
     b.consumed_state+=state;b.consumed_household+=qty-state;};
   for(const c of cities)for(const g of goods)consume(c,g);
   // Substitution debits actual goods, transfers unmet need, never creates physical units.
@@ -702,7 +707,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     for(const sub of goods.filter(s=>s.key!==g.key&&s.basket===g.basket&&s.substitutability>0&&(s.finalUse??s.stage!=='intermediate'))){
       // Need units of g covered per physical unit of sub: substitutability × functional value ratio.
       const efficiency=substitutionEfficiency(g,sub);if(efficiency<=0)continue;
-      const sb=stock(c.id,sub.key),qty=Math.min(missing/efficiency,available(sb));if(qty<=0)continue;
+      const sb=stock(c.id,sub.key),qty=Math.min(missing/efficiency,uncommittedStock(sb));if(qty<=0)continue;
       const fulfilled=qty*efficiency,stateNeed=Math.min(fulfilled,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
       const stateQty=stateNeed/efficiency;
       sb.consumed_state+=stateQty;sb.consumed_household+=qty-stateQty;
