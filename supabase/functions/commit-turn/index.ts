@@ -723,8 +723,11 @@ Deno.serve(async (req) => {
         const overloaded = (activeByOwner.get(owner) || 0) > limit;
         const duration = Math.max(1, Math.round((b.build_duration || 1) * (overloaded ? 1.5 : 1.0)));
         if (effectiveTurn >= (b.build_started_turn || 0) + duration) {
-          await supabase.from("city_buildings")
-            .update({ status: "completed", completed_turn: effectiveTurn }).eq("id", b.id);
+          // Guarded transition: a retry or parallel run cannot complete twice or duplicate the chronicle.
+          const { data: moved } = await supabase.from("city_buildings")
+            .update({ status: "completed", completed_turn: effectiveTurn })
+            .eq("id", b.id).eq("status", "building").select("id");
+          if (!moved?.length) continue;
           buildingsCompleted++;
           await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId, turn_from: effectiveTurn, turn_to: effectiveTurn,
@@ -740,8 +743,10 @@ Deno.serve(async (req) => {
       let districtsCompleted = 0;
       for (const d of pendingDistricts || []) {
         if (effectiveTurn >= (d.build_started_turn || 0) + (d.build_turns || 1)) {
-          await supabase.from("city_districts")
-            .update({ status: "completed", completed_turn: effectiveTurn }).eq("id", d.id);
+          const { data: moved } = await supabase.from("city_districts")
+            .update({ status: "completed", completed_turn: effectiveTurn })
+            .eq("id", d.id).eq("status", "building").select("id");
+          if (!moved?.length) continue;
           districtsCompleted++;
           await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId, turn_from: effectiveTurn, turn_to: effectiveTurn,

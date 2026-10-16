@@ -3426,11 +3426,16 @@ async function executeBuildBuilding(
   if ((realm.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold})` };
   if ((realm.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost})` };
 
-  // Deduct
-  await supabase.from("realm_resources").update({
+  // Deduct with compare-and-set: a concurrent command that already spent these
+  // reserves makes this one fail instead of overwriting the balance (no phantom builds).
+  const { data: deducted, error: deductErr } = await supabase.from("realm_resources").update({
     gold_reserve: (realm.gold_reserve || 0) - costGold,
     production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
-  }).eq("id", realm.id);
+  }).eq("id", realm.id)
+    .eq("gold_reserve", realm.gold_reserve ?? 0)
+    .eq("production_reserve", realm.production_reserve ?? 0)
+    .select("id");
+  if (deductErr || !deducted?.length) return { events: [], error: "Zdroje se mezitím změnily, zkuste stavbu znovu" };
 
   // Insert building
   const buildDuration = building.build_duration || building.build_turns || 1;
