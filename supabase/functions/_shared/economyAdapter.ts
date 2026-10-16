@@ -372,7 +372,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     settledWages[c.city]=nonnegative(c.wages_paid);
     settlement[c.city]={arrears_closing:nonnegative(c.arrears_closing),producer_retained:nonnegative(c.producer_retained)};
   }
-...
+const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
   const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,priorPrices,householdTaxRate,settledWages,settlement,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
   const physical=resolveGoodsEconomy(snapshot);
   const management=Object.fromEntries(db.realm_resources.map(r=>[r.player_name,buildManagementReport(snapshot,physical,r,prior?.management?.[r.player_name])]));
