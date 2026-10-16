@@ -38,11 +38,12 @@ describe('economy field contract (Economy tab + Dev Mode)', () => {
   });
   });
   it('echoes committed arrears and producer retained cash per city without recomputing', () => {
-    const s = { ...snap(), settlement: { b: { arrears_closing: 1.5, producer_retained: 4 } } };
+    const s = { ...snap(), settlement: { b: { arrears_closing: 1.5, producer_retained: 4, producer_cash_closing: 9 } } };
     const acc = resolveGoodsEconomy(s).cityAccounts as Record<string, unknown>[];
     const b = acc.find(x => x.city === 'b')!, a = acc.find(x => x.city === 'a')!;
     expect(b.settled_wage_arrears).toBe(1.5);
     expect(b.settled_producer_retained).toBe(4);
+    expect(b.settled_producer_cash).toBe(9);
     expect(a.settled_wage_arrears).toBeNull();
   });
 

@@ -36,7 +36,7 @@ function build(turn: number, accounts: WageCityInput[], prior?: { cities?: WageC
     const cashOpen = cash.get(a.city) || 0;
     const paid = Math.min(due + open, pool + cashOpen);
     return { city: a.city, payroll_due: r(due), arrears_opening: r(open), producer_cash_pool: r(pool),
-      wages_paid: r(paid), household_wage_income: r(paid), arrears_closing: r(due + open - paid), producer_retained: r(pool - paid),
+      wages_paid: r(paid), household_wage_income: r(paid), arrears_closing: r(due + open - paid), producer_retained: r(Math.max(0, pool - paid)),
       producer_cash_opening: r(cashOpen), producer_cash_closing: r(cashOpen + pool - paid),
       ...recon(pos(a.labor_income), paid) };
   });
