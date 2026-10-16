@@ -41,7 +41,7 @@ describe('staged bakery fuel (peat/charcoal), no phantom fuel', () => {
   it('fuel delivered from a neighbour by road is consumed (transport delivery)', () => {
     const { r, d } = run(snap(0, 100));
     expect(d.fuel.consumed.peat).toBeGreaterThan(0);
-    expect(r.flows.some((f: any) => f.good === 'peat' && f.to === 'a')).toBe(true);
+    expect(r.flows.some((f: any) => f.good === 'peat' && f.destination === 'a' && f.source === 'b')).toBe(true);
   });
   it('partial fuel: coverage between 0 and 1 and output between fallback and full', () => {
     const { d } = run(snap(1));
