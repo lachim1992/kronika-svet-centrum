@@ -53,11 +53,11 @@ describe('producer cost field contract: direct canonical paths in both views', (
     const snapshot = snap();
     snapshot.cities[0].owner = 'other';
     snapshot.goods.push(good('metalwork_tools', 'tools', 3, 'intermediate'), good('fuel', 'fuel', 1, 'intermediate'));
-    snapshot.opening.push({ city: 'b', good: 'metalwork_tools', qty: 20, quality: 1 }, { city: 'b', good: 'fuel', qty: 20, quality: 0 });
+    snapshot.opening.push({ city: 'b', good: 'raw_grain', qty: 100, quality: 1 }, { city: 'b', good: 'metalwork_tools', qty: 20, quality: 1 }, { city: 'b', good: 'fuel', qty: 20, quality: 0 });
     snapshot.producers[1].recipe.inputs.push({ good: 'metalwork_tools', qty: 1, kind: 'factor', wear: 0.05 }, { good: 'fuel', qty: 1, kind: 'operating' });
     const ledger = resolveGoodsEconomy(snapshot), before = JSON.stringify(ledger);
     const report = buildManagementReport(snapshot, ledger, { player_name: 'p' });
-    const dev = buildSnapshot({ ...ledger, snapshot });
+    const dev = buildSnapshot({ ...ledger, snapshot }, null);
     expect(report.producers.map(p => p.producer)).not.toContain('grain');
     const owner = report.producers.find(p => p.producer === 'flour');
     const diagnostic = ledger.diagnostics.find(d => d.producer === 'flour') as unknown as { margin: Record<string, unknown> };
@@ -87,7 +87,7 @@ describe('producer cost field contract: direct canonical paths in both views', (
     expect(formatField(unit, { cost_breakdown: { unit: { material: null } } })).toEqual({ text: 'zatím není', missing: true });
     expect(formatField(cash, { cash_settled: false })).toEqual({ text: 'ne', missing: false });
     const legacy = buildSnapshot({ diagnostics: [{ producer: 'x', good: 'flour', capacity: 1, realized: 1, factors: {}, blocked: null, margin: { cost: 8 } }],
-      snapshot: { producers: [{ id: 'x', city: 'b', node: '', channel: 'facility', source: false, capacity: 1, recipe: { key: 'x', good: 'flour', qty: 1, inputs: [] } }] } });
+      snapshot: { producers: [{ id: 'x', city: 'b', node: '', channel: 'facility', source: false, capacity: 1, recipe: { key: 'x', good: 'flour', qty: 1, inputs: [] } }] } }, null);
     expect(legacy.costs[0].canonical_margin).toEqual({ cost: 8 });
     expect(formatField(material, legacy.costs[0].canonical_margin as Record<string, unknown>).missing).toBe(true);
   });
