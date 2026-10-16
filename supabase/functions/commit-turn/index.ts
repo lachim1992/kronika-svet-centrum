@@ -24,6 +24,7 @@ import { ensureSingleCapital } from "../_shared/capital.ts";
 import { advanceTurnProgress } from "../_shared/turnProgress.ts";
 import { derivedChainSteps } from "../_shared/derivedChain.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
+import { constructionStep, notAdvancedIn } from "./constructionProgress.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
