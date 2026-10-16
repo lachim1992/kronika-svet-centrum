@@ -19,7 +19,7 @@ export interface CatalogRecipe {
   role: ProductionRole;
   tags: string[];
   /** A/B/C class per input (inputKinds.ts); absent = 'material'. */
-  inputs: { good: string; qty: number; kind?: InputKind; wear?: number }[];
+  inputs: { good: string; qty: number; kind?: InputKind; wear?: number; fallback?: number }[];
   output: string;
   qty: number;
 }
@@ -137,7 +137,9 @@ export const RECIPES: CatalogRecipe[] = [
   r('cut_stone', 'processing', ['stonecutting'], 'stone_blocks', 2, [['raw_stone', 3]]),
   r('press_olives', 'processing', ['pressing'], 'olive_oil', 1, [['raw_olives', 2]]),
   // urban (final goods)
-  r('bake_staples', 'urban', ['baking'], 'baked_staples', 2, [['flour', 2]]),
+  // Staged fuel: peat OR charcoal fire the oven; without fuel an open hearth yields 80 % (no phantom fuel).
+  { ...r('bake_staples', 'urban', ['baking'], 'baked_staples', 2, [['flour', 2]]),
+    inputs: [{ good: 'flour', qty: 2, kind: 'material' }, { good: 'peat', qty: 1, kind: 'operating', fallback: 0.8 }, { good: 'charcoal', qty: 1, kind: 'operating', fallback: 0.8 }] },
   r('bake_refined', 'urban', ['baking'], 'baked_refined', 1, [['flour', 2], ['olive_oil', 1]]),
   r('weave_basic', 'urban', ['weaving'], 'textile_basic', 2, [['yarn', 2]]),
   r('weave_fine', 'urban', ['weaving'], 'textile_fine', 1, [['yarn', 3]]),
