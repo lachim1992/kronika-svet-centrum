@@ -528,9 +528,42 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
    *  producers cannot both count the same tools. Saturating multiplier (floor..1), computed once. */
   const factorClaims=new Map<string,number>(),capitalCache=new Map<string,{mult:number;coverage:Record<string,number>}>();
   const capitalFactor=(p:Producer)=>{const hit=capitalCache.get(p.id);if(hit)return hit.mult;let mult=1;const coverage:Record<string,number>={};
-    for(const f of p.recipe.inputs.filter(isFactor)){const k=key(p.city,f.good),req=n(p.capacity)*clamp(p.allocation)*f.qty/Math.max(C.epsilon,p.recipe.qty);
-      if(req<=C.epsilon)continue;const free=Math.max(0,available(stock(p.city,f.good))-(factorClaims.get(k)||0)),cov=Math.min(1,free/req);
-      factorClaims.set(k,(factorClaims.get(k)||0)+Math.min(free,req));coverage[f.good]=cov;mult=Math.min(mult,factorMultiplier(cov));}
+    const c=cityById.get(p.city)!;
+    for(const f of p.recipe.inputs.filter(isFactor)){
+      const ig=goodByKey.get(f.good);
+      if(!ig)throw Error(`Unknown factor input ${f.good}`);
+      const k=key(p.city,f.good),req=n(p.capacity)*clamp(p.allocation)*f.qty/Math.max(C.epsilon,p.recipe.qty);
+      if(req<=C.epsilon)continue;
+      const claimed=factorClaims.get(k)||0;
+      let free=Math.max(0,available(stock(p.city,f.good))-claimed);
+      // Class B is durable productive capital: import the MISSING STOCK before claiming it,
+      // using the same quality-aware, capacity-limited and diplomatic route as class A.
+      // The transfer itself is NOT intermediate consumption; only subsequent wear is.
+      let missing=Math.max(0,req-free);
+      if(missing>=C.minLot&&staffingRatio(p)>C.epsilon){
+        const suppliers=[...inputSources(c,ig),...distantInputSources(c,ig)]
+          .map(s=>({s,cost:landed(s,c,ig,0,missing)})).filter(x=>!!x.cost)
+          .sort((a,b)=>a.cost!.landed-b.cost!.landed||a.s.id.localeCompare(b.s.id));
+        const acq=acquisition.get(p.id)||new Map();acquisition.set(p.id,acq);
+        const rec=acq.get(f.good)||{qty:0,cost:0,suppliers:suppliers.slice(0,3).map(x=>({city:x.s.id,landed:x.cost!.landed,...x.cost})),chosen:null as string|null,
+          parts:{source:0,transport:0,tolls:0,tariff:0,risk:0,loss_cost:0}};acq.set(f.good,rec);
+        for(const {s,cost} of suppliers){
+          if(missing<C.minLot)break;
+          const sb=stock(s.id,ig.key);
+          const keep=Math.max(foodReserve(s,ig),sb.demand-sb.consumed_household-sb.consumed_state,0);
+          const got=transfer(s,c,ig,missing,'production_input',[],keep);
+          if(got>0){
+            rec.qty+=got;rec.cost+=got*cost!.landed;rec.chosen ??= s.id;
+            for(const part of LANDED_PARTS)rec.parts[part]+=got*cost![part];
+            missing-=got;
+          }
+        }
+        free=Math.max(0,available(stock(p.city,f.good))-claimed);
+      }
+      const cov=Math.min(1,free/req);
+      factorClaims.set(k,claimed+Math.min(free,req));
+      coverage[f.good]=cov;mult=Math.min(mult,factorMultiplier(cov));
+    }
     capitalCache.set(p.id,{mult,coverage});return mult;};
   for(let pass=0;pending.size&&pass<C.maxProductionPasses;pass++){
     let progress=false;
@@ -660,8 +693,13 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       blocked:unreachable?'missing_input_route':'missing_inputs'});
   }
 
+  // Claimed B factors remain productive capital after this turn: industrial demand may
+  // request their acquisition, but must NOT consume their entire stock as household goods.
+  // Only explicit B wear above may destroy them. Other tools without B claims still
+  // fulfill normal industrial operational consumption.
+  const uncommittedStock=(b:Balance)=>Math.max(0,available(b)-(factorClaims.get(key(b.city,b.good))||0));
   const consume=(c:City,g:Good)=>{const b=stock(c.id,g.key),missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
-    const qty=Math.min(available(b),missing),state=Math.min(qty,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
+    const qty=Math.min(uncommittedStock(b),missing),state=Math.min(qty,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
     b.consumed_state+=state;b.consumed_household+=qty-state;};
   for(const c of cities)for(const g of goods)consume(c,g);
   // Substitution debits actual goods, transfers unmet need, never creates physical units.
@@ -669,7 +707,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     for(const sub of goods.filter(s=>s.key!==g.key&&s.basket===g.basket&&s.substitutability>0&&(s.finalUse??s.stage!=='intermediate'))){
       // Need units of g covered per physical unit of sub: substitutability × functional value ratio.
       const efficiency=substitutionEfficiency(g,sub);if(efficiency<=0)continue;
-      const sb=stock(c.id,sub.key),qty=Math.min(missing/efficiency,available(sb));if(qty<=0)continue;
+      const sb=stock(c.id,sub.key),qty=Math.min(missing/efficiency,uncommittedStock(sb));if(qty<=0)continue;
       const fulfilled=qty*efficiency,stateNeed=Math.min(fulfilled,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
       const stateQty=stateNeed/efficiency;
       sb.consumed_state+=stateQty;sb.consumed_household+=qty-stateQty;
