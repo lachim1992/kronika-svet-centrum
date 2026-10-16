@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useManagementReport } from '@/hooks/useManagementReport';
+import ProducerCostDetails from './ProducerCostDetails';
 
 /**
  * LABOR & PRODUCTION (read-only).
@@ -130,6 +131,15 @@ export default function LaborProductionPanel({ sessionId, cities, playerName, cu
       </tr>)}</tbody>
     </table></div>
     {!structures.length && <p className="text-sm text-muted-foreground">Žádné výrobní stavby — bez nich nevzniká žádné zboží, jen poptávka.</p>}
+
+    <section className="space-y-2" aria-label="Náklady výrobních receptur">
+      <h4 className="font-semibold text-sm">Náklady výrobních receptur</h4>
+      {producers.map(p => <details key={p.producer} className="border-b pb-2 text-xs">
+        <summary className="cursor-pointer py-2 font-medium">{name(p.city)} · {p.good} · {p.producer} · výstup {fmt(p.realized, 2)}</summary>
+        <ProducerCostDetails margin={p.margin} />
+      </details>)}
+      {!producers.length && <p className="text-xs text-muted-foreground">Žádné výrobní receptury.</p>}
+    </section>
 
   </section>;
 }

@@ -4,6 +4,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import ProducerCostDetails from "@/components/economy/ProducerCostDetails";
 import { Grid } from "./Grid";
 import { compareCosts, type EconomyDevSnapshot, type CostRow, type CostComponent } from "@/lib/economyDevSnapshot";
 
@@ -11,7 +12,7 @@ const f = (x: number | null | undefined, d = 3) => (x == null || !Number.isFinit
 const pct = (x: number | null | undefined) => (x == null ? "—" : `${(x * 100).toFixed(0)} %`);
 const NA = ({ why }: { why: string }) => <span className="text-muted-foreground italic" title={why}>nedostupné</span>;
 const val = (x: number | null, why: string) => (x == null ? <NA why={why} /> : f(x));
-const PROV: Record<string, string> = { producer_exact: "přesně (výrobce)", city_level: "městská úroveň", planned_estimate: "plánovaný odhad", unavailable: "nedostupné" };
+const PROV: Record<string, string> = { producer_exact: "přesně (výrobce)", city_level: "městská úroveň", planned_estimate: "plánovaný odhad", imputed: "odhad, nikoli výplata", unavailable: "nedostupné" };
 const SRC = "economy_turn_ledgers.result.diagnostics[].margin ⨝ snapshot.producers ⨝ prices";
 const MAX_DEPTH = 6;
 
@@ -41,7 +42,7 @@ export function Costs({ s, cn, match, sp, setP, setMany }: Props) {
     <div className="space-y-3">
       <div className="border rounded p-2 text-muted-foreground space-y-1">
         <p><b>Srovnatelný známý náklad</b> = materiálový náklad na 1 ks výstupu tak, jak ho ocenil engine (diagnostics.margin: místní vstupy místní cenou, dovezené landed cenou nákupu). Není to plný ekonomický náklad.</p>
-        <p>Vždy chybí (engine je per výrobce neukládá): práce/mzdy, kapitál/odpisy, režie/údržba, opotřebení nástrojů, daně → úplnost nejvýše „partial“. Marže = <b>materiálová/příspěvková marže</b>, ne zisk. Plánovaný odhad (AUTO expectedInputSources) se nikdy nevydává za skutečný náklad.</p>
+        <p>A/B/C a odhad mezd jsou v detailu podle uložené verze účtu výrobce. Odpisy budov, režie a daně výrobce zůstávají nedostupné. B opotřebení je již ve vstupech, znovu se nepřičítá. Marže = <b>materiálová/příspěvková marže</b>, ne hotovostní zisk.</p>
       </div>
       <label className="flex items-center gap-1"><Switch checked={activeOnly} onCheckedChange={(v) => setP("edv_active", v ? "1" : null)} /> jen aktivní výroba (realized &gt; 0)</label>
       <Grid source={SRC} capped={s.costs} rows={filtered} onRow={open}
@@ -56,7 +57,7 @@ export function Costs({ s, cn, match, sp, setP, setMany }: Props) {
       {good && <div className="border rounded p-2 space-y-1">
         <p className="font-semibold">Žebříček lokalit pro {good} podle srovnatelného známého nákladu</p>
         {ranked.map((r) => <p key={r.producer} className="font-mono">{r.rank ? `#${r.rank}` : "—"} {cn(r.city)} · {r.recipe} · {r.comparable_unit_cost == null ? (r.planned_material_unit_cost != null ? `skutečný náklad nedostupný (plán ≈${f(r.planned_material_unit_cost)})` : "nedostupné") : f(r.comparable_unit_cost)} · {r.completeness}{r.missing.length ? ` (chybí ${r.missing.join(", ")})` : ""}</p>)}
-        <p className="text-muted-foreground">Nejnižší známý náklad ≠ skutečně nejlevnější: práce, kapitál, režie a daně nejsou v žádné lokalitě známé{new Set(ranked.filter((r) => r.rank).map((r) => r.missing.join())).size > 1 ? "; navíc se úplnost mezi lokalitami liší" : ""}.</p>
+        <p className="text-muted-foreground">Nejnižší známý náklad ≠ skutečně nejlevnější: žebříček nezahrnuje odhad mezd, odpisy budov, režii ani daně{new Set(ranked.filter((r) => r.rank).map((r) => r.missing.join())).size > 1 ? "; navíc se úplnost mezi lokalitami liší" : ""}.</p>
       </div>}
 
       {(A || B) && <Compare A={A} B={B} cn={cn} />}
@@ -103,6 +104,7 @@ function Bom({ row, s, cn, path, setMany }: { row: CostRow; s: EconomyDevSnapsho
   return (
     <div className="border rounded p-2 space-y-1">
       <p className="font-semibold">BOM: {row.recipe} @ {cn(row.city)} → {row.output_good} (dávka {row.batch_output} ks; výrobce {row.producer})</p>
+      <ProducerCostDetails margin={row.canonical_margin as Record<string, unknown> | null | undefined} showSource />
       {path.length > 0 && <p className="text-muted-foreground">Cesta (max {MAX_DEPTH}): {path.join(" → ")} → {row.output_good} <Button size="sm" variant="ghost" className="h-5" onClick={() => setMany({ edv_path: null })}>vymazat</Button></p>}
       {cat && <p className="text-muted-foreground">Katalog: {cat.inputs.map((i) => `${i.qty} ${i.good}`).join(" + ") || "bez vstupů"} → {cat.qty} {cat.output} (role {cat.role})</p>}
       {!row.bom.length ? <p>Zdrojová receptura bez vstupů — materiálový náklad 0 (známý), ostatní složky nedostupné.</p> :

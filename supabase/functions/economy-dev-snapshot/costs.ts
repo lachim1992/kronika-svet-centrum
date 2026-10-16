@@ -23,7 +23,10 @@ export interface MarginLine { good: string; qty: Num; price: Num; local_price: N
 export interface MarginBlock { cost?: Num; revenue?: Num; margin?: Num; margin_ratio?: Num; auto_flag?: string | null;
   unit_input_cost?: Num; unit_output_price?: Num; inputs?: MarginLine[]; diagnostic_version?: number;
   payroll?: Num; wage_rate?: Num; capital_wear?: Num; operating_surplus?: Num; unit_full_cost?: Num | null; value_added?: Num;
-  expected_margin_proxy?: Num | null; order?: string }
+  expected_margin_proxy?: Num | null; order?: string;
+  full_cost?: Num; payroll_basis?: string; cash_settled?: boolean; labor_per_unit?: Num | null;
+  cost_breakdown?: { material: Num; operating: Num; factor_wear: Num; payroll_imputed: Num;
+    unit: { material: Num | null; operating: Num | null; factor_wear: Num | null; payroll_imputed: Num | null } } }
 
 export interface CostInputProducer { id: string; city: string; node: string; channel: string; recipe: { key: string; good: string; qty: Num; inputs: { good: string; qty: Num }[] };
   capacity: Num; expectedMarginProxy?: Num; expectedInputSources?: Record<string, { cost: Num; source: string; available: boolean }> }
@@ -53,7 +56,9 @@ export interface CostRow { producer: string; realm: string | null; city: string;
   local_price: Num | null; base_price: Num | null; scarcity_factor: Num | null; quality_factor: Num | null; fame_factor: Num | null; coverage: Num | null;
   valuation_price: Num | null; revenue: Num | null; contribution_margin: Num | null; contribution_margin_unit: Num | null;
   expected_margin_proxy: Num | null; provenance: Provenance; diagnostic_version: number; blocked: string | null;
-  rank: number | null; rank_of: number; bom: BomInput[]; source_paths: string[] }
+  rank: number | null; rank_of: number; bom: BomInput[]; source_paths: string[];
+  /** Unmodified canonical margin for the shared Economy / Dev cost field contract. */
+  canonical_margin?: MarginBlock | null }
 
 /** Components the current engine never stores per producer — always unavailable, never 0. */
 export const UNMODELLED: { key: string; label: string; reason: string }[] = [
@@ -141,6 +146,7 @@ export function buildCosts(a: { producers: CostInputProducer[]; diagnostics: Cos
       contribution_margin: m?.margin != null ? n(m.margin) : null, contribution_margin_unit: m?.margin != null && active ? n(m.margin) / realized : null,
       expected_margin_proxy: fin(m?.expected_margin_proxy ?? p.expectedMarginProxy), provenance: material != null ? "producer_exact" : (plannedComplete ? "planned_estimate" : "unavailable"),
       diagnostic_version: version, blocked: d?.blocked ?? (active ? null : d?.bottleneck ?? null), rank: null, rank_of: 0, bom,
+      canonical_margin: m ?? null,
       source_paths: ["snapshot.producers[id].recipe", "diagnostics[producer].margin", "snapshot.producers[id].expectedInputSources", "prices[city,good]"] };
   });
   // Rank per output good by comparable known (material) cost. Rank is NOT a full-cost ranking.
