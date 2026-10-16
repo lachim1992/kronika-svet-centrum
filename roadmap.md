@@ -1,8 +1,15 @@
 # Map-first square-grid roadmap
 
 ## Current Economy 2.0 slice
-- [ ] Expose existing producer A/B/C costs and imputed labour in both views through the shared field contract
-- [ ] Verify canonical projection regressions, tests/typecheck, and document remaining gaps
+- [x] Expose existing producer A/B/C costs and imputed labour in both views through the shared field contract
+- [x] Verify canonical projection regressions, tests/typecheck (589 total, 586 passed / 3 skipped)
+- [x] Echo committed wage arrears and producer retained cash into city accounts (both views)
+- [ ] Live TEST02 verification of Economy + Dev views (needs signed-in session)
+- [ ] Persistent producer cash balance (retained currently a per-turn flow)
+- [ ] Capital income from producer_retained instead of GDP proxy (needs balancing)
+- [ ] C fuel for bakery once peat/charcoal supply exists
+- [ ] Road/local infrastructure progress idempotent on turn retry (needs migration)
+- [ ] AI build result should reflect command-dispatch refusal
 
 - [ ] Restore reliable Test01 turn closure after stale prior-turn execution guard
 - [ ] Verify canonical Test01 economy twice without fiscal or history drift
