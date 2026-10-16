@@ -1,5 +1,9 @@
 # Map-first square-grid roadmap
 
+## Current Economy 2.0 slice
+- [ ] Expose existing producer A/B/C costs and imputed labour in both views through the shared field contract
+- [ ] Verify canonical projection regressions, tests/typecheck, and document remaining gaps
+
 - [ ] Restore reliable Test01 turn closure after stale prior-turn execution guard
 - [ ] Verify canonical Test01 economy twice without fiscal or history drift
 - [ ] Make module tabs close map details and use the full workspace width

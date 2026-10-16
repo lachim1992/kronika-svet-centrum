@@ -5,7 +5,7 @@
  * UIs only format these values; they never recompute them. A regression test fails when the engine emits a
  * field that is neither mapped here nor listed in CITY_ACCOUNT_UNMAPPED_OK.
  */
-export type FieldKind = "money" | "ratio" | "index" | "basis" | "count";
+export type FieldKind = "money" | "ratio" | "index" | "basis" | "count" | "boolean";
 export interface EconomyField { key: string; label: string; tip: string; kind: FieldKind; source: string }
 
 const SRC = "cityAccounts";
@@ -38,14 +38,40 @@ export const CITY_ACCOUNT_UNMAPPED_OK = new Set([
   "capital_stock", "capital_candidate",
 ]);
 
-export const BASIS_LABEL: Record<string, string> = { settled_wages: "vyplacené mzdy", imputed_proxy: "odhad z HDP" };
+/** Direct paths in diagnostics[].margin, not sums of Dev Mode component rows (B wear is already an input). */
+export const PRODUCER_COST_FIELDS: EconomyField[] = [
+  ...[ ["material", "A · materiál", "Fyzicky spotřebovaný BOM"],
+    ["factor_wear", "B · opotřebení faktorů", "Pouze spotřebované opotřebení, nikoli celý kapitál"],
+    ["operating", "C · provozní vstupy", "Skutečně spotřebované podpůrné vstupy"],
+    ["payroll_imputed", "Mzdy · odhad", "Mzdová sazba × zaměstnaní; nikoli vyplacená hotovost"]
+  ].flatMap(([key, label, tip]): EconomyField[] => [
+    { key: `cost_breakdown.${key}`, label, tip: `${tip}. Ocenění za tah z kanonického účtu výrobce.`, kind: "money", source: "diagnostics[].margin" },
+    { key: `cost_breakdown.unit.${key}`, label: `${label} / ks`, tip: `${tip}. Jednotkový náklad uložený enginem; bez výroby není definován.`, kind: "money", source: "diagnostics[].margin" },
+  ]),
+  { key: "full_cost", label: "Náklad včetně odhadu mezd", tip: "A + C + B opotřebení + odhad mezd. Nejde o úplný hotovostní náklad: odpisy budov, režie a daně výrobce zatím nejsou modelovány.", kind: "money", source: "diagnostics[].margin" },
+  { key: "unit_full_cost", label: "Náklad včetně odhadu / ks", tip: "Jednotkový náklad přímo z účtu výrobce, ne součet dalších diagnostických rozpadů.", kind: "money", source: "diagnostics[].margin" },
+  { key: "labor_per_unit", label: "Práce / ks", tip: "Pracovní náročnost podle skutečného obsazení výroby; bez výstupu není definována.", kind: "index", source: "diagnostics[].margin" },
+  { key: "wage_rate", label: "Mzdová sazba", tip: "Místní sazba za pracovníka a tah.", kind: "index", source: "diagnostics[].margin" },
+  { key: "operating_surplus", label: "Přebytek po odhadu mezd", tip: "Oceněný výstup minus spotřebované vstupy a odhad mezd; nikoli hotovostní zisk.", kind: "money", source: "diagnostics[].margin" },
+  { key: "payroll_basis", label: "Základ mezd", tip: "Účet výrobce obsahuje odhad. Skutečné mzdy vyúčtovává odděleně pouze uzávěrka tahu.", kind: "basis", source: "diagnostics[].margin" },
+  { key: "cash_settled", label: "Hotovost vyúčtovaná v kalkulaci", tip: "Tato kalkulace nepřevádí peníze. Výplaty z uzávěrky nejsou touto hodnotou nahrazovány.", kind: "boolean", source: "diagnostics[].margin" },
+];
+
+/** Existing aliases/accounting identities deliberately not repeated in the cost drilldown. */
+export const PRODUCER_COST_UNMAPPED_OK = new Set(["payroll", "capital_wear", "value_added"]);
+export type ProducerCostRecord = Record<string, unknown>;
+
+export const BASIS_LABEL: Record<string, string> = { settled_wages: "vyplacené mzdy", imputed_proxy: "odhad z HDP", imputed: "odhad, nikoli výplata" };
 
 /** null/undefined = field missing (older ledger or not yet settled) — never shown as 0. */
 export function formatField(field: EconomyField, row: Record<string, unknown> | null | undefined): { text: string; missing: boolean } {
-  const v = row?.[field.key];
+  const v = field.key.split(".").reduce<unknown>((value, key) =>
+    value != null && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined, row);
   if (v === undefined) return { text: "chybí", missing: true };
   if (v === null) return { text: "zatím není", missing: true };
   if (field.kind === "basis") return { text: BASIS_LABEL[String(v)] ?? String(v), missing: false };
+  if (field.kind === "boolean") return typeof v === "boolean"
+    ? { text: v ? "ano" : "ne", missing: false } : { text: "chybí", missing: true };
   const x = Number(v);
   if (!Number.isFinite(x)) return { text: "chybí", missing: true };
   if (field.kind === "ratio") return { text: `${Math.round(x * 100)} %`, missing: false };
