@@ -300,9 +300,13 @@ export async function computeCanonicalEconomy(sb:any,session:string){
       if(feederEdges.has(id))continue;feederEdges.add(id);
       edges.push({id,from,to,cost:SPUR_COST_PER_TILE,capacity:spurCapacity(hit.dist),mode:'spur',risk:0,toll:0,border:0});
     }
+    // A spur becomes part of the transport network, so smaller outlying sites (micro wood/peat camps)
+    // can feed into their parent's spur instead of failing with missing_local_delivery_route.
+    for(const c of hit.cells)transport.add(c);
   };
   for(const c of db.cities){const city=cityMap.get(c.id);if(city)attach(city.cell,cityCatchmentRadius(c));}
-  for(const node of db.province_nodes)if(node.is_active!==false&&anchor(node))attach(`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,nodeCatchmentRadius(node));
+  // Larger catchments first so micro sites can join their spurs (deterministic: radius desc, then id).
+  for(const node of [...db.province_nodes].sort((a:any,b:any)=>nodeCatchmentRadius(b)-nodeCatchmentRadius(a)||String(a.id).localeCompare(String(b.id))))if(node.is_active!==false&&anchor(node))attach(`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,nodeCatchmentRadius(node));
   /**
    * AUTO FINALISATION. Expected margin uses the cheapest EXPECTED LANDED input cost: previous
    * committed (bootstrap: catalogue) prices at every reachable supplier + route transport ×

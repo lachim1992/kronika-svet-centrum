@@ -280,3 +280,19 @@ describe('Acceptance: raw → processed → final, imported input, AUTO, consump
     for (const r of realms) { expect(r).not.toHaveProperty('gold_reserve'); expect(r).not.toHaveProperty('population_total'); }
   });
 });
+
+describe('fuel/timber chain: micro sites join their parent spur (no missing_local_delivery_route)', () => {
+  it('a micro camp one tile beyond its parent node reaches the city through the parent spur', async () => {
+    const t = baseTables();
+    t.goods = [goodRow('peat', 'fuel', 1, 'raw')];
+    t.cities = [cityRow('a', 0)];
+    t.province_hexes = [0, 1, 2, 3].map(x => ({ session_id: S, q: x, r: 0, grid_x: x, grid_y: 0, is_passable: true, biome_family: 'plains' }));
+    t.province_nodes = [
+      { id: 'minor', session_id: S, city_id: 'a', controlled_by: 'p', node_tier: 'minor', grid_x: 2, grid_y: 0, is_active: true },
+      { id: 'micro', session_id: S, parent_node_id: 'minor', controlled_by: 'p', node_tier: 'micro', grid_x: 3, grid_y: 0, is_active: true }];
+    const edges = (await run(t)).result.snapshot.edges as { from: string; to: string; mode: string }[];
+    const touches = (c: string) => edges.some(e => e.mode === 'spur' && (e.from === c || e.to === c));
+    expect(touches('2,0')).toBe(true);
+    expect(touches('3,0')).toBe(true);
+  });
+});
