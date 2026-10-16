@@ -10,12 +10,17 @@
  */
 export interface WageCityInput { city: string; producer_payroll?: number; goods_value_added?: number;
   /** Imputed proxy labour income from cityAccounts (GDP share). Diagnostic only — never paid. */
-  labor_income?: number }
+  labor_income?: number;
+  /** Imputed proxy ownership income from cityAccounts (capital share of GDP). Settled as a REAL
+   *  payout from producer cash AFTER wages; reported only — household spending still uses the proxy. */
+  capital_income?: number }
 export interface WageCitySettlement {
   city: string; payroll_due: number; arrears_opening: number; producer_cash_pool: number;
   wages_paid: number; household_wage_income: number; arrears_closing: number; producer_retained: number;
-  /** Persistent producer cash stock: opening (prior closing) + pool − wages = closing, never negative. */
+  /** Persistent producer cash stock: opening (prior closing) + pool − wages − ownership = closing, never negative. */
   producer_cash_opening: number; producer_cash_closing: number;
+  /** Ownership (profit) payout: due = imputed capital income, paid out of cash left after wages. */
+  ownership_income_due: number; ownership_income_paid: number; ownership_unpaid: number;
   /** Reconciliation: imputed purchasing-power labour income vs. settled cash. */
   imputed_labor_income: number; imputed_minus_settled: number; settled_share_of_imputed: number | null;
 }
