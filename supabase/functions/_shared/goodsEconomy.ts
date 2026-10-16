@@ -528,9 +528,42 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
    *  producers cannot both count the same tools. Saturating multiplier (floor..1), computed once. */
   const factorClaims=new Map<string,number>(),capitalCache=new Map<string,{mult:number;coverage:Record<string,number>}>();
   const capitalFactor=(p:Producer)=>{const hit=capitalCache.get(p.id);if(hit)return hit.mult;let mult=1;const coverage:Record<string,number>={};
-    for(const f of p.recipe.inputs.filter(isFactor)){const k=key(p.city,f.good),req=n(p.capacity)*clamp(p.allocation)*f.qty/Math.max(C.epsilon,p.recipe.qty);
-      if(req<=C.epsilon)continue;const free=Math.max(0,available(stock(p.city,f.good))-(factorClaims.get(k)||0)),cov=Math.min(1,free/req);
-      factorClaims.set(k,(factorClaims.get(k)||0)+Math.min(free,req));coverage[f.good]=cov;mult=Math.min(mult,factorMultiplier(cov));}
+    const c=cityById.get(p.city)!;
+    for(const f of p.recipe.inputs.filter(isFactor)){
+      const ig=goodByKey.get(f.good);
+      if(!ig)throw Error(`Unknown factor input ${f.good}`);
+      const k=key(p.city,f.good),req=n(p.capacity)*clamp(p.allocation)*f.qty/Math.max(C.epsilon,p.recipe.qty);
+      if(req<=C.epsilon)continue;
+      const claimed=factorClaims.get(k)||0;
+      let free=Math.max(0,available(stock(p.city,f.good))-claimed);
+      // Class B is durable productive capital: import the MISSING STOCK before claiming it,
+      // using the same quality-aware, capacity-limited and diplomatic route as class A.
+      // The transfer itself is NOT intermediate consumption; only subsequent wear is.
+      let missing=Math.max(0,req-free);
+      if(missing>=C.minLot&&staffingRatio(p)>C.epsilon){
+        const suppliers=[...inputSources(c,ig),...distantInputSources(c,ig)]
+          .map(s=>({s,cost:landed(s,c,ig,0,missing)})).filter(x=>!!x.cost)
+          .sort((a,b)=>a.cost!.landed-b.cost!.landed||a.s.id.localeCompare(b.s.id));
+        const acq=acquisition.get(p.id)||new Map();acquisition.set(p.id,acq);
+        const rec=acq.get(f.good)||{qty:0,cost:0,suppliers:suppliers.slice(0,3).map(x=>({city:x.s.id,landed:x.cost!.landed,...x.cost})),chosen:null as string|null,
+          parts:{source:0,transport:0,tolls:0,tariff:0,risk:0,loss_cost:0}};acq.set(f.good,rec);
+        for(const {s,cost} of suppliers){
+          if(missing<C.minLot)break;
+          const sb=stock(s.id,ig.key);
+          const keep=Math.max(foodReserve(s,ig),sb.demand-sb.consumed_household-sb.consumed_state,0);
+          const got=transfer(s,c,ig,missing,'production_input',[],keep);
+          if(got>0){
+            rec.qty+=got;rec.cost+=got*cost!.landed;rec.chosen ??= s.id;
+            for(const part of LANDED_PARTS)rec.parts[part]+=got*cost![part];
+            missing-=got;
+          }
+        }
+        free=Math.max(0,available(stock(p.city,f.good))-claimed);
+      }
+      const cov=Math.min(1,free/req);
+      factorClaims.set(k,claimed+Math.min(free,req));
+      coverage[f.good]=cov;mult=Math.min(mult,factorMultiplier(cov));
+    }
     capitalCache.set(p.id,{mult,coverage});return mult;};
   for(let pass=0;pending.size&&pass<C.maxProductionPasses;pass++){
     let progress=false;
