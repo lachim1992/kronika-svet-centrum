@@ -26,6 +26,8 @@ export const CITY_ACCOUNT_FIELDS: EconomyField[] = [
   { key: "producer_payroll", label: "Mzdy výrobců (odhad)", kind: "money", source: SRC, tip: "Mzdová sazba × zaměstnaní. Odhad nákladů, ne vyplacená hotovost." },
   { key: "producer_operating_surplus", label: "Provozní přebytek výrobců", kind: "money", source: SRC, tip: "Přidaná hodnota − mzdy − opotřebení (odhad)." },
   { key: "wage_rate", label: "Mzdová sazba", kind: "index", source: SRC, tip: "Místní mzda za pracovníka a tah z trhu práce." },
+  { key: "settled_wage_arrears", label: "Dlužné mzdy (uzávěrka)", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Mzdy, které výrobci při poslední uzávěrce tahu nezaplatili; přenáší se do dalšího tahu." },
+  { key: "settled_producer_retained", label: "Ponechaná hotovost výrobců", kind: "money", source: "realm_resources.computed_modifiers.wage_settlement", tip: "Přidaná hodnota, která výrobcům zůstala po skutečné výplatě mezd při poslední uzávěrce." },
 ];
 
 /** Engine fields intentionally shown elsewhere (main table / drilldown text) or internal. */
