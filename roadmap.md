@@ -1,7 +1,7 @@
 # Map-first square-grid roadmap
 
 ## Economy 2.0 completion phases (ordered; each depends on the previous)
-1. Producer cash & wages — [x] settlement, arrears, retained, persistent cash stock; [x] household ownership income settled from producer cash (settled_ownership_income, reported only — households do not spend it yet); [ ] replace GDP-proxy capital_income in purchasing power (needs balancing); [ ] affordability calibration of incomeUnitFactor; [ ] switch household_income_basis to settled
+1. Producer cash & wages — [x] settlement, arrears, retained, persistent cash stock; [x] household ownership income settled from producer cash (settled_ownership_income, reported only — households do not spend it yet); [x] (2026-10-16) capital_income uses settled ownership_income_paid when recorded (basis capital_income_basis, proxy fallback for legacy settlements; due = ownership_income_claim to avoid feedback) — was: replace GDP-proxy capital_income in purchasing power (needs balancing); [ ] affordability calibration of incomeUnitFactor; [x] (2026-10-16) household_income_basis 'settled_when_available' (wages + ownership settled, per-city proxy fallback) — was: switch household_income_basis to settled
 2. Reachable A/B/C BOM chains — [ ] fuel sources (peat/charcoal) before fuel-gating bread; [ ] tools import/wear; [ ] typed ores/clay/water + stocks
 3. Prices & trade — [x] FIFO lots/origin, eligible-lot landed ranking; [ ] input-cost pass-through; [ ] quality 0–100 migration; [ ] competitive trade
 4. GDP & capital — [ ] nominal/real value added reconciliation, depreciation, producer taxes, household wealth (no legacy ledgers)
