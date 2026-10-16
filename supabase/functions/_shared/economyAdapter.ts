@@ -367,10 +367,10 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const householdTaxRate=Object.fromEntries(db.realm_resources.map((r:any)=>[r.player_name,Math.min(0.9,nonnegative(r.tax_rate_domestic??0.1)+nonnegative(r.tax_rate_poll??0.002))]));
   // Last committed wage settlement (process-turn); refresh only reads it.
   const settledWages:Record<string,number>={};
-  const settlement:Record<string,{arrears_closing:number;producer_retained:number}>={};
+  const settlement:Record<string,{arrears_closing:number;producer_retained:number;producer_cash_closing:number}>={};
   for(const r of db.realm_resources as any[])for(const c of r?.computed_modifiers?.wage_settlement?.cities||[])if(c?.city){
     settledWages[c.city]=nonnegative(c.wages_paid);
-    settlement[c.city]={arrears_closing:nonnegative(c.arrears_closing),producer_retained:nonnegative(c.producer_retained)};
+    settlement[c.city]={arrears_closing:nonnegative(c.arrears_closing),producer_retained:nonnegative(c.producer_retained),producer_cash_closing:nonnegative(c.producer_cash_closing)};
   }
 const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
   const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,priorPrices,householdTaxRate,settledWages,settlement,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};

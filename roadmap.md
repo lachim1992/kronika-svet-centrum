@@ -1,11 +1,19 @@
 # Map-first square-grid roadmap
 
+## Economy 2.0 completion phases (ordered; each depends on the previous)
+1. Producer cash & wages — [x] settlement, arrears, retained, persistent cash stock; [ ] household ownership income from producer cash (replaces GDP proxy); [ ] affordability calibration of incomeUnitFactor; [ ] switch household_income_basis to settled
+2. Reachable A/B/C BOM chains — [ ] fuel sources (peat/charcoal) before fuel-gating bread; [ ] tools import/wear; [ ] typed ores/clay/water + stocks
+3. Prices & trade — [x] FIFO lots/origin, eligible-lot landed ranking; [ ] input-cost pass-through; [ ] quality 0–100 migration; [ ] competitive trade
+4. GDP & capital — [ ] nominal/real value added reconciliation, depreciation, producer taxes, household wealth (no legacy ledgers)
+5. AI & map — [x] AI builds validated + refusal reported; [x] construction retry idempotent; [ ] deterministic AI trade/construction planning
+6. UI & acceptance — [ ] canonical Economy/Dev cleanup of dead layers; [ ] 20/200-turn simulations; [ ] TEST02 acceptance
+
 ## Current Economy 2.0 slice
 - [x] Expose existing producer A/B/C costs and imputed labour in both views through the shared field contract
 - [x] Verify canonical projection regressions, tests/typecheck (589 total, 586 passed / 3 skipped)
 - [x] Echo committed wage arrears and producer retained cash into city accounts (both views)
 - [ ] Live TEST02 verification of Economy + Dev views (needs signed-in session)
-- [ ] Persistent producer cash balance (retained currently a per-turn flow)
+- [x] Persistent producer cash stock per city (wage_settlement producer_cash_opening/closing; arrears payable from stock; shown as "Hotovost výrobců (zásoba)" in both views)
 - [ ] Capital income from producer_retained instead of GDP proxy (needs balancing)
 - [ ] C fuel for bakery once peat/charcoal supply exists
 - [x] Road/local infrastructure progress idempotent on turn retry (last_progress_turn guard, migration 0005, test construction-retry.test.ts)

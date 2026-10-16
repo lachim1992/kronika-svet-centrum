@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { settleWages } from '../../supabase/functions/_shared/wageSettlement';
 
 const conserved = (s: ReturnType<typeof settleWages>) => s.cities.forEach(c => {
-  expect(c.wages_paid + c.producer_retained).toBeCloseTo(c.producer_cash_pool);
+  expect(c.producer_cash_opening + c.producer_cash_pool).toBeCloseTo(c.wages_paid + c.producer_cash_closing);
+  expect(c.producer_cash_closing).toBeGreaterThanOrEqual(0);
   expect(c.payroll_due + c.arrears_opening - c.wages_paid).toBeCloseTo(c.arrears_closing);
   expect(c.household_wage_income).toBe(c.wages_paid);
   for (const v of [c.wages_paid, c.arrears_closing, c.producer_retained]) expect(v).toBeGreaterThanOrEqual(0);
@@ -42,5 +43,14 @@ describe('canonical wage settlement', () => {
     expect(s.totals).toMatchObject({ imputed_labor_income: 50, imputed_minus_settled: 25 });
     expect(s.household_income_basis).toBe('imputed_proxy');
     expect(s.treasury_effect).toBe(0);
+  });
+  it('carries producer cash stock between turns and pays arrears from it', () => {
+    const t1 = settleWages(1, [{ city: 'A', producer_payroll: 10, goods_value_added: 50 }]);
+    conserved(t1);
+    expect(t1.cities[0]).toMatchObject({ producer_cash_opening: 0, producer_cash_closing: 40 });
+    const t2 = settleWages(2, [{ city: 'A', producer_payroll: 30, goods_value_added: 5 }], t1);
+    conserved(t2);
+    expect(t2.cities[0]).toMatchObject({ producer_cash_opening: 40, wages_paid: 30, arrears_closing: 0, producer_cash_closing: 15, producer_retained: 0 });
+    expect(settleWages(2, [], t2).cities[0].producer_cash_closing).toBe(15);
   });
 });

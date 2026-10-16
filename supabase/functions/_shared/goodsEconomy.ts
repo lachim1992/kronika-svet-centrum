@@ -72,7 +72,7 @@ export interface Snapshot { turn: number; goods: Good[]; cities: City[]; produce
   householdTaxRate?: Record<string, number>;
   /** Wages paid per city in the last COMMITTED turn (wage_settlement); diagnostic only. */
   settledWages?: Record<string, number>;
-  settlement?: Record<string, { arrears_closing: number; producer_retained: number }> }
+  settlement?: Record<string, { arrears_closing: number; producer_retained: number; producer_cash_closing?: number }> }
 export interface Balance { city: string; good: string; opening: number; produced_household: number; produced_node: number;
   produced_facility: number; produced_district: number; consumed_household: number; consumed_state: number;
   consumed_as_input: number; imported: number; exported: number; stored: number; lost_spoilage: number;
@@ -780,7 +780,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       producer_payroll:producerPayroll(c.id),producer_operating_surplus:producerSurplus(c.id),wage_rate:lab?.wage_rate??null,
       // Echo of the last COMMITTED process-turn settlement (read-only; never recomputed here).
       settled_wage_arrears:snapshot.settlement?.[c.id]?.arrears_closing??null,
-      settled_producer_retained:snapshot.settlement?.[c.id]?.producer_retained??null};});
+      settled_producer_retained:snapshot.settlement?.[c.id]?.producer_retained??null,
+      settled_producer_cash:snapshot.settlement?.[c.id]?.producer_cash_closing??null};});
   const demand=[...demandComponents.entries()].map(([k,channels])=>({city:k.split('::')[0],good:k.split('::')[1],
     channels:{...channels},total:channelTotal(channels)}));
   return {balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
