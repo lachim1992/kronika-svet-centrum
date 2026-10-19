@@ -1535,6 +1535,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         console.log(`[${factionName}] BUILD_ROUTE skipped (gold=${goldNow}, workforce_free=${workforceFree}, mob=${mobNow})`);
       }
 
+      const enemies = new Set<string>((activeWars || []).map((w: any) => w.declaring_player === factionName ? w.target_player : w.declaring_player).filter(Boolean));
       // ── 1b. CROSS-FACTION BUILD_ROAD: link to friendly neighbour's nearest node (enables trade) ──
       try {
         const friendlyNeighbours = (allNodes || []).filter((n: any) =>

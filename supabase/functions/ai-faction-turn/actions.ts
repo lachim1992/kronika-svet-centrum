@@ -41,11 +41,11 @@ export function generateValidActions(input: {
   influenceByNode?: Map<string, any>;
   rivalsByNode?: Map<string, { count: number; topPressure: number }>;
   // Inc 2.5 extras (all optional for back-compat)
-  enemyStacks?: Array<{ id?: string; player_name?: string; hexQ?: number; hexR?: number; power?: number }>;
+  enemyStacks?: Array<{ id?: string; player_name?: string; hexQ?: number; hexR?: number; hex_q?: number; hex_r?: number; power?: number }>;
   activeWars?: Array<{ declaring_player?: string; target_player?: string; declared_turn?: number }>;
   peaceOffers?: Array<{ peace_offered_by?: string; peace_conditions?: any; declaring_player?: string; target_player?: string }>;
   allTensionData?: Array<{ player_a?: string; player_b?: string; total_tension?: number }>;
-  tradeRoutes?: Array<{ player_a?: string; player_b?: string }>;
+  tradeRoutes?: Array<{ player_a?: string; player_b?: string; [k: string]: unknown }>;
   allFactions?: Array<{ faction_name?: string }>;
   turn?: number;
 }): ValidAction[] {
