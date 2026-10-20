@@ -273,7 +273,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const reach=(C.localReach+g.density+g.strategic*C.regionalReach+g.prestige*C.regionalReach+(branded?fame!.fame:0))
       *(reason==='production_input'?C.inputReachBonus:1);
     const transport=p.cost*policy.merchantFriction;
-    if(p.cost>reach*policy.reach)return 0;
+    if(p.cost>reach*policy.reach)return refuse(src,dst,g,reason,'beyond_reach');
     const sd=priceDetail(src.id,g.key),sourcePrice=branded?sd.local_price/Math.max(C.epsilon,sd.fame_factor):sd.local_price,destinationPrice=priceOf(dst.id,g.key);
     const risk=p.edges.reduce((a,e)=>a+n(e.risk),0)*C.priceRiskCost*destinationPrice;
     // Origin-specific WTP: destination base valuation × the good's OWN origin fame premium
@@ -282,7 +282,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const destinationWTP=branded&&reason!=='production_input'?baseWTP*(1+premium):baseWTP;
     // ONE economics for every guard: sourcePrice + destination WTP + transport + tolls + tariff + risk.
     const margin=destinationWTP*(1-p.loss)*(1-targetPolicy.tariff)-sourcePrice-transport-p.tolls-risk;
-    if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return 0;
+    if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return refuse(src,dst,g,reason,'margin_unprofitable');
     // Factories are cost-driven: the physical haul must be worth the good, and the landed cost is capped.
     if(reason==='production_input'&&((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0
       ||(landed(src,dst,g,minQ,wanted)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple))return 0;
@@ -291,7 +291,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     // Quality-filtered sourcing: only lots meeting the buyer recipe's minQuality may be shipped.
     const shippable=minQ>0?Math.min(available(b)-keep,eligibleQty(b,minQ)):available(b)-keep;
     const qty=Math.min(Math.max(0,shippable),wanted/(1-p.loss),p.capacity)*targetPolicy.imports;
-    if(qty<C.minLot)return 0;const delivered=qty*(1-p.loss),before=available(db);
+    if(qty<C.minLot){const r:TradeRefusal=available(b)<=keep+C.minLot?(available(b)<=C.minLot?'source_empty':'source_retained'):'route_capacity';return refuse(src,dst,g,reason,r);}const delivered=qty*(1-p.loss),before=available(db);
     void before;const drawn=drawLots(b,qty,minQ),shippedQuality=lotQuality(drawn,b.quality);
     for(const x of drawn)pushLot(db,x.qty*delivered/qty,x.quality,x.origin); // lots keep origin + quality in transit
     b.exported+=qty;db.imported+=delivered;requality(b);
