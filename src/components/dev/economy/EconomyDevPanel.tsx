@@ -113,7 +113,11 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
           <Grid source={SRC + " .balances/.demand/.prices"} rows={(s.goods || []).filter((g) => match(undefined, g.good))} onRow={(g) => { setP("edv_good", g.good); setDetail({ title: `Zboží ${g.good} — rozpad po městech`, source: "result.balances, result.prices", data: (s.balances?.rows || []).filter((b) => b.good === g.good).map((b) => ({ city: cn(b.city), ...b, price: s.prices?.rows.find((p) => p.city === b.city && p.good === b.good) })) }); }}
             cols={[["Zboží", (g) => g.good], ["Výroba", (g) => f(g.produced)], ["Domácnosti", (g) => f(g.demand_household)], ["Průmysl", (g) => f(g.demand_industrial)], ["Stavby", (g) => f(g.demand_construction)], ["Stát/armáda", (g) => f(g.demand_state)],
               ["Obslouženo", (g) => f(g.served)], ["Nenaplněno", (g) => f(g.unmet)], ["Pokrytí", (g) => pct(g.coverage)], ["Otevř.", (g) => f(g.opening)], ["Uzavř.", (g) => f(g.closing)], ["Δ zásob", (g) => f(g.closing - g.opening)],
-              ["Dovoz", (g) => f(g.imported)], ["Vývoz", (g) => f(g.exported)], ["Ztráty", (g) => f(g.lost_spoilage)], ["Cena Ø", (g) => f(g.price_avg)], ["min–max", (g) => `${f(g.price_min)}–${f(g.price_max)}`], ["Obch. hodnota", (g) => f(g.trade_value)], ["Měst výr./popt.", (g) => `${g.producing_cities}/${g.demanding_cities}`]]} />
+              ["Dovoz", (g) => f(g.imported)], ["Vývoz", (g) => f(g.exported)], ["Ztráty", (g) => f(g.lost_spoilage)], ["· zkáza", (g) => f(g.lost_decay)], ["· doprava", (g) => f(g.lost_transport)], ["· neuskl.", (g) => f(g.lost_discard)], ["Cena Ø", (g) => f(g.price_avg)], ["min–max", (g) => `${f(g.price_min)}–${f(g.price_max)}`], ["Obch. hodnota", (g) => f(g.trade_value)], ["Měst výr./popt.", (g) => `${g.producing_cities}/${g.demanding_cities}`]]} />
+          <Grid source={SRC + " .importBlockers (goodsEconomy transfer refusals)"} rows={(s.import_blockers || []).filter((x) => match(x.city, x.good))}
+            onRow={(x) => setDetail({ title: `Blokátor dovozu ${x.good} @ ${cn(x.city)}`, source: "result.importBlockers — poslední odmítnutý transfer pro domácnosti", data: x })}
+            cols={[["Město", (x) => cn(x.city)], ["Zboží", (x) => x.good], ["Chybí", (x) => f(x.unmet)], ["Důvod", (x) => x.reason], ["Zdroj", (x) => x.source ? cn(x.source) : "—"]]}
+            empty="Žádné blokády dovozu — veškerá nenaplněná poptávka je bez odmítnutého transferu." />
         </TabsContent>
 
         <TabsContent value="producers">
@@ -188,6 +192,7 @@ function Overview({ s, onDetail }: { s: EconomyDevSnapshot; onDetail: (d: Detail
         <p className="font-semibold">Zachování hmoty (svět, zdroj: Σ result.balances)</p>
         <p className="font-mono">{f(w.opening)} otevř. + {f(w.produced)} výroba + {f(w.imported)} dovoz − {f(w.consumed_household)} domácnosti − {f(w.consumed_state)} stát − {f(w.consumed_as_input)} průmysl. vstupy − {f(w.exported)} vývoz − {f(w.lost_spoilage)} ztráty − {f(w.capex)} CAPEX = {f(closingCalc)} (uloženo {f(w.closing)}, reziduum {w.residual.toExponential(2)})</p>
         <p className="font-mono">Poptávka {f(w.demand)} · obslouženo {f(w.served)} · nenaplněno {f(w.unmet)} · hrubá produkce {f(w.gross_output_value)} · mezispotřeba {f(w.intermediate_value)} · obchod {f((s.flows?.rows || []).reduce((a, x) => a + x.gross_value, 0))}</p>
+        <p className="font-mono">Rozpad ztrát: zkáza zásob {f(w.lost_decay)} · doprava {f(w.lost_transport)} · neuskladněný přebytek {f(w.lost_discard)} (Σ = {f(w.lost_spoilage)})</p>
       </div>
       <Button size="sm" variant="outline" onClick={() => onDetail({ title: "Stav tahu (guard/journal/zámek)", source: "turn_execution_guards, turn_phase_journal, economy_recompute_locks", data: s.state })}>Detail stavu tahu</Button>
     </div>

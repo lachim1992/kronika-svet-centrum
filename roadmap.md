@@ -258,3 +258,10 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 
 - [ ] Operational deploy PR #5 (3 migrations + 13 functions)
 - [ ] AI cost & architecture optimization pass
+
+## P0 trade/loss diagnostics (2026-10-20)
+- DONE: goodsEconomy loss decomposition (lost_decay/lost_transport/lost_discard, sum = lost_spoilage) + importBlockers (trade refusal reasons) + deterministic test src/test/goods-trade-diagnostics.test.ts (8/8).
+- DONE: management.ts exposes import_blockers; economy-dev-snapshot build.ts aggregates decomposition; both views (PhysicalEconomyPanel, EconomyDevPanel) render decomposition + blockers; contract exemption documented.
+- DONE: suite 639 passed / 3 skipped; tsgo clean; build OK; deployed refresh-economy, process-turn, economy-dev-snapshot, commit-turn.
+- OPEN (blocker): TEST02 refresh NOT applied — compute-trade-flows step times out with DB statement timeout (57014) twice; afterwards the DB pooler became unavailable (project paused/waking). Turn 25 untouched, fiscal_unchanged=true. Next: retry refresh when DB is healthy; if timeout persists, profile computeCanonicalEconomy queries.
+- NOT DONE: baked_staples=0 root-cause fix (documented: no fuel coverage/mills), starter farm 140→frozen migration (deferred until trade robust).

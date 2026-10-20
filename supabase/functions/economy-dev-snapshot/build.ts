@@ -18,6 +18,7 @@ export interface LedgerBalance {
   city: string; good: string; opening: Num; produced_household: Num; produced_node: Num; produced_facility: Num;
   produced_district: Num; consumed_household: Num; consumed_state: Num; consumed_as_input: Num; imported: Num;
   exported: Num; stored: Num; lost_spoilage: Num; unmet_demand: Num; demand: Num; quality: Num;
+  lost_decay?: Num; lost_transport?: Num; lost_discard?: Num;
   gross_output_value: Num; intermediate_value: Num; extraction_value: Num; capex: Num;
 }
 export interface LedgerFlow {
@@ -48,6 +49,7 @@ export interface LedgerResult {
   balances?: LedgerBalance[]; flows?: LedgerFlow[]; prices?: LedgerPrice[]; demand?: LedgerDemand[];
   diagnostics?: LedgerDiagnostic[]; metrics?: { city: string; roles?: string[]; [k: string]: unknown }[];
   productChoice?: ProductChoiceRow[]; cityAccounts?: CityAccountRow[]; famous?: FameEntry[];
+  importBlockers?: { city: string; good: string; unmet: Num; reason: string; source: string | null }[];
   budgetMode?: string;
   snapshot?: { turn?: number; cities?: SnapshotCity[]; producers?: SnapshotProducer[]; edges?: SnapshotEdge[];
     fame?: { city: string; good: string }[]; blockedTrade?: unknown[] };
@@ -61,14 +63,16 @@ export const residualOf = (b: LedgerBalance) =>
 
 export interface Totals { opening: Num; produced: Num; imported: Num; consumed_household: Num; consumed_state: Num;
   consumed_as_input: Num; exported: Num; lost_spoilage: Num; capex: Num; closing: Num; demand: Num; unmet: Num;
-  served: Num; residual: Num; gross_output_value: Num; intermediate_value: Num }
+  served: Num; residual: Num; gross_output_value: Num; intermediate_value: Num;
+  lost_decay: Num; lost_transport: Num; lost_discard: Num }
 const emptyTotals = (): Totals => ({ opening: 0, produced: 0, imported: 0, consumed_household: 0, consumed_state: 0,
   consumed_as_input: 0, exported: 0, lost_spoilage: 0, capex: 0, closing: 0, demand: 0, unmet: 0, served: 0, residual: 0,
-  gross_output_value: 0, intermediate_value: 0 });
+  gross_output_value: 0, intermediate_value: 0, lost_decay: 0, lost_transport: 0, lost_discard: 0 });
 export function addTotals(t: Totals, b: LedgerBalance) {
   t.opening += n(b.opening); t.produced += producedOf(b); t.imported += n(b.imported);
   t.consumed_household += n(b.consumed_household); t.consumed_state += n(b.consumed_state);
   t.consumed_as_input += n(b.consumed_as_input); t.exported += n(b.exported); t.lost_spoilage += n(b.lost_spoilage);
+  t.lost_decay += n(b.lost_decay); t.lost_transport += n(b.lost_transport); t.lost_discard += n(b.lost_discard);
   t.capex += n(b.capex); t.closing += n(b.stored); t.demand += n(b.demand); t.unmet += n(b.unmet_demand);
   t.served += Math.max(0, n(b.demand) - n(b.unmet_demand)); t.residual += residualOf(b);
   t.gross_output_value += n(b.gross_output_value); t.intermediate_value += n(b.intermediate_value);
@@ -226,7 +230,7 @@ export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow
   const costs = buildCosts({ producers, diagnostics: diags, prices, famous: result.famous || [], owners });
   const recipesUsing = (good: string) => [...new Set(producers.filter((p) => (p.recipe.inputs || []).some((i) => i.good === good)).map((p) => p.recipe.key))];
   const specific = buildSpecific({ famous: result.famous || [], variants, owners, balances, flows, choice, prices, costs, recipesUsing });
-  return { fuel_guidance: (result as any).fuelGuidance || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
+  return { fuel_guidance: (result as any).fuelGuidance || [], import_blockers: result.importBlockers || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
     edges: edges.map((e) => ({ id: e.id, from: e.from, to: e.to, capacity: n(e.capacity), used: edgeUse.get(e.id) || 0 })) };
 }
 
