@@ -53,9 +53,12 @@ describe('economy chain closure',()=>{
       [producer('mill','flour',[{good:'raw_grain',qty:1}])],[stock('raw_grain',20)]));
     expect(produced(out.balances.find(b=>b.good==='flour')!)).toBe(10);conserve(out);
   });
-  it('does not treat low-substitutability grain as an equal amount of bread',()=>{
+  it('covers critical food need by nutrition: low-substitutability grain still feeds as bread',()=>{
+    // Nutrition equivalence (P0/B): preference friction shapes CHOICE and price, never calories.
+    // With enough physical grain, a grain-only diet fully covers the bread need.
     const out=resolveGoodsEconomy(snapshot([{...good('raw_grain','staple_food',true),substitutability:0.3},good('baked_staples','staple_food',true)],[],[stock('raw_grain',10)]));
-    expect(out.balances.find(b=>b.good==='baked_staples')!.unmet_demand).toBeGreaterThan(5);conserve(out);
+    expect(out.balances.find(b=>b.good==='baked_staples')!.unmet_demand).toBeLessThan(1e-7);
+    expect(out.balances.find(b=>b.good==='raw_grain')!.consumed_household).toBeGreaterThan(0);conserve(out);
   });
   it('preserves state consumption when military demand uses a substitute',()=>{
     const s=snapshot([good('basic','military_supply',true),good('fine','military_supply',true)],[],[stock('fine',100)]);
