@@ -157,14 +157,29 @@ const BuildingDetailSheet = ({
    */
   const { data: reportData } = useManagementReport(sessionId, playerName, currentTurn);
   const operation = useMemo(() => {
-    const lines = ((reportData?.report as any)?.producers || []).filter((p: any) => String(p.producer).split(":")[0] === target?.id);
+    const report = (reportData?.report as any);
+    const lines = (report?.producers || []).filter((p: any) => String(p.producer).split(":")[0] === target?.id);
     if (!lines.length) return null;
     const row = { goods: [] as string[], jobs: 0, employed: 0, realized: 0, potential: 0,
-      inputs: [] as any[], suppliers: [] as string[], reasons: [] as string[] };
+      inputs: [] as any[], suppliers: [] as string[], reasons: [] as string[],
+      byGood: [] as { good: string; realized: number; potential: number }[],
+      factors: null as null | { staffing: number; stability: number; tools: number; logistics: number },
+      foodEquiv: 0, feeds: null as null | number };
+    // Canonical goods metadata from the same management report: which outputs are edible
+    // (staple_food, final use). All edible goods carry functional_value 1 — one physical unit
+    // is one food-equivalent — guarded by src/test/food-security-calibration.test.ts.
+    const goodsMeta = new Map<string, any>((report?.goods || []).map((g: any) => [g.key, g]));
+    const edible = (key: string) => { const g = goodsMeta.get(key); return g?.basket === "staple_food" && (g.finalUse ?? g.stage !== "intermediate"); };
     for (const p of lines) {
       if (!row.goods.includes(p.good)) row.goods.push(p.good);
       row.jobs += num(p.jobs_capacity); row.employed += num(p.employed);
       row.realized += num(p.realized); row.potential += num(p.potential_output);
+      const g = row.byGood.find(x => x.good === p.good) || row.byGood[row.byGood.push({ good: p.good, realized: 0, potential: 0 }) - 1];
+      g.realized += num(p.realized); g.potential += num(p.potential_output);
+      if (!row.factors && p.factors) row.factors = {
+        staffing: num(p.staffing_ratio ?? p.factors.staffing), stability: num(p.factors.stability),
+        tools: num(p.factors.tools), logistics: num(p.factors.logistics) };
+      if (edible(p.good)) row.foodEquiv += num(p.realized);
       for (const i of p.inputs || []) {
         const found = row.inputs.find((x: any) => x.good === i.good);
         if (found) { found.required += num(i.required); found.supplied += num(i.supplied); }
@@ -174,8 +189,16 @@ const BuildingDetailSheet = ({
       const reason = p.bottleneck ? `úzké místo: ${p.bottleneck}` : BLOCKED_REASON[p.blocked] || p.blocked || "";
       if (reason && !row.reasons.includes(reason)) row.reasons.push(reason);
     }
-    return { ...row, turn: (reportData?.report as any)?.turn };
-  }, [reportData, target]);
+    // "Feeds N people" from the same canonical demand the engine uses: this city's edible
+    // demand per soul in the report, never a hardcoded UI constant.
+    const cityReport = (report?.cities || []).find((c: any) => c.id === entity?.city_id);
+    const pop = num(cityReport?.population);
+    const perCapita = pop > 0
+      ? (cityReport?.balances || []).filter((b: any) => edible(b.good)).reduce((s: number, b: any) => s + num(b.demand), 0) / pop
+      : 0;
+    if (row.foodEquiv > 0 && perCapita > 0) row.feeds = Math.round(row.foodEquiv / perCapita);
+    return { ...row, turn: report?.turn };
+  }, [reportData, target, entity]);
   const supplierName = (id: string) => ((reportData?.report as any)?.cities || []).find((c: any) => c.id === id)?.name || "jiné město";
 
   const inProgress = entity?.status && entity.status !== "completed";
