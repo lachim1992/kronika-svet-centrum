@@ -791,7 +791,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const remaining=available(b)-b.capex;b.stored=g.storable?Math.min(remaining,storage/Math.max(1,g.bulk)):0;storage-=b.stored*Math.max(1,g.bulk);
     { const l=syncLots(b),avail=available(b),f=avail>C.epsilon?b.stored/avail:0; // capex/spoilage drain proportionally
       b.stored_lots=b.stored>0?l.map(x=>({qty:x.qty*f,quality:x.quality,origin:x.origin})).filter(x=>x.qty>1e-12):[]; }
-    b.lost_spoilage+=Math.max(0,remaining-b.stored);
+    const discard=Math.max(0,remaining-b.stored);b.lost_spoilage+=discard;b.lost_discard+=discard;
     const residual=b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage-b.stored-b.capex;
     if(Math.abs(residual)>1e-6)throw Error(`Goods conservation failed ${key(c.id,g.key)}: ${residual}`);
     // Provenance must always add up to the canonical demand: no demand without a driver.
