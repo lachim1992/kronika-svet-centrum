@@ -181,7 +181,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     // Carried lots are trusted only when they reconcile with the canonical quantity; else one lot.
     if(ol.length&&Math.abs(olq-n(o.qty))<=1e-6*Math.max(1,n(o.qty)))for(const x of ol){const q=n(x.qty)*n(o.qty)/olq;pushLot(b,q,n(x.quality),x.origin||o.city);b.opening+=q;}
     else{pushLot(b,n(o.qty),n(o.quality),o.city);b.opening+=n(o.qty);}
-    b.lost_spoilage+=n(o.qty)*clamp(g.storageLoss/(1+cityById.get(o.city)!.storage));}
+    const decay=n(o.qty)*clamp(g.storageLoss/(1+cityById.get(o.city)!.storage));b.lost_spoilage+=decay;b.lost_decay+=decay;}
   const workforce=new Map(cities.map(c=>[c.id,computeWorkforceBreakdown([{
     population_peasants:c.classes.peasants,population_burghers:c.classes.burghers,
     population_clerics:c.classes.clerics,population_warriors:c.classes.warriors}],0.1,c.activePopModifier??0,c.maxMobModifier??0,c.soldiers)]));
@@ -290,7 +290,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     for(const x of drawn)pushLot(db,x.qty*delivered/qty,x.quality,x.origin); // lots keep origin + quality in transit
     b.exported+=qty;db.imported+=delivered;requality(b);
     // Lost transport quantity is recorded at destination as import+loss for conservation.
-    db.imported+=qty-delivered;db.lost_spoilage+=qty-delivered;
+    db.imported+=qty-delivered;db.lost_spoilage+=qty-delivered;db.lost_transport+=qty-delivered;
     for(const e of p.edges)reserved.set(e.id,(reserved.get(e.id)||0)+qty*Math.max(1,g.bulk));
     const tolls=qty*(p.tolls+saleUnit*targetPolicy.tariff);
     flows.push({good:g.key,source:src.id,destination:dst.id,qty,delivered,quality:shippedQuality,gross_value:delivered*saleUnit,
