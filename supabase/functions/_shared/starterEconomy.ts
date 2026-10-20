@@ -45,13 +45,16 @@ export const STARTER_WELL: StarterContract = {
   name: 'Osadní studna', category: 'infrastructure',
   description: 'Zdroj pitné vody pro obyvatele osady.',
   recipeKeys: ['draw_water'], roles: ['source'], tags: ['farming'],
-  basketOutputs: { drinking_water: 2 }, jobsCapacity: 100,
+  // Part-time crew: one well unit serves ~400 souls with 25 drawers, not a full farm crew.
+  // Rating 3/unit mirrors the food calibration: water need ≈ 40% of the food need per soul.
+  basketOutputs: { drinking_water: 3 }, jobsCapacity: 25,
 };
 export const STARTER_STORAGE: StarterContract = {
   name: 'Osadní sklad', category: 'economic',
   description: 'Sýpka a sklad, kde osada uchová úrodu a zásoby.',
   recipeKeys: ['build_granary'], roles: ['producer'], tags: ['construction'],
-  basketOutputs: { storage_logistics: 1 }, jobsCapacity: 100,
+  // Part-time crew: a hamlet's granary does not employ a full production crew.
+  basketOutputs: { storage_logistics: 1 }, jobsCapacity: 25,
 };
 
 
@@ -74,10 +77,12 @@ export const starterBundle = (nearWater: boolean): StarterContract[] =>
 export const starterUnitsFor = (population: number): number =>
   Math.max(1, Math.round((Number(population) || 0) / 400));
 
-/** Crew the starter aggregate fields: its units fully staffed, capped at 30% of souls. */
-export const starterJobsFor = (population: number): number => {
+/** Crew one starter contract fields: each unit employs its declared per-unit crew
+ * (farm/fishery a full canonical crew, well/storage part-time), capped at 30% of souls. */
+export const starterJobsFor = (c: StarterContract, population: number): number => {
   const pop = Number(population) || 0;
-  return Math.min(starterUnitsFor(pop) * 100, Math.max(10, Math.round(pop * 0.3)));
+  const units = scalesWithPopulation(c) ? starterUnitsFor(pop) : 1;
+  return Math.max(10, Math.min(units * c.jobsCapacity, Math.round(pop * 0.3)));
 };
 
 const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE;
@@ -89,7 +94,7 @@ export const starterEffects = (c: StarterContract, population: number) => {
   );
   return {
     recipe_keys: c.recipeKeys, production_roles: c.roles, capability_tags: c.tags,
-    basket_outputs: outputs, jobs_capacity: starterJobsFor(population),
+    basket_outputs: outputs, jobs_capacity: starterJobsFor(c, population),
     starter_economy: true,
   };
 };
@@ -140,13 +145,10 @@ export async function ensureStarterEconomy(
         (b.effects?.recipe_keys || []).some((k: string) => contract.recipeKeys.includes(k)));
       if (match) {
         existing.push(contract.name);
-        // Only ever resize a structure this helper itself created — never a player's building.
-        const sameSize = JSON.stringify(match.effects?.basket_outputs || {}) === JSON.stringify(effects.basket_outputs)
-          && Number(match.effects?.jobs_capacity) === effects.jobs_capacity;
-        if (match.effects?.starter_economy && !sameSize) {
-          resizes.push({ id: match.id, effects: { ...match.effects, ...effects } });
-          resized.push(contract.name);
-        }
+        // FROZEN AT FOUNDING: the starter aggregate is sized once, when created. It is
+        // NEVER resized afterwards — otherwise a growing city would get free production
+        // and building real farms would be pointless. Feeding growth requires player/AI
+        // investment. (dryRun therefore never reports resizes for existing cities.)
         continue;
       }
       added.push(contract.name);

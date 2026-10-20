@@ -496,9 +496,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(g.basket!=='staple_food'||!(g.finalUse??g.stage!=='intermediate'))return 0;
     const edible=goods.filter(s=>s.basket==='staple_food'&&(s.finalUse??s.stage!=='intermediate'));
     const own=stock(c.id,g.key),ownNeed=Math.max(0,own.demand-own.consumed_household-own.consumed_state);
-    const need=edible.filter(s=>s.key!==g.key).reduce((sum,s)=>{const b=stock(c.id,s.key);return sum+Math.max(0,b.demand-b.consumed_household-b.consumed_state);},0);
-    const other=edible.filter(s=>s.key!==g.key).reduce((sum,s)=>sum+available(stock(c.id,s.key))*Math.min(1,s.substitutability),0);
-    return ownNeed+Math.max(0,need-other)/Math.max(C.epsilon,Math.min(1,g.substitutability));
+    // Nutrition equivalence, one canonical rule shared with household substitution:
+    // need and supply are compared in functional-value units, so preference friction
+    // (substitutability) never steals calories from the reserve. All edible goods today
+    // have functional_value 1, i.e. one physical unit feeds the same regardless of taste.
+    const fv=(s:Good)=>functionalValue(s.key,s.basket);
+    const needNu=edible.filter(s=>s.key!==g.key).reduce((sum,s)=>{const b=stock(c.id,s.key);return sum+Math.max(0,b.demand-b.consumed_household-b.consumed_state)*fv(s);},0);
+    const otherNu=edible.filter(s=>s.key!==g.key).reduce((sum,s)=>sum+available(stock(c.id,s.key))*fv(s),0);
+    return ownNeed+Math.max(0,needNu-otherNu)/Math.max(C.epsilon,fv(g));
   };
   const inputSources=(c:City,g:Good)=>{
     const hub=hubs.get(key(c.id,g.key));

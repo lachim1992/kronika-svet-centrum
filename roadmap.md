@@ -243,5 +243,16 @@
 
 Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétních tazích výše jsou historické milníky, nikoli současná diagnostika Test02.
 
+## P0 jídlo/farma/kalibrace (řez z tohoto kola; TEST02 netknut, tah 25)
+- [x] `scaledBasketOutputs` (UI) používá kanonický `[1,2,4,8,16]` místo lineárního násobku úrovně — žádné dvojí násobení
+- [x] Výživová ekvivalence: `foodReserve` v goodsEconomy počítá ve functional-value jednotkách; kritická potřeba se substituuje nutrition-only — preference nekrade kalorie (test economy-chain-closure přepsán na nové pravidlo)
+- [x] Startovní ekonomika zmrazena při založení: `ensureStarterEconomy` existující startovní stavby nikdy nezvětšuje (růst = investice, ne free produkce)
+- [x] Posádky startovních staveb per kontrakt (farma/rybolov 100/unit, studna/sklad 25/unit, strop 30 % pop); studna 3 jednotky vody/unit — nová osada se uživí a napojí vlastní silou (měřeno 100–4000 obyv.)
+- [x] BuildingDetailSheet: reálná výroba per good z management reportu, food-equivalent, odhad uživených lidí z lokální poptávky, faktory obsazenost/stabilita/nástroje/logistika; legacy +8 obilí / food_income skryto
+- [x] Testy: src/test/food-security-calibration.test.ts (level scale, 7/14/28, AUTO/LOCK budget, grain-only dieta, foodReserve, starter freeze); celá suite 631 passed / 3 skipped; tsgo čistý
+- [ ] BLOKÉR (čeká na rozhodnutí): DB kalibrace farmy 5→7. Dry-run: template `784256c5` má basket_outputs.staple_food=5, 13 instancí celkem, všechny rated 5; TEST02 má 10 farem (Lv1–3), všechny rated 5, žádná atypická. Změna instancí zvýší produkci TEST02 o 40 % → neaplikováno bez souhlasu; migrace připravena jen jako guarded update (template + instance s přesně rated 5, atypické/historie nedotčeny)
+- [ ] Běžná farma Lv1=7: kód solveru počítá z DB hodnoty; dokud je v DB 5, běží farma na 5 — jednotná pravda zůstává DB
+- [ ] P0 zbytek: obchod na kladném přebytku (TEST02 tah 25: 0 meziměstských toků potravin — nejdřív dokázat tok s kladným surplusem, ne hledat chybu trasy)
+
 - [ ] Operational deploy PR #5 (3 migrations + 13 functions)
 - [ ] AI cost & architecture optimization pass

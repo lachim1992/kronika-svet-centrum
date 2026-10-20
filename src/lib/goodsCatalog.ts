@@ -585,12 +585,21 @@ export function inspectBasketOutputs(b: any): {
   return { source: "none", outputs: {} };
 }
 
-/** Same but multiplied by current_level (min 1). */
+/**
+ * Canonical level multiplier — MUST mirror ECONOMY.levelCapacityScale in
+ * supabase/functions/_shared/economyConfig.ts ([1,2,4,8,16]). The engine multiplies
+ * declared level-1 basket capacity by this scale; UI shows the same numbers, never lvl linearly.
+ * Guarded by src/test/food-security-calibration.test.ts.
+ */
+export const LEVEL_CAPACITY_SCALE = [1, 2, 4, 8, 16];
+
+/** Same but multiplied by the canonical level scale for current_level (min 1). */
 export function scaledBasketOutputs(b: any): Record<string, number> {
   const { outputs } = inspectBasketOutputs(b);
-  const lvl = Math.max(1, Number(b?.current_level) || 1);
+  const lvl = Math.max(1, Math.round(Number(b?.current_level) || 1));
+  const scale = LEVEL_CAPACITY_SCALE[Math.min(lvl, LEVEL_CAPACITY_SCALE.length) - 1];
   const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(outputs)) out[k] = v * lvl;
+  for (const [k, v] of Object.entries(outputs)) out[k] = v * scale;
   return out;
 }
 
