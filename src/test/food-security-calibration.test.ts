@@ -90,7 +90,7 @@ describe('nutrition equivalence — taste never steals calories', () => {
     expect(substitutionEfficiency(target, grain)).toBeLessThan(1); // friction still shapes CHOICE
   });
   it('every edible staple_food good has functional_value 1 (UI food-equivalent is 1:1)', () => {
-    for (const g of GOODS.filter(g => g.basket === 'staple_food' && (g.finalUse ?? g.stage !== 'intermediate')))
+    for (const g of GOODS.filter(g => g.basket === 'staple_food' && g.finalUse !== false))
       expect(productMeta(g.key, 'staple_food').functional_value, g.key).toBe(1);
     expect(GOODS.find(g => g.key === 'flour')!.finalUse).toBe(false); // flour is intermediate, not edible
     expect(PRODUCT_META.raw_grain.functional_value).toBe(1);
