@@ -106,6 +106,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const goods=[...snapshot.goods].sort((a,b)=>a.key.localeCompare(b.key));
   const cityById=new Map(cities.map(c=>[c.id,c])); const goodByKey=new Map(goods.map(g=>[g.key,g]));
   const balances=new Map<string,Balance>(); const flows: Flow[]=[];
+  const importBlockers: {city:string; good:string; unmet:number; reason:string; source:string|null}[]=[];
   const diagnostics: {producer:string; good:string; capacity:number; realized:number; factors:Record<string,number>;
     jobs_capacity?:number; employed?:number; staffing_ratio?:number; potential_output?:number;
     inputs?:{good:string;required:number;supplied:number}[]; bottleneck?:string|null;
