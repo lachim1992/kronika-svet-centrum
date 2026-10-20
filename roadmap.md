@@ -250,9 +250,11 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] Posádky startovních staveb per kontrakt (farma/rybolov 100/unit, studna/sklad 25/unit, strop 30 % pop); studna 3 jednotky vody/unit — nová osada se uživí a napojí vlastní silou (měřeno 100–4000 obyv.)
 - [x] BuildingDetailSheet: reálná výroba per good z management reportu, food-equivalent, odhad uživených lidí z lokální poptávky, faktory obsazenost/stabilita/nástroje/logistika; legacy +8 obilí / food_income skryto
 - [x] Testy: src/test/food-security-calibration.test.ts (level scale, 7/14/28, AUTO/LOCK budget, grain-only dieta, foodReserve, starter freeze); celá suite 631 passed / 3 skipped; tsgo čistý
-- [ ] BLOKÉR (čeká na rozhodnutí): DB kalibrace farmy 5→7. Dry-run: template `784256c5` má basket_outputs.staple_food=5, 13 instancí celkem, všechny rated 5; TEST02 má 10 farem (Lv1–3), všechny rated 5, žádná atypická. Změna instancí zvýší produkci TEST02 o 40 % → neaplikováno bez souhlasu; migrace připravena jen jako guarded update (template + instance s přesně rated 5, atypické/historie nedotčeny)
-- [ ] Běžná farma Lv1=7: kód solveru počítá z DB hodnoty; dokud je v DB 5, běží farma na 5 — jednotná pravda zůstává DB
-- [ ] P0 zbytek: obchod na kladném přebytku (TEST02 tah 25: 0 meziměstských toků potravin — nejdřív dokázat tok s kladným surplusem, ne hledat chybu trasy)
+- [x] DB kalibrace farmy 5→7 APLIKOVÁNA (uživatel schválil): template `784256c5` (effects + level_data L1–3) a 10 instancí v TEST02 (5× Farma L1, 5× Královské panství L3); guarded update (basket=5 ∧ recipe harvest_wheat ∧ ¬starter_economy ∧ jméno ve farmní rodině) — pekárny/mlýny/kuchyně a startovní stavby nedotčeny, idempotentní (opakovaný běh = 0 řádků)
+- [x] TEST02 refresh po kalibraci (tah 25, resolving_turn NULL, fiskál byte-identický): Lachimská Pole raw_grain produkce 77.7→80.2, pokrytí 100 %; NOVĚ reálný tok raw_grain 1.53 Pole→Háj po silnici (transport cost 1.60, trade_flows i basket_trade_flows > 0) — obchod na kladném přebytku prokázán
+- [x] Královské panství L3 kapacita 28 = 7×4 ([1,2,4,8,16], bez dvojího násobení) — ověřeno v management reportu
+- [ ] Startovní hospodářství 140→~63 ZÁMĚRNĚ ponechána (dry-run: při demand ~76 by přepis způsobil hladomor; nové hodnoty rybářství 42→56–133 by byly zdarma vyšší produkce) — sjednocení až s funkčním obchodem; legacy označeno
+- [ ] P0 zbytek: baked_staples produkce 0 všude (pekárny bez mouky — palivo/nástroje), unmet raw_meat v Háji/Brodu/gradu
 
 - [ ] Operational deploy PR #5 (3 migrations + 13 functions)
 - [ ] AI cost & architecture optimization pass
