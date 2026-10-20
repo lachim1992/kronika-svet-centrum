@@ -72,6 +72,7 @@ export function addTotals(t: Totals, b: LedgerBalance) {
   t.opening += n(b.opening); t.produced += producedOf(b); t.imported += n(b.imported);
   t.consumed_household += n(b.consumed_household); t.consumed_state += n(b.consumed_state);
   t.consumed_as_input += n(b.consumed_as_input); t.exported += n(b.exported); t.lost_spoilage += n(b.lost_spoilage);
+  t.lost_decay += n(b.lost_decay); t.lost_transport += n(b.lost_transport); t.lost_discard += n(b.lost_discard);
   t.capex += n(b.capex); t.closing += n(b.stored); t.demand += n(b.demand); t.unmet += n(b.unmet_demand);
   t.served += Math.max(0, n(b.demand) - n(b.unmet_demand)); t.residual += residualOf(b);
   t.gross_output_value += n(b.gross_output_value); t.intermediate_value += n(b.intermediate_value);
@@ -229,7 +230,7 @@ export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow
   const costs = buildCosts({ producers, diagnostics: diags, prices, famous: result.famous || [], owners });
   const recipesUsing = (good: string) => [...new Set(producers.filter((p) => (p.recipe.inputs || []).some((i) => i.good === good)).map((p) => p.recipe.key))];
   const specific = buildSpecific({ famous: result.famous || [], variants, owners, balances, flows, choice, prices, costs, recipesUsing });
-  return { fuel_guidance: (result as any).fuelGuidance || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
+  return { fuel_guidance: (result as any).fuelGuidance || [], import_blockers: result.importBlockers || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
     edges: edges.map((e) => ({ id: e.id, from: e.from, to: e.to, capacity: n(e.capacity), used: edgeUse.get(e.id) || 0 })) };
 }
 
