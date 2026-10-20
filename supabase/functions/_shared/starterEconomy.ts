@@ -45,13 +45,15 @@ export const STARTER_WELL: StarterContract = {
   name: 'Osadní studna', category: 'infrastructure',
   description: 'Zdroj pitné vody pro obyvatele osady.',
   recipeKeys: ['draw_water'], roles: ['source'], tags: ['farming'],
-  basketOutputs: { drinking_water: 2 }, jobsCapacity: 100,
+  // Part-time crew: one well unit serves ~400 souls with 25 drawers, not a full farm crew.
+  basketOutputs: { drinking_water: 2 }, jobsCapacity: 25,
 };
 export const STARTER_STORAGE: StarterContract = {
   name: 'Osadní sklad', category: 'economic',
   description: 'Sýpka a sklad, kde osada uchová úrodu a zásoby.',
   recipeKeys: ['build_granary'], roles: ['producer'], tags: ['construction'],
-  basketOutputs: { storage_logistics: 1 }, jobsCapacity: 100,
+  // Part-time crew: a hamlet's granary does not employ a full production crew.
+  basketOutputs: { storage_logistics: 1 }, jobsCapacity: 25,
 };
 
 
