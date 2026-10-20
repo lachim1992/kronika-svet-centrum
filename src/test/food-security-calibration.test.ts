@@ -4,7 +4,7 @@ import { resolveGoodsEconomy, produced, type Good, type City, type Producer, typ
 import { ECONOMY } from '../../supabase/functions/_shared/economyConfig';
 import { PRODUCT_META, productMeta, substitutionEfficiency } from '../../supabase/functions/_shared/productMarket';
 import { GOODS } from '../../supabase/functions/_shared/productionCatalog';
-import { starterUnitsFor, starterJobsFor } from '../../supabase/functions/_shared/starterEconomy';
+import { starterUnitsFor, starterJobsFor, STARTER_FARM } from '../../supabase/functions/_shared/starterEconomy';
 import { LEVEL_CAPACITY_SCALE, scaledBasketOutputs } from '../lib/goodsCatalog';
 
 const L = 1 / ECONOMY.workersPerLaborUnit;
@@ -27,8 +27,9 @@ const farm = (c: string, rating: number, recipes: [string, string][] = [['wheat'
   recipes.map(([key, g]) => src(key, c, g, rating, lock ? (key === lock ? 1 : 0) : 1 / recipes.length));
 const snap = (cities: City[], goods: Good[], producers: Producer[], opening: Snapshot['opening'] = []): Snapshot =>
   ({ turn: 2, cities, goods, producers, edges: [], opening, fame: [] });
+const EDIBLE = ['raw_grain', 'raw_meat', 'baked_staples'];
 const edibleRealized = (r: ReturnType<typeof resolveGoodsEconomy>, c: string) =>
-  r.diagnostics.filter(d => d.producer && r.balances.some(b => b.city === c && b.good === d.good))
+  r.diagnostics.filter(d => d.producer && EDIBLE.includes(d.good))
     .reduce((s, d) => s + d.realized, 0);
 const foodBalance = (r: ReturnType<typeof resolveGoodsEconomy>, c: string) =>
   r.balances.filter(b => b.city === c && ['raw_grain', 'raw_meat', 'baked_staples'].includes(b.good));
@@ -112,12 +113,13 @@ describe('nutrition equivalence — taste never steals calories', () => {
     const mill: Producer = { id: 'mill', city: 'a', channel: 'facility', capacity: 50, jobs: 50,
       recipe: { key: 'mill_grain', good: 'flour', qty: 2, inputs: [{ good: 'raw_grain', qty: 3 }], labor: L, quality: 0, minQuality: 0 },
       allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: false, distinctive: false };
-    // Grain exactly covers the food need → reserve holds everything, mill starves.
+    // Grain BELOW the food need → reserve holds everything, the mill starves.
     const exact = snap([city('a', 0, 1000)], g, [mill]);
-    exact.opening = [{ city: 'a', good: 'raw_grain', qty: 1000 * ECONOMY.populationDemand, quality: 0 }];
+    exact.opening = [{ city: 'a', good: 'raw_grain', qty: 1000 * ECONOMY.populationDemand * 0.8, quality: 0 }];
     const r1 = resolveGoodsEconomy(exact);
     expect(r1.diagnostics.find(d => d.producer === 'mill')!.realized).toBeLessThan(1e-6);
     expect(r1.balances.find(b => b.good === 'raw_grain')!.consumed_household).toBeGreaterThan(0);
+    expect(r1.balances.find(b => b.good === 'raw_grain')!.consumed_as_input).toBeLessThan(1e-9);
     // Double the grain → the surplus above the reserve is milled, residents still eat.
     const surplus = snap([city('a', 0, 1000)], g, [mill]);
     surplus.opening = [{ city: 'a', good: 'raw_grain', qty: 1000 * ECONOMY.populationDemand * 2 + 30, quality: 0 }];
@@ -132,12 +134,12 @@ describe('starter farm — sized once at founding, never inflated by growth', ()
   it('one unit mirrors one normal farm (rating 7, 100 jobs) and tracks population', () => {
     expect(starterUnitsFor(3796)).toBe(9); // ≈ one farm per 400 souls
     expect(starterUnitsFor(100)).toBe(1);
-    expect(starterJobsFor(3796)).toBe(Math.min(9 * 100, Math.round(3796 * 0.3)));
+    expect(starterJobsFor(STARTER_FARM, 3796)).toBe(Math.min(9 * 100, Math.round(3796 * 0.3)));
     for (const pop of [100, 450, 1000, 3796, 10000])
-      expect(starterJobsFor(pop)).toBeLessThanOrEqual(Math.max(10, Math.round(pop * 0.3)));
+      expect(starterJobsFor(STARTER_FARM, pop)).toBeLessThanOrEqual(Math.max(10, Math.round(pop * 0.3)));
   });
   it('ensureStarterEconomy never resizes an existing starter structure (frozen at founding)', () => {
-    const source = readFileSync(new URL('../../supabase/functions/_shared/starterEconomy.ts', import.meta.url), 'utf8');
+    const source = readFileSync('supabase/functions/_shared/starterEconomy.ts', 'utf8');
     expect(source).toContain('FROZEN AT FOUNDING');
     expect(source).not.toContain('resizes.push');
   });
