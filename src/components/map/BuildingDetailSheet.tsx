@@ -329,8 +329,17 @@ const BuildingDetailSheet = ({
           {/* LIVE OPERATION */}
           {operation && <section className="space-y-1">
             <h4 className="text-xs font-semibold uppercase text-primary">Jak teď funguje</h4>
-            <p className="text-xs">Vyrábí {operation.goods.join(", ")} — {fmt(operation.realized)} z možných {fmt(operation.potential)} jednotek.</p>
+            <p className="text-xs">
+              Výroba za tah: {operation.byGood.map(g => `${g.good} ${fmt(g.realized)}`).join(" · ") || "nic"} (z možných {fmt(operation.potential)} jednotek celkem).
+            </p>
+            {operation.foodEquiv > 0 && <p className="text-xs">
+              To je {fmt(operation.foodEquiv)} potravinových ekvivalentů
+              {operation.feeds != null && <> — uživí přibližně {fmt(operation.feeds)} obyvatel (při současném výkonu a lokální potřebě)</>}.
+            </p>}
             <p className="text-[11px] text-muted-foreground">Pracuje {Math.round(operation.employed)} z {Math.round(operation.jobs)} lidí.</p>
+            {operation.factors && <p className="text-[11px] text-muted-foreground">
+              Obsazenost {Math.round(operation.factors.staffing * 100)} % · stabilita {Math.round(operation.factors.stability * 100)} % · nástroje {Math.round(operation.factors.tools * 100)} % · logistika {Math.round(operation.factors.logistics * 100)} %
+            </p>}
             {operation.inputs.length > 0 && <p className="text-[11px] text-muted-foreground">
               Potřebuje: {operation.inputs.map((i: any) => `${i.good} ${fmt(i.supplied)}/${fmt(i.required)}`).join(" · ")}
             </p>}
