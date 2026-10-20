@@ -793,6 +793,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       hinterland_population:children.reduce((s,d)=>s+d.population,0),network_centrality:graph.get(c.cell)?.length||0};});
   for(const c of cities){let storage=n(c.storage)*C.warehouseCapacity;for(const g of goods){const b=stock(c.id,g.key);
     b.unmet_demand=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
+    // Diagnostic: why a still-hungry city did not import this good (last attempted source's refusal).
+    if(b.unmet_demand>C.minLot){const ref=tradeRefusals.get(key(c.id,g.key));
+      importBlockers.push({city:c.id,good:g.key,unmet:b.unmet_demand,reason:ref?.reason??'no_source_attempted',source:ref?.source??null});}
     b.capex=(C.capexGoods as readonly string[]).includes(g.key)?Math.max(0,available(b)-b.demand*C.reserveTurns):0;
     const remaining=available(b)-b.capex;b.stored=g.storable?Math.min(remaining,storage/Math.max(1,g.bulk)):0;storage-=b.stored*Math.max(1,g.bulk);
     { const l=syncLots(b),avail=available(b),f=avail>C.epsilon?b.stored/avail:0; // capex/spoilage drain proportionally
@@ -866,7 +869,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     channels:{...channels},total:channelTotal(channels)}));
   // Read-only fuel guidance from the same ledger (both views + AI); never alters stock.
   const fuelAdvice=fuelGuidance(snapshot,{balances:[...balances.values()],diagnostics});
-  return {fuelGuidance:fuelAdvice,balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
+  return {fuelGuidance:fuelAdvice,balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,importBlockers,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
     workforce:Object.fromEntries(workforce),labor:laborMetrics,demand,
     toolCoverage:Object.fromEntries(toolCoverage),productChoice:choice,cityAccounts:accounts,
     budgetMode:snapshot.budget?'previous_committed_turn':'bootstrap_unconstrained'};
