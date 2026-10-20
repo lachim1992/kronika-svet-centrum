@@ -772,6 +772,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         missing-=transfer(s,c,sub,wanted,'household_consumption',[],sb.demand*C.reserveTurns)*eff;
         if(missing<C.minLot)break;}
     }
+    // Settle this city's substitutes right away so a later city cannot re-export
+    // the units this one just imported to cover its own critical needs.
+    substitute();
   }
   substitute();
   // Reputation creates origin-specific additional demand, fulfilled only by that brand.
