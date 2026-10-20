@@ -140,13 +140,10 @@ export async function ensureStarterEconomy(
         (b.effects?.recipe_keys || []).some((k: string) => contract.recipeKeys.includes(k)));
       if (match) {
         existing.push(contract.name);
-        // Only ever resize a structure this helper itself created — never a player's building.
-        const sameSize = JSON.stringify(match.effects?.basket_outputs || {}) === JSON.stringify(effects.basket_outputs)
-          && Number(match.effects?.jobs_capacity) === effects.jobs_capacity;
-        if (match.effects?.starter_economy && !sameSize) {
-          resizes.push({ id: match.id, effects: { ...match.effects, ...effects } });
-          resized.push(contract.name);
-        }
+        // FROZEN AT FOUNDING: the starter aggregate is sized once, when created. It is
+        // NEVER resized afterwards — otherwise a growing city would get free production
+        // and building real farms would be pointless. Feeding growth requires player/AI
+        // investment. (dryRun therefore never reports resizes for existing cities.)
         continue;
       }
       added.push(contract.name);
