@@ -99,7 +99,7 @@ describe('loss decomposition — decay vs transport vs warehouse discard', () =>
     const r = resolveGoodsEconomy(snap([city('iso', 0, 1000, 10)], [], [],
       [{ city: 'iso', good: 'raw_grain', qty: 10, quality: 1 }], [g]));
     const b = bal(r, 'iso');
-    expect(b.lost_decay).toBeCloseTo(5, 6); // 10 × 0.5 / (1 + storage 10→ relief)? storageLoss/(1+storage)
+    expect(b.lost_decay).toBeCloseTo(10 * 0.5 / (1 + 10), 6); // qty × storageLoss / (1 + city storage)
     expect(b.lost_spoilage).toBeCloseTo(b.lost_decay + b.lost_transport + b.lost_discard, 7);
   });
   it('a warehoused city stores its surplus instead of discarding it', () => {
