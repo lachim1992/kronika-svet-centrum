@@ -706,7 +706,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const substitute=()=>{for(const c of cities)for(const g of goods){const b=stock(c.id,g.key);let missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     for(const sub of goods.filter(s=>s.key!==g.key&&s.basket===g.basket&&s.substitutability>0&&(s.finalUse??s.stage!=='intermediate'))){
       // Need units of g covered per physical unit of sub: substitutability × functional value ratio.
-      const efficiency=substitutionEfficiency(g,sub);if(efficiency<=0)continue;
+      // Critical needs (staple_food) substitute by pure nutrition so preference friction never starves anyone.
+      const efficiency=substitutionEfficiency(g,sub,{nutritionOnly:basketSpec(g.basket)?.class==='critical_need'});if(efficiency<=0)continue;
       const sb=stock(c.id,sub.key),qty=Math.min(missing/efficiency,uncommittedStock(sb));if(qty<=0)continue;
       const fulfilled=qty*efficiency,stateNeed=Math.min(fulfilled,Math.max(0,(stateDemand.get(key(c.id,g.key))||0)-b.consumed_state));
       const stateQty=stateNeed/efficiency;

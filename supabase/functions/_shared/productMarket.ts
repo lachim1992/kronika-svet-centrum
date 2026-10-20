@@ -359,9 +359,15 @@ export const functionalValue = (good: string, basket: string) => Math.max(0.01, 
  * = substitutability ratio (≤1) × functional value ratio.
  */
 export function substitutionEfficiency(target: { key: string; basket: string; substitutability: number },
-  sub: { key: string; basket: string; substitutability: number }) {
+  sub: { key: string; basket: string; substitutability: number }, options: { nutritionOnly?: boolean } = {}) {
+  const fv = functionalValue(sub.key, sub.basket) / functionalValue(target.key, target.basket);
+  // Critical needs (staple_food) are covered by delivered nutrition, not taste:
+  // the preference friction (substitutability) shapes what households CHOOSE, never
+  // whether available calories keep them alive. One physical unit of grain feeds as
+  // much as its functional value says — nothing is lost to "preference".
+  if (options.nutritionOnly) return fv;
   const s = Math.min(1, pos(sub.substitutability) / Math.max(1e-9, pos(target.substitutability)));
-  return s * functionalValue(sub.key, sub.basket) / functionalValue(target.key, target.basket);
+  return s * fv;
 }
 
 /**
