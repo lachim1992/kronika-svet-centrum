@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useManagementReport } from '@/hooks/useManagementReport';
 import FuelGuidancePanel from './FuelGuidancePanel';
+import IndustrialInputsPanel from './IndustrialInputsPanel';
 import type { resolveGoodsEconomy } from '../../../supabase/functions/_shared/goodsEconomy';
 type Ledger=ReturnType<typeof resolveGoodsEconomy>;
 const fmt=(n:number)=>Number(n||0).toLocaleString('cs-CZ',{maximumFractionDigits:2});
@@ -22,6 +23,7 @@ export default function PhysicalEconomyPanel({sessionId,cities,playerName,curren
     <h3 className="font-semibold">Fyzická ekonomika a původ hodnot</h3>
     <p className="text-xs text-muted-foreground">Údaje z uzavřeného tahu {report.turn}.</p>
     <FuelGuidancePanel warnings={(report as any).fuel_guidance} name={name} />
+    <IndustrialInputsPanel rows={report.industrial_inputs?.filter(x=>!city||x.city===city)} name={name} />
     <div className="flex flex-wrap gap-3">
       <label>Město <select className="bg-background border rounded p-1" value={city} onChange={e=>setCity(e.target.value)}><option value="">Všechna</option>{cities.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       <label>Důvod toku <select className="bg-background border rounded p-1" value={reason} onChange={e=>setReason(e.target.value)}><option value="">Všechny</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>

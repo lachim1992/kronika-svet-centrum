@@ -46,6 +46,7 @@ export interface CityAccountRow { city: string; city_gdp?: Num; goods_value_adde
   affordability?: Num; prosperity?: Num; capital_stock?: Num; physical_need_coverage?: Num; proxy?: boolean;
   diversity?: Record<string, { index: Num; effective: Num }>; [k: string]: unknown }
 export interface LedgerResult {
+  industrialInputs?: import('../_shared/goodsEconomy').IndustrialInput[];
   balances?: LedgerBalance[]; flows?: LedgerFlow[]; prices?: LedgerPrice[]; demand?: LedgerDemand[];
   diagnostics?: LedgerDiagnostic[]; metrics?: { city: string; roles?: string[]; [k: string]: unknown }[];
   productChoice?: ProductChoiceRow[]; cityAccounts?: CityAccountRow[]; famous?: FameEntry[];
@@ -230,7 +231,7 @@ export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow
   const costs = buildCosts({ producers, diagnostics: diags, prices, famous: result.famous || [], owners });
   const recipesUsing = (good: string) => [...new Set(producers.filter((p) => (p.recipe.inputs || []).some((i) => i.good === good)).map((p) => p.recipe.key))];
   const specific = buildSpecific({ famous: result.famous || [], variants, owners, balances, flows, choice, prices, costs, recipesUsing });
-  return { fuel_guidance: (result as any).fuelGuidance || [], import_blockers: result.importBlockers || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
+  return { industrial_inputs:result.industrialInputs, fuel_guidance: (result as any).fuelGuidance || [], import_blockers: result.importBlockers || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
     edges: edges.map((e) => ({ id: e.id, from: e.from, to: e.to, capacity: n(e.capacity), used: edgeUse.get(e.id) || 0 })) };
 }
 

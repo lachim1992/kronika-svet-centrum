@@ -13,6 +13,13 @@
 export type FieldKind = "money" | "ratio" | "index" | "basis" | "count" | "boolean";
 export interface EconomyField { key: string; label: string; tip: string; kind: FieldKind; source: string }
 
+/** All A-input fields rendered identically in player and developer reports. */
+export const INDUSTRIAL_INPUT_FIELDS = [
+  ['producer','Výrobce'],['city','Město'],['good','Materiál A'],['planned','Plánováno'],
+  ['local','Místní dostupné'],['imported','Dovezeno'],['received','Zajištěno'],['used','Spotřebováno'],
+  ['unmet','Nezajištěno'],['supplier','Dodavatel'],['landed_unit_cost','Cena v místě / ks'],['blocked','Omezení'],
+].map(([key,label])=>({key,label,source:'goodsEconomy.industrialInputs'}));
+
 const SRC = "cityAccounts";
 export const CITY_ACCOUNT_FIELDS: EconomyField[] = [
   { key: "labor_income_basis", label: "Základ příjmu z práce", kind: "basis", source: SRC,
