@@ -656,7 +656,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         const drawn=drawLots(b,shipped,mat?p.recipe.minQuality:-Infinity),usedQuality=lotQuality(drawn,b.quality),origins:Record<string,number>={};
         for(const x of drawn)origins[x.origin]=(origins[x.origin]||0)+x.qty;
         inputLots.push({good:i.good,qty:shipped,quality:usedQuality,origins,kind:kindOf(i)});
-        b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;requality(b);if(mat)minQuality=Math.min(minQuality,usedQuality);
+        b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;b.lost_transport+=shipped-amount;requality(b);if(mat)minQuality=Math.min(minQuality,usedQuality);
         inputValue+=shipped*goodByKey.get(i.good)!.price*(1+usedQuality*C.qualityPremium);}
       // B factor wear: only wear × qty per output unit is physically consumed (never the whole stock).
       for(const f of p.recipe.inputs.filter(isFactor)){const b=stock(c.id,f.good),w=Math.min(available(b),qty*f.qty*wearOf(f)/p.recipe.qty);
@@ -674,7 +674,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const quality=outputQuality({recipeBonus:p.recipe.quality,craft:p.craft??c.guild,source:p.source,
         minInputQuality:Number.isFinite(minQuality)?minQuality:0,craftFactor:IDEOLOGIES[c.ideology]?.quality||1});
       const b=stock(c.id,g.key);add(b,qty,quality,p.channel,p.source);b.intermediate_value+=inputValue;
-      b.lost_spoilage+=qty*(delivery?.loss||0);
+      const inTransitLoss=qty*(delivery?.loss||0);b.lost_spoilage+=inTransitLoss;b.lost_transport+=inTransitLoss;
       for(const [edge,load] of loadByEdge)reserved.set(edge,(reserved.get(edge)||0)+qty*load);
       const total=(realized.get(id)||0)+qty;realized.set(id,total);
       const diagnostic={producer:id,good:g.key,capacity:p.capacity,realized:total,factors:{...factors,inputs:target?total/target:0},
