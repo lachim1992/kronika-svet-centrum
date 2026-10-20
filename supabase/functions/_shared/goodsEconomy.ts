@@ -79,6 +79,9 @@ export interface Snapshot { turn: number; goods: Good[]; cities: City[]; produce
 export interface Balance { city: string; good: string; opening: number; produced_household: number; produced_node: number;
   produced_facility: number; produced_district: number; consumed_household: number; consumed_state: number;
   consumed_as_input: number; imported: number; exported: number; stored: number; lost_spoilage: number;
+  /** Decomposition of lost_spoilage (the three sum to it): natural storage decay on opening stock,
+   *  physical transport/delivery losses, and warehouse-capacity discard of unstorable surplus. */
+  lost_decay: number; lost_transport: number; lost_discard: number;
   /** Closing batch composition of `stored` (sums to stored); next turn's Opening.lots. */
   stored_lots?: OpeningLot[];
   unmet_demand: number; demand: number; quality: number; gross_output_value: number; intermediate_value: number;
@@ -117,6 +120,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const k=key(city,good);let b=balances.get(k);
     if(!b){b={city,good,opening:0,produced_household:0,produced_node:0,produced_facility:0,produced_district:0,
       consumed_household:0,consumed_state:0,consumed_as_input:0,imported:0,exported:0,stored:0,lost_spoilage:0,
+      lost_decay:0,lost_transport:0,lost_discard:0,
       unmet_demand:0,demand:0,quality:1,gross_output_value:0,intermediate_value:0,extraction_value:0,capex:0};balances.set(k,b)}return b;
   };
   const available=(b:Balance)=>Math.max(0,b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage);
