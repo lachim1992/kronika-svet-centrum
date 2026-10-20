@@ -265,3 +265,10 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - DONE: suite 639 passed / 3 skipped; tsgo clean; build OK; deployed refresh-economy, process-turn, economy-dev-snapshot, commit-turn.
 - OPEN (blocker): TEST02 refresh NOT applied — compute-trade-flows step times out with DB statement timeout (57014) twice; afterwards the DB pooler became unavailable (project paused/waking). Turn 25 untouched, fiscal_unchanged=true. Next: retry refresh when DB is healthy; if timeout persists, profile computeCanonicalEconomy queries.
 - NOT DONE: baked_staples=0 root-cause fix (documented: no fuel coverage/mills), starter farm 140→frozen migration (deferred until trade robust).
+
+## P0 — Comercio subsistencia por sustitutos (2026-10)
+- [x] goodsEconomy: importación de sustitutos nutritivos para bienes critical_need (staple_food) con asiento inmediato por ciudad (evita re-exportación del grano importado).
+- [x] Tests: 4 escenarios nuevos en goods-trade-diagnostics.test.ts (conectado, desconectado, reserva, determinismo). Suite 643 pass / 3 skip, tsgo OK.
+- [x] Deploy: refresh-economy, process-turn, compute-trade-flows, economy-dev-snapshot, commit-turn.
+- [ ] BLOQUEADO: refresh de TEST02 no ejecutado — auth gateway responde 522/expired session y `lovable auth-session` falla con pooler no disponible (cloud_status reporta healthy). Reintentar refresh-economy en cuanto el gateway responda; turno 25 intacto, ledgers committed sin tocar.
+- [ ] Pendiente P0: diagnóstico baked_staples=0 en TEST02 (mlín/herramientas/combustible), migración starter 140→frozen (diferida hasta comercio robusto).
