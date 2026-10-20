@@ -93,7 +93,7 @@ export const starterEffects = (c: StarterContract, population: number) => {
   );
   return {
     recipe_keys: c.recipeKeys, production_roles: c.roles, capability_tags: c.tags,
-    basket_outputs: outputs, jobs_capacity: starterJobsFor(population),
+    basket_outputs: outputs, jobs_capacity: starterJobsFor(c, population),
     starter_economy: true,
   };
 };
