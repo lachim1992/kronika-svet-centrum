@@ -18,6 +18,7 @@ export interface LedgerBalance {
   city: string; good: string; opening: Num; produced_household: Num; produced_node: Num; produced_facility: Num;
   produced_district: Num; consumed_household: Num; consumed_state: Num; consumed_as_input: Num; imported: Num;
   exported: Num; stored: Num; lost_spoilage: Num; unmet_demand: Num; demand: Num; quality: Num;
+  lost_decay?: Num; lost_transport?: Num; lost_discard?: Num;
   gross_output_value: Num; intermediate_value: Num; extraction_value: Num; capex: Num;
 }
 export interface LedgerFlow {
@@ -48,6 +49,7 @@ export interface LedgerResult {
   balances?: LedgerBalance[]; flows?: LedgerFlow[]; prices?: LedgerPrice[]; demand?: LedgerDemand[];
   diagnostics?: LedgerDiagnostic[]; metrics?: { city: string; roles?: string[]; [k: string]: unknown }[];
   productChoice?: ProductChoiceRow[]; cityAccounts?: CityAccountRow[]; famous?: FameEntry[];
+  importBlockers?: { city: string; good: string; unmet: Num; reason: string; source: string | null }[];
   budgetMode?: string;
   snapshot?: { turn?: number; cities?: SnapshotCity[]; producers?: SnapshotProducer[]; edges?: SnapshotEdge[];
     fame?: { city: string; good: string }[]; blockedTrade?: unknown[] };
@@ -61,10 +63,11 @@ export const residualOf = (b: LedgerBalance) =>
 
 export interface Totals { opening: Num; produced: Num; imported: Num; consumed_household: Num; consumed_state: Num;
   consumed_as_input: Num; exported: Num; lost_spoilage: Num; capex: Num; closing: Num; demand: Num; unmet: Num;
-  served: Num; residual: Num; gross_output_value: Num; intermediate_value: Num }
+  served: Num; residual: Num; gross_output_value: Num; intermediate_value: Num;
+  lost_decay: Num; lost_transport: Num; lost_discard: Num }
 const emptyTotals = (): Totals => ({ opening: 0, produced: 0, imported: 0, consumed_household: 0, consumed_state: 0,
   consumed_as_input: 0, exported: 0, lost_spoilage: 0, capex: 0, closing: 0, demand: 0, unmet: 0, served: 0, residual: 0,
-  gross_output_value: 0, intermediate_value: 0 });
+  gross_output_value: 0, intermediate_value: 0, lost_decay: 0, lost_transport: 0, lost_discard: 0 });
 export function addTotals(t: Totals, b: LedgerBalance) {
   t.opening += n(b.opening); t.produced += producedOf(b); t.imported += n(b.imported);
   t.consumed_household += n(b.consumed_household); t.consumed_state += n(b.consumed_state);
