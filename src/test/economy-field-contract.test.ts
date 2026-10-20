@@ -22,7 +22,7 @@ describe('economy field contract (Economy tab + Dev Mode)', () => {
     const keys=new Set(ledger.industrialInputs.flatMap(x=>Object.keys(x)));
     expect([...mapped].filter(k=>!keys.has(k))).toEqual([]);
     expect(buildManagementReport(s,ledger,{player_name:'p'}).industrial_inputs).toEqual(ledger.industrialInputs);
-    expect(buildSnapshot({...ledger,snapshot:s},null).industrial_inputs).toBe(ledger.industrialInputs);
+    expect(buildSnapshot(ledger,null).industrial_inputs).toBe(ledger.industrialInputs);
   });
   const accounts = resolveGoodsEconomy(snap()).cityAccounts as Record<string, unknown>[];
   const engineKeys = new Set(accounts.flatMap(a => Object.keys(a)));

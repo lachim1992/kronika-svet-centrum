@@ -2,15 +2,12 @@
 // session's canonical goods ledger. Uses the service role only after JWT +
 // admin-role + session validation. Performs no writes of any kind.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { AuthError } from "../_shared/sessionAuth.ts";
 import { authorizeAdmin, parseRequest } from "./auth.ts";
 import { buildSnapshot, ROW_LIMIT, SCHEMA_VERSION, type CityAccountRow, type LedgerResult, type VariantCatalogueRow } from "./build.ts";
 import { RECIPES } from "../_shared/productionCatalog.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
