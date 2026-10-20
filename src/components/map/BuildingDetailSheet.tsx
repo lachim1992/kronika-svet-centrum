@@ -48,7 +48,10 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 /** Effects worth showing as "what it does" — skips structural keys. */
-const HIDDEN_EFFECT_KEYS = new Set(["basket_outputs", "capability_tags", "tags"]);
+const HIDDEN_EFFECT_KEYS = new Set(["basket_outputs", "capability_tags", "tags",
+  // Legacy macro bonuses that are NOT physical goods production — the canonical
+  // goods engine never reads them, so showing "+8 obilí" would double-count food.
+  "grain_production", "food_income"]);
 
 export type BuildingTarget = { type: "building" | "district"; id: string };
 
