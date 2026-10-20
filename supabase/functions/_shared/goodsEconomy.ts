@@ -253,9 +253,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     return {...landedInputCost({sourcePrice:sd.base_price*sd.scarcity_factor*qf,transport:p.cost*policy.merchantFriction,tolls:p.tolls,
       tariffRate:targetPolicy.tariff,destinationPrice:priceOf(dst.id,g.key),risk:p.risk,loss:p.loss}),
       eligible_quality:eq,source_scarcity_factor:sd.scarcity_factor,source_quality_factor:qf};};
+  /** Why the last household-ward transfer into a city×good was refused; diagnostics only, never alters stock. */
+  type TradeRefusal='trade_blocked'|'route_unreachable'|'beyond_reach'|'margin_unprofitable'|'route_capacity'|'source_retained'|'source_empty';
+  const tradeRefusals=new Map<string,{reason:TradeRefusal;source:string}>();
+  const refuse=(src:City,dst:City,g:Good,why:string,r:TradeRefusal)=>{
+    if(why==='household_consumption'||why==='regional_redistribution')tradeRefusals.set(key(dst.id,g.key),{reason:r,source:src.id});
+    return 0;};
   const transfer=(src:City,dst:City,g:Good,wanted:number,reason:string,via:string[]=[],keep=0,minQ=-Infinity)=>{
-    if(tradeBlocked(src,dst))return 0;
-    if(src.id===dst.id||wanted<C.minLot)return 0;const p=route(src.cell,dst.cell,g);if(!p||p.loss>=1)return 0;
+    if(tradeBlocked(src,dst))return refuse(src,dst,g,reason,'trade_blocked');
+    if(src.id===dst.id||wanted<C.minLot)return 0;const p=route(src.cell,dst.cell,g);if(!p||p.loss>=1)return refuse(src,dst,g,reason,'route_unreachable');
     const policy=IDEOLOGIES[src.ideology]||IDEOLOGIES.customary_local;
     const targetPolicy=IDEOLOGIES[dst.ideology]||IDEOLOGIES.customary_local;
     const b=stock(src.id,g.key),db=stock(dst.id,g.key);const fame=priorFame.get(key(src.id,g.key));
