@@ -76,10 +76,12 @@ export const starterBundle = (nearWater: boolean): StarterContract[] =>
 export const starterUnitsFor = (population: number): number =>
   Math.max(1, Math.round((Number(population) || 0) / 400));
 
-/** Crew the starter aggregate fields: its units fully staffed, capped at 30% of souls. */
-export const starterJobsFor = (population: number): number => {
+/** Crew one starter contract fields: each unit employs its declared per-unit crew
+ * (farm/fishery a full canonical crew, well/storage part-time), capped at 30% of souls. */
+export const starterJobsFor = (c: StarterContract, population: number): number => {
   const pop = Number(population) || 0;
-  return Math.min(starterUnitsFor(pop) * 100, Math.max(10, Math.round(pop * 0.3)));
+  const units = scalesWithPopulation(c) ? starterUnitsFor(pop) : 1;
+  return Math.max(10, Math.min(units * c.jobsCapacity, Math.round(pop * 0.3)));
 };
 
 const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE;
