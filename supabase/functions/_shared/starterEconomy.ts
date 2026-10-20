@@ -46,7 +46,8 @@ export const STARTER_WELL: StarterContract = {
   description: 'Zdroj pitné vody pro obyvatele osady.',
   recipeKeys: ['draw_water'], roles: ['source'], tags: ['farming'],
   // Part-time crew: one well unit serves ~400 souls with 25 drawers, not a full farm crew.
-  basketOutputs: { drinking_water: 2 }, jobsCapacity: 25,
+  // Rating 3/unit mirrors the food calibration: water need ≈ 40% of the food need per soul.
+  basketOutputs: { drinking_water: 3 }, jobsCapacity: 25,
 };
 export const STARTER_STORAGE: StarterContract = {
   name: 'Osadní sklad', category: 'economic',
