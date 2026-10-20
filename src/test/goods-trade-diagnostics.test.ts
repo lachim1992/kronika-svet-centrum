@@ -84,6 +84,53 @@ describe('surplus food trade — surplus feeds hungry neighbours before any disc
   });
 });
 
+describe('basket-level subsistence trade — a hungry town imports nutritious substitutes', () => {
+  // Source grows only grain; towns demand bread and meat they cannot make. Survival must
+  // not wait for the exact preferred good: reachable grain covers the staple_food basket.
+  const food = [good('raw_grain'), good('baked_staples'), good('raw_meat')];
+  const cities = [city('src', 0, 3000), city('town1', 1, 2000), city('town2', 2, 2000)];
+  const edges = [...road(0, 1), ...road(1, 2)];
+  const basketUnmet = (r: ReturnType<typeof resolveGoodsEconomy>, c: string) =>
+    r.balances.filter(b => b.city === c && food.some(g => g.key === b.good))
+      .reduce((a, b) => a + b.unmet_demand, 0);
+  const basketDemand = (r: ReturnType<typeof resolveGoodsEconomy>, c: string) =>
+    r.balances.filter(b => b.city === c && food.some(g => g.key === b.good))
+      .reduce((a, b) => a + b.demand, 0);
+  it('grain surplus feeds towns short of bread and meat across a connected route', () => {
+    const r = resolveGoodsEconomy(snap(cities, [], edges, [{ city: 'src', good: 'raw_grain', qty: 200, quality: 2 }], food));
+    for (const t of ['town1', 'town2']) {
+      const grain = bal(r, t);
+      // The town imports MORE grain than its own direct grain appetite: the extra
+      // covers the bread/meat deficit via nutrition substitution.
+      expect(grain.imported).toBeGreaterThan(0);
+      expect(basketUnmet(r, t)).toBeLessThan(basketDemand(r, t) * 0.5);
+    }
+    expectConservation(r);
+  });
+  it('disconnected towns get no substitute imports and starve with diagnosed blockers', () => {
+    const r = resolveGoodsEconomy(snap(cities, [], [], [{ city: 'src', good: 'raw_grain', qty: 200, quality: 2 }], food));
+    for (const t of ['town1', 'town2']) {
+      expect(bal(r, t).imported).toBe(0);
+      expect(basketUnmet(r, t)).toBeGreaterThan(0);
+    }
+    expect(r.flows.filter(f => f.good !== 'raw_grain')).toHaveLength(0);
+    expectConservation(r);
+  });
+  it('the source keeps its own reserve before feeding neighbours', () => {
+    const r = resolveGoodsEconomy(snap(cities, [], edges, [{ city: 'src', good: 'raw_grain', qty: 200, quality: 2 }], food));
+    const s = bal(r, 'src');
+    expect(s.consumed_household + s.consumed_state).toBeGreaterThan(0);
+    expect(s.opening + produced(s) + s.imported - s.exported)
+      .toBeGreaterThanOrEqual(s.consumed_household + s.consumed_state - 1e-6);
+  });
+  it('substitute imports are deterministic across repeated resolution', () => {
+    const s1 = snap(cities, [], edges, [{ city: 'src', good: 'raw_grain', qty: 200, quality: 2 }], food);
+    const a = resolveGoodsEconomy(s1), b = resolveGoodsEconomy(s1);
+    expect(JSON.stringify(a.flows)).toBe(JSON.stringify(b.flows));
+    expect(JSON.stringify(a.balances)).toBe(JSON.stringify(b.balances));
+  });
+});
+
 describe('loss decomposition — decay vs transport vs warehouse discard', () => {
   it('a city with zero warehouse discards its surplus as lost_discard, not generic spoilage', () => {
     const r = resolveGoodsEconomy(snap([city('iso', 0, 1000, 0)], [farm('iso', 50)], []));
