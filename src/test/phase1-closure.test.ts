@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { selectCapital } from "../../supabase/functions/_shared/capital";
 import { planRouteMaintenance, type RouteStateRow } from "../../supabase/functions/_shared/routeUpkeep";
-import { starterBundle, starterUnitsFor, starterJobsFor } from "../../supabase/functions/_shared/starterEconomy";
+import { starterBundle, starterUnitsFor, starterJobsFor, STARTER_FARM } from "../../supabase/functions/_shared/starterEconomy";
 
 const fn = (name: string) => readFileSync(`supabase/functions/${name}/index.ts`, "utf8");
 
@@ -49,7 +49,7 @@ describe("new-world bootstrap reaches a playable economy", () => {
 
   it("scales the starter economy to settlement population", () => {
     expect(starterUnitsFor(100)).toBe(1);
-    expect(starterUnitsFor(450)).toBe(3);
+    expect(starterUnitsFor(450)).toBe(1); // round(pop/400): one farm-equivalent per ~400 souls
     // monotonic: a bigger settlement never gets a smaller starter economy
     let previous = 0;
     for (const pop of [0, 50, 100, 300, 450, 900]) {
@@ -59,7 +59,8 @@ describe("new-world bootstrap reaches a playable economy", () => {
     }
     // the declared crew must stay inside the settlement's own workforce
     for (const pop of [100, 300, 450]) {
-      expect(starterJobsFor(pop) * starterUnitsFor(pop)).toBeLessThan(pop * 0.5);
+      // starterJobsFor already returns the whole contract crew (units × per-unit crew, capped)
+      expect(starterJobsFor(STARTER_FARM, pop)).toBeLessThan(pop * 0.5);
     }
   });
 
