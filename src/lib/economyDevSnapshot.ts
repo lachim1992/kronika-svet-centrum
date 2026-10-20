@@ -15,6 +15,7 @@ export interface EconomyDevMeta { schemaVersion: string; generatedAt: string; se
   selectedTurn: number | null; availableTurns: { turn_number: number; committed: boolean; created_at: string }[];
   ledgerCreatedAt?: string; ledgerCommitted?: boolean; budgetMode?: string | null; previousAccountsTurn?: number | null; rowLimit?: number }
 export interface EconomyDevSnapshot {
+  industrial_inputs?: import('../../supabase/functions/_shared/goodsEconomy').IndustrialInput[];
   meta: EconomyDevMeta; reason?: string; ledger?: null;
   state?: { guards: { turn_number: number; status: string; started_at: string | null; finished_at: string | null; error: string | null; resumable: boolean | null }[];
     journal: { turn_number: number; phase: string; completed_at: string }[]; refreshLock: { locked_at: string; locked_by: string | null } | null };

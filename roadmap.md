@@ -260,6 +260,7 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [ ] AI cost & architecture optimization pass
 
 ## P0 trade/loss diagnostics (2026-10-20)
+- [ ] Current slice: adapter E2E grain → remote mill → remote bakery, planned A-input scarcity and shared input diagnostics; full regressions, safe deployment. TEST02 health checks exhausted (2/2, unavailable); no live refresh or starter backfill permitted this turn.
 - DONE: goodsEconomy loss decomposition (lost_decay/lost_transport/lost_discard, sum = lost_spoilage) + importBlockers (trade refusal reasons) + deterministic test src/test/goods-trade-diagnostics.test.ts (8/8).
 - DONE: management.ts exposes import_blockers; economy-dev-snapshot build.ts aggregates decomposition; both views (PhysicalEconomyPanel, EconomyDevPanel) render decomposition + blockers; contract exemption documented.
 - DONE: suite 639 passed / 3 skipped; tsgo clean; build OK; deployed refresh-economy, process-turn, economy-dev-snapshot, commit-turn.

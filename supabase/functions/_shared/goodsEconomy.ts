@@ -86,6 +86,8 @@ export interface Balance { city: string; good: string; opening: number; produced
   stored_lots?: OpeningLot[];
   unmet_demand: number; demand: number; quality: number; gross_output_value: number; intermediate_value: number;
   extraction_value: number; capex: number }
+/** Observational A-material demand; never a physical balance or an extra consumption channel. */
+export interface IndustrialInput { producer:string; city:string; good:string; planned:number; local:number; imported:number; received:number; used:number; unmet:number; supplier:string|null; landed_unit_cost:number|null; blocked:string|null }
 export interface Flow { good: string; source: string; destination: string; qty: number; delivered: number; quality: number;
   gross_value: number; transport_cost: number; tolls: number; net_value: number; reason: string;
   path: string[]; edges: string[]; via_hubs: string[]; famous: string|null;
@@ -106,6 +108,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const goods=[...snapshot.goods].sort((a,b)=>a.key.localeCompare(b.key));
   const cityById=new Map(cities.map(c=>[c.id,c])); const goodByKey=new Map(goods.map(g=>[g.key,g]));
   const balances=new Map<string,Balance>(); const flows: Flow[]=[];
+  const industrialInputs:IndustrialInput[]=[];
   const importBlockers: {city:string; good:string; unmet:number; reason:string; source:string|null}[]=[];
   const diagnostics: {producer:string; good:string; capacity:number; realized:number; factors:Record<string,number>;
     jobs_capacity?:number; employed?:number; staffing_ratio?:number; potential_output?:number;
@@ -159,7 +162,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const priceDetail=(city:string,good:string):PriceRow=>{
     const b=stock(city,good),g=goodByKey.get(good)!,c=cityById.get(city)!;
     const supply=b.opening+produced(b)+b.imported-b.lost_spoilage;
-    const need=b.demand+b.consumed_as_input;
+    const material=industrialInputs.filter(x=>x.city===city&&x.good===good);
+    const need=b.demand+material.reduce((t,x)=>t+x.planned,0)+Math.max(0,b.consumed_as_input-material.reduce((t,x)=>t+x.used,0));
     const coverage=need>C.epsilon?supply/need:(supply>C.epsilon?2:1);
     const substitutes=goods.filter(s=>s.key!==good&&s.basket===g.basket&&s.substitutability>0)
       .reduce((a,s)=>a+available(stock(city,s.key)),0);
@@ -581,6 +585,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       coverage[f.good]=cov;mult=Math.min(mult,factorMultiplier(cov));
     }
     capitalCache.set(p.id,{mult,coverage});return mult;};
+  // Register staffed active BOM demand ONCE, before sourcing. Missing stock must not erase
+  // scarcity. B acquisition and C alternatives remain separate; no new physical demand channel.
+  for(const p of producers){const c=cityById.get(p.city);if(!c)continue;
+    const sector=BASKET_SECTOR[goodByKey.get(p.recipe.good)?.basket||'']||'crafting';
+    const potential=n(p.capacity)*clamp(p.allocation)*staffingRatio(p)*clamp(c.stability)*clamp(p.logistics)*n(p.mastery)*toolFactor(p)*
+      (sector==='farming'?1+c.irrigation*C.irrigationGain:1);
+    for(const i of p.recipe.inputs)if(kindOf(i)==='material')industrialInputs.push({producer:p.id,city:p.city,good:i.good,
+      planned:potential*i.qty/Math.max(C.epsilon,p.recipe.qty),local:0,imported:0,received:0,used:0,unmet:0,supplier:null,landed_unit_cost:null,blocked:null});
+  }
   for(let pass=0;pending.size&&pass<C.maxProductionPasses;pass++){
     let progress=false;
     for(const [id,p] of pending){const c=cityById.get(p.city),g=goodByKey.get(p.recipe.good);if(!c||!g)throw Error(`Invalid producer ${id}`);
@@ -619,6 +632,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         const b=stock(c.id,i.good),required=(staged?Math.max(0,desired-stagedCovered):desired)*i.qty/Math.max(C.epsilon,p.recipe.qty)/deliveryRatio;
         // minQuality is checked on the lots that would actually be allocated, not the city average.
         const usable=()=>Math.max(0,Math.min(available(b)-foodReserve(c,ig),eligibleQty(b,iq)));
+        const industrial=industrialInputs.find(x=>x.producer===id&&x.good===i.good);
+        if(industrial)industrial.local=Math.max(industrial.local,Math.min(industrial.planned,usable()));
         let missing=Math.max(0,required-usable());
         // SOURCING: every eligible supplier (hinterland + reachable centers) ranked by LANDED cost,
         // subject to route capacity, source reserve, quality and diplomacy inside transfer().
@@ -663,6 +678,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         const drawn=drawLots(b,shipped,mat?p.recipe.minQuality:-Infinity),usedQuality=lotQuality(drawn,b.quality),origins:Record<string,number>={};
         for(const x of drawn)origins[x.origin]=(origins[x.origin]||0)+x.qty;
         inputLots.push({good:i.good,qty:shipped,quality:usedQuality,origins,kind:kindOf(i)});
+        const industrial=industrialInputs.find(x=>x.producer===id&&x.good===i.good);if(industrial)industrial.used+=amount;
         b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;b.lost_transport+=shipped-amount;requality(b);if(mat)minQuality=Math.min(minQuality,usedQuality);
         inputValue+=shipped*goodByKey.get(i.good)!.price*(1+usedQuality*C.qualityPremium);}
       // B factor wear: only wear × qty per output unit is physically consumed (never the whole stock).
@@ -707,6 +723,20 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),
       inputs:p.recipe.inputs.filter(i=>!isFactor(i)).map(i=>({good:i.good,required:i.qty,supplied:available(stock(p.city,i.good))})),
       blocked:unreachable?'missing_input_route':'missing_inputs'});
+  }
+
+  for(const x of industrialInputs){const a=acquisition.get(x.producer)?.get(x.good);
+    x.imported=a?.qty??0;x.supplier=a?.chosen??null;x.landed_unit_cost=a&&a.qty>0?a.cost/a.qty:null;
+    x.received=Math.min(x.planned,x.local+x.imported);x.unmet=Math.max(0,x.planned-x.received);
+    if(x.unmet>C.epsilon){const c=cityById.get(x.city),g=goodByKey.get(x.good);
+      if(!c||!g)continue;
+      const holders=cities.filter(s=>s.id!==c.id&&available(stock(s.id,g.key))>C.minLot);
+      const peaceful=holders.filter(s=>!tradeBlocked(s,c));
+      const reachable=peaceful.filter(s=>usablePath(route(s.cell,c.cell,g,true)));
+      const surplus=reachable.filter(s=>available(stock(s.id,g.key))>foodReserve(s,g)+C.minLot);
+      x.blocked=!holders.length?'missing_supplier':!peaceful.length?'trade_blocked':!reachable.length?'route_unreachable':
+        !surplus.length?'source_retained':surplus.every(s=>(route(s.cell,c.cell,g)?.capacity??0)<C.minLot)?'route_capacity':'landed_cost_or_partial_supply';
+    }
   }
 
   // Claimed B factors remain productive capital after this turn: industrial demand may
@@ -895,7 +925,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     channels:{...channels},total:channelTotal(channels)}));
   // Read-only fuel guidance from the same ledger (both views + AI); never alters stock.
   const fuelAdvice=fuelGuidance(snapshot,{balances:[...balances.values()],diagnostics});
-  return {fuelGuidance:fuelAdvice,balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,importBlockers,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
+  return {industrialInputs,fuelGuidance:fuelAdvice,balances:[...balances.values()],flows,metrics,famous,diagnostics,prices,importBlockers,hinterlands:[...hubs].map(([k,hub])=>({city:k.split('::')[0],good:k.split('::')[1],hub})),
     workforce:Object.fromEntries(workforce),labor:laborMetrics,demand,
     toolCoverage:Object.fromEntries(toolCoverage),productChoice:choice,cityAccounts:accounts,
     budgetMode:snapshot.budget?'previous_committed_turn':'bootstrap_unconstrained'};

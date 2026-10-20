@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveGoodsEconomy, type Good, type City, type Producer, type Snapshot } from '../../supabase/functions/_shared/goodsEconomy';
 import { ECONOMY } from '../../supabase/functions/_shared/economyConfig';
-import { CITY_ACCOUNT_FIELDS, CITY_ACCOUNT_UNMAPPED_OK, PRODUCER_COST_FIELDS, PRODUCER_COST_UNMAPPED_OK, formatField, fieldByKey } from '@/lib/economyFieldContract';
+import { INDUSTRIAL_INPUT_FIELDS, CITY_ACCOUNT_FIELDS, CITY_ACCOUNT_UNMAPPED_OK, PRODUCER_COST_FIELDS, PRODUCER_COST_UNMAPPED_OK, formatField, fieldByKey } from '@/lib/economyFieldContract';
 import { producerAccount } from '../../supabase/functions/_shared/productMarket';
 import { buildManagementReport } from '../../supabase/functions/_shared/management';
 import { buildSnapshot } from '../../supabase/functions/economy-dev-snapshot/build';
@@ -14,6 +14,16 @@ const snap = (): Snapshot => ({ turn: 2, cities: [city('a', 0), city('b', 1)], g
   edges: [{ id: 'r', from: '0,0', to: '1,0', cost: 1, capacity: 200, mode: 'road', risk: 0, toll: 0, border: 0 }], opening: [], fame: [], settledWages: { b: 3 } });
 
 describe('economy field contract (Economy tab + Dev Mode)', () => {
+  it('all industrial A-input fields reach both secure reports unchanged',()=>{
+    const s=snap(),ledger=resolveGoodsEconomy(s);
+    const mapped=new Set(INDUSTRIAL_INPUT_FIELDS.map(f=>f.key));
+    expect(ledger.industrialInputs.length).toBeGreaterThan(0);
+    for(const row of ledger.industrialInputs)expect(Object.keys(row).filter(k=>!mapped.has(k))).toEqual([]);
+    const keys=new Set(ledger.industrialInputs.flatMap(x=>Object.keys(x)));
+    expect([...mapped].filter(k=>!keys.has(k))).toEqual([]);
+    expect(buildManagementReport(s,ledger,{player_name:'p'}).industrial_inputs).toEqual(ledger.industrialInputs);
+    expect(buildSnapshot({...ledger,snapshot:s},null).industrial_inputs).toBe(ledger.industrialInputs);
+  });
   const accounts = resolveGoodsEconomy(snap()).cityAccounts as Record<string, unknown>[];
   const engineKeys = new Set(accounts.flatMap(a => Object.keys(a)));
   it('every canonical cityAccounts field is mapped or explicitly exempt — new engine fields must reach both tabs', () => {

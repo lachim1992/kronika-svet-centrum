@@ -6,7 +6,7 @@ import { IDEOLOGIES, BASKET_TIER, ECONOMY, normalizeLabor, INDUSTRIAL_INPUTS, HO
 import { buildManagementReport } from './management.ts';
 import { BASKET_KEYS, basketSpec, needBand, alertPriority, shortageEffect, basketSeverity } from './demandModel.ts';
 import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_PER_TILE} from './roadCatchment.ts';
-import { parseInputItem, consumedPerBatch, isFactor } from './inputKinds.ts';
+import { parseInputItem, consumedPerBatch, isFactor, isStaged } from './inputKinds.ts';
 import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
 import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass } from './landedRoute.ts';
 import { autoAllocationDetail, craftsmanship, expectedInputCost, PRODUCT_MARKET } from './productMarket.ts';
@@ -323,6 +323,8 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const producedPrior=new Set((prior?.balances||[]).filter((b:any)=>produced(b)>0).map((b:any)=>`${b.city}::${b.good}`));
     const supplies=(city:string,good:string)=>producedPrior.has(`${city}::${good}`)||producers.some(p=>p.city===city&&p.recipe.good===good);
     const priorStored=new Set((prior?.balances||[]).filter((b:any)=>nonnegative(b.stored)>0).map((b:any)=>`${b.city}::${b.good}`));
+    const frozenOpening=current?.result?.opening??current?.opening??[];
+    for(const b of frozenOpening)if(nonnegative(b.qty)>0)priorStored.add(`${b.city}::${b.good}`);
     const costCache=new Map<string,{cost:number;source:string;available:boolean}>();
     const expectedDetail=(city:string,good:string)=>{const k=`${city}::${good}`;let v=costCache.get(k);if(v)return v;
       const dst=cityMap.get(city)!,gd=goodMap.get(good),base=nonnegative(gd?.price);
@@ -338,7 +340,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
     const expected=(city:string,good:string)=>expectedDetail(city,good).cost;
     const byId=new Map(producers.map(p=>[p.id,p]));
     for(const g of autoGroups){
-      const avail=g.candidates.map(r=>(r.input_items||[]).filter((x:any)=>!isFactor(x)).every((x:any)=>expectedDetail(g.city,x.key??x.good_key).available));
+      const avail=g.candidates.map(r=>(r.input_items||[]).filter((x:any)=>!isFactor(x)&&!isStaged(x)).every((x:any)=>expectedDetail(g.city,x.key??x.good_key).available));
       const margins=g.candidates.map((r,i)=>avail[i]?marginRatio(g.city,r,expected):-1);
       const d=autoAllocationDetail(g.candidates.map((r,i)=>({key:String(i),necessity:g.weights[i],marginRatio:margins[i],essential:essential(r),inputsAvailable:avail[i]})));
       const w=g.candidates.map((_,i)=>d.weights[String(i)]),norm=Math.max(w.reduce((s,x)=>s+x,0),g.weights.reduce((s,x)=>s+x,0));

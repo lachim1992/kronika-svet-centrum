@@ -16,3 +16,4 @@
 - Subdirectories have their own `AGENTS.md` (e.g. `supabase/functions/_shared/`); read it before changing files there.
 - Every new canonical economy output field must be mapped in `src/lib/economyFieldContract.ts` (rendered by both the Economy tab and Economy Dev Mode via `EconomyFieldList`) or explicitly exempted; `src/test/economy-field-contract.test.ts` fails on unmapped or stale keys — so both tabs stay in sync with the engine without recomputation.
 - Producer cost drilldowns share `ProducerCostDetails` and direct margin paths in that contract; Dev projections preserve canonical margin unchanged so B wear and imputed payroll cannot be counted twice.
+- Industrial A-material plans and acquisition diagnostics live only in goodsEconomy.industrialInputs, mapped by INDUSTRIAL_INPUT_FIELDS and rendered by IndustrialInputsPanel in both secure reports — planned scarcity never adds physical consumption.
