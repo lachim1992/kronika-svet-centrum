@@ -4,6 +4,11 @@
  * Economy tab (owner-scoped management report) and Economy Dev Mode (economy-dev-snapshot).
  * UIs only format these values; they never recompute them. A regression test fails when the engine emits a
  * field that is neither mapped here nor listed in CITY_ACCOUNT_UNMAPPED_OK.
+ *
+ * Out of scope (rendered by dedicated sections in BOTH views instead of EconomyFieldList):
+ * balances[].lost_decay/lost_transport/lost_discard (loss decomposition) and importBlockers (trade-refusal
+ * diagnostics) — shown in PhysicalEconomyPanel ("Rozpad ztrát a blokátoři dovozu") and EconomyDevPanel
+ * (goods tab columns + blockers grid + world conservation line).
  */
 export type FieldKind = "money" | "ratio" | "index" | "basis" | "count" | "boolean";
 export interface EconomyField { key: string; label: string; tip: string; kind: FieldKind; source: string }
