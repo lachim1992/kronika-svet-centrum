@@ -30,14 +30,16 @@ export const STARTER_FARM: StarterContract = {
   name: 'Záhumenkové hospodářství', category: 'economic',
   description: 'Základní obživa osady: pole a pastvina s vlastní pracovní silou.',
   recipeKeys: ['harvest_wheat'], roles: ['source'], tags: ['farming', 'herding'],
-  // Raw grain satisfies only 30% of the equivalent prepared-food need.
-  basketOutputs: { staple_food: 10 }, jobsCapacity: 100,
+  // One unit mirrors one normal farm (building_templates Farma Lv1 basket_outputs=7) —
+  // identical solver, productivity per worker and employment logic, no magic multiplier.
+  basketOutputs: { staple_food: 7 }, jobsCapacity: 100,
 };
 export const STARTER_FISHERY: StarterContract = {
   name: 'Osadní rybářství', category: 'economic',
   description: 'Základní obživa osady u vody: rybářské pruty, sítě a sušárna.',
   recipeKeys: ['catch_fish'], roles: ['source'], tags: ['fishing'],
-  basketOutputs: { staple_food: 3 }, jobsCapacity: 100,
+  // Same productivity per crew as the farm — a coastal hamlet must not starve by geography.
+  basketOutputs: { staple_food: 7 }, jobsCapacity: 100,
 };
 export const STARTER_WELL: StarterContract = {
   name: 'Osadní studna', category: 'infrastructure',
@@ -62,12 +64,21 @@ export const starterBundle = (nearWater: boolean): StarterContract[] =>
  * the declared crew stays inside the settlement's own workforce — a hamlet of 100 cannot staff
  * a 100-job production centre, and an unstaffable structure produces nothing.
  */
+/**
+ * One unit = one normal farm equivalent (100 jobs, rating 7 food-equivalent at full
+ * staffing/stability/tools). Units track the population the aggregate must feed
+ * (~0.01 demand per soul at realistic factors ≈ one farm per 400 souls), and the
+ * bundle is sized ONCE at founding — it never grows just because the city grows;
+ * feeding a growing city requires real player/AI farm investment.
+ */
 export const starterUnitsFor = (population: number): number =>
-  Math.max(1, Math.ceil((Number(population) || 0) / 150));
+  Math.max(1, Math.round((Number(population) || 0) / 400));
 
-/** Crew a settlement of this size can really field for one starter structure. */
-export const starterJobsFor = (population: number): number =>
-  Math.max(10, Math.round((Number(population) || 0) * 0.12));
+/** Crew the starter aggregate fields: its units fully staffed, capped at 30% of souls. */
+export const starterJobsFor = (population: number): number => {
+  const pop = Number(population) || 0;
+  return Math.min(starterUnitsFor(pop) * 100, Math.max(10, Math.round(pop * 0.3)));
+};
 
 const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE;
 
