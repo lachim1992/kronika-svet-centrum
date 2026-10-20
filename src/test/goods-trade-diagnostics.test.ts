@@ -97,7 +97,7 @@ describe('basket-level subsistence trade — a hungry town imports nutritious su
     r.balances.filter(b => b.city === c && food.some(g => g.key === b.good))
       .reduce((a, b) => a + b.demand, 0);
   it('grain surplus feeds towns short of bread and meat across a connected route', () => {
-    const r = resolveGoodsEconomy(snap(cities, [farm('src', 160)], edges, [], food));
+    const r = resolveGoodsEconomy(snap(cities, [], edges, [{ city: 'src', good: 'raw_grain', qty: 200, quality: 2 }], food));
     for (const t of ['town1', 'town2']) {
       const grain = bal(r, t);
       // The town imports MORE grain than its own direct grain appetite: the extra
@@ -108,7 +108,7 @@ describe('basket-level subsistence trade — a hungry town imports nutritious su
     expectConservation(r);
   });
   it('disconnected towns get no substitute imports and starve with diagnosed blockers', () => {
-    const r = resolveGoodsEconomy(snap(cities, [farm('src', 160)], [], [], food));
+    const r = resolveGoodsEconomy(snap(cities, [], [], [{ city: 'src', good: 'raw_grain', qty: 200, quality: 2 }], food));
     for (const t of ['town1', 'town2']) {
       expect(bal(r, t).imported).toBe(0);
       expect(basketUnmet(r, t)).toBeGreaterThan(0);
@@ -117,14 +117,14 @@ describe('basket-level subsistence trade — a hungry town imports nutritious su
     expectConservation(r);
   });
   it('the source keeps its own reserve before feeding neighbours', () => {
-    const r = resolveGoodsEconomy(snap(cities, [farm('src', 160)], edges, [], food));
+    const r = resolveGoodsEconomy(snap(cities, [], edges, [{ city: 'src', good: 'raw_grain', qty: 200, quality: 2 }], food));
     const s = bal(r, 'src');
     expect(s.consumed_household + s.consumed_state).toBeGreaterThan(0);
     expect(s.opening + produced(s) + s.imported - s.exported)
       .toBeGreaterThanOrEqual(s.consumed_household + s.consumed_state - 1e-6);
   });
   it('substitute imports are deterministic across repeated resolution', () => {
-    const s1 = snap(cities, [farm('src', 160)], edges, [], food);
+    const s1 = snap(cities, [], edges, [{ city: 'src', good: 'raw_grain', qty: 200, quality: 2 }], food);
     const a = resolveGoodsEconomy(s1), b = resolveGoodsEconomy(s1);
     expect(JSON.stringify(a.flows)).toBe(JSON.stringify(b.flows));
     expect(JSON.stringify(a.balances)).toBe(JSON.stringify(b.balances));
