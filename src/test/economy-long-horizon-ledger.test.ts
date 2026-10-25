@@ -50,8 +50,23 @@ describe('physical ledger long-horizon (synthetic, not live turns)', () => {
         if (b.stored > 1e-6)
           expect((b.stored_lots ?? []).reduce((sum, lot) => sum + lot.qty, 0)).toBeCloseTo(b.stored, 5);
       }
-      if (turn >= 11 && turn <= 15)
-        expect(result.flows.filter(f => f.source === 'mine' && f.destination === 'forge')).toHaveLength(0);
+      // Per-good trade conservation must hold across the entire world, not
+      // just inside each city. A zero-trade solver would also balance, so
+      // require real industrial transfers while the road is connected.
+      for (const good of base.goods) {
+        const rows = result.balances.filter(b => b.good === good.key);
+        const imports = rows.reduce((sum, b) => sum + b.imported, 0);
+        const exports = rows.reduce((sum, b) => sum + b.exported, 0);
+        expect(imports, `turn ${turn}: ${good.key} imports`).toBeCloseTo(exports, 5);
+      }
+      const oreTransfers = result.flows.filter(f =>
+        f.good === 'ore' && f.source === 'mine' && f.destination === 'forge' &&
+        f.reason === 'production_input' && f.delivered > 0);
+      if (turn >= 11 && turn <= 15) {
+        expect(oreTransfers).toHaveLength(0);
+      } else if (turn === 1 || turn === 16) {
+        expect(oreTransfers.length, `turn ${turn}: road must carry industrial inputs`).toBeGreaterThan(0);
+      }
       opening = result.balances.filter(b => b.stored > 1e-6).map(b => ({
         city: b.city, good: b.good, qty: b.stored, quality: b.quality, lots: b.stored_lots,
       }));
