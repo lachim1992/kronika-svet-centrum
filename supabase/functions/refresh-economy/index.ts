@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { derivedChainSteps } from "../_shared/derivedChain.ts";
+import { fiscalSnapshotsEqual, isReadableFiscalSnapshot } from "../_shared/fiscalSnapshotGuard.ts";
 import { AuthError, authorizeSessionCaller } from "../_shared/sessionAuth.ts";
 
 const corsHeaders = {
@@ -105,9 +106,19 @@ Deno.serve(async (req) => {
 
     // ── Fiscal guard snapshot: these must be identical after the refresh ──
     const FISCAL_COLUMNS = "player_name, gold_reserve, production_reserve, legitimacy, wealth_pop_tax, wealth_domestic_market, goods_wealth_fiscal";
-    const { data: fiscalBefore } = await sb.from("realm_resources")
+    const { data: fiscalBefore, error: fiscalBeforeError } = await sb.from("realm_resources")
       .select(FISCAL_COLUMNS)
       .eq("session_id", session_id);
+    // Do not run a derived chain without a valid baseline to compare against.
+    // Two failed reads (null === null) must never pass the fiscal guard.
+    if (!isReadableFiscalSnapshot({ data: fiscalBefore, error: fiscalBeforeError })) {
+      console.error("[refresh-economy] Fiscal baseline unavailable; refusing recompute", fiscalBeforeError);
+      return new Response(
+        JSON.stringify({ ok: false, session_id, status: "stale",
+          error: "fiscal_guard_unavailable_before_refresh", fiscal_unchanged: false }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // Legacy province routes stay only for military/older overlays; economic
     // connectivity and goods movement derive from roads and rivers.
@@ -144,15 +155,19 @@ Deno.serve(async (req) => {
     }
 
     // ── Fiscal guard verification (INVARIANT 2) ───────────────
-    const { data: fiscalAfter } = await sb.from("realm_resources")
+    const { data: fiscalAfter, error: fiscalAfterError } = await sb.from("realm_resources")
       .select(FISCAL_COLUMNS)
       .eq("session_id", session_id);
-    const fiscalKey = (rows: any[] | null) =>
-      JSON.stringify((rows || []).slice().sort((a, b) => a.player_name.localeCompare(b.player_name)));
-    const fiscalUnchanged = fiscalKey(fiscalBefore) === fiscalKey(fiscalAfter);
+    const fiscalUnchanged = fiscalSnapshotsEqual(
+      { data: fiscalBefore, error: fiscalBeforeError },
+      { data: fiscalAfter, error: fiscalAfterError },
+    );
     if (!fiscalUnchanged) {
-      console.error("[refresh-economy] FISCAL GUARD VIOLATION — a step mutated fiscal state");
-      warnings.push("fiscal_guard_violation: a derived step mutated fiscal state");
+      const warning = isReadableFiscalSnapshot({ data: fiscalAfter, error: fiscalAfterError })
+        ? "fiscal_guard_violation: a derived step mutated fiscal state"
+        : "fiscal_guard_unavailable_after_refresh: fiscal state could not be verified";
+      console.error("[refresh-economy]", warning, fiscalAfterError);
+      warnings.push(warning);
     }
 
     const allOk = results.every((r) => r.ok) && fiscalUnchanged;
