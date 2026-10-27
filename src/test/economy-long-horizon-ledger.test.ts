@@ -58,6 +58,15 @@ describe('physical ledger long-horizon (synthetic, not live turns)', () => {
         const imports = rows.reduce((sum, b) => sum + b.imported, 0);
         const exports = rows.reduce((sum, b) => sum + b.exported, 0);
         expect(imports, `turn ${turn}: ${good.key} imports`).toBeCloseTo(exports, 5);
+        // Reconcile both city totals against the actual transport journal.
+        // Two equally wrong city aggregates would otherwise pass conservation.
+        const goodFlows = result.flows.filter(flow => flow.good === good.key);
+        const shipped = goodFlows.reduce((sum, flow) => sum + flow.qty, 0);
+        const delivered = goodFlows.reduce((sum, flow) => sum + flow.delivered, 0);
+        expect(shipped, `turn ${turn}: ${good.key} journal vs exports`).toBeCloseTo(exports, 5);
+        expect(shipped, `turn ${turn}: ${good.key} journal vs imports`).toBeCloseTo(imports, 5);
+        expect(delivered, `turn ${turn}: ${good.key} delivered nonnegative`).toBeGreaterThanOrEqual(-1e-7);
+        expect(delivered, `turn ${turn}: ${good.key} no transport gain`).toBeLessThanOrEqual(shipped + 1e-7);
       }
       const oreTransfers = result.flows.filter(f =>
         f.good === 'ore' && f.source === 'mine' && f.destination === 'forge' &&
