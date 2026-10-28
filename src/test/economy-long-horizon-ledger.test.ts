@@ -42,6 +42,18 @@ describe('physical ledger long-horizon (synthetic, not live turns)', () => {
       expect(JSON.stringify(snapshot)).toBe(before);
       if (turn === 1 || turn === turns) expect(resolveGoodsEconomy(snapshot)).toEqual(result);
       for (const b of result.balances) {
+        // Global import/export parity is insufficient: a missing city posting can
+        // cancel an unrelated excess elsewhere. Reconcile each city's journal.
+        const incoming = result.flows.filter(f => f.destination === b.city && f.good === b.good);
+        const outgoing = result.flows.filter(f => f.source === b.city && f.good === b.good);
+        const inboundQty = incoming.reduce((sum, f) => sum + f.qty, 0);
+        const outboundQty = outgoing.reduce((sum, f) => sum + f.qty, 0);
+        const transportLoss = incoming.reduce((sum, f) => sum + f.qty - f.delivered, 0);
+        expect(b.imported, `turn ${turn}: ${b.city}/${b.good} inbound journal`).toBeCloseTo(inboundQty, 5);
+        expect(b.exported, `turn ${turn}: ${b.city}/${b.good} outbound journal`).toBeCloseTo(outboundQty, 5);
+        expect(b.lost_transport, `turn ${turn}: ${b.city}/${b.good} transit losses`).toBeCloseTo(transportLoss, 5);
+        expect(b.lost_spoilage, `turn ${turn}: ${b.city}/${b.good} loss decomposition`).toBeCloseTo(
+          b.lost_decay + b.lost_transport + b.lost_discard, 5);
         expect(b.opening + produced(b) + b.imported).toBeCloseTo(
           b.consumed_household + b.consumed_state + b.consumed_as_input +
           b.exported + b.stored + b.lost_spoilage + b.capex, 5);
