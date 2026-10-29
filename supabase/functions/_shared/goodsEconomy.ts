@@ -1,4 +1,5 @@
 import { fuelGuidance } from './fuelGuidance.ts';
+import { assertPhysicalTradeJournal } from './physicalTradeJournal.ts';
 import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass, type RoutePath } from './landedRoute.ts';
 import { ECONOMY as C, IDEOLOGIES, BASKET_SECTOR, BASKET_TIER, DEMAND_WEIGHTS, type Sector } from './economyConfig.ts';
 import { isFactor, isStaged, fallbackOf, kindOf, wearOf, consumedPerBatch, factorMultiplier, type KindedInput } from './inputKinds.ts';
@@ -863,6 +864,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const provenance=channelTotal(componentsOf(c.id,g.key));
     if(Math.abs(provenance-b.demand)>1e-6)throw Error(`Demand provenance mismatch ${key(c.id,g.key)}: ${provenance} vs ${b.demand}`);
   }}
+  // Fail closed if the transport journal and the single physical ledger diverge.
+  // This is read-only and does not create a parallel inventory or fiscal writer.
+  assertPhysicalTradeJournal([...balances.values()], flows);
   const prices:PriceRow[]=cities.flatMap(c=>goods.map(g=>priceDetail(c.id,g.key)));
   // COST ≠ MARKET VALUE: producer margin at local prices, inputs valued at the processing city.
   const recipeOf=new Map(snapshot.producers.map(p=>[p.id,p]));
