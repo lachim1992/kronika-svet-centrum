@@ -71,6 +71,7 @@ export const PRODUCER_COST_FIELDS: EconomyField[] = [
   ]),
   { key: "full_cost", label: "Náklad včetně odhadu mezd", tip: "A + C + B opotřebení + odhad mezd. Nejde o úplný hotovostní náklad: odpisy budov, režie a daně výrobce zatím nejsou modelovány.", kind: "money", source: "diagnostics[].margin" },
   { key: "unit_full_cost", label: "Náklad včetně odhadu / ks", tip: "Jednotkový náklad přímo z účtu výrobce, ne součet dalších diagnostických rozpadů.", kind: "money", source: "diagnostics[].margin" },
+  { key: "unit_cost_gap", label: "Rozdíl ceny a známých nákladů / ks", tip: "Tržní ocenění výstupu minus známé náklady A/B/C a odhad mezd na kus. Záporná hodnota = odhadovaná ztráta při současné ceně. Není to nákladová cenotvorba ani skutečný peněžní zisk; režie, daně a všechny odpisy nejsou zahrnuty.", kind: "money", source: "diagnostics[].margin" },
   { key: "labor_per_unit", label: "Práce / ks", tip: "Pracovní náročnost podle skutečného obsazení výroby; bez výstupu není definována.", kind: "index", source: "diagnostics[].margin" },
   { key: "wage_rate", label: "Mzdová sazba", tip: "Místní sazba za pracovníka a tah.", kind: "index", source: "diagnostics[].margin" },
   { key: "operating_surplus", label: "Přebytek po odhadu mezd", tip: "Oceněný výstup minus spotřebované vstupy a odhad mezd; nikoli hotovostní zisk.", kind: "money", source: "diagnostics[].margin" },
