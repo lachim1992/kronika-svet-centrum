@@ -95,3 +95,39 @@ describe('physical ledger long-horizon (synthetic, not live turns)', () => {
     expect(opening.length).toBeGreaterThan(0);
   });
 });
+
+
+describe('physical intercity input trade – route and ledger acceptance', () => {
+  it('moves actual ore over a reachable road and reconciles imports to exports', () => {
+    const snapshot = scenario();
+    const before = JSON.stringify(snapshot);
+    const result = resolveGoodsEconomy(snapshot);
+    const oreFlows = result.flows.filter(f =>
+      f.good === 'ore' && f.source === 'mine' && f.destination === 'forge'
+      && f.reason === 'production_input');
+    // Without this assertion, a 200-turn conservation test can pass with zero trade.
+    expect(oreFlows.length).toBeGreaterThan(0);
+    const shipped = oreFlows.reduce((sum, f) => sum + f.qty, 0);
+    const delivered = oreFlows.reduce((sum, f) => sum + f.delivered, 0);
+    expect(shipped).toBeGreaterThan(0);
+    expect(delivered).toBeGreaterThan(0);
+    expect(delivered).toBeLessThanOrEqual(shipped);
+    const mineOre = result.balances.find(b => b.city === 'mine' && b.good === 'ore');
+    const forgeOre = result.balances.find(b => b.city === 'forge' && b.good === 'ore');
+    expect(mineOre?.exported).toBeCloseTo(shipped, 6);
+    // Transport loss is booked as an imported-and-spoiled quantity at destination.
+    expect(forgeOre?.imported).toBeCloseTo(shipped, 6);
+    expect(forgeOre?.lost_spoilage).toBeCloseTo(shipped - delivered, 6);
+    expect(JSON.stringify(snapshot)).toBe(before);
+  });
+
+  it('blocks input transfers when the road disappears and restores them when reopened', () => {
+    const connected = scenario();
+    const open = resolveGoodsEconomy(connected);
+    const closed = resolveGoodsEconomy({ ...connected, edges: [] });
+    expect(open.flows.some(f => f.good === 'ore' && f.source === 'mine' && f.destination === 'forge')).toBe(true);
+    expect(closed.flows).toHaveLength(0);
+    expect(closed.diagnostics.find(d => d.producer === 'ingot')?.realized ?? 0).toBe(0);
+    expect(resolveGoodsEconomy(connected)).toEqual(open);
+  });
+});
