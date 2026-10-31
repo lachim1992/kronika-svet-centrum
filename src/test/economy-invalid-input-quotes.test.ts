@@ -34,6 +34,12 @@ describe('expected input sourcing rejects invalid quotes', () => {
     expect(expectedInputCost(null, [supplier({ tariffRate: 0.2 })], 10, 5).cost).toBeCloseTo(4);
   });
 
+  it('does not reject a valid supplier because an unused destination quote is corrupt', () => {
+    // A valid local price is the tariff basis, so the optional destination quote is ignored.
+    const result = expectedInputCost(10, [supplier()], 10, NaN);
+    expect(result).toEqual({ cost: 3, source: 'mine', available: true });
+  });
+
   it('keeps legitimate local and landed sourcing deterministic and unchanged', () => {
     expect(expectedInputCost(1, [supplier()], 10)).toEqual({
       cost: 1, source: 'local', available: true,
