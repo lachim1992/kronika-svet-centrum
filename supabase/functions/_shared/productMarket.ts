@@ -178,9 +178,16 @@ export function tradeServiceValue(i: { local_exchange: number; import_export: nu
  */
 export function expectedInputCost(local: number | null, suppliers: { city: string; sourcePrice: number; transport: number; tolls: number;
   tariffRate: number; risk: number; loss: number }[], basePrice: number, destinationPrice?: number) {
-  const hasLocal = local != null && Number.isFinite(local);
-  let best = { cost: hasLocal ? pos(local) : Infinity, source: hasLocal ? 'local' : 'unavailable' as string, available: hasLocal };
+  // Invalid cost data must never become a free input. In particular pos(-price) and
+  // pos(Infinity) would otherwise turn broken local/route quotes into zero-cost supply.
+  const validNonnegative = (x: number) => Number.isFinite(x) && x >= 0;
+  const hasLocal = local != null && validNonnegative(local);
+  let best = { cost: hasLocal ? local! : Infinity, source: hasLocal ? 'local' : 'unavailable' as string, available: hasLocal };
   for (const s of suppliers) {
+    // A route with non-finite costs or 100% transport loss is not a viable supplier.
+    // Reject invalid quotes rather than silently clamping them into attractive prices.
+    if (![s.sourcePrice, s.transport, s.tolls, s.tariffRate, s.risk, s.loss].every(validNonnegative) ||
+        s.loss >= 1 || (destinationPrice != null && !validNonnegative(destinationPrice))) continue;
     const l = landedInputCost({ ...s, destinationPrice: hasLocal ? local! : (destinationPrice ?? s.sourcePrice) }).landed;
     if (!Number.isFinite(l) || l > pos(basePrice) * PRODUCT_MARKET.maxLandedInputMultiple) continue;
     if (l < best.cost - 1e-9) best = { cost: l, source: s.city, available: true };
