@@ -187,7 +187,7 @@ export function expectedInputCost(local: number | null, suppliers: { city: strin
     // A route with non-finite costs or 100% transport loss is not a viable supplier.
     // Reject invalid quotes rather than silently clamping them into attractive prices.
     if (![s.sourcePrice, s.transport, s.tolls, s.tariffRate, s.risk, s.loss].every(validNonnegative) ||
-        s.loss >= 1 || (destinationPrice != null && !validNonnegative(destinationPrice))) continue;
+        s.loss >= 1 || (!hasLocal && destinationPrice != null && !validNonnegative(destinationPrice))) continue;
     const l = landedInputCost({ ...s, destinationPrice: hasLocal ? local! : (destinationPrice ?? s.sourcePrice) }).landed;
     if (!Number.isFinite(l) || l > pos(basePrice) * PRODUCT_MARKET.maxLandedInputMultiple) continue;
     if (l < best.cost - 1e-9) best = { cost: l, source: s.city, available: true };
