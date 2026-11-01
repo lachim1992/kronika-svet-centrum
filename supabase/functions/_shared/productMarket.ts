@@ -99,7 +99,13 @@ export const PRODUCT_MARKET = {
  */
 export function landedInputCost(i: { sourcePrice: number; transport: number; tolls: number; tariffRate: number;
   destinationPrice?: number; risk: number; loss: number }) {
-  const loss = Math.min(0.95, pos(i.loss)), src = pos(i.sourcePrice);
+  // This is also called directly by the physical trade solver, not only by expectedInputCost.
+  // Invalid quotes must fail closed rather than pos() silently converting them into free trade.
+  const valid = (v: number) => Number.isFinite(v) && v >= 0;
+  const amounts = [i.sourcePrice, i.transport, i.tolls, i.tariffRate, i.risk, i.loss];
+  if (!amounts.every(valid) || (i.destinationPrice !== undefined && !valid(i.destinationPrice)) || i.loss >= 1)
+    throw new RangeError('Invalid landed input quote');
+  const loss = Math.min(0.95, i.loss), src = i.sourcePrice;
   const tariff = pos(i.tariffRate) * (i.destinationPrice ?? src);
   const risk = pos(i.risk) * PRODUCT_MARKET.landedRiskShare * src;
   const perShipped = src + pos(i.transport) + pos(i.tolls) + tariff + risk;
