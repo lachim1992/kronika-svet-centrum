@@ -23,6 +23,23 @@ describe('canonical producer cost pressure (diagnostic, not price pass-through)'
     expect(account(20, 0).unit_cost_gap).toBeNull();
   });
 
+  it('shows comparable full-cost coverage as inputs become dearer, without changing prices', () => {
+    const cheap = account(10), dear = account(30), loss = account(50);
+    expect(cheap.full_cost_coverage).toBeCloseTo(40 / 15, 9);
+    expect(dear.full_cost_coverage).toBeCloseTo(40 / 35, 9);
+    expect(loss.full_cost_coverage).toBeCloseTo(40 / 55, 9);
+    expect(cheap.full_cost_coverage!).toBeGreaterThan(dear.full_cost_coverage!);
+    expect(dear.full_cost_coverage!).toBeGreaterThan(1);
+    expect(loss.full_cost_coverage!).toBeLessThan(1);
+    expect(account(10, 0).full_cost_coverage).toBeNull();
+    expect(account(0, 10).full_cost_coverage).toBeCloseTo(40 / 5, 9);
+  });
+
+  it('does not divide by zero or invent cash coverage when costs are absent', () => {
+    const noCost = producerAccount({ realized: 10, revenue: 40, intermediate: 0, capitalWear: 0, employed: 0, wage: 0 });
+    expect(noCost.full_cost_coverage).toBeNull();
+  });
+
   it('maps the exact engine value into the shared Economy/Dev cost contract', () => {
     const field = PRODUCER_COST_FIELDS.find(f => f.key === 'unit_cost_gap');
     expect(field).toBeDefined();
