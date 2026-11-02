@@ -557,6 +557,8 @@ export function producerAccount(a: { realized: number; revenue: number; intermed
     operating_surplus: value_added - payroll, unit_full_cost: per(full_cost),
     /** Observed unit revenue minus known A/B/C costs and imputed wages; NOT a price-setting rule. */
     unit_cost_gap: per(pos(a.revenue) - full_cost),
+    /** Revenue / known A/B/C + imputed wage costs; 1 = estimated break-even, NOT a cash settlement or an ask price. */
+    full_cost_coverage: q > 0 && full_cost > 0 ? pos(a.revenue) / full_cost : null,
     payroll_basis: 'imputed' as const, cash_settled: false as const,
     labor_per_unit: per(pos(a.employed)),
     /** Physical fuel coverage of the batch (null = recipe has no staged fuel) and output lost to the fallback. */
