@@ -124,12 +124,15 @@ export function landedInputCost(i: { sourcePrice: number; transport: number; tol
  * Callers normalise by max(Σweights, Σnecessity) so a floor never expands to full capacity.
  */
 export function autoAllocationDetail(options: { key: string; necessity: number; marginRatio: number; essential?: boolean; inputsAvailable?: boolean }[]) {
-  const M = PRODUCT_MARKET, anyProfitable = options.some(o => o.inputsAvailable !== false && o.marginRatio > 0);
+  // A profitable alternative only suppresses emergency essential output if it can actually
+  // receive positive AUTO weight. Zero-necessity and non-finite margin options cannot run.
+  const profitable = (o: typeof options[number]) => o.inputsAvailable !== false && pos(o.necessity) > 0 && Number.isFinite(o.marginRatio) && o.marginRatio > 0;
+  const M = PRODUCT_MARKET, anyProfitable = options.some(profitable);
   const weights: Record<string, number> = {}, flags: Record<string, 'emergency_unprofitable_production' | 'auto_loss_stopped' | 'auto_input_unavailable' | null> = {};
   for (const o of options) {
     // A recipe with any unavailable required input gets ZERO AUTO weight — even if essential.
     if (o.inputsAvailable === false) { weights[o.key] = 0; flags[o.key] = 'auto_input_unavailable'; continue; }
-    if (o.marginRatio > 0) { weights[o.key] = pos(o.necessity) * (1 + M.autoMarginWeight * Math.min(1, o.marginRatio)); flags[o.key] = null; }
+    if (profitable(o)) { weights[o.key] = pos(o.necessity) * (1 + M.autoMarginWeight * Math.min(1, o.marginRatio)); flags[o.key] = null; }
     else if (o.essential && !anyProfitable) { weights[o.key] = pos(o.necessity) * M.autoEmergencyFloor; flags[o.key] = 'emergency_unprofitable_production'; }
     else { weights[o.key] = M.autoLossFloor; flags[o.key] = 'auto_loss_stopped'; }
   }
