@@ -110,6 +110,10 @@ export function landedInputCost(i: { sourcePrice: number; transport: number; tol
   const risk = pos(i.risk) * PRODUCT_MARKET.landedRiskShare * src;
   const perShipped = src + pos(i.transport) + pos(i.tolls) + tariff + risk;
   const landed = perShipped / (1 - loss);
+  // Finite inputs can still overflow during multiplication or loss adjustment.
+  // The physical solver must not receive Infinity as a valid supplier quote.
+  if (![tariff, risk, perShipped, landed].every(Number.isFinite))
+    throw new RangeError('Landed input quote overflow');
   return { landed, source: src, transport: pos(i.transport), tolls: pos(i.tolls), tariff, risk, loss_cost: landed - perShipped };
 }
 
