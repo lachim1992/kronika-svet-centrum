@@ -4,6 +4,20 @@ import { landedInputCost } from '../../supabase/functions/_shared/productMarket'
 const quote = (overrides: Partial<Parameters<typeof landedInputCost>[0]> = {}) => ({
   sourcePrice: 2, transport: 1, tolls: 0, tariffRate: 0,
   risk: 0, loss: 0, ...overrides,
+  it('passes higher input, freight, tariff and risk costs through to landed quotes monotonically', () => {
+    const baseline = landedInputCost(quote()).landed;
+    for (const increase of [
+      { sourcePrice: 3 }, { transport: 2 }, { tolls: 1 },
+      { tariffRate: 0.1 }, { risk: 0.2 }, { loss: 0.2 },
+    ]) {
+      expect(landedInputCost(quote(increase)).landed).toBeGreaterThan(baseline);
+    }
+    // An explicit destination tariff basis must not alter the quote when tariffs are zero.
+    expect(landedInputCost(quote({ destinationPrice: 100 })).landed).toBe(baseline);
+    expect(landedInputCost(quote({ destinationPrice: 100, tariffRate: 0.1 })).landed)
+      .toBeGreaterThan(landedInputCost(quote({ destinationPrice: 5, tariffRate: 0.1 })).landed);
+  });
+
 });
 
 describe('direct physical-trade landed quote guard', () => {
