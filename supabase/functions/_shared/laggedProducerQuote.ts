@@ -34,7 +34,9 @@ export function laggedProducerQuote(input: LaggedProducerQuoteInput): LaggedProd
   if (![units, materials, wages, wear, markupRate].every(Number.isFinite) ||
       units <= 0 || materials < 0 || wages < 0 || wear < 0 || markupRate < 0) return null;
   const total = materials + wages + wear;
-  // A zero recorded cost basis is not evidence of a free-to-produce good.\n  // Refuse a zero-price candidate rather than silently creating a free offer.\n  if (!Number.isFinite(total) || total <= 0) return null;
+  // A zero recorded cost basis is not evidence of a free-to-produce good.
+  // Refuse a zero-price candidate rather than silently creating a free offer.
+  if (!Number.isFinite(total) || total <= 0) return null;
   const historicalUnitCost = total / units;
   const askPrice = historicalUnitCost * (1 + markupRate);
   if (!Number.isFinite(historicalUnitCost) || !Number.isFinite(askPrice)) return null;
