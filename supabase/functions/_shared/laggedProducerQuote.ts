@@ -39,6 +39,9 @@ export function laggedProducerQuote(input: LaggedProducerQuoteInput): LaggedProd
   if (!Number.isFinite(total) || total <= 0) return null;
   const historicalUnitCost = total / units;
   const askPrice = historicalUnitCost * (1 + markupRate);
-  if (!Number.isFinite(historicalUnitCost) || !Number.isFinite(askPrice)) return null;
+  // Extremely small positive costs can underflow to zero after division.
+  // Never emit a free ask from a positive committed cost basis.
+  if (!Number.isFinite(historicalUnitCost) || historicalUnitCost <= 0 ||
+      !Number.isFinite(askPrice) || askPrice <= 0) return null;
   return { historicalUnitCost, askPrice };
 }
