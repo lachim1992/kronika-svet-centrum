@@ -350,3 +350,8 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [ ] Panel guidance not yet visually checked in preview; production publish left to host action.
 - [ ] Optional capital-to-capital footpath at world creation — not done (strategy-changing; needs user decision).
 - [ ] P2 rural workers: not implemented. Harness shows no systemic starvation without it (idle urban labour is abundant); bottleneck is missing primary buildings, not workers.
+
+## Security RLS slice (2026-11-10)
+- [x] 48 tables: member FOR ALL → member SELECT + owner-scoped writes (drizzle 0007); server_config/economy_overrides admin-write (0008). Verified non-admin cannot update/delete foreign city/region/buildings/battle lobby; own city still writable.
+- [ ] 20 tables still member-writable without owner column: game_events (canon log — highest residual risk), entity_traits, chronicle_entries, world_events, world_feed_items, world_memories, world_history_chapters, wiki_entries, city_states, diplomacy_rooms, flow_paths, import_sources, intelligence_reports, league_players, simulation_log, trade_log, city_rumors, encyclopedia_images, map_gen_feedback, world_foundations → move client writes to command-dispatch, then make SELECT-only.
+- [ ] No new publish until game_events client writes are removed.
