@@ -19,6 +19,7 @@ import { Costs, Specific } from "./CostViews";
 import FuelGuidancePanel from "@/components/economy/FuelGuidancePanel";
 import IndustrialInputsPanel from "@/components/economy/IndustrialInputsPanel";
 import SubsistencePanel from "@/components/economy/SubsistencePanel";
+import ConstructionMaterialsPanel from "@/components/economy/ConstructionMaterialsPanel";
 import { fetchEconomyDevSnapshot, toCsv, type EconomyDevSnapshot, type Totals, type FlowRow } from "@/lib/economyDevSnapshot";
 
 const SRC = "economy_turn_ledgers.result (goodsEconomy)";
@@ -79,6 +80,7 @@ export default function EconomyDevPanel({ sessionId }: { sessionId: string }) {
   return (
     <div className="space-y-3 text-xs">
       <SubsistencePanel subsistence={(s as any).subsistence} labor={(s as any).labor} producers={(s as any).producer_diagnostics} name={cn} showSource />
+      <ConstructionMaterialsPanel rows={(s as any).construction_balances??[]} name={cn} />
       <IndustrialInputsPanel rows={s.industrial_inputs?.filter(x=>match(x.city,x.good,x.producer))} name={cn} />
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border rounded-lg p-2 flex flex-wrap gap-2 items-center">
         <Badge variant="outline">Session {s.meta.roomCode || sessionId.slice(0, 8)}</Badge>
