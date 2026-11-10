@@ -184,6 +184,10 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     .flatMap((r:any)=>[`${r.from_x},${r.from_y}`,`${r.to_x},${r.to_y}`]));
   const cityConnected=(city:City)=>roadCells.has(city.cell);
   for(const node of db.province_nodes){if(node.is_active===false)continue;const c=anchor(node);if(!c)continue;
+    // A province/macro node is not free extraction land. In the parcel model a source node
+    // needs an explicit owned parcel anchor; its old synthetic source capacity is retired.
+    // Parcel extraction already represents that resource, so a source node never duplicates it.
+    if(parcelMode&&node.production_role==='source')continue;
     const order=db.node_production_orders.find(o=>o.node_id===node.id);
     const eligible=db.production_recipes.filter(r=>role(r)===node.production_role&&(r.required_tags||[]).every((tag:string)=>(node.capability_tags||[]).includes(tag)));
     const aw=autoWeights(c.id,eligible,eligible.map(r=>orderWeight(r,order)),order),weights=aw.weights,total=aw.norm;
