@@ -190,6 +190,9 @@ export const PRODUCTION_BUILDINGS: BuildingContract[] = [
     levels: [['draw_river_water'], [], []] },
   { name: 'Lovecko-sběračská chata', category: 'economic', roles: ['source'], tags: ['hunting'],
     levels: [['hunt_game'], [], []] },
+  // Parcel-only contract: no legal building can claim this recipe; tests use this contract.
+  { name: 'Divoké pozemky', category: 'economic', roles: ['source'], tags: ['foraging'],
+    levels: [['gather_wild_seeds'], [], []] },
   { name: 'Akvadukt', category: 'infrastructure', roles: ['source'], tags: ['farming'],
     levels: [['draw_water'], [], []] },
   // processing
