@@ -9,6 +9,7 @@ import { isNeedBasket, needStabilityDrift, waterShortageImpact } from "../_share
 import { foodShortageImpact } from '../_shared/foodShortage.ts';
 import { routeUpkeepDueThisTurn } from '../_shared/routeUpkeep.ts';
 import { settleWages } from '../_shared/wageSettlement.ts';
+import { accrueGuildSpecialization } from '../_shared/guildSpecialization.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1509,7 +1510,7 @@ Deno.serve(async (req) => {
 
     // ── Guild level progression ──
     const { data: guildNodes } = await supabase.from("province_nodes")
-      .select("id, guild_level, specialization_scores, city_id, controlled_by, name")
+      .select("id, guild_level, specialization_scores, specialization_last_turn, production_role, city_id, controlled_by, name")
       .eq("session_id", sessionId)
       .eq("controlled_by", playerName)
       .not("guild_level", "is", null);
@@ -1517,21 +1518,17 @@ Deno.serve(async (req) => {
     if (guildNodes) {
       for (const gn of guildNodes) {
         const guildLevel = gn.guild_level || 0;
-        const scores = (gn.specialization_scores || {}) as Record<string, number>;
+        const next = accrueGuildSpecialization(gn, playerName, currentTurn,
+          curLedgerRes.data?.result?.snapshot?.producers ?? [], curLedgerRes.data?.result?.diagnostics ?? []);
+        if (!next) continue;
+        // Buffered in fiscalPlan: scores, level and retry marker settle with this player's turn.
+        await supabase.from("province_nodes").update(next).eq("id", gn.id).eq("session_id", sessionId).eq("controlled_by", playerName);
+        const scores = next.specialization_scores;
         const totalSpec = Object.values(scores).reduce((s, v) => s + v, 0);
 
-        // Guild levels up when specialization accumulates enough
-        // Thresholds: level 1→2 at 10 spec, 2→3 at 30, 3→4 at 60, 4→5 at 100
-        const thresholds = [0, 10, 30, 60, 100];
-        let newLevel = guildLevel;
-        for (let lvl = guildLevel + 1; lvl <= 5; lvl++) {
-          if (totalSpec >= (thresholds[lvl - 1] || 999)) newLevel = lvl;
-          else break;
-        }
+        const newLevel = next.guild_level;
 
         if (newLevel > guildLevel) {
-          await supabase.from("province_nodes").update({ guild_level: newLevel }).eq("id", gn.id);
-          
           newEvents.push({
             event_type: "guild_established",
             note: `Cech v "${gn.name}" dosáhl úrovně ${newLevel}! Kvalita produkce se zvyšuje.`,
