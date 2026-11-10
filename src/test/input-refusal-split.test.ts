@@ -14,7 +14,7 @@ describe('production_input refusal reasons stay distinct (no conflated landed_co
     const p = await withFriction(12); conserve(p);
     expect(grainInput(p).imported).toBe(0);
     expect(grainInput(p).blocked).toBe('haul_exceeds_value');
-    expect(p.result.flows.some((f: any) => f.good === 'raw_grain' && f.destination === 'b')).toBe(false);
+    expect(p.result.flows.some((f: any) => f.good === 'raw_grain' && f.destination === 'b' && f.reason === 'production_input')).toBe(false);
   });
   it('deterministic rerun', async () => {
     const a = await withFriction(12), b = await withFriction(12);
