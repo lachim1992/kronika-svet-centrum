@@ -47,7 +47,7 @@ export interface CityAccountRow { city: string; city_gdp?: Num; goods_value_adde
   affordability?: Num; prosperity?: Num; capital_stock?: Num; physical_need_coverage?: Num; proxy?: boolean;
   diversity?: Record<string, { index: Num; effective: Num }>; [k: string]: unknown }
 export interface LedgerResult {
-  industrialInputs?: import('../_shared/goodsEconomy').IndustrialInput[];
+  industrialInputs?: import('../_shared/goodsEconomy.ts').IndustrialInput[];
   balances?: LedgerBalance[]; flows?: LedgerFlow[]; prices?: LedgerPrice[]; demand?: LedgerDemand[];
   diagnostics?: LedgerDiagnostic[]; metrics?: { city: string; roles?: string[]; [k: string]: unknown }[];
   productChoice?: ProductChoiceRow[]; cityAccounts?: CityAccountRow[]; famous?: FameEntry[];
