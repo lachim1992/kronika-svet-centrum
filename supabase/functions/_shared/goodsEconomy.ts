@@ -409,7 +409,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         for(const basket of tier.baskets){
           let need=subsistenceNeed(c,basket)*tier.share;
           const cands=r.own.filter(p=>goodByKey.get(p.recipe.good)?.basket===basket&&jobsOf(p)>C.epsilon)
-            .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*clamp(c.stability)*clamp(p.logistics)/jobsOf(p)}))
+            .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*clamp(c.stability)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
             .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
           for(const {p,per} of cands){if(left<=C.epsilon||need<=C.epsilon)break;
             const take=Math.min(left,jobsOf(p)-(assigned.get(p.id)||0),need/per);if(take<=C.epsilon)continue;
