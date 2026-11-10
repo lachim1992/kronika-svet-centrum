@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { AUDIT_ITEMS, AUDIT_STATUSES, HEX_NODE_AUDIT_VERSION } from "@/lib/hexNodeAudit";
+import AuditLiveEvidence from './AuditLiveEvidence';
 
 // ═══════════════════════════════════════════
 // CAUSAL MAP DATA
