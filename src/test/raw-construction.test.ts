@@ -29,7 +29,7 @@ it('100-person forest/rock hamlet without processors earns bounded positive cons
   expect(resolveGoodsEconomy(snapshot)).toEqual(r);
 });
 it('projects consume first; their raw material is not also awarded as reserve',()=>{
-  const r=resolveGoodsEconomy({...snapshot,construction:[{city:'c',good:'raw_timber',qty:100}]});
+  const r=resolveGoodsEconomy({...snapshot,cities:[{...city,constructionProjects:100}],goods:goods.map(g=>g.key==='raw_timber'?{...g,basket:'construction',finalUse:true}:g)});
   const b=r.balances.find(b=>b.good==='raw_timber');expect(b?.consumed_state).toBeGreaterThan(0);
   expect(b?.capex).toBe(0);expect(b?.construction_points).toBe(0);
 });

@@ -26,7 +26,14 @@ export async function prepareParcelRollout(db: any, session: string) {
       const seat=held.find((a:any)=>a.status==='occupied') || held.find((a:any)=>a.grid_x===x&&a.grid_y===y);
       if(!seat) throw new Error(`Existing claims have no home seat for ${city.id}`);
       seats.push({city_id:city.id,owner_player:city.owner_player,grid_x:x,grid_y:y,parcel_index:seat.parcel_index});
-      continue; // Never overwrite, enlarge or siphon paid claims.
+      // Lazy map seating may already have materialized the 36 plots with only a four-plot
+      // starter footprint. Complete this rollout's eight-plot founding grant on unowned
+      // home land only; never replace a paid/occupied/foreign claim.
+      const candidates=existing.filter((a:any)=>a.grid_x===x&&a.grid_y===y&&a.status==='wild'&&a.buildable&&!a.city_id&&!a.owner_player)
+        .sort((a:any,b:any)=>Number(!/forest|woods|grassland|boggy/.test(a.sub_biome))-Number(!/forest|woods|grassland|boggy/.test(b.sub_biome))
+          ||Math.abs(a.parcel_x-seat.parcel_x)+Math.abs(a.parcel_y-seat.parcel_y)-Math.abs(b.parcel_x-seat.parcel_x)-Math.abs(b.parcel_y-seat.parcel_y)||a.parcel_index-b.parcel_index);
+      for(const a of candidates.slice(0,Math.max(0,8-held.length)))parcels.push({...a,status:'claimed',land_use:'open',city_id:city.id,owner_player:city.owner_player,claimed_turn:g.data.current_turn});
+      continue;
     }
     const neighbors = [[1,0],[-1,0],[0,1],[0,-1]].flatMap(([dx,dy])=>{
       const t=(h.data || []).find((a:any)=>(a.grid_x??a.q)===x+dx&&(a.grid_y??a.r)===y+dy);
