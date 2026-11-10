@@ -322,3 +322,16 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 
 ## World creation settings (2026-11-10)
 - DONE/TESTED: wizard box "Nastavení světa" (opponents, AI difficulty, starting cities, starting wealth; advanced: river amount/length, neutral towns, realm distance) → create-world-bootstrap → map/neutral/init; preview draws rivers. Test src/test/world-game-settings.test.ts. Not yet verified by creating a real world.
+
+## Starter-economy collapse (JV72O7) — status 2026-11-10
+- DONE/TESTED/DEPLOYED: subsistence labour priority, AUTO essential floor, storage service, starter peat, rationing vs famine.
+- DONE/TESTED/DEPLOYED: backfill-starter-economy is admin/service-only (anon 401, member/outsider 403, dry-run included); live anon call returns 401.
+- DONE/TESTED/DEPLOYED: one-time storable starter reserve (raw_grain + peat ≈2.5 turns) on NEW founding storehouses, read once in the adapter first-adoption opening (provenance starter_reserve). Existing saves (JV72O7) never get it.
+- DONE/TESTED/DEPLOYED: start positions require water (river/lake neighbour or coast) and food land; unsuitable candidates replaced by habitable ones.
+- FINDING: JV72O7 has 0 road_segments and province_routes only inside each realm → capitals legitimately unconnected (route_unreachable). No teleport fix.
+- OPEN: starter inter-capital connectivity for NEW worlds (bootstrap trail/road between neighbouring capitals, physical path + capacity) — design decision needed.
+- OPEN: Lambadagrad fuel 51 % caused by stability 43 — trace stability drivers (water band penalty history, rationing) before tuning.
+- OPEN: clothing/fuel slow modifiers; tools as operational need only.
+- OPEN: Economy/Dev UI for critical_priority_employed, rationing, starter_reserve provenance (+ economyFieldContract mapping).
+- OPEN: full-world bootstrap fixture across biomes, player+AI, 5/20/200-turn simulations.
+- OPEN: rural workforce model for nodes (declared jobs unchanged until then).

@@ -7,6 +7,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
+import { AuthError } from "../_shared/sessionAuth.ts";
+import { authorizeBackfill } from "./policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,6 +25,8 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    // Anonymous → 401, non-admin (even dry-run: reports expose other players' cities) → 403.
+    await authorizeBackfill(req, supabase, session_id);
     const reports = await ensureStarterEconomy(supabase, session_id, {
       cityId: city_id, turnNumber: turn_number, dryRun: dryRun !== false, upgradeStorage: upgradeStorage === true,
     });
@@ -35,6 +39,10 @@ Deno.serve(async (req) => {
       capitals,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return new Response(JSON.stringify({ success: false, error: error.message }),
+        { status: error.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     return new Response(JSON.stringify({ success: false, error: String((error as Error).message || error) }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
