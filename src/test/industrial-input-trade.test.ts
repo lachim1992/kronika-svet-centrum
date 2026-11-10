@@ -137,7 +137,7 @@ describe('local mill→bakery priority (same city, same pass)',()=>{
     return t;};
   const row=(p:any,id:string)=>p.result.industrialInputs.find((x:any)=>x.producer===`${id}:bake_staples`&&x.good==='flour');
   for(const remote of [false,true])it(`${remote?'2-city':'1-city'}: local bakery physically uses local flour`,async()=>{
-    const t=localFixture(remote,6),p=await run(t);conserve(p);
+    const t=localFixture(remote,30),p=await run(t);conserve(p);
     const flour=bal(p,'b','flour');
     expect(produced(flour)).toBeGreaterThan(0);
     expect(row(p,'bakeryB').used).toBeGreaterThan(0);
