@@ -10,7 +10,7 @@ const coverageOf = (balances: any[], keys: Set<string>, city: string) => {
   const d = bs.reduce((s, b) => s + Number(b.demand || 0), 0), u = bs.reduce((s, b) => s + Number(b.unmet_demand || 0), 0);
   return d > 0 ? 1 - u / d : 1;
 };
-export const SUBSISTENCE_BUILD = { threshold: 0.9, fuelThreshold: 0.6, minIdleWorkers: 25 } as const;
+export const SUBSISTENCE_BUILD = { threshold: 0.97, fuelThreshold: 0.6, minIdleWorkers: 25 } as const;
 
 export function chooseSubsistenceBuild(ledger: any, owner: string, templates: Set<string>,
   cityName: (id: string) => string | undefined): SubsistenceBuildPick | null {

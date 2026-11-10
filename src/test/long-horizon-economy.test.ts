@@ -71,7 +71,7 @@ function simulate(turns: number, policy: Policy, shocks: Shock[] = []) {
       // Population: growth only with secure food+water; genuine deficit (≥15 % = famine) kills.
       const famine = row.food_deficit_ratio >= 0.15 || water < 0.85;
       const deaths = famine ? Math.round(c.population * Math.max(row.food_deficit_ratio, 1 - water) * 0.2) : 0;
-      const growth = food >= 0.98 && water >= 0.98 ? Math.round(c.population * 0.015) : 0;
+      const growth = food >= 0.97 && water >= 0.97 ? Math.round(c.population * 0.015) : 0;
       const pop = Math.max(10, c.population + growth - deaths);
       kpis.push({ turn: t, city: c.id, pop: c.population, food, water, fuel, deaths, idle: l.available_workforce - l.employed_total, buildings: producers.filter(p => p.city === c.id).length });
       next.push({ ...c, population: pop, classes: { peasants: pop } });
@@ -113,7 +113,7 @@ describe('long-horizon economy: bad decisions and shocks still cause crisis', ()
       expect(pn).toBeLessThan(pi * 0.6);
     }
     // Shortage appears in at least one critical basket once growth hits starter capacity.
-    expect(none.kpis.some(k => k.food < 0.98 || k.water < 0.98)).toBe(true);
+    expect(none.kpis.some(k => k.food < 0.97 || k.water < 0.97)).toBe(true);
   });
   it('crop-failure shock: destroying all farms causes real famine, then rebuilding recovers', () => {
     const { kpis } = simulate(120, 'invest', [{ turn: 60, city: 'player', destroy: 'staple_food' }]);
