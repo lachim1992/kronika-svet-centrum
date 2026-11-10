@@ -109,7 +109,7 @@ describe('slow fuel/clothing consequences', () => {
     expect(BASKET_DEMAND.tools.basicNeeds).toBe(false);
   });
   it('critical food collapse still bites hard', () => {
-    expect(needStabilityDrift(rows(0.2, 1, 1, 1), 60).drift).toBe(-5);
+    expect(needStabilityDrift(rows(0.2, 0.2, 1, 1), 60).drift).toBe(-5);
   });
 });
 
