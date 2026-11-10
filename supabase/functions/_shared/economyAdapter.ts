@@ -1,5 +1,5 @@
 import { STARTER_RESERVE_GOODS } from './starterEconomy.ts';
-import { parcelProducers, parcelClosing } from './parcelEconomy.ts';
+import { parcelProducers, parcelClosing, parcelWorkshops } from './parcelEconomy.ts';
 import { resolveGoodsEconomy, produced, type Snapshot, type City, type Good, type Producer, type Edge } from './goodsEconomy.ts';
 import { actualSoldiers, workforceLawModifiers } from './manpower.ts';
 import { staffingCapacity } from './cityDistricts.ts';
@@ -62,13 +62,13 @@ export async function finalizeManagementReports(sb:any,session:string,turn:numbe
   const saved=await sb.rpc('update_goods_management_reports',{p_session:session,p_turn:turn,p_reports:reports});
   if(saved.error)throw saved.error;
 }
-export async function computeCanonicalEconomy(sb:any,session:string){
+export async function computeCanonicalEconomy(sb:any,session:string,options:{parcelPreview?:any[];readOnly?:boolean}={}){
   const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations','node_projects'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
   const sess=await query<any>('game_sessions',()=>sb.from('game_sessions').select('current_turn,resolving_turn,parcel_economy_version').eq('id',session).single());
-  const parcelMode=sess.parcel_economy_version===1;
-  if(parcelMode)db.tile_parcels=await rows(sb,'tile_parcels',session);
+  const parcelMode=sess.parcel_economy_version===1||!!options.parcelPreview;
+  if(parcelMode)db.tile_parcels=options.parcelPreview??await rows(sb,'tile_parcels',session);
   const turn=sess.resolving_turn??sess.current_turn;
   /**
    * The committed ledger is a very large JSON document (flows, diagnostics, per-good balances of
@@ -201,7 +201,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   }
 
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
-  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology));
+  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
   /**
    * Explicit production contract. A structure runs either an exact recipe whitelist
    * (effects.recipe_keys) or the recipes matching its declared capability tags and roles.
@@ -482,6 +482,7 @@ const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
     satisfaction_score:b.local_demand?Math.max(0,b.local_demand-b.unmet_demand)/b.local_demand:1,
     fulfillment_type:'canonical',min_quality:0,preferred_quality:0}));
   const payload={result,marketBaskets,demandBaskets,tradeFlows,basketFlows,realms,summaries,marketShares};
+  if(options.readOnly)return payload;
   const saved=await sb.rpc('replace_goods_economy_projection',{p_session:session,p_turn:turn,p_payload:payload});if(saved.error)throw saved.error;
   /**
    * The management report is a read-only view of the projection just written, so a refresh must

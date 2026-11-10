@@ -1,5 +1,5 @@
 import EconomyFieldList from "./EconomyFieldList";
-import { FOOD_STATUS_LABEL, LABOR_FIELDS, producerLimit, subsistenceSources } from "@/lib/economyFieldContract";
+import { FOOD_STATUS_LABEL, LABOR_FIELDS, PARCEL_FIELDS, producerLimit, subsistenceSources } from "@/lib/economyFieldContract";
 import { Badge } from "@/components/ui/badge";
 
 type Row = { city: string; food_status: string; food_deficit_ratio: number };
@@ -30,11 +30,21 @@ export default function SubsistencePanel({ subsistence, labor, producers, name, 
       })}
       {(guidance || []).length > 0 && <div className="border-t pt-2 space-y-1">
         <div className="text-sm font-medium">Doporučená stavba (stavíte sami)</div>
-        {guidance!.map(g => <div key={g.city + g.buildingName} className="text-xs">
+        {(guidance || []).map(g => <div key={g.city + g.buildingName} className="text-xs">
           {name(g.city)}: <b>{g.buildingName}</b> — {g.basket === "staple_food" ? "jídlo" : g.basket === "drinking_water" ? "voda" : "palivo"} pokryto {Math.round(g.coverage * 100)} %;
           {" "}cena {g.cost_wealth} zlata, výnos až {g.output}/tah při plném obsazení, volných pracovníků {Math.round(g.idle_workers)}.
         </div>)}
       </div>}
+      {(producers || []).some(p=>p.parcel) && <details className="border-t pt-2">
+        <summary className="text-sm font-medium cursor-pointer">Sběr a těžba z městských pozemků</summary>
+        <div className="overflow-x-auto"><table className="text-xs w-full">
+          <thead><tr><th className="p-1 text-left">Město / zdroj</th>{PARCEL_FIELDS.map(f=><th className="p-1 text-left" key={f.key}>{f.label}</th>)}<th>Vybráno / tah</th><th>Pracovníci / místa</th></tr></thead>
+          <tbody>{(producers || []).filter(p=>p.parcel).map(p=><tr key={p.producer} className="border-t">
+            <td className="p-1">{name(p.city)} · {p.good}</td>{PARCEL_FIELDS.map(f=><td key={f.key} className="p-1">{typeof p.parcel[f.key]==='number'?p.parcel[f.key].toFixed(2):String(p.parcel[f.key]??'—')}</td>)}
+            <td className="p-1">{Number(p.realized||0).toFixed(2)}</td><td className="p-1">{Number(p.employed||0).toFixed(1)} / {p.jobs_capacity??'—'}</td>
+          </tr>)}</tbody>
+        </table></div>
+      </details>}
       {limited.length > 0 && <table className="text-xs w-full"><caption className="text-left">Provozy pod potenciálem a hlavní důvod</caption>
         <thead><tr>{["Provoz", "Zboží", "Vyrobeno", "Potenciál", "Zaměstnaní / místa", "Důvod"].map(h => <th key={h} className="p-1 text-left">{h}</th>)}</tr></thead>
         <tbody>{limited.map(({ p, why }) => <tr key={p.producer} className="border-t">

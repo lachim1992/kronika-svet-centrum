@@ -148,6 +148,7 @@ export const SUBSISTENCE_SOURCE_LABEL: Record<string, { kind: "water" | "food"; 
   draw_water: { kind: "water", label: "Studna" },
   catch_fish: { kind: "food", label: "Ryby" },
   hunt_game: { kind: "food", label: "Lov a sběr" },
+  gather_wild_seeds: { kind: "food", label: "Sběr divokých semen" },
   harvest_wheat: { kind: "food", label: "Pole" },
   harvest_barley: { kind: "food", label: "Pole" },
   harvest_rice: { kind: "food", label: "Rýžoviště" },
@@ -163,3 +164,8 @@ export function subsistenceSources(producers: any[] | undefined, city: string) {
   }
   return out;
 }
+
+export const PARCEL_FIELDS = [
+  ['grid_x','Pole X'],['grid_y','Pole Y'],['index','Dílek'],['sub_biome','Terén'],
+  ['potential','Přírodní kapacita'],['reservoir','Dostupný zdroj'],['renewable','Obnovitelný'],
+].map(([key,label])=>({key,label,source:'snapshot.producers[].parcel'}));

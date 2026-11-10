@@ -29,6 +29,7 @@ export function parcelPotential(p: EconomicParcel, terrain: ParcelTerrain[], tur
   const out: { recipe: string; capacity: number; jobs: number; renewable: boolean }[] = [];
   const add = (recipe: string, cap: number, jobs: number, renewable = true) => out.push({ recipe, capacity: cap * scale, jobs, renewable });
   if (woodland.test(p.sub_biome)) add('fell_timber', 1.8, 4);
+  else if (/grassland|fertile_flat/.test(p.sub_biome)) add('fell_timber', 0.45, 2); // hedgerow wood, not a forest-sized supply
   if (rocky.test(p.sub_biome)) add('quarry_stone', 1.2, 4, false);
   if (fertile.test(p.sub_biome)) add('gather_wild_seeds', 0.55 * season, 3);
   if (woodland.test(p.sub_biome) || fertile.test(p.sub_biome)) add('hunt_game', 0.25 * season, 2);
@@ -76,4 +77,19 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
 export function parcelClosing(producers: Producer[], diagnostics: { producer: string; realized: number }[]): ParcelEcology {
   return Object.fromEntries(producers.filter(p => p.parcel).map(p => [p.id,
     Math.max(0, Number(p.parcel?.reservoir || 0) - Number(diagnostics.find(d => d.producer === p.id)?.realized || 0))]));
+}
+
+/** Hand processing in the existing occupied civic seat. Paid in labour and physically
+ * consumed BOM, never an extra raw-material→reserve credit. Dedicated industry scales better. */
+export function parcelWorkshops(parcels: EconomicParcel[], cities: {id:string;owner:string}[], recipes:Map<string,any>): Producer[] {
+  return cities.flatMap(c => {
+    const seat=parcels.find(p=>p.city_id===c.id&&p.owner_player===c.owner&&p.status==='occupied'&&p.land_use==='civic');
+    if(!seat) return [];
+    return ['saw_timber','cut_stone','burn_charcoal'].map(key=>{
+      const r=recipes.get(key); if(!r) throw new Error(`Missing processing recipe ${key}`);
+      return {id:`parcel-workshop:${seat.id}:${key}`,city:c.id,channel:'facility' as const,capacity:key==='burn_charcoal'?1.5:0.6,jobs:3,
+        recipe:{key,good:r.output_good_key,qty:Number(r.output_quantity),inputs:(r.input_items||[]).map((i:any)=>({good:i.key??i.good_key,qty:Number(i.qty)})),labor:Number(r.labor_cost),quality:0,minQuality:0},
+        allocation:1,staffing:1,logistics:1,mastery:1,source:false,distinctive:false};
+    });
+  });
 }
