@@ -53,7 +53,7 @@ export function assertPhysicalTradeJournal(
     seen.add(k);
     const p = postings.get(k) ?? { inbound: 0, outbound: 0, lost: 0 };
     if (!close(b.imported, p.inbound) || !close(b.exported, p.outbound) ||
-        !close(b.lost_transport, p.lost))
+        !close(b.lost_transport - ((b as any).lost_site_delivery ?? 0), p.lost))
       throw Error(`Physical trade journal mismatch ${b.city}/${b.good}: ` +
         `import ${b.imported}/${p.inbound}, export ${b.exported}/${p.outbound}, ` +
         `transport loss ${b.lost_transport}/${p.lost}`);
