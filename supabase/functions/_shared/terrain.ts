@@ -788,7 +788,7 @@ function findStartPositions(
 
   scored.sort((a, b) => b.score - a.score);
 
-  const MIN_SPACING = Math.max(4, Math.floor(Math.min(halfW, halfH) * spacing));
+  const MIN_SPACING = Math.max(spacing < 0.4 ? 4 : 6, Math.floor(Math.min(halfW, halfH) * spacing));
   const positions: Array<{ q: number; r: number }> = [];
 
   for (const candidate of scored) {
