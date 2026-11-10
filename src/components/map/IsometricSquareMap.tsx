@@ -1054,6 +1054,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const buildOnParcel = async (template: BuildingTemplate) => {
     if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
+    const needGold = Number(template.cost_wealth || 0);
+    const needProd = Number(template.cost_wood || 0) + Number(template.cost_stone || 0) + Number(template.cost_iron || 0);
+    if (!isSandboxMode() && treasury.gold < needGold) { toast.error(`Nedostatek zlata (potřeba ${needGold}, máš ${Math.floor(treasury.gold)})`); return; }
+    if (!isSandboxMode() && treasury.production < needProd) { toast.error(`Nedostatek produkce (potřeba ${needProd}, máš ${Math.floor(treasury.production)})`); return; }
     setBuildingAction(`building-${template.id}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_BUILDING", commandPayload: {
       cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id,
