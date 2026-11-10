@@ -1,7 +1,7 @@
 import type { IndustrialInput } from '../../../supabase/functions/_shared/goodsEconomy';
 import { INDUSTRIAL_INPUT_FIELDS } from '@/lib/economyFieldContract';
 
-const reasons:Record<string,string>={missing_supplier:'chybí dodavatel',trade_blocked:'válečná blokáda',route_unreachable:'nedosažitelná cesta',route_capacity:'vyčerpaná kapacita trasy',source_retained:'zdroj chrání zásobu pro obyvatele',landed_cost_or_partial_supply:'cena dopravy nebo částečná nabídka',supply_exhausted:'nabídku vykoupili jiní odběratelé',landed_cost_cap:'dovoz by stál víc než 4× základní cena',beyond_reach:'dodavatel je mimo dosah obchodu',source_retained_input:'zdroj si drží zásobu',b_factor_limited:'omezeno chybějícími nástroji/kapitálem (B)'};
+const reasons:Record<string,string>={missing_supplier:'chybí dodavatel',trade_blocked:'válečná blokáda',route_unreachable:'nedosažitelná cesta',route_capacity:'vyčerpaná kapacita trasy',source_retained:'zdroj chrání zásobu pro obyvatele',landed_cost_or_partial_supply:'cena dopravy nebo částečná nabídka',supply_exhausted:'nabídku vykoupili jiní odběratelé',landed_cost_cap:'dovoz by stál víc než 4× základní cena',haul_exceeds_value:'doprava stojí víc, než má dovezené zboží hodnotu',beyond_reach:'dodavatel je mimo dosah obchodu',source_retained_input:'zdroj si drží zásobu',b_factor_limited:'omezeno chybějícími nástroji/kapitálem (B)'};
 export default function IndustrialInputsPanel({rows,name}:{rows?:IndustrialInput[];name:(id:string)=>string}){
   if(!rows)return <p className="text-xs text-muted-foreground">Průmyslové vstupy: starší zpráva neobsahuje rozpis.</p>;
   return <details open><summary className="font-semibold cursor-pointer">Průmyslové materiály A ({rows.length})</summary>

@@ -265,7 +265,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   type TradeRefusal='trade_blocked'|'route_unreachable'|'beyond_reach'|'margin_unprofitable'|'route_capacity'|'source_retained'|'source_empty';
   const tradeRefusals=new Map<string,{reason:TradeRefusal;source:string}>();
   /** Last refusal a factory input pull got from a source that actually held stock (diagnostics only). */
-  const inputRefusals=new Map<string,TradeRefusal|'landed_cost_cap'>();
+  const inputRefusals=new Map<string,TradeRefusal|'landed_cost_cap'|'haul_exceeds_value'>();
   const refuse=(src:City,dst:City,g:Good,why:string,r:TradeRefusal)=>{
     // A source that holds nothing must not overwrite the refusal of a real holder.
     if(why==='production_input'){if(available(stock(src.id,g.key))>C.minLot)inputRefusals.set(key(dst.id,g.key),r);return 0;}
@@ -299,9 +299,12 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const margin=destinationWTP*(1-p.loss)*(1-targetPolicy.tariff)-sourcePrice-transport-p.tolls-risk;
     if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return refuse(src,dst,g,reason,'margin_unprofitable');
     // Factories are cost-driven: the physical haul must be worth the good, and the landed cost is capped.
-    if(reason==='production_input'&&((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0
-      ||(landed(src,dst,g,minQ,wanted)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple)){
-      if(available(b)>C.minLot)inputRefusals.set(key(dst.id,g.key),'landed_cost_cap');return 0;}
+    if(reason==='production_input'){
+      // Two distinct guards, two distinct diagnostics (same formulas as before):
+      // haul_exceeds_value = delivered value after loss/tolls/tariff ≤ freight; landed_cost_cap = landed > cap × base.
+      const haulBad=(1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0;
+      const capBad=!haulBad&&(landed(src,dst,g,minQ,wanted)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple;
+      if(haulBad||capBad){if(available(b)>C.minLot)inputRefusals.set(key(dst.id,g.key),haulBad?'haul_exceeds_value':'landed_cost_cap');return 0;}}
     // Realised sale value per delivered unit (gross trade — never GDP; only service margin is VA).
     const saleUnit=reason==='production_input'?unit:destinationWTP;
     // Quality-filtered sourcing: only lots meeting the buyer recipe's minQuality may be shipped.
