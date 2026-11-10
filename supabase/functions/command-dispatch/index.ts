@@ -3423,8 +3423,8 @@ async function executeBuildBuilding(
   const costGold = building.cost_wealth || 0;
   const prodCost = (building.cost_wood || 0) + (building.cost_stone || 0) + (building.cost_iron || 0);
 
-  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold})` };
-  if ((realm.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost})` };
+  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold}, máš ${Math.floor(realm.gold_reserve || 0)})` };
+  if ((realm.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost}, máš ${Math.floor(realm.production_reserve || 0)})` };
 
   // Deduct with compare-and-set: a concurrent command that already spent these
   // reserves makes this one fail instead of overwriting the balance (no phantom builds).
