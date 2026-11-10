@@ -120,6 +120,10 @@ export const RECIPES: CatalogRecipe[] = [
   // gathering/extraction without inputs is a SOURCE too
   r('cut_peat', 'source', ['gathering'], 'peat', 2),
   r('draw_water', 'source', ['farming'], 'well_water', 4),
+  // Freshwater intake straight from an adjacent river — only granted where a river really flows.
+  r('draw_river_water', 'source', ['river_access'], 'well_water', 4),
+  // Small, ecologically capped hunting/foraging in wild land (forest/hills/swamp/plains/tundra).
+  r('hunt_game', 'source', ['hunting'], 'raw_meat', 2),
   r('burn_charcoal', 'producer', ['logging'], 'charcoal', 3, [['raw_timber', 2]]),
   r('build_granary', 'producer', ['construction'], 'granary_storage', 2, [['lumber', 2]]),
   r('scribe_documents', 'producer', ['crafting'], 'scribed_documents', 1, [['raw_hide', 1]]),

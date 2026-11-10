@@ -51,6 +51,20 @@ export const STARTER_WELL: StarterContract = {
   // Rating 3/unit mirrors the food calibration: water need ≈ 40% of the food need per soul.
   basketOutputs: { drinking_water: 3 }, jobsCapacity: 25,
 };
+export const STARTER_RIVER_WATER: StarterContract = {
+  name: 'Říční odběr vody', category: 'infrastructure',
+  description: 'Nosiči a vědra u sousední řeky: pitná voda bez studny, s vlastní prací.',
+  recipeKeys: ['draw_river_water'], roles: ['source'], tags: ['river_access'],
+  // Same throughput per crew as a well — free water would erase the reason to build wells.
+  basketOutputs: { drinking_water: 3 }, jobsCapacity: 25,
+};
+export const STARTER_HUNT: StarterContract = {
+  name: 'Lovecko-sběračská chata', category: 'economic',
+  description: 'Lov zvěře a sběr v okolní divočině. Malá, ekologicky omezená obživa.',
+  recipeKeys: ['hunt_game'], roles: ['source'], tags: ['hunting'],
+  // Fixed small yield (never scaled with population): wild land feeds a hamlet supplement, not a city.
+  basketOutputs: { staple_food: 1.5 }, jobsCapacity: 12,
+};
 export const STARTER_STORAGE: StarterContract = {
   name: 'Osadní sklad', category: 'economic',
   description: 'Sýpka a sklad, kde osada uchová úrodu a zásoby.',
@@ -70,8 +84,43 @@ export const STARTER_FUEL: StarterContract = {
 /** No fuel source is claimed where the land offers none (desert/dunes). */
 export const hasFuelLand = (biome: string | null | undefined) => !/desert|arid|dune/i.test(biome || '');
 
-export const starterBundle = (nearWater: boolean, fuelLand = true): StarterContract[] =>
-  [nearWater ? STARTER_FISHERY : STARTER_FARM, STARTER_WELL, STARTER_STORAGE, ...(fuelLand ? [STARTER_FUEL] : [])];
+/** Wild land a small hunting/foraging crew can work. Desert, bare mountains and sea give none. */
+export const hasGameLand = (biomes: (string | null | undefined)[]) =>
+  biomes.some((b) => /forest|hills|swamp|plains|tundra|grass|steppe|taiga|jungle/i.test(b || ''));
+
+export type StarterGeography = {
+  /** Fishable water nearby (river or sea coast). */
+  fishWater: boolean;
+  /** Real FRESH water (a river) on or next to the seat. Sea/coast is never drinking water. */
+  freshwater: boolean;
+  fuelLand?: boolean;
+  gameLand?: boolean;
+};
+
+export function starterBundle(geo: StarterGeography | boolean, legacyFuelLand = true): StarterContract[] {
+  const g: StarterGeography = typeof geo === 'boolean'
+    ? { fishWater: geo, freshwater: false, fuelLand: legacyFuelLand, gameLand: false }
+    : geo;
+  return [
+    g.fishWater ? STARTER_FISHERY : STARTER_FARM,
+    g.freshwater ? STARTER_RIVER_WATER : STARTER_WELL,
+    ...(g.gameLand ? [STARTER_HUNT] : []),
+    STARTER_STORAGE,
+    ...(g.fuelLand !== false ? [STARTER_FUEL] : []),
+  ];
+}
+
+/** Classifies the seat's neighbourhood (3×3 window) from the hex table. */
+export function starterGeography(hexes: { q: number; r: number; has_river?: boolean | null; biome_family?: string | null }[], x: number, y: number): StarterGeography {
+  const window = hexes.filter((h) => Math.abs(h.q - x) <= 1 && Math.abs(h.r - y) <= 1);
+  const seat = window.find((h) => h.q === x && h.r === y);
+  return {
+    freshwater: window.some((h) => !!h.has_river && !/sea|ocean/i.test(h.biome_family || '')),
+    fishWater: window.some((h) => !!h.has_river || /water|ocean|sea|lake|coast/i.test(h.biome_family || '')),
+    fuelLand: hasFuelLand(seat?.biome_family),
+    gameLand: hasGameLand(window.filter((h) => !h.has_river || true).map((h) => h.biome_family)),
+  };
+}
 
 /**
  * A seeded settlement must actually be able to feed and water itself with the people it has.
@@ -106,7 +155,7 @@ export const starterReserveFor = (population: number, fuelLand = true): Record<s
   return { raw_grain: round(pop * 0.025), ...(fuelLand ? { peat: round(pop * 0.015) } : {}) };
 };
 
-const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE && c !== STARTER_FUEL;
+const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE && c !== STARTER_FUEL && c !== STARTER_HUNT;
 
 export const starterEffects = (c: StarterContract, population: number) => {
   const units = scalesWithPopulation(c) ? starterUnitsFor(population) : 1;
@@ -120,6 +169,8 @@ export const starterEffects = (c: StarterContract, population: number) => {
   };
 };
 
+
+const WATER_RECIPES = new Set(['draw_water', 'draw_river_water']);
 
 export type StarterReport = {
   city: string; city_name: string; added: string[]; existing: string[]; resized: string[]; units: number;
@@ -144,14 +195,6 @@ export async function ensureStarterEconomy(
   ]);
   for (const result of loaded) if (result.error) throw new Error(result.error.message);
   const [{ data: cities }, { data: buildings }, { data: hexes }] = loaded;
-  const water = new Set((hexes || [])
-    .filter((h: any) => h.has_river || /water|ocean|sea|lake|coast/i.test(h.biome_family || ''))
-    .map((h: any) => `${h.q},${h.r}`));
-  const biomeAt = new Map((hexes || []).map((h: any) => [`${h.q},${h.r}`, h.biome_family]));
-  const near = (x: number, y: number) => {
-    for (let dq = -1; dq <= 1; dq++) for (let dr = -1; dr <= 1; dr++) if (water.has(`${x + dq},${y + dr}`)) return true;
-    return false;
-  };
   const rows: any[] = [];
   const resizes: { id: string; effects: any }[] = [];
   const storageUpgrades: { id: string; effects: any }[] = [];
@@ -160,13 +203,17 @@ export async function ensureStarterEconomy(
     const own = (buildings || []).filter((b: any) => b.city_id === city.id);
     const population = Number(city.population_total) || 0;
     const cx = Number(city.grid_x ?? city.province_q) || 0, cy = Number(city.grid_y ?? city.province_r) || 0;
-    const bundle = starterBundle(near(cx, cy), hasFuelLand(biomeAt.get(`${cx},${cy}`) as string));
+    const bundle = starterBundle(starterGeography(hexes || [], cx, cy));
     const added: string[] = [], existing: string[] = [], resized: string[] = [];
     for (const contract of bundle) {
       const effects = starterEffects(contract, population);
       // Prefer our own bundle over a later player-built structure with the same recipe.
+      // Any existing drinking-water source (well/aqueduct/river intake) satisfies the water slot,
+      // so an old save never gets a second, duplicate water producer.
+      const sameSlot = (k: string) => contract.recipeKeys.includes(k)
+        || (WATER_RECIPES.has(k) && contract.recipeKeys.some((c) => WATER_RECIPES.has(c)));
       const match = own.find((b: any) => b.effects?.starter_economy && b.name === contract.name) || own.find((b: any) => b.name === contract.name ||
-        (b.effects?.recipe_keys || []).some((k: string) => contract.recipeKeys.includes(k)));
+        (b.effects?.recipe_keys || []).some(sameSlot));
       if (match) {
         existing.push(contract.name);
         // EXPLICIT UPGRADE (opt-in): an old starter storehouse gets its real storage service.
