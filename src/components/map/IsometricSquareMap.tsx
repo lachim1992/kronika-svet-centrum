@@ -928,7 +928,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     parcel.status === "claimed" || parcel.status === "occupied" ? sum + (parcel.capacity_slots || 0) : sum, 0), [tileParcels]);
   // Only your own city can buy parcels — a rival settlement must never offer the action.
   const claimHost = [selectedCity, expansionCity].find(city => city?.owner_player === playerName);
-  const claimedForCity = useMemo(() => tileParcels.filter(parcel => parcel.city_id && parcel.city_id === claimHost?.id).length, [tileParcels, claimHost]);
+  // The server prices a claim by ALL parcels the city holds (claimed/occupied, on every cell),
+  // not just the ones on the inspected cell — count the same way so the shown price matches.
+  const [claimedForCity, setClaimedForCity] = useState(0);
+  const claimHostId = claimHost?.id;
+  const loadClaimedForCity = useCallback(async () => {
+    if (!claimHostId) { setClaimedForCity(0); return; }
+    const { count } = await supabase.from("tile_parcels").select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId).eq("city_id", claimHostId).in("status", ["claimed", "occupied"]);
+    setClaimedForCity(count || 0);
+  }, [sessionId, claimHostId]);
+  useEffect(() => { void loadClaimedForCity(); }, [loadClaimedForCity, tileParcels]);
 
   const claimParcel = async (parcel: TileParcel) => {
     if (!claimHost || !selectedCell) return;

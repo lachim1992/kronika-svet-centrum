@@ -363,3 +363,10 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [ ] JV72O7 sees the fuel fix on its next refresh/turn; no stored data changed.
 - [ ] Fuel above 80 % needs the tier share raised or more peat capacity — balancing decision.
 - [ ] 18 low-risk narrative tables still member-writable (wiki, chronicle, feed, logs).
+
+## JV72O7 reset (2026-11-10, archive-and-replace)
+- [x] create-world-bootstrap now authorizes the caller (creator/member/admin/service); anon → 401
+- [x] Old game kept intact under room code JV7OLD (id e62622b3…, turn 3); nothing deleted
+- [x] New JV72O7 (id f6c240d0-bc30-49fc-aa28-526bfe7dd4f9) generated via create-world-bootstrap with the same spec seed/settings/identity/AI; turn 1, ready
+- [x] Turn 1: all 3 capitals food/water/fuel 100 %, no famine, 50 workers/75 jobs, starter grain 2.5 + peat 1.5 once; double derived refresh idempotent
+- [ ] Frontend publish blocked by remaining error-level security scan findings (e.g. league_teams)
