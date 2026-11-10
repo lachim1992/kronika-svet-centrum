@@ -370,3 +370,4 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] New JV72O7 (id f6c240d0-bc30-49fc-aa28-526bfe7dd4f9) generated via create-world-bootstrap with the same spec seed/settings/identity/AI; turn 1, ready
 - [x] Turn 1: all 3 capitals food/water/fuel 100 %, no famine, 50 workers/75 jobs, starter grain 2.5 + peat 1.5 once; double derived refresh idempotent
 - [ ] Frontend publish blocked by remaining error-level security scan findings (e.g. league_teams)
+- [x] River water + hunting: draw_river_water (river only, never sea) replaces the starter well; small non-scaling hunt_game in wild biomes; tests in starter-geography.test.ts; JV72O7 regenerated (id d379caff…), previous turn-1 copy kept as JV7OL2
