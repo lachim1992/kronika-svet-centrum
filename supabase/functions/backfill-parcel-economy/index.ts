@@ -26,6 +26,7 @@ Deno.serve(async req=>{
       for(const p of parcels)proposed.set(`${p.grid_x}:${p.grid_y}:${p.parcel_index}`,p);
       const allParcels=[...proposed.values()];
       const preview=await computeCanonicalEconomy(db,body.session_id,{parcelPreview:allParcels,readOnly:true});
+      if(!('result' in preview))throw new Error('Read-only economy snapshot unavailable');
       const coverage=preview.marketBaskets.filter((b:any)=>['staple_food','drinking_water','fuel'].includes(b.basket_key));
       // Refuse a live rollout that would worsen the current city's subsistence. No magic compensation.
       const old=await db.from('city_market_baskets').select('city_id,basket_key,domestic_satisfaction').eq('session_id',body.session_id).eq('turn_number',prepared.turn);
