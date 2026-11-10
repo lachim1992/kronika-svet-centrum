@@ -78,7 +78,7 @@ describe('food shortage severity', () => {
 describe('starter bundle', () => {
   it('storehouse is a storage service without a lumber recipe; fuel only on fuel land', () => {
     const e = starterEffects(STARTER_STORAGE, 100);
-    expect(e.storage_capacity).toBe(1);
+    expect((e as any).storage_capacity).toBe(1);
     expect(e.recipe_keys).toEqual([]);
     expect(starterBundle(true, true).some(c => c.recipeKeys.includes('cut_peat'))).toBe(true);
     expect(starterBundle(true, false).some(c => c.recipeKeys.includes('cut_peat'))).toBe(false);
