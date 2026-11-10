@@ -24,6 +24,8 @@ type StarterContract = {
    * its physical throughput.
    */
   jobsCapacity: number;
+  /** Non-production effects (e.g. storage_capacity). A pure service structure has no recipe. */
+  extraEffects?: Record<string, number>;
 };
 
 export const STARTER_FARM: StarterContract = {
@@ -52,14 +54,24 @@ export const STARTER_WELL: StarterContract = {
 export const STARTER_STORAGE: StarterContract = {
   name: 'Osadní sklad', category: 'economic',
   description: 'Sýpka a sklad, kde osada uchová úrodu a zásoby.',
-  recipeKeys: ['build_granary'], roles: ['producer'], tags: ['construction'],
-  // Part-time crew: a hamlet's granary does not employ a full production crew.
-  basketOutputs: { storage_logistics: 1 }, jobsCapacity: 25,
+  // A STORAGE SERVICE, not a factory: an already built storehouse gives real storage capacity
+  // without consuming lumber. Building NEW granaries still uses the build_granary recipe elsewhere.
+  recipeKeys: [], roles: [], tags: ['storage'],
+  basketOutputs: {}, jobsCapacity: 0, extraEffects: { storage_capacity: 1 },
+};
+export const STARTER_FUEL: StarterContract = {
+  name: 'Osadní sběr paliva', category: 'economic',
+  description: 'Rašeliniště a sběr klestí: základní palivo a teplo pro osadu.',
+  recipeKeys: ['cut_peat'], roles: ['source'], tags: ['gathering'],
+  // Small part-time crew; rating covers ~100 souls' fuel need at normal stability.
+  basketOutputs: { fuel: 1.5 }, jobsCapacity: 10,
 };
 
+/** No fuel source is claimed where the land offers none (desert/dunes). */
+export const hasFuelLand = (biome: string | null | undefined) => !/desert|arid|dune/i.test(biome || '');
 
-export const starterBundle = (nearWater: boolean): StarterContract[] =>
-  [nearWater ? STARTER_FISHERY : STARTER_FARM, STARTER_WELL, STARTER_STORAGE];
+export const starterBundle = (nearWater: boolean, fuelLand = true): StarterContract[] =>
+  [nearWater ? STARTER_FISHERY : STARTER_FARM, STARTER_WELL, STARTER_STORAGE, ...(fuelLand ? [STARTER_FUEL] : [])];
 
 /**
  * A seeded settlement must actually be able to feed and water itself with the people it has.
@@ -85,7 +97,7 @@ export const starterJobsFor = (c: StarterContract, population: number): number =
   return Math.max(10, Math.min(units * c.jobsCapacity, Math.round(pop * 0.3)));
 };
 
-const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE;
+const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE && c !== STARTER_FUEL;
 
 export const starterEffects = (c: StarterContract, population: number) => {
   const units = scalesWithPopulation(c) ? starterUnitsFor(population) : 1;
@@ -94,8 +106,8 @@ export const starterEffects = (c: StarterContract, population: number) => {
   );
   return {
     recipe_keys: c.recipeKeys, production_roles: c.roles, capability_tags: c.tags,
-    basket_outputs: outputs, jobs_capacity: starterJobsFor(c, population),
-    starter_economy: true,
+    basket_outputs: outputs, ...(c.recipeKeys.length ? { jobs_capacity: starterJobsFor(c, population) } : {}),
+    ...(c.extraEffects || {}), starter_economy: true,
   };
 };
 
@@ -126,6 +138,7 @@ export async function ensureStarterEconomy(
   const water = new Set((hexes || [])
     .filter((h: any) => h.has_river || /water|ocean|sea|lake|coast/i.test(h.biome_family || ''))
     .map((h: any) => `${h.q},${h.r}`));
+  const biomeAt = new Map((hexes || []).map((h: any) => [`${h.q},${h.r}`, h.biome_family]));
   const near = (x: number, y: number) => {
     for (let dq = -1; dq <= 1; dq++) for (let dr = -1; dr <= 1; dr++) if (water.has(`${x + dq},${y + dr}`)) return true;
     return false;
@@ -136,7 +149,8 @@ export async function ensureStarterEconomy(
   for (const city of (cities || []).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)))) {
     const own = (buildings || []).filter((b: any) => b.city_id === city.id);
     const population = Number(city.population_total) || 0;
-    const bundle = starterBundle(near(Number(city.grid_x ?? city.province_q) || 0, Number(city.grid_y ?? city.province_r) || 0));
+    const cx = Number(city.grid_x ?? city.province_q) || 0, cy = Number(city.grid_y ?? city.province_r) || 0;
+    const bundle = starterBundle(near(cx, cy), hasFuelLand(biomeAt.get(`${cx},${cy}`) as string));
     const added: string[] = [], existing: string[] = [], resized: string[] = [];
     for (const contract of bundle) {
       const effects = starterEffects(contract, population);
