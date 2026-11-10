@@ -68,7 +68,13 @@ function waterDistanceField(cells: RiverCell[]): Map<string, number> {
  * Builds the river network for one world.
  * `seed` keeps the layout stable for the same world seed.
  */
-export function buildRiverNetwork(seed: string, cells: RiverCell[], maxLength = 14): RiverResult {
+export function buildRiverNetwork(
+  seed: string,
+  cells: RiverCell[],
+  opts: number | { maxLength?: number; landPerRiver?: number; minRivers?: number } = 14,
+): RiverResult {
+  const o = typeof opts === "number" ? { maxLength: opts } : opts;
+  const maxLength = o.maxLength ?? 14, landPerRiver = o.landPerRiver ?? 55, minRivers = o.minRivers ?? 3;
   const lookup = new Map<string, RiverCell>();
   for (const cell of cells) lookup.set(key(cell.gridX, cell.gridY), cell);
   const toWater = waterDistanceField(cells);
@@ -85,7 +91,7 @@ export function buildRiverNetwork(seed: string, cells: RiverCell[], maxLength = 
     }))
     .sort((a, b) => b.score - a.score);
 
-  const target = Math.max(3, Math.round(land.length / 55));
+  const target = Math.max(minRivers, Math.round(land.length / landPerRiver));
   const rivers = new Map<string, string>();
   const sources: RiverCell[] = [];
 

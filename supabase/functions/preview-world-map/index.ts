@@ -11,6 +11,8 @@
 // Out of scope: caching, rate limiting, faction placement.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { buildRiverNetwork } from "../_shared/riverNetwork.ts";
+import { normalizeGameSettings, riverOptions } from "../_shared/worldGameSettings.ts";
 import { resolveMapSize, type WorldSize } from "../_shared/world-sizes.ts";
 
 const corsHeaders = {
@@ -30,6 +32,7 @@ interface PreviewRequest {
     mountainDensity: number;
     biomeWeights?: Record<string, number>;
   };
+  gameSettings?: unknown;
 }
 
 interface PreviewHex {
@@ -37,6 +40,7 @@ interface PreviewHex {
   r: number;
   terrain: string;
   elevation: number;
+  river?: string | null;
 }
 
 interface PreviewResponse {
@@ -213,6 +217,10 @@ Deno.serve(async (req) => {
       hexes.push({ q, r, terrain, elevation: elev });
     }
 
+    // Rivers: same terrain-following network as the real engine, tuned by the player's settings.
+    const network = buildRiverNetwork(seed, hexes.map((h) => ({ gridX: h.q, gridY: h.r, elevation: h.elevation * 100, isWater: h.terrain === "water" })),
+      riverOptions(normalizeGameSettings(body.gameSettings)));
+    for (const h of hexes) if (h.terrain !== "water") h.river = network.cells.get(`${h.q},${h.r}`) ?? null;
     const landRatioResolved = actualLand / totalCells;
     // Rough estimate: ~1 start position per 80 land hexes, min 2, max 8.
     const estimatedStartPositions = Math.max(2, Math.min(8, Math.round(actualLand / 80)));

@@ -172,7 +172,8 @@ Deno.serve(async (req) => {
     const totalHexes = hexes.length;
     const density = totalHexes < 400 ? 0.06 : totalHexes <= 1200 ? 0.05 : 0.04;
     const computedCount = Math.max(12, Math.round(totalHexes * density));
-    const targetCount = requestedCount ?? computedCount;
+    const mult = Number.isFinite(Number(body.density_multiplier)) ? Math.max(0, Number(body.density_multiplier)) : 1;
+    const targetCount = requestedCount ?? (mult === 0 ? 0 : Math.max(mult < 1 ? 6 : 12, Math.round(totalHexes * density * mult)));
     const slots = shuffled.slice(0, Math.min(targetCount, shuffled.length));
     console.log(`[neutral-nodes] hexes=${totalHexes} density=${density} target=${targetCount} candidates=${candidates.length}`);
 

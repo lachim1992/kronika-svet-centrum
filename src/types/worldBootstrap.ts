@@ -143,6 +143,8 @@ export interface CreateWorldBootstrapRequest {
   lineageIds?: string[];
   factions?: FactionSeedInput[];
   server?: ServerBootstrapInput;
+  /** Player-chosen world settings (rivers, opponents, cities, wealth, spacing). */
+  gameSettings?: import("@/lib/worldGameSettings").WorldGameSettings;
 }
 
 export interface BootstrapStepRecord {

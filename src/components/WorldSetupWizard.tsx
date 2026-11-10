@@ -28,6 +28,8 @@ import { SpecReviewSummary } from "./world-setup/SpecReviewSummary";
 import { SpecFieldEditor } from "./world-setup/SpecFieldEditor";
 import { BlueprintStaleWarning } from "./world-setup/BlueprintStaleWarning";
 import { AdvancedTerrainPanel } from "./world-setup/AdvancedTerrainPanel";
+import { WorldSettingsPanel } from "./world-setup/WorldSettingsPanel";
+import type { WorldGameSettings } from "@/lib/worldGameSettings";
 import { SchematicMapPreview, type PreviewHex } from "./world-setup/SchematicMapPreview";
 import { LineageSelector } from "./world-setup/LineageSelector";
 import {
@@ -112,6 +114,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   }, [playerName]);
 
   // Bootstrap progress
+  const [gameSettings, setGameSettings] = useState<WorldGameSettings>({});
   const [creating, setCreating] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState<number | undefined>(undefined);
   const [receivedSteps, setReceivedSteps] = useState<CreateWorldBootstrapResponse["steps"]>(undefined);
@@ -232,7 +235,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     if (!resolved) return;
     setPreviewLoading(true);
     try {
-      const payload = composePreviewFromSpec(resolved);
+      const payload = composePreviewFromSpec(resolved, gameSettings);
       const { data, error } = await supabase.functions.invoke("preview-world-map", { body: payload });
       if (error) throw new Error(error.message || "Preview selhal");
       if (!data?.ok) throw new Error(data?.error || "Preview vrátil chybu");
@@ -339,6 +342,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         identity,
         identityModifiers: identityModifiers ?? undefined,
         lineageIds: selectedLineages,
+        gameSettings,
       });
 
       // Diagnostika: vypiš co posíláme do bootstrapu (frakce, identita, lineages).
@@ -541,6 +545,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
               {resolved && (
                 <>
+                  <Card className="p-3 sm:p-4">
+                    <WorldSettingsPanel
+                      value={gameSettings}
+                      onChange={setGameSettings}
+                      opponents={isMPMode ? undefined : resolved.factionCount}
+                      onOpponentsChange={isMPMode ? undefined : (n) => editField("factionCount", n)}
+                      disabled={isBusy}
+                    />
+                  </Card>
+
                   <Card className="p-3 sm:p-4 space-y-3">
                     <SpecReviewSummary resolved={resolved} warnings={state.warnings} />
                   </Card>

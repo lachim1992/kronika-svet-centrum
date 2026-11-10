@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateWorldTerrain, hashSeed, type TerrainParams } from "../_shared/terrain.ts";
 import { buildRiverNetwork, type RiverCell } from "../_shared/riverNetwork.ts";
+import { normalizeGameSettings, riverOptions, realmSpacingFactor } from "../_shared/worldGameSettings.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -82,6 +83,9 @@ Deno.serve(async (req) => {
     // Accept v9 geographyBlueprint embedded in terrain_params and translate
     // to the legacy {ridges:{x1,y1,x2,y2,width}} shape consumed by terrain.ts.
     const tParams: TerrainParams = { ...(terrain_params || {}) };
+    const gameSettings = normalizeGameSettings((terrain_params || {}).gameSettings);
+    delete (tParams as any).gameSettings;
+    tParams.realmSpacing = realmSpacingFactor(gameSettings.realmDistance);
     const v9bp = (terrain_params || {}).geographyBlueprint;
     if (v9bp && Array.isArray(v9bp.ridges) && v9bp.ridges.length > 0) {
       const legacyRidges = v9bp.ridges.map((r: any) => ({
@@ -181,7 +185,7 @@ Deno.serve(async (req) => {
         elevation: Number(row.mean_height ?? 40),
         isWater: String(row.biome_family || "").toLowerCase() === "sea" || Number(row.mean_height ?? 40) < 8,
       }));
-      const network = buildRiverNetwork(worldSeed, riverCells);
+      const network = buildRiverNetwork(worldSeed, riverCells, riverOptions(gameSettings));
       hexRows.forEach((row, index) => {
         const cell = riverCells[index];
         const direction = network.cells.get(`${cell.gridX},${cell.gridY}`) ?? null;

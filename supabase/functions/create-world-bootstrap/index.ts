@@ -1,4 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
+import { normalizeGameSettings, neutralMultiplier } from "../_shared/worldGameSettings.ts";
 // create-world-bootstrap — Unified World Bootstrap v1
 //
 // Single canonical entrypoint for world creation across all game modes.
@@ -31,7 +32,7 @@ import type {
   WorldgenSpecV1,
 } from "../_shared/world-bootstrap-types.ts";
 
-type LegacySpec = WorldgenSpecV1 & LegacyWorldgenSpecFields;
+type LegacySpec = WorldgenSpecV1 & LegacyWorldgenSpecFields & { gameSettings?: unknown };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -140,6 +141,7 @@ function buildWorldgenSpecV1(req: NormalizedRequest): LegacySpec {
     },
     resolvedSize: resolved,
     terrain: req.resolvedTerrain,
+    gameSettings: req.gameSettings,
     geographyBlueprint: incomingBlueprint || {
       ridges: [],
       biomeZones: [],
@@ -463,7 +465,7 @@ Deno.serve(async (req) => {
       const r = await fetch(`${SUPABASE_URL}/functions/v1/generate-neutral-nodes`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-        body: JSON.stringify({ session_id: normalized.sessionId }),
+        body: JSON.stringify({ session_id: normalized.sessionId, density_multiplier: neutralMultiplier(normalizeGameSettings(normalized.gameSettings).neutralTowns) }),
       });
       steps.push({ step: "generate-neutral-nodes", ok: r.ok, durationMs: performance.now() - t7aN, detail: r.ok ? "ok" : `status=${r.status}` });
       if (!r.ok) warnings.push(`generate-neutral-nodes: status=${r.status}`);
@@ -579,6 +581,7 @@ Deno.serve(async (req) => {
         dominantFaith: normalized.identity?.dominantFaith,
         secretObjectiveArchetype: normalized.identity?.secretObjectiveArchetype,
         factionConfigs: normalized.factions,
+        gameSettings: normalized.gameSettings,
         terrainParams: normalized.resolvedTerrain,
         skipPhysicalWorld: true,
       };
@@ -771,6 +774,7 @@ async function invokeGenerateWorldMap(
       terrain_params: {
         ...spec.terrain,
         geographyBlueprint: spec.geographyBlueprint,
+        gameSettings: (spec as any).gameSettings,
       },
     }),
   });
@@ -822,6 +826,7 @@ async function runModeSpecificSeeding(
             languageName: req.identity?.languageName,
             realmName: req.identity?.realmName,
             factionConfigs: req.factions,
+            gameSettings: req.gameSettings,
             terrainParams: req.resolvedTerrain,
             mapWidth: undefined,
             mapHeight: undefined,

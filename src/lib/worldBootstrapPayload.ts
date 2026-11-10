@@ -1,3 +1,4 @@
+import type { WorldGameSettings } from "@/lib/worldGameSettings";
 // Canonical payload composer.
 //
 // Inkrement 3 v9: composer derives bootstrap & preview payloads from the
@@ -101,6 +102,7 @@ export function composeBootstrapFromSpec(args: {
   identityModifiers?: ExtractedCivIdentity;
   lineageIds?: string[];
   factions?: FactionSeedInput[];
+  gameSettings?: WorldGameSettings;
 }): CreateWorldBootstrapRequest {
   const { spec } = args;
   return {
@@ -132,11 +134,13 @@ export function composeBootstrapFromSpec(args: {
     identityModifiers: args.identityModifiers,
     lineageIds: args.lineageIds,
     factions: args.factions,
+    gameSettings: { ...args.gameSettings, aiOpponents: spec.factionCount },
   };
 }
 
-export function composePreviewFromSpec(spec: WorldgenSpecV1): PreviewWorldMapRequest {
+export function composePreviewFromSpec(spec: WorldgenSpecV1, gameSettings?: WorldGameSettings): PreviewWorldMapRequest & { gameSettings?: WorldGameSettings } {
   return {
+    gameSettings,
     size: spec.userIntent.size,
     seed: spec.seed,
     terrain: {

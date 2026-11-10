@@ -305,3 +305,6 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - BLOCKED: derived refresh not run — refresh-economy needs a signed-in member (401); no snapshot changes made. Invariants t27: turn 27, resolving NULL, gold 1,005,472, pop 85,098, buildings 94, history hash 2546a8f1….
 - OPEN (gameplay/balance, not bug): more flour needs grain reaching Háj/Grad mills (cheaper road/closer farms) or more Pole mills/farms. Unverified: why Pole mills used only 60 % of planned grain.
 - NEXT: P1 money audit (wage rates → payroll → settlement → household income; producer cash/ownership vs treasury/GDP/tariffs).
+
+## World creation settings (2026-11-10)
+- DONE/TESTED: wizard box "Nastavení světa" (opponents, AI difficulty, starting cities, starting wealth; advanced: river amount/length, neutral towns, realm distance) → create-world-bootstrap → map/neutral/init; preview draws rivers. Test src/test/world-game-settings.test.ts. Not yet verified by creating a real world.

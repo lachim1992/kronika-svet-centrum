@@ -7,6 +7,7 @@ export interface PreviewHex {
   r: number;
   terrain: string; // "water" | "plains" | "forest" | "hills" | "mountain" | "desert" | "tundra" | "coast"
   elevation?: number;
+  river?: string | null;
 }
 
 interface SchematicMapPreviewProps {
@@ -281,6 +282,16 @@ export const SchematicMapPreview = ({
         ctx.closePath();
         ctx.fillStyle = colorFor(h.terrain);
         ctx.fill();
+        if (h.river) {
+          const d = h.river === "east" ? [1, 0] : h.river === "west" ? [-1, 0] : h.river === "south" ? [0, 1] : [0, -1];
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + d[0] * hexW, cy + d[1] * hexH * 0.75);
+          ctx.strokeStyle = "#60a5fa";
+          ctx.lineWidth = Math.max(1, hexSize * 0.45);
+          ctx.lineCap = "round";
+          ctx.stroke();
+        }
       }
     }
   }, [

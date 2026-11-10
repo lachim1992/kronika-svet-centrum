@@ -452,6 +452,7 @@ export interface TerrainParams {
   coastalRichness?: number;      // 0-1, default 0.5
   biomeWeights?: Record<string, number>; // multipliers per biome
   geoBlueprint?: GeographyBlueprint;    // AI-generated geographic directives
+  realmSpacing?: number;         // fraction of half-map between realm starts (default 0.4)
 }
 
 export function generateWorldTerrain(
@@ -613,7 +614,7 @@ export function generateWorldTerrain(
 
         // If cell is isolated (no neighbor shares its biome), adopt majority
         if (nbCount >= 4 && !(nbBiomes[cell.biome])) {
-          let maxBiome = cell.biome;
+          let maxBiome: BiomeFamily = cell.biome;
           let maxCount = 0;
           for (const [b, c] of Object.entries(nbBiomes)) {
             if (b !== "sea" && b !== "mountains" && c > maxCount) {
@@ -741,7 +742,7 @@ export function generateWorldTerrain(
   const totalHexes = hexes.length;
 
   // ── Phase 7: Start positions ──
-  const startPositions = findStartPositions(hexes, halfW, halfH);
+  const startPositions = findStartPositions(hexes, halfW, halfH, params.realmSpacing);
 
   return {
     hexes,
@@ -761,6 +762,7 @@ function findStartPositions(
   hexes: HexData[],
   halfW: number,
   halfH: number,
+  spacing = 0.4,
 ): Array<{ q: number; r: number }> {
   const landHexes = hexes.filter(h =>
     h.biomeFamily !== "sea" && h.biomeFamily !== "mountains" && h.biomeFamily !== "swamp"
@@ -786,7 +788,7 @@ function findStartPositions(
 
   scored.sort((a, b) => b.score - a.score);
 
-  const MIN_SPACING = Math.max(6, Math.floor(Math.min(halfW, halfH) * 0.4));
+  const MIN_SPACING = Math.max(spacing < 0.4 ? 4 : 6, Math.floor(Math.min(halfW, halfH) * spacing));
   const positions: Array<{ q: number; r: number }> = [];
 
   for (const candidate of scored) {
