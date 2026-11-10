@@ -341,3 +341,11 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - NOTE: slice-3 commits (reserve, habitable start, auth policy/tests, roadmap) were missing from the branch after a parallel push and were restored in slice 4.
 - OPEN (P2, deliberately not started): rural-population labour for nodes — needs SSOT identity (hex_population vs cities) and workforce conservation proof first.
 - OPEN: 200-turn deterministic sim of the starter fixture; starter inter-capital connectivity for new worlds (needs decision).
+
+## Long-horizon slice (2026-11-10)
+- [x] 200-turn harness `src/test/long-horizon-economy.test.ts` (real solver, growth, stocks, paid/staffed investment, KPIs at 5/20/67/200, no-investment stagnation, flood/crop shock famine + recovery).
+- [x] Proven late-save cause (TEST01 t67, TEST02 t27, read-only): cities grew to 2–10k while jobs stayed 400–900 (thousands idle) and only 4/12 primary buildings existed; blockers mostly `source_empty`. Fix: `_shared/subsistenceBuild.ts` deterministic AI farm/well/peat build (deployed in ai-faction-turn).
+- [ ] Real-game population growth is not gated by food/water coverage (saves grew to 10k while starving) — verify demography in process-turn.
+- [ ] Player-side guidance for the same remedy (UI hint), human players still must build.
+- [ ] Optional capital-to-capital footpath at world creation — not done (strategy-changing; needs user decision).
+- [ ] P2 rural workers: not implemented. Harness shows no systemic starvation without it (idle urban labour is abundant); bottleneck is missing primary buildings, not workers.
