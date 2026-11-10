@@ -8,6 +8,8 @@ import { demandShares, functionalValue, substitutionEfficiency, discretionaryBud
 import { BASKET_KEYS, DEMAND_CHANNELS, basketDemandChannels, basketSpec, channelTotal, emptyChannels,
   toolIntensityOf, toolProductivityMultiplier, DEMAND, type DemandChannel, type DemandInput } from './demandModel.ts';
 
+/** Priority order for the labour pass: food+water up to full household need, then fuel minimum. */
+export const SUBSISTENCE_TIERS:{baskets:string[];share:number}[]=[{baskets:['staple_food','drinking_water'],share:1},{baskets:['fuel'],share:0.8}];
 export type Channel = 'household' | 'node' | 'facility' | 'district';
 export interface Good {
   key: string; basket: string; price: number; stage: string; storable: boolean;
@@ -54,6 +56,8 @@ export interface CityLabor { city: string; population: number; economically_acti
   retrained?: number;
   /** Idle people while jobs stand empty — the sector mismatch, not a general labour shortage. */
   structural_unemployed?: number;
+  /** Workers placed first on food/water (then fuel minimum) up to household need. */
+  critical_priority_employed?: number;
   sectors: Record<string, { labor_supply: number; jobs_capacity: number; employed: number; vacancies: number; labor_shortage: number; transferred_in?: number; service_jobs?: number; service_employed?: number }>;
   /** Trade-service jobs from formal commercial infrastructure (logistics sector, filled after goods producers). */
   service?: { infrastructure: number; jobs: number; employed: number; staffing: number } }
@@ -354,6 +358,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     return declared*clamp(p.allocation)*clamp(p.staffing);
   };
 
+  /** Household need of a basket (same formula as basketDemandChannels.household_need). */
+  const subsistenceNeed=(c:City,basket:string)=>{
+    const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
+    return basketDemandChannels(basket,{weightedPop,populationRate:C.populationDemand} as DemandInput).household_need||0;};
   const laborSupply=(c:City,sector:Sector)=>workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
   const employed=new Map<string,number>();
   const laborMetrics:CityLabor[]=[];
@@ -388,10 +396,30 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const deficit=plan.reduce((s,r)=>s+Math.max(0,r.jobs-r.supply),0);
     const moved=Math.min(surplus*mobility,deficit);
     if(moved>C.epsilon&&deficit>C.epsilon)for(const r of plan)r.transferred=moved*Math.max(0,r.jobs-r.supply)/deficit;
+    let priorityEmployed=0;
     for(const r of plan){
       const available=r.supply+r.transferred;
-      const goodsUsed=Math.min(available,r.goodsJobs),fill=r.goodsJobs>C.epsilon?goodsUsed/r.goodsJobs:0;
-      for(const p of r.own)employed.set(p.id,jobsOf(p)*fill);
+      const goodsUsed=Math.min(available,r.goodsJobs);
+      // SUBSISTENCE PRIORITY: inside the sector, crews for food and drinking water (then a fuel
+      // minimum) are filled first, only up to the jobs needed for the city's household need;
+      // the rest of the sector's workers are shared proportionally. Same people, same jobs —
+      // output per worker is unchanged, nobody is counted twice.
+      const assigned=new Map<string,number>();let left=goodsUsed,priority=0;
+      for(const tier of SUBSISTENCE_TIERS){
+        for(const basket of tier.baskets){
+          let need=subsistenceNeed(c,basket)*tier.share;
+          const cands=r.own.filter(p=>goodByKey.get(p.recipe.good)?.basket===basket&&jobsOf(p)>C.epsilon)
+            .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*clamp(c.stability)*clamp(p.logistics)/jobsOf(p)}))
+            .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
+          for(const {p,per} of cands){if(left<=C.epsilon||need<=C.epsilon)break;
+            const take=Math.min(left,jobsOf(p)-(assigned.get(p.id)||0),need/per);if(take<=C.epsilon)continue;
+            assigned.set(p.id,(assigned.get(p.id)||0)+take);left-=take;need-=take*per;priority+=take;}
+        }
+      }
+      const restJobs=r.own.reduce((s,p)=>s+Math.max(0,jobsOf(p)-(assigned.get(p.id)||0)),0);
+      const fill=restJobs>C.epsilon?Math.min(1,left/restJobs):0;
+      for(const p of r.own)employed.set(p.id,(assigned.get(p.id)||0)+Math.max(0,jobsOf(p)-(assigned.get(p.id)||0))*fill);
+      priorityEmployed+=priority;
       const serviceEmployed=Math.min(r.serviceJobs,Math.max(0,available-goodsUsed));
       const filled=goodsUsed+serviceEmployed;
       if(r.sector==='logistics')serviceLabor.set(c.id,{infrastructure:r.infra,jobs:r.serviceJobs,employed:serviceEmployed,
@@ -410,6 +438,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       labor_mobility:mobility,retrained:moved,
       // People idle while jobs stand empty: the mismatch itself, not a general labour shortage.
       structural_unemployed:Math.min(unemployed,vacancies),
+      critical_priority_employed:priorityEmployed,
       employment_rate:supplyTotal>C.epsilon?employedTotal/supplyTotal:0,
       unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors,
       wage_rate:localWage({supply:supplyTotal,vacancies,unemployed}),service:serviceLabor.get(c.id)});
