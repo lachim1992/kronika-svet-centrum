@@ -118,7 +118,7 @@ export function starterGeography(hexes: { q: number; r: number; has_river?: bool
     freshwater: window.some((h) => !!h.has_river && !/sea|ocean/i.test(h.biome_family || '')),
     fishWater: window.some((h) => !!h.has_river || /water|ocean|sea|lake|coast/i.test(h.biome_family || '')),
     fuelLand: hasFuelLand(seat?.biome_family),
-    gameLand: hasGameLand(window.filter((h) => !h.has_river || true).map((h) => h.biome_family)),
+    gameLand: hasGameLand(window.map((h) => h.biome_family)),
   };
 }
 
@@ -203,7 +203,8 @@ export async function ensureStarterEconomy(
     const own = (buildings || []).filter((b: any) => b.city_id === city.id);
     const population = Number(city.population_total) || 0;
     const cx = Number(city.grid_x ?? city.province_q) || 0, cy = Number(city.grid_y ?? city.province_r) || 0;
-    const bundle = starterBundle(starterGeography(hexes || [], cx, cy));
+    const geo = starterGeography(hexes || [], cx, cy);
+    const bundle = starterBundle(geo);
     const added: string[] = [], existing: string[] = [], resized: string[] = [];
     for (const contract of bundle) {
       const effects = starterEffects(contract, population);
@@ -231,7 +232,7 @@ export async function ensureStarterEconomy(
       }
       added.push(contract.name);
       // Reserve rides only on a NEWLY founded storehouse; the adapter reads it once on first adoption.
-      if (contract === STARTER_STORAGE) (effects as any).starter_reserve = starterReserveFor(population, hasFuelLand(biomeAt.get(`${cx},${cy}`) as string));
+      if (contract === STARTER_STORAGE) (effects as any).starter_reserve = starterReserveFor(population, geo.fuelLand !== false);
       rows.push({
         session_id: sessionId, city_id: city.id, name: contract.name, category: contract.category,
         description: contract.description, effects, status: 'completed',
