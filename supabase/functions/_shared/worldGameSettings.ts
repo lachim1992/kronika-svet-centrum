@@ -34,7 +34,7 @@ const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T):
   allowed.includes(v as T) ? (v as T) : fallback;
 const L3 = ["low", "normal", "high"] as const;
 
-export function normalizeGameSettings(raw: unknown): Required<Omit<WorldGameSettings, "aiOpponents">> & { aiOpponents?: number } {
+export function normalizeGameSettings(raw: unknown): Required<Omit<WorldGameSettings, "aiOpponents" | "mapSize" | "landRatio" | "mountainDensity" | "maxPlayers">> & { aiOpponents?: number } {
   const s = (raw && typeof raw === "object" ? raw : {}) as WorldGameSettings;
   const ai = Number(s.aiOpponents);
   const cities = Number(s.startingCities);
