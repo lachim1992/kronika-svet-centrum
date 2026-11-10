@@ -123,7 +123,7 @@ export type StarterReport = {
 export async function ensureStarterEconomy(
   sb: any,
   sessionId: string,
-  options: { cityId?: string; turnNumber?: number; dryRun?: boolean } = {},
+  options: { cityId?: string; turnNumber?: number; dryRun?: boolean; upgradeStorage?: boolean } = {},
 ): Promise<StarterReport[]> {
   let cityQuery = sb.from('cities')
     .select('id, name, grid_x, grid_y, province_q, province_r, population_total').eq('session_id', sessionId);
@@ -159,6 +159,13 @@ export async function ensureStarterEconomy(
         (b.effects?.recipe_keys || []).some((k: string) => contract.recipeKeys.includes(k)));
       if (match) {
         existing.push(contract.name);
+        // EXPLICIT UPGRADE (opt-in): an old starter storehouse gets its real storage service.
+        // Only the storage effect is added; the storehouse is never resized and stays idempotent.
+        if (options.upgradeStorage && contract === STARTER_STORAGE && match.effects?.starter_economy
+          && match.effects?.storage_capacity == null) {
+          resized.push(contract.name);
+          resizes.push({ id: match.id, effects: { ...match.effects, storage_capacity: 1 } });
+        }
         // FROZEN AT FOUNDING: the starter aggregate is sized once, when created. It is
         // NEVER resized afterwards — otherwise a growing city would get free production
         // and building real farms would be pointless. Feeding growth requires player/AI
