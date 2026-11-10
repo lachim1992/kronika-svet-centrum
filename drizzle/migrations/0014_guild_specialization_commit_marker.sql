@@ -1,0 +1,2 @@
+ALTER TABLE public.province_nodes ADD COLUMN IF NOT EXISTS specialization_last_turn integer;
+COMMENT ON COLUMN public.province_nodes.specialization_last_turn IS 'Last atomic process-turn guild specialization accrual; refresh never advances this marker.';
