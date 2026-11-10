@@ -22,7 +22,10 @@ export function parcelPotential(p: EconomicParcel, terrain: ParcelTerrain[], tur
   const natural = !p.land_use || ['wild','foraging','forestry','civic'].includes(p.land_use);
   if (!natural || p.land_use === 'civic') return [];
   const nearby = terrain.filter(h => Math.abs((h.grid_x ?? h.q) - p.grid_x) + Math.abs((h.grid_y ?? h.r) - p.grid_y) <= 1 && h.is_passable !== false);
-  const river = nearby.some(h => h.has_river && !/^(sea|ocean|water)$/.test(h.biome_family || ''));
+  // A diagonal river requires a passable two-step foot access, not a diagonal teleport.
+  const diagonal = terrain.filter(h => Math.abs((h.grid_x??h.q)-p.grid_x)===1 && Math.abs((h.grid_y??h.r)-p.grid_y)===1 && h.is_passable!==false && h.has_river
+    && nearby.some(mid => ((mid.grid_x??mid.q)===(h.grid_x??h.q)&&(mid.grid_y??mid.r)===p.grid_y) || ((mid.grid_x??mid.q)===p.grid_x&&(mid.grid_y??mid.r)===(h.grid_y??h.r))));
+  const river = [...nearby,...diagonal].some(h => h.has_river && !/^(sea|ocean|water)$/.test(h.biome_family || ''));
   const season = [1, 0.95, 0.8, 0.95][Math.floor(Math.max(0, turn - 1) / 5) % 4];
   const relief = Math.max(0.5, 1 - Math.max(0, Number(p.elevation || 0) - 70) / 100);
   const scale = Math.min(1.5, Math.max(0, p.capacity_slots) / 2) * relief;
