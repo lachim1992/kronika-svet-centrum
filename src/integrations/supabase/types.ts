@@ -4597,6 +4597,7 @@ export type Database = {
           init_status: string
           init_step: string | null
           max_players: number
+          parcel_economy_version: number
           player1_name: string
           player2_name: string
           resolving_turn: number | null
@@ -4620,6 +4621,7 @@ export type Database = {
           init_status?: string
           init_step?: string | null
           max_players?: number
+          parcel_economy_version?: number
           player1_name?: string
           player2_name?: string
           resolving_turn?: number | null
@@ -4643,6 +4645,7 @@ export type Database = {
           init_status?: string
           init_step?: string | null
           max_players?: number
+          parcel_economy_version?: number
           player1_name?: string
           player2_name?: string
           resolving_turn?: number | null
@@ -7668,6 +7671,35 @@ export type Database = {
             columns: ["node_id"]
             isOneToOne: false
             referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parcel_economy_rollouts: {
+        Row: {
+          applied_at: string
+          session_id: string
+          snapshot: Json
+          version: number
+        }
+        Insert: {
+          applied_at?: string
+          session_id: string
+          snapshot: Json
+          version: number
+        }
+        Update: {
+          applied_at?: string
+          session_id?: string
+          snapshot?: Json
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parcel_economy_rollouts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -12549,6 +12581,15 @@ export type Database = {
           p_turn: number
         }
         Returns: boolean
+      }
+      apply_parcel_economy_rollout: {
+        Args: {
+          p_parcels: Json
+          p_seats: Json
+          p_session: string
+          p_turn: number
+        }
+        Returns: Json
       }
       apply_turn_write_batch: {
         Args: { p_session: string; p_writes: Json }
