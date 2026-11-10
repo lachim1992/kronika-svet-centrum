@@ -159,4 +159,4 @@ it('dbg',async()=>{for(const g of [28]){const t=fixture('lock',100,g);
  t.city_buildings.push(building('bakeryB','b',{recipe_keys:['bake_staples'],production_roles:['processing'],basket_outputs:{staple_food:8}}));
  t.structure_production_orders.push({session_id:S,structure_id:'bakeryB',mode:'lock',target_good_key:'baked_staples'});
  t.economy_turn_ledgers[0].opening.push({city:'b',good:'peat',qty:10,quality:0});const p=await run(t);
- console.log('DBG',g,produced(bal(p,'b','flour')),JSON.stringify(p.result.industrialInputs.filter((x:any)=>x.good==='flour').map((x:any)=>[x.producer,x.planned,x.used,x.blocked]),JSON.stringify(p.result.flows.filter((f:any)=>f.good==="flour"))));}});
+ console.log('DBG',g,produced(bal(p,'b','flour')),JSON.stringify(p.result.industrialInputs.filter((x:any)=>x.good==='flour').map((x:any)=>[x.producer,x.planned,x.used,x.blocked]),JSON.stringify((p.result.importBlockers||[]).filter((f:any)=>f.good==="flour"))));}});
