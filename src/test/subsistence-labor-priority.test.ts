@@ -23,7 +23,7 @@ const snap = (withNodes: boolean): Snapshot => ({
     ...(withNodes ? [0, 1, 2, 3, 4].map(i => prod(`node${i}`, 'hides', 7, 100)) : [])],
   edges: [], opening: [], fame: [],
 });
-const emp = (r: any, id: string) => r.diagnostics.find((d: any) => d.producer === id)?.labor?.employed ?? 0;
+const emp = (r: any, id: string) => r.diagnostics.find((d: any) => d.producer === id)?.employed ?? 0;
 const out = (r: any, id: string) => r.diagnostics.find((d: any) => d.producer === id)?.realized ?? 0;
 
 describe('subsistence labour priority (JV72O7 shape)', () => {
@@ -32,7 +32,7 @@ describe('subsistence labour priority (JV72O7 shape)', () => {
 
   it('nobody is counted twice: employed ≤ workforce and ≤ declared jobs', () => {
     expect(lab.employed_total).toBeLessThanOrEqual(lab.available_workforce + 1e-6);
-    for (const d of r.diagnostics) expect(d.labor?.employed ?? 0).toBeLessThanOrEqual((d.labor?.jobs_capacity ?? 0) + 1e-6);
+    for (const d of r.diagnostics) expect((d as any).employed ?? 0).toBeLessThanOrEqual(((d as any).jobs_capacity ?? 0) + 1e-6);
     expect(lab.critical_priority_employed).toBeGreaterThan(0);
   });
 
