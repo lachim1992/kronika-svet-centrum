@@ -177,3 +177,30 @@ describe('labour mobility and structural unemployment', () => {
     }
   });
 });
+
+describe('subsistence priority inside the sector (JV72O7 regression)', () => {
+  const hamlet = (): Snapshot => {
+    const c = { ...city('h', 0, 100), stability: 0.65 };
+    const g = (k: string, b: string) => ({ ...good(k, b, 1, 'raw'), finalUse: true });
+    return { turn: 2, cities: [c],
+      goods: [g('raw_fish', 'staple_food'), g('raw_grain', 'staple_food'), g('well_water', 'drinking_water'), g('hides', 'fuel')],
+      producers: [producer('farm', 'h', 'raw_grain', 7, [], { jobs: 100 }), producer('fishery', 'h', 'raw_fish', 7, [], { jobs: 30 }),
+        producer('well', 'h', 'well_water', 3, [], { jobs: 25 }),
+        ...[0, 1, 2, 3, 4].map(i => producer(`node${i}`, 'h', 'hides', 7, [], { jobs: 100 }))],
+      edges: [], opening: [], fame: [] };
+  };
+  it('critical crews are not left at ~7 % staffing behind 500 node jobs; no double count; output/worker ≤ capacity/jobs', () => {
+    const r = resolveGoodsEconomy(hamlet());
+    const d = (id: string) => diag(r, id) as any;
+    const l = r.labor[0];
+    expect(l.employed_total).toBeLessThanOrEqual(l.available_workforce + 1e-6);
+    expect(l.critical_priority_employed!).toBeGreaterThan(0);
+    expect(d('well').employed / 25).toBeGreaterThan(0.2);
+    expect(d('well').employed / 25).toBeGreaterThan(d('node0').employed / 100);
+    expect(d('fishery').realized + d('farm').realized).toBeGreaterThan(0.9);
+    for (const [id, cap, jobs] of [['farm', 7, 100], ['fishery', 7, 30], ['well', 3, 25], ['node0', 7, 100]] as const)
+      expect(d(id).realized).toBeLessThanOrEqual(cap * d(id).employed / jobs + 1e-9);
+    for (const b of r.balances) expect(b.opening + produced(b) + b.imported)
+      .toBeCloseTo(b.consumed_household + b.consumed_state + b.consumed_as_input + b.exported + b.stored + b.capex + b.lost_spoilage, 7);
+  });
+});
