@@ -1,4 +1,5 @@
 import { validateBuild, canonicalBuilding, stripProductionEffects } from "../_shared/buildValidation.ts";
+import { validateBuildingUpgrade } from '../_shared/upgradeValidation.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUBNODE_DEFS as SHARED_SUBNODE_DEFS } from "../_shared/subnodeCatalog.ts";
 import { readRealmWorkforce, actualSoldiers } from '../_shared/manpower.ts';
@@ -2671,11 +2672,30 @@ async function executeStartProject(
   const template = PROJECT_TEMPLATES[projectType];
   if (!template) return { events: [], error: `Unknown project type: ${projectType}` };
 
+  // Legacy projects alter infrastructure, never node upgrade_level. Validate ownership before charging.
+  if (['create_fort', 'create_port', 'expand_hub'].includes(projectType)) {
+    if (!nodeId) return { events: [], error: 'Missing nodeId' };
+    const { data: node, error } = await supabase.from('province_nodes').select('id,controlled_by')
+      .eq('id', nodeId).eq('session_id', sessionId).maybeSingle();
+    if (error || !node || node.controlled_by !== actor.name) return { events: [], error: 'Projekt lze zahájit jen na vlastním uzlu' };
+  }
+  if (['build_route', 'upgrade_route', 'repair_route'].includes(projectType)) {
+    if (!routeId) return { events: [], error: 'Missing routeId' };
+    const { data: route, error } = await supabase.from('province_routes').select('id,node_a,node_b')
+      .eq('id', routeId).eq('session_id', sessionId).maybeSingle();
+    if (error || !route) return { events: [], error: 'Route not found' };
+    const { data: endpoints, error: endpointError } = await supabase.from('province_nodes').select('id,controlled_by')
+      .eq('session_id', sessionId).in('id', [route.node_a, route.node_b]);
+    if (endpointError || endpoints?.length !== 2 || endpoints.some((n: any) => n.controlled_by !== actor.name))
+      return { events: [], error: 'Projekt vyžaduje vlastní koncové uzly' };
+  }
+
   // Check player has enough resources (new civilizational economy)
   const { data: realm } = await supabase.from("realm_resources")
     .select("gold_reserve, production_reserve, total_capacity")
     .eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
 
+  if (!realm) return { events: [], error: 'Realm not found' };
   if (realm) {
     if ((realm.production_reserve || 0) < template.costProduction) return { events: [], error: `Nedostatek produkce (${realm.production_reserve || 0}/${template.costProduction})` };
     if ((realm.gold_reserve || 0) < template.costWealth) return { events: [], error: `Nedostatek bohatství (${realm.gold_reserve || 0}/${template.costWealth})` };
@@ -3500,6 +3520,21 @@ async function executeUpgradeBuilding(
 ): Promise<CommandResult> {
   const { cityId, cityName, buildingId, newLevel, newName, newEffects, costs, isWonderConversion, chronicleText } = payload;
   if (!buildingId || !newLevel) return { events: [], error: "Missing buildingId or newLevel" };
+
+  const { data: existing, error: buildingError } = await supabase.from('city_buildings').select('*')
+    .eq('id', buildingId).eq('session_id', sessionId).maybeSingle();
+  if (buildingError || !existing) return { events: [], error: 'Building not found' };
+  const { data: ownedCity, error: cityError } = await supabase.from('cities').select('id,owner_player')
+    .eq('id', existing.city_id).eq('session_id', sessionId).maybeSingle();
+  if (cityError || cityId !== existing.city_id) return { events: [], error: 'City mismatch' };
+  let authoritativeTemplate: any = null;
+  if (existing.template_id) {
+    const { data, error } = await supabase.from('building_templates').select('*').eq('id', existing.template_id).maybeSingle();
+    if (error || !data) return { events: [], error: 'Building template unavailable' };
+    authoritativeTemplate = data;
+  }
+  const upgradeError = validateBuildingUpgrade(existing, ownedCity, actor.name, newLevel, authoritativeTemplate);
+  if (upgradeError) return { events: [], error: upgradeError };
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
