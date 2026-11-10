@@ -355,3 +355,11 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] 48 tables: member FOR ALL → member SELECT + owner-scoped writes (drizzle 0007); server_config/economy_overrides admin-write (0008). Verified non-admin cannot update/delete foreign city/region/buildings/battle lobby; own city still writable.
 - [ ] 20 tables still member-writable without owner column: game_events (canon log — highest residual risk), entity_traits, chronicle_entries, world_events, world_feed_items, world_memories, world_history_chapters, wiki_entries, city_states, diplomacy_rooms, flow_paths, import_sources, intelligence_reports, league_players, simulation_log, trade_log, city_rumors, encyclopedia_images, map_gen_feedback, world_foundations → move client writes to command-dispatch, then make SELECT-only.
 - [ ] No new publish until game_events client writes are removed.
+
+## Strict starter slice (2026-11-10)
+- [x] Strict KPI test (food/water 100 %, fuel ≥80 %, 5 turns, player+5 nodes & AI, 3 biomes); desert/arid start now invalid (no biome-legal fuel).
+- [x] Critical cross-sector retraining (goodsEconomy pass 2b); frozen JV72O7 t3 fixture: Lambadagrad fuel 0.51 → 0.80, food/water 100 %.
+- [x] game_events owner-scoped writes + server-type guard trigger (0009).
+- [ ] JV72O7 sees the fuel fix on its next refresh/turn; no stored data changed.
+- [ ] Fuel above 80 % needs the tier share raised or more peat capacity — balancing decision.
+- [ ] 18 low-risk narrative tables still member-writable (wiki, chronicle, feed, logs).

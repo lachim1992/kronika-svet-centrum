@@ -34,7 +34,8 @@ describe('habitable start positions', () => {
     expect(isHabitableStart(dry, map([dry, river]))).toBe(true);
     expect(isHabitableStart(hex(0, 0, 'desert'), map([hex(0, 0, 'desert'), river]))).toBe(false);
     expect(isHabitableStart(hex(0, 0, 'tundra'), map([river]))).toBe(false);
-    expect(isHabitableStart(hex(0, 0, 'desert', { coastal: true }), new Map())).toBe(true);
+    expect(isHabitableStart(hex(0, 0, 'desert', { coastal: true }), new Map())).toBe(false); // no biome-legal fuel
+    expect(isHabitableStart(hex(0, 0, 'plains', { coastal: true }), new Map())).toBe(true);
   });
   it('finder replaces a dry candidate with a habitable one', () => {
     const hs: any[] = [];
