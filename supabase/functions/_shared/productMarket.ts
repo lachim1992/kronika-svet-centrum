@@ -137,7 +137,7 @@ export function autoAllocationDetail(options: { key: string; necessity: number; 
     // A recipe with any unavailable required input gets ZERO AUTO weight — even if essential.
     if (o.inputsAvailable === false) { weights[o.key] = 0; flags[o.key] = 'auto_input_unavailable'; continue; }
     if (profitable(o)) { weights[o.key] = pos(o.necessity) * (1 + M.autoMarginWeight * Math.min(1, o.marginRatio)); flags[o.key] = null; }
-    else if (o.essential && pos(o.necessity) > 0) { // subsistence floor: a profitable rival never zeroes a critical need line weights[o.key] = pos(o.necessity) * M.autoEmergencyFloor; flags[o.key] = 'emergency_unprofitable_production'; }
+    else if (o.essential && pos(o.necessity) > 0) { /* subsistence floor: a profitable rival never zeroes a critical need line */ weights[o.key] = pos(o.necessity) * M.autoEmergencyFloor; flags[o.key] = 'emergency_unprofitable_production'; }
     else { weights[o.key] = M.autoLossFloor; flags[o.key] = 'auto_loss_stopped'; }
   }
   return { weights, flags };
