@@ -13,6 +13,8 @@ This is a plan only. No code, data, migration or deploy changes have been made. 
 ## 1. Read-only verification (no writes to any game)
 - List the code paths actually used: adapter → `producerSector` → labour pass → `foodShortage`/`waterShortageImpact`.
 - Use SELECT queries for the goods catalogue status (storable, perishability, substitution).
+- **AI1 example:** produced 2.654 `raw_fish`, used 1.05, threw away 1.604, because fish cannot be stored. At the same time Lambadagrad has famine, the ledger shows `importBlockers route_unreachable`, and there are 0 trade flows. So besides low local output, the problem is transport access, not general scarcity.
+  - Planned next step (P1): a connectivity test for trade between starting towns, with physical transport only, no goods moving without a route.
 - Export the JV72O7 turn-2 inputs into `src/test/fixtures/jv72o7_t2.json`. Nothing is written to the database.
 
 ## 2. P0: put basic needs first when assigning workers, keep mobility
@@ -23,15 +25,18 @@ This is a plan only. No code, data, migration or deploy changes have been made. 
 - Fill the tiers in order from that sector's own workers. Unmet tier-0/1 vacancies then draw only on the workers already moved through the existing `laborMobility` (bounded retraining). There is no free city-wide pool.
 - Each worker is counted once, and employed ≤ workforce. Above subsistence, tier-0 producers compete normally, so market choices and trade stay.
 - Report `critical_priority_employed` and `industrial_output_forgone`, mapped in `economyFieldContract.ts`.
-- Node cap: when a node has no population, its jobs ≤ the owning town's spare workers after tiers 0–1.
+- **Node jobs stay as declared in P0.** Lowering the job count while capacity stays the same would raise output per worker by 20× or more, which creates goods from nothing. Nodes simply receive fewer workers through the tier order. If node size changes later, jobs and throughput must scale by the same factor, tested by an invariant on output per worker and on capacity. The alternative is for nodes to draw on documented rural workers who have their own needs.
 - Long-term: treat rural workers as node labour once a real population ledger exists (P2).
 - Review node `structureJobsBase` only after this change has been measured.
+- **AUTO allocation check (P0).** In `productMarket.ts`, `autoAllocationDetail` can set food, water or fuel producers to allocation 0 through `anyProfitable`. Worker priority cannot help a producer with zero allocation.
+  - Add a bounded subsistence floor for critical producers, limited by real physical inputs. No free goods.
+  - The test also covers the tools floor (75%) and the stability multiplier.
 
 ## 3. A playable starter settlement (new worlds only)
 - **Site check first.** Starting positions must be valid for settling: reachable water (river, lake, coast or spring) and a food tile. Otherwise move the start (`terrain.ts` `findStartPositions`). Do not add a generic production source to make a bad site work.
 - **Bundle by biome:** farm or fishery, plus a water source. Water backup is a second, independent water source, or a later explicit water-storage mechanic (cistern), never stored water from nowhere.
 - **Fuel source by geography:** forest gives wood or charcoal, bog gives peat.
-- **Starter storage:** give "Osadní sklad" a real `effects.storage_capacity`. Remove the production recipe whose input is blocked. Do not add any recipe without an input.
+- **Starter storage:** give "Osadní sklad" a real `effects.storage_capacity`, so an already built storehouse provides storage without lumber. Keep `build_granary` as a real recipe for building new storage from lumber. Only the false dependency of the existing storage service is removed. No recipe without inputs is added.
 - **One-time opening stock,** only of goods that can be stored: 2–3 turns of `raw_grain`/`preserved_food` and `peat`/`charcoal`. It is booked in the goods ledger with provenance `bootstrap` and written once.
 - Starter jobs ≤ about 0.9 × workforce. Same rules for AI realms.
 
