@@ -1,6 +1,7 @@
 # Map-first square-grid roadmap
 
 ## Parcel economy rollout — 2026-11-10 (current request)
+- [ ] Final addendum: limited raw timber/stone construction conversion with explicit physical sink vs reserve units; committed retry tests and shared stock/conversion breakdown.
 - [x] Code: canonical owned-parcel sources, bounded committed-ledger ecology and ordinary solver labour/physical ledgers (`parcelEconomy.ts`, economyAdapter).
 - [x] Migration 0011: versioned rollout RPC snapshots cities/claims/resources/buildings and applies seats transactionally; admin-only endpoint, anonymous live request 401.
 - [ ] LIVE BLOCKER: JV72O7 rollout deliberately REFUSED before mutation. Latest deployed preflight reports Lambadagrad water 0 and later food shortfalls despite local actual-geography tests passing; resolve deployed/source execution discrepancy before application. Version remains 0, turn 1, no refresh/turn/reset performed.

@@ -25,6 +25,11 @@ export const ECONOMY = {
    */
   householdBaskets: ['staple_food', 'basic_clothing', 'fuel', 'drinking_water'],
   capexGoods: ['stone_blocks', 'lumber', 'construction_materials'],
+  /** Settlement raw construction: points per consumed physical unit, below processed 1/unit.
+   * Take only 25% of residual after projects/industry/trade, max one raw unit per 100 residents. */
+  rawConstruction: { raw_timber: 0.2, raw_stone: 0.15 },
+  rawConstructionSurplusShare: 0.25,
+  rawConstructionUnitsPer100: 1,
   /**
    * LABOR ECONOMY. Population supplies labour, never goods. A structure declares how many
    * workers it can employ (jobs_capacity); the city labour market fills those jobs from the

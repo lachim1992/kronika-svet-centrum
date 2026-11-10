@@ -449,7 +449,7 @@ const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
     const channelValue=(ch:string)=>bs.reduce((s,b)=>s+Number((b as any)[`produced_${ch}`])*goodMap.get(b.good)!.price*(1+b.quality*ECONOMY.qualityPremium),0);
     return {player_name:r.player_name,goods_production_value:sum('gross_output_value'),value_added_gdp:sum('gross_output_value')-sum('intermediate_value')+result.metrics.filter(m=>owned.has(m.city)).reduce((s,m)=>s+m.trade_services.service_value_added,0),
       trade_service_value_added:result.metrics.filter(m=>owned.has(m.city)).reduce((s,m)=>s+m.trade_services.service_value_added,0),
-      goods_extraction_value:sum('extraction_value'),goods_domestic_consumption_value:consumption,construction_available_for_capex:sum('capex'),
+      goods_extraction_value:sum('extraction_value'),goods_domestic_consumption_value:consumption,construction_available_for_capex:sum('construction_points'),
       goods_supply_volume:bs.reduce((s,b)=>s+produced(b),0),goods_value_detail:{auto:channelValue('household'),recipe:channelValue('node'),structures:channelValue('facility')+channelValue('district')},
       economy_detail:{produced_household:sum('produced_household'),produced_node:sum('produced_node'),produced_facility:sum('produced_facility'),produced_district:sum('produced_district'),
         market_turnover:result.flows.filter(f=>owned.has(f.source)).reduce((s,f)=>s+f.gross_value,0),

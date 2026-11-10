@@ -19,7 +19,7 @@ export function parcelPotential(p: EconomicParcel, terrain: ParcelTerrain[], tur
   const home = terrain.find(h => (h.grid_x ?? h.q) === p.grid_x && (h.grid_y ?? h.r) === p.grid_y);
   if (!p.buildable || p.status === 'blocked' || dead.test(p.sub_biome) || !home || home.is_passable === false)
     return [] as { recipe: string; capacity: number; jobs: number; renewable: boolean }[];
-  const natural = !p.land_use || ['wild','foraging','forestry','civic'].includes(p.land_use);
+  const natural = !p.land_use || ['open','wild','foraging','forestry','civic'].includes(p.land_use);
   if (!natural || p.land_use === 'civic') return [];
   const nearby = terrain.filter(h => Math.abs((h.grid_x ?? h.q) - p.grid_x) + Math.abs((h.grid_y ?? h.r) - p.grid_y) <= 1 && h.is_passable !== false);
   // A diagonal river requires a passable two-step foot access, not a diagonal teleport.

@@ -93,7 +93,9 @@ export interface Balance { city: string; good: string; opening: number; produced
   /** Closing batch composition of `stored` (sums to stored); next turn's Opening.lots. */
   stored_lots?: OpeningLot[];
   unmet_demand: number; demand: number; quality: number; gross_output_value: number; intermediate_value: number;
-  extraction_value: number; capex: number }
+  extraction_value: number; capex: number;
+  /** capex stays a physical sink. These are normalized construction points, not goods. */
+  construction_points?: number; construction_efficiency?: number }
 /** Observational A-material demand; never a physical balance or an extra consumption channel. */
 export interface IndustrialInput { producer:string; city:string; good:string; planned:number; local:number; imported:number; received:number; used:number; unmet:number; supplier:string|null; landed_unit_cost:number|null; blocked:string|null }
 export interface Flow { good: string; source: string; destination: string; qty: number; delivered: number; quality: number;
@@ -928,6 +930,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(b.unmet_demand>C.minLot){const ref=tradeRefusals.get(key(c.id,g.key));
       importBlockers.push({city:c.id,good:g.key,unmet:b.unmet_demand,reason:ref?.reason??'no_source_attempted',source:ref?.source??null});}
     b.capex=(C.capexGoods as readonly string[]).includes(g.key)?Math.max(0,available(b)-b.demand*C.reserveTurns):0;
+    const rawEfficiency=C.rawConstruction[g.key as keyof typeof C.rawConstruction];
+    // Opt-in parcel worlds only. Active project demand, factory inputs and exports already
+    // consumed physical units above; never reward those again or raid the closing reserve.
+    if(rawEfficiency && snapshot.producers.some(p=>p.city===c.id&&p.parcel))
+      b.capex=Math.min(Math.max(0,available(b)-b.demand*C.reserveTurns)*C.rawConstructionSurplusShare,
+        Math.max(0,c.population)/100*C.rawConstructionUnitsPer100);
+    b.construction_efficiency=rawEfficiency??1;
+    b.construction_points=b.capex*b.construction_efficiency;
     const remaining=available(b)-b.capex;b.stored=g.storable?Math.min(remaining,storage/Math.max(1,g.bulk)):0;storage-=b.stored*Math.max(1,g.bulk);
     { const l=syncLots(b),avail=available(b),f=avail>C.epsilon?b.stored/avail:0; // capex/spoilage drain proportionally
       b.stored_lots=b.stored>0?l.map(x=>({qty:x.qty*f,quality:x.quality,origin:x.origin})).filter(x=>x.qty>1e-12):[]; }

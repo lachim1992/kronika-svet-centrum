@@ -68,7 +68,7 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
   add('net_fiscal','Čistý fiskální tok','zlata/tah','Zveřejněné daňové příjmy minus vykázané průběžné výdaje. Jednorázové stavební náklady nejsou zahrnuty.',[{id:'tax',label:'Daňové příjmy',value:fiscal.income},{id:'expenses',label:'Průběžné výdaje',value:-fiscal.expenses}],fiscal.net,`Poslední fiskální vyúčtování: tah ${realm.last_processed_turn??'nezjištěn'}.`);
   add('runway','Výdrž pokladnice','tahů','Pokladnice dělená záporným čistým fiskálním tokem; při nezáporném toku se nevyčerpává.',[],fiscal.net<0?Number(realm.gold_reserve||0)/-fiscal.net:null,'Stejný příjem a průběžné výdaje; bez nových jednorázových investic.');
   add('construction_stock','Stavební zásoba','jednotek','Aktuální stavební rezerva po dosavadních úhradách projektů.',[{id:player,label:'realm_resources.production_reserve',value:Number(realm.production_reserve||0)}]);
-  add('construction_incoming','Volný stavební přebytek','jednotek/tah','Pouze dosud nespotřebované a nevyvezené stavební zboží způsobilé pro CAPEX.',fromBalances(b=>b.capex));
+  add('construction_incoming','Volný stavební přebytek','jednotek/tah','Stavební body z fyzicky odebraného přebytku; surové dřevo/kámen má nižší účinnost než zpracované materiály.',fromBalances(b=>b.construction_points??b.capex));
   const prices=ledger.prices.filter(p=>owned.has(p.city)).map(p=>({...p,city_name:names.get(p.city),basket:goods.get(p.good)?.basket}));
   const weight=prices.reduce((n,p)=>n+p.demand,0);
   add('price_index','Cenová hladina','× referenční cena','Vážený poměr lokální tržní ceny k dlouhodobé referenční ceně; váhou je skutečná poptávka daného zboží.',[],

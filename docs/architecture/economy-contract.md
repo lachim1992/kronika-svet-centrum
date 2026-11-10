@@ -21,7 +21,7 @@ opening + production + imports
  + exports + storage + spoilage + CAPEX
 ```
 
-Výroba, kapacita, tržby, daně a pokladna jsou rozdílné veličiny. `province_nodes.production_output` je jmenovitá kapacita; skutečná výroba je v Goods ledgeru. `production_reserve` narůstá pouze o fyzické `capex` zůstatky způsobilého stavebního zboží, nejvýše jednou za tah. Kapacita ani populace se přímo na CAPEX nepřevádějí.
+Výroba, kapacita, tržby, daně a pokladna jsou rozdílné veličiny. `province_nodes.production_output` je jmenovitá kapacita; skutečná výroba je v Goods ledgeru. `production_reserve` narůstá pouze o `construction_points` z fyzického `capex` odběru způsobilého stavebního zboží, nejvýše jednou za tah. `capex` zůstává množstvím odebraného zboží pro hmotnostní bilanci; `construction_points` jsou přepočtené stavební body. Zpracované materiály mají účinnost 1; v pozemkovém režimu surové dřevo 0,20 a surový kámen 0,15 bodu za jednotku. Po projektech, výrobních vstupech a obchodu se odebere nejvýše 25 % volného zůstatku, maximálně jedna jednotka každého surového materiálu na 100 obyvatel. Odebrané množství nezůstává ve skladu. Kapacita ani populace se přímo na CAPEX nepřevádějí.
 
 ```
 goods value added = gross output value − intermediate value
