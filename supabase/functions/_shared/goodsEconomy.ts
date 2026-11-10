@@ -658,7 +658,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         const rec=acq.get(i.good)||{qty:0,cost:0,suppliers:suppliers.slice(0,3).map(x=>({city:x.s.id,landed:x.cost!.landed,...x.cost})),chosen:null as string|null,parts:{source:0,transport:0,tolls:0,tariff:0,risk:0,loss_cost:0}};acq.set(i.good,rec);
         for(const {s,cost} of suppliers){if(missing<C.minLot)break;
           const sb=stock(s.id,ig.key);if(eligibleQty(sb,minQ)<C.minLot)continue;
-          const got=transfer(s,c,ig,missing,'production_input',hubs.has(key(s.id,ig.key))?[hubs.get(key(s.id,ig.key))!]:[],Math.max(foodReserve(s,ig),sb.demand-sb.consumed_household-sb.consumed_state,0),minQ);
+          // LOCAL PROCESSOR PRIORITY: a source keeps the input its own still-pending staffed
+          // processors plan to use this pass (no transport) before exporting it (live TEST02 t26:
+          // Pole's mill flour was shipped away while Pole's own bakeries idled).
+          const localIndustrial=industrialInputs.reduce((a,x)=>a+(x.city===s.id&&x.good===ig.key&&pending.has(x.producer)?Math.max(0,x.planned-x.used):0),0);
+          const got=transfer(s,c,ig,missing,'production_input',hubs.has(key(s.id,ig.key))?[hubs.get(key(s.id,ig.key))!]:[],Math.max(foodReserve(s,ig),sb.demand-sb.consumed_household-sb.consumed_state,0)+localIndustrial,minQ);
           if(got>0){rec.qty+=got;rec.cost+=got*cost!.landed;rec.chosen ??= s.id;for(const part of LANDED_PARTS)rec.parts[part]+=got*cost![part];}
           missing-=got;}
         const supplied=Math.min(required,usable());
@@ -749,7 +753,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       // could not use more input even with a surplus next door — say so, not "landed cost".
       const pr=producers.find(q=>q.id===x.producer);const capital=pr?capitalFactor(pr):1;
       // Supply existed this pass but other buyers took it all: contention, not a missing producer.
-      const suppliedThisPass=cities.some(s=>s.id!==c.id&&produced(stock(s.id,g.key))>C.minLot);
+      const suppliedThisPass=cities.some(s=>produced(stock(s.id,g.key))>C.minLot);
       x.blocked=capital<1-C.epsilon&&x.received>=x.planned*capital-C.minLot?'b_factor_limited':
         !holders.length?(suppliedThisPass?'supply_exhausted':'missing_supplier'):!peaceful.length?'trade_blocked':!reachable.length?'route_unreachable':
         !surplus.length?'source_retained':surplus.every(s=>(route(s.cell,c.cell,g)?.capacity??0)<C.minLot)?'route_capacity':(inputRefusals.get(key(c.id,g.key))??'landed_cost_or_partial_supply');
