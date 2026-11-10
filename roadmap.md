@@ -335,3 +335,9 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - OPEN: Economy/Dev UI for critical_priority_employed, rationing, starter_reserve provenance (+ economyFieldContract mapping).
 - OPEN: full-world bootstrap fixture across biomes, player+AI, 5/20/200-turn simulations.
 - OPEN: rural workforce model for nodes (declared jobs unchanged until then).
+- DONE/TESTED/DEPLOYED (slice 4): fuel/clothing shortage is slow (needStabilityDrift: max −1/turn, floor 40); food/water keep hard bands; tools never move stability.
+- DONE/TESTED/DEPLOYED (slice 4): shared SubsistencePanel in Economy tab + Dev Mode: LABOR_FIELDS (incl. critical_priority_employed), food status ok/rationing/famine from the process-turn helper, per-producer limiting cause from diagnostics.
+- DONE/TESTED (slice 4): acceptance sims — 5 biomes × player+AI × 20 turns, idempotence, crop-failure famine, timber→lumber→granary connected vs disconnected.
+- NOTE: slice-3 commits (reserve, habitable start, auth policy/tests, roadmap) were missing from the branch after a parallel push and were restored in slice 4.
+- OPEN (P2, deliberately not started): rural-population labour for nodes — needs SSOT identity (hex_population vs cities) and workforce conservation proof first.
+- OPEN: 200-turn deterministic sim of the starter fixture; starter inter-capital connectivity for new worlds (needs decision).
