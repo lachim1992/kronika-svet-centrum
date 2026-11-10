@@ -2,39 +2,38 @@
 
 This is a plan only. No code, data, migration or deploy changes have been made. JV72O7 and every other saved game stay untouched.
 
-## 0. Corrections to the stated findings (checked in the code)
-- **Workers are not shared out across the whole city.** In `goodsEconomy.ts` (around lines 366–415), each *sector* has its own labour pool. Within one sector, every producer gets the same `fill = goodsUsed/goodsJobs`. Workers move between sectors only up to `laborMobility`. So node jobs only take staff from the town's farm, fishery or well when they fall in the **same sector** (or draw on the moved workers). Step 1 below first confirms which sector each JV72O7 producer belongs to. Until then, "500 node jobs drain the fishery" is unconfirmed.
-- **Node jobs** come from `economyAdapter.ts` (around line 189): `structureJobsBase × levelScale`, so Lv1 = 100 per node. The node's own `population=0` is never used, so the town really does carry those jobs.
-- **The water penalty is banded, not a simple "<50%" rule** (`demandModel.ts`, `waterShortageImpact`). Stability loss is 0/0/2/4/8 by band, and deaths happen only in the `critical` band. The −8 you saw belongs to the critical band. The real thresholds are in `DEMAND.needBands` and will be confirmed in step 1.
-- **Famine** (`foodShortage.ts`): the flag turns on at a 5% deficit. Deaths are `pop·0.05·ratio`, so an 80% coverage town loses about 1% a turn. That is mild, but the "famine" label overstates it.
-- **Starter well:** `starterEconomy.ts` sets jobs with `starterJobsFor`, capped at 30% of population. At 100 people, the 52 workers against 25+30+25 starter jobs fit on their own. The overload comes from the nodes plus the Farm.
-- **Starter granary** uses the `build_granary` recipe, which needs lumber. With no lumber in a fresh town it produces nothing. Confirmed: no fuel, clothing or tools source exists.
+## 0. Verified findings (corrected)
+- **Jobs at JV72O7 turn 2.** Effective building jobs are fishery 30 and well 25, so 55. The starter storage (`build_granary`, which needs 2 lumber) does not run. The player also has a completed Farm with 100 jobs, so the player has 155 building jobs plus 500 node jobs (5 nodes × 100 at Lv1). AI1 has 55 jobs and no nodes; AI2 has 55 + 600. With 52 workers, even 55 is already over capacity.
+- **Worker sharing (confirmed in the code and in diagnostics).** `producerSector()` in `goodsEconomy.ts` puts fishery, well and food in the farming sector, together with most resource nodes. Inside a sector, every producer gets the same `fill = goodsUsed/goodsJobs`, which is why fishery staffing is 7.57%. Workers move between sectors only through `laborMobility`. What is left to do is measure the improvement after prioritisation.
+- **Node jobs** come from `economyAdapter.ts`: `structureJobsBase × levelScale`, so Lv1 = 100. The nodes' own `population=0` is not used.
+- **Water penalty** is banded (`waterShortageImpact`: 0/0/2/4/8 stability, deaths only in `critical`). Famine turns on at a 5% deficit, with deaths `pop·0.05·ratio`.
+- **Storage.** `economyAdapter.ts` reads storage from `effects.storage_capacity`/`warehouse_level` + baseline. The starter "Osadní sklad" has only `basket_outputs.storage_logistics` and `build_granary`, with no `storage_capacity` effect.
+- **Storability** (from the goods catalogue in the database): `well_water` and `raw_fish` cannot be stored; `raw_grain`, `peat` and `charcoal` can. Step 1 re-confirms this into a JSON fixture with read-only queries.
 
-## 1. Forensics first (read-only)
-- Replay the stored JV72O7 turn-2 snapshot through `computeCanonicalEconomy` in a test. Print each producer's sector, jobs, fill and output, and the need-band thresholds.
-- Done when we know the exact share of the shortage caused by staffing, versus capacity, versus the missing fuel source.
+## 1. Read-only verification (no writes to any game)
+- List the code paths actually used: adapter → `producerSector` → labour pass → `foodShortage`/`waterShortageImpact`.
+- Use SELECT queries for the goods catalogue status (storable, perishability, substitution).
+- Export the JV72O7 turn-2 inputs into `src/test/fixtures/jv72o7_t2.json`. Nothing is written to the database.
 
-## 2. P0: put critical needs first when assigning workers
-- In `goodsEconomy.ts`, inside the labour pass, add priority tiers:
-  - tier 0: food and drinking water, enough to cover subsistence demand;
+## 2. P0: put basic needs first when assigning workers, keep mobility
+- In `goodsEconomy.ts`, sort the producers *inside each sector* into tiers:
+  - tier 0: food and drinking water, up to subsistence demand;
   - tier 1: a fuel minimum;
   - tier 2: everything else (nodes, industry, exports).
-- Fill the tiers in order from *one* city-wide pool: own sector first, then moved workers. Each worker is counted once, and the total must stay ≤ `available_workforce`.
-- A tier-0 producer is staffed only up to what it needs for demand, not to fill all its jobs. Any surplus goes to tier 2, so trade and the market still work.
-- Report `critical_priority_employed` and `industrial_output_forgone` per city. Map them in `src/lib/economyFieldContract.ts` so the Economy tab and Dev Mode both show them.
-- **Node jobs:** when a node has no population, add a cap: its jobs ≤ the share of the owning town's spare workforce left after tier 0–1. Long-term options:
-  - **(a) rural workforce:** fold `compute-rural-population` into the economic turn as the node's own labour. This needs a real population ledger, so it is a later phase.
-  - **(b) the cap above.** Recommend (b) now and (a) as P2.
-- 100 jobs per Lv1 node is unrealistic for a 100-person hamlet. Review `structureJobsBase` for nodes only after the priority fix is measured.
+- Fill the tiers in order from that sector's own workers. Unmet tier-0/1 vacancies then draw only on the workers already moved through the existing `laborMobility` (bounded retraining). There is no free city-wide pool.
+- Each worker is counted once, and employed ≤ workforce. Above subsistence, tier-0 producers compete normally, so market choices and trade stay.
+- Report `critical_priority_employed` and `industrial_output_forgone`, mapped in `economyFieldContract.ts`.
+- Node cap: when a node has no population, its jobs ≤ the owning town's spare workers after tiers 0–1.
+- Long-term: treat rural workers as node labour once a real population ledger exists (P2).
+- Review node `structureJobsBase` only after this change has been measured.
 
 ## 3. A playable starter settlement (new worlds only)
-- `starterEconomy.ts`:
-  - choose the bundle by biome: farm or fishery, plus a well, a spring or a river intake;
-  - add a fuel source chosen by geography: wood gathering in forest, peat cutting on bog or wetland, otherwise a small charcoal or dung-fuel recipe tied to real terrain tags;
-  - replace the storage that depends on `build_granary` with a storage structure that has no blocked input.
-- One-time **bootstrap stock** of 2–3 turns of food, water-equivalent storage and fuel. It is written once by `create-world-bootstrap` / `world-generate-init` into the goods ledger as opening stock, with provenance `bootstrap`. It is not generated each turn.
-- Total starter jobs ≤ about 0.9 × available workforce (about 47 of 52). No heavy industry at start: nodes stay below the cap from §2.
-- Applies to player and AI realms alike, through the same helper.
+- **Site check first.** Starting positions must be valid for settling: reachable water (river, lake, coast or spring) and a food tile. Otherwise move the start (`terrain.ts` `findStartPositions`). Do not add a generic production source to make a bad site work.
+- **Bundle by biome:** farm or fishery, plus a water source. Water backup is a second, independent water source, or a later explicit water-storage mechanic (cistern), never stored water from nowhere.
+- **Fuel source by geography:** forest gives wood or charcoal, bog gives peat.
+- **Starter storage:** give "Osadní sklad" a real `effects.storage_capacity`. Remove the production recipe whose input is blocked. Do not add any recipe without an input.
+- **One-time opening stock,** only of goods that can be stored: 2–3 turns of `raw_grain`/`preserved_food` and `peat`/`charcoal`. It is booked in the goods ledger with provenance `bootstrap` and written once.
+- Starter jobs ≤ about 0.9 × workforce. Same rules for AI realms.
 
 ## 4. Demand and severity
 - `foodShortage.ts`: split `food_deficit_minor` (deficit 5–15%, no deaths, −1 stability) from `famine` (>15% or reserve 0 for two or more turns). Exact cut-offs to be tuned in §6.
@@ -59,13 +58,16 @@ This is a plan only. No code, data, migration or deploy changes have been made. 
 
 ## 7. Acceptance tests and KPIs
 - `src/test/starter-settlement.test.ts`: a 100-person town in coastal, inland river, dry, forest and bog biomes. Over 5 turns with no player action:
+  - only on valid starting biomes;
   - food and water ≥ 100%, fuel ≥ 80%;
-  - stability stays between 0.60 and 0.75, with no downward spiral;
+  - start stability around 60–75/100;
+  - with no outside shock, stability never falls below the safe limit or by more than 5 points in the first 5 turns (rising is fine);
+  - no deaths from hunger or thirst;
   - employed ≤ workforce;
   - same for an AI realm.
-- `src/test/jv72o7-fixture.test.ts`: a frozen copy of the JV72O7 turn-2 inputs (JSON fixture). Expect:
+- `src/test/jv72o7-fixture.test.ts`: a frozen copy of the JV72O7 turn-2 inputs (JSON fixture, never written back to the game). Expect:
   - before the fix it reproduces 80% / 35% / 33%;
-  - after the fix, critical coverage rises and `industrial_output_forgone` is reported;
+  - after the fix, the rise in fishery and well staffing is measured, critical coverage rises and `industrial_output_forgone` is reported;
   - nothing is produced or bought without a physical source.
 - Extend `test02-startup.test.ts` to a full bootstrap with nodes and trade.
 - 20- and 200-turn simulations, deterministic and repeatable, with exact goods balance.
