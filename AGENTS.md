@@ -21,3 +21,4 @@
 
 - The labour pass staffs food/drinking-water (then a fuel minimum) first inside each sector, only up to household need (`SUBSISTENCE_TIERS` in goodsEconomy.ts); declared jobs and capacity are never shrunk — so output per worker never changes and basic needs never starve behind node jobs.
 - Per-city subsistence readout (food status, labour headcount) lives only in `supabase/functions/_shared/subsistence.ts`, reusing `foodShortageImpact`; both secure reports embed it and UI renders it via `SubsistencePanel` — rationing vs famine can never disagree with process-turn.
+- Session-member RLS on owned entities is SELECT for members and INSERT/UPDATE/DELETE only via `app_private.is_realm_owner` on the row's owner column (or admin); config tables (server_config, economy_overrides) are admin-write — so a member can never mutate another realm's rows from the client; edge functions use service_role.
