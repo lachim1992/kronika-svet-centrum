@@ -21,6 +21,7 @@ export interface LedgerBalance {
   exported: Num; stored: Num; lost_spoilage: Num; unmet_demand: Num; demand: Num; quality: Num;
   lost_decay?: Num; lost_transport?: Num; lost_discard?: Num;
   gross_output_value: Num; intermediate_value: Num; extraction_value: Num; capex: Num;
+  construction_points?: Num; construction_efficiency?: Num;
 }
 export interface LedgerFlow {
   good: string; source: string; destination: string; qty: Num; delivered: Num; quality: Num; gross_value: Num;
@@ -234,7 +235,7 @@ export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow
   const recipesUsing = (good: string) => [...new Set(producers.filter((p) => (p.recipe.inputs || []).some((i) => i.good === good)).map((p) => p.recipe.key))];
   const specific = buildSpecific({ famous: result.famous || [], variants, owners, balances, flows, choice, prices, costs, recipesUsing });
   const subsistence = subsistenceRows(cities.map((c: any) => ({ id: c.id, population: n(c.population) })), balances as any, snap.goods || [], result.labor || []);
-  return { subsistence, labor: result.labor || [], producer_diagnostics: diags.map(d=>{const p=producers.find(p=>p.id===d.producer);return {...d,city:p?.city,recipe:p?.recipe,parcel:p?.parcel};}), industrial_inputs:result.industrialInputs, fuel_guidance: (result as any).fuelGuidance || [], import_blockers: result.importBlockers || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
+  return { construction_balances: balances.filter(b=>['raw_timber','raw_stone','lumber','stone_blocks','construction_materials'].includes(b.good)), subsistence, labor: result.labor || [], producer_diagnostics: diags.map(d=>{const p=producers.find(p=>p.id===d.producer);return {...d,city:p?.city,recipe:p?.recipe,parcel:p?.parcel};}), industrial_inputs:result.industrialInputs, fuel_guidance: (result as any).fuelGuidance || [], import_blockers: result.importBlockers || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
     edges: edges.map((e) => ({ id: e.id, from: e.from, to: e.to, capacity: n(e.capacity), used: edgeUse.get(e.id) || 0 })) };
 }
 

@@ -19,11 +19,13 @@ Deno.serve(async req=>{
     if(!caller.admin&&!caller.service) throw new AuthError('Admin role required',403);
     const prepared=await prepareParcelRollout(db,body.session_id);
     if(!prepared.already_applied){
-      const parcels=prepared.parcels.map((p:any)=>({...p,id:`preview:${p.grid_x}:${p.grid_y}:${p.parcel_index}`}));
+      const parcels=prepared.parcels.map((p:any)=>({...p,id:p.id??`preview:${p.grid_x}:${p.grid_y}:${p.parcel_index}`}));
       const existing=await db.from('tile_parcels').select('*').eq('session_id',body.session_id).range(0,9999);
       if(existing.error)throw existing.error;
-      const seen=new Set((existing.data||[]).map((p:any)=>`${p.grid_x}:${p.grid_y}:${p.parcel_index}`));
-      const preview=await computeCanonicalEconomy(db,body.session_id,{parcelPreview:[...(existing.data||[]),...parcels.filter((p:any)=>!seen.has(`${p.grid_x}:${p.grid_y}:${p.parcel_index}`))],readOnly:true});
+      const proposed=new Map((existing.data||[]).map((p:any)=>[`${p.grid_x}:${p.grid_y}:${p.parcel_index}`,p]));
+      for(const p of parcels)proposed.set(`${p.grid_x}:${p.grid_y}:${p.parcel_index}`,p);
+      const allParcels=[...proposed.values()];
+      const preview=await computeCanonicalEconomy(db,body.session_id,{parcelPreview:allParcels,readOnly:true});
       const coverage=preview.marketBaskets.filter((b:any)=>['staple_food','drinking_water','fuel'].includes(b.basket_key));
       // Refuse a live rollout that would worsen the current city's subsistence. No magic compensation.
       const old=await db.from('city_market_baskets').select('city_id,basket_key,domestic_satisfaction').eq('session_id',body.session_id).eq('turn_number',prepared.turn);
@@ -34,7 +36,7 @@ Deno.serve(async req=>{
       if(hex.error||catalog.error)throw hex.error||catalog.error;
       const recipeMap=new Map((catalog.data||[]).map((r:any)=>[r.recipe_key,r]));
       let opening=preview.result.snapshot.opening,ecology:any={},fifth:any=null;
-      const baseline=preview.result.snapshot,allParcels=[...(existing.data||[]),...parcels.filter((p:any)=>!seen.has(`${p.grid_x}:${p.grid_y}:${p.parcel_index}`))];
+      const baseline=preview.result.snapshot;
       for(let step=0;step<5;step++){
         const sources=parcelProducers(allParcels,hex.data,baseline.cities,recipeMap,prepared.turn+step,ecology);
         const out=resolveGoodsEconomy({...baseline,turn:prepared.turn+step,opening,producers:[...baseline.producers.filter((p:any)=>!p.parcel),...sources]});
@@ -47,8 +49,8 @@ Deno.serve(async req=>{
         }));
         for(const b of fifth)if(b.coverage+1e-6<(b.basket==='fuel'?0.8:1))unsafe.push({...b,step:step+1});
       }
-      if(body.dryRun)return json({success:true,dry_run:true,result:{...prepared,coverage,unsafe,fifth,terrain:hex.data,snapshot:baseline,diagnostics:preview.result.diagnostics}});
-      if(unsafe.length)throw new Error(`Unsafe subsistence rollout: ${unsafe.map((b:any)=>`${b.city_id}:${b.basket_key}=${b.domestic_satisfaction}`).join(',')}`);
+      if(body.dryRun)return json({success:true,dry_run:true,result:{...prepared,allParcels,coverage,unsafe,fifth,terrain:hex.data,snapshot:baseline,diagnostics:preview.result.diagnostics}});
+      if(unsafe.length)throw new Error(`Unsafe subsistence rollout: ${unsafe.map((b:any)=>`${b.city_id??b.city}:${b.basket_key??b.basket}=${b.domestic_satisfaction??b.coverage}`).join(',')}`);
     }
     const result=body.dryRun ? prepared : await applyParcelRollout(db,body.session_id);
     return json({success:true,dry_run:body.dryRun,result});

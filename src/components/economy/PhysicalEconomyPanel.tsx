@@ -3,6 +3,7 @@ import { useManagementReport } from '@/hooks/useManagementReport';
 import FuelGuidancePanel from './FuelGuidancePanel';
 import IndustrialInputsPanel from './IndustrialInputsPanel';
 import SubsistencePanel from './SubsistencePanel';
+import ConstructionMaterialsPanel from './ConstructionMaterialsPanel';
 import type { resolveGoodsEconomy } from '../../../supabase/functions/_shared/goodsEconomy';
 type Ledger=ReturnType<typeof resolveGoodsEconomy>;
 const fmt=(n:number)=>Number(n||0).toLocaleString('cs-CZ',{maximumFractionDigits:2});
@@ -25,6 +26,7 @@ export default function PhysicalEconomyPanel({sessionId,cities,playerName,curren
     <p className="text-xs text-muted-foreground">Údaje z uzavřeného tahu {report.turn}.</p>
     <SubsistencePanel subsistence={(report as any).subsistence?.filter((x:any)=>!city||x.city===city)} labor={report.labor?.filter((l:any)=>!city||l.city===city)} producers={report.producers?.filter((p:any)=>!city||p.city===city)} name={name} guidance={(report as any).build_guidance?.filter((x:any)=>!city||x.city===city)} />
     <FuelGuidancePanel warnings={(report as any).fuel_guidance} name={name} />
+    <ConstructionMaterialsPanel rows={balances} name={name} reserve={report.metrics.find(m=>m.key==='construction_stock')?.value??undefined} />
     <IndustrialInputsPanel rows={report.industrial_inputs?.filter(x=>!city||x.city===city)} name={name} />
     <div className="flex flex-wrap gap-3">
       <label>Město <select className="bg-background border rounded p-1" value={city} onChange={e=>setCity(e.target.value)}><option value="">Všechna</option>{cities.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>

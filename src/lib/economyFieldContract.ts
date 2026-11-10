@@ -169,3 +169,8 @@ export const PARCEL_FIELDS = [
   ['grid_x','Pole X'],['grid_y','Pole Y'],['index','Dílek'],['sub_biome','Terén'],
   ['potential','Přírodní kapacita'],['reservoir','Dostupný zdroj'],['renewable','Obnovitelný'],
 ].map(([key,label])=>({key,label,source:'snapshot.producers[].parcel'}));
+
+export const CONSTRUCTION_FIELDS = [
+  ['stored','Sklad · fyzické jednotky'],['capex','Odebráno na stavbu · fyzické jednotky'],
+  ['construction_efficiency','Body za jednotku'],['construction_points','Přírůstek stavební rezervy · body'],
+].map(([key,label])=>({key,label,source:'balances'}));
