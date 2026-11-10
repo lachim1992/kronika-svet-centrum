@@ -23,6 +23,7 @@ import { resolveMapSize, type WorldSize } from "../_shared/world-sizes.ts";
 import { seedRealmSkeleton } from "../_shared/seed-realm-skeleton.ts";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
+import { authorizeSessionCaller, AuthError } from "../_shared/sessionAuth.ts";
 import type {
   BootstrapStepRecord,
   CreateWorldBootstrapRequest,
@@ -175,6 +176,18 @@ Deno.serve(async (req) => {
     const t0 = performance.now();
     const raw = await req.json();
     const validated = validateRequest(raw);
+    // Only the session creator/member, an admin or an internal service call may
+    // bootstrap a session: this function writes with the service role.
+    try {
+      await authorizeSessionCaller(req, sb, validated.sessionId);
+    } catch (authErr) {
+      if (authErr instanceof AuthError) {
+        return new Response(JSON.stringify({ ok: false, error: authErr.message }), {
+          status: authErr.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw authErr;
+    }
     normalized = normalizeBootstrapRequest(validated);
     steps.push({
       step: "validate-normalize",
