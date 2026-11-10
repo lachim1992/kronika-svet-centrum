@@ -80,7 +80,8 @@ describe('economy chain closure',()=>{
   it('scales famine deaths with the unmet fraction and ignores tiny deficits',()=>{
     expect(foodShortageImpact(1000,10,0.00001).deaths).toBe(0);
     expect(foodShortageImpact(1000,10,0.1).famine).toBe(false);
-    expect(foodShortageImpact(1000,10,1).deaths).toBe(5);
+    expect(foodShortageImpact(1000,10,1).deaths).toBe(0); // 10 % = rationing, no famine
+    expect(foodShortageImpact(1000,10,2).deaths).toBe(10);
     expect(foodShortageImpact(1000,10,10).deaths).toBe(50);
     expect(foodShortageImpact(1000,0,1).famine).toBe(false);
   });
