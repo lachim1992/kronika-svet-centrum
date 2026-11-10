@@ -3,7 +3,7 @@ import { it, expect } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { accrueGuildSpecialization } from '../../supabase/functions/_shared/guildSpecialization';
-import { resolveGoodsEconomy, type Snapshot } from '../../supabase/functions/_shared/goodsEconomy';
+import { resolveGoodsEconomy, type Snapshot, type City } from '../../supabase/functions/_shared/goodsEconomy';
 import { planFiscalWrites } from '../../supabase/functions/_shared/atomicWrites';
 import fixture from './fixtures/parcel-jv72o7-preflight.json';
 
@@ -27,7 +27,7 @@ it('real physical guild output + buffered SQL fiscal commit applies scores once 
     await db.exec(readFileSync('drizzle/migrations/0012_validate_normalized_construction_points.sql', 'utf8'));
     const atomic = readFileSync('drizzle/migrations/0000_apply_reviewed_turn_atomicity_20260926.sql', 'utf8');
     await db.exec(atomic.slice(0, atomic.indexOf('ALTER TABLE public.game_sessions')));
-    const city = { ...fixture.snapshot.cities[0], id: n, owner: 'p', population: 100, classes: { burghers: 100 }, cell: '0,0', guild: 1 };
+    const city: City = { ...(fixture.snapshot as unknown as Snapshot).cities[0], id: n, owner: 'p', population: 100, classes: { burghers: 100 }, cell: '0,0', guild: 1 };
     const snap: Snapshot = { ...fixture.snapshot as unknown as Snapshot, cities: [city], edges: [], fame: [],
       opening: [{ city: n, good: 'raw_grapes', qty: 10, quality: 1 }], producers: [{ id: `${n}:make_wine`, node: n, city: n,
         channel: 'node', capacity: 3, jobs: 3, allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: false, distinctive: true,
@@ -50,7 +50,7 @@ it('real physical guild output + buffered SQL fiscal commit applies scores once 
     expect((await db.query('select last_processed_turn from realm_resources')).rows).toEqual([{ last_processed_turn: 0 }]);
     expect((await commit(buffered.writes)).rows).toEqual([{ applied: true }]);
     expect((await commit(buffered.writes)).rows).toEqual([{ applied: false }]);
-    const saved = (await db.query('select specialization_scores, specialization_last_turn from province_nodes')).rows[0];
+    const saved = (await db.query<{specialization_scores: unknown; specialization_last_turn: number}>('select specialization_scores, specialization_last_turn from province_nodes')).rows[0];
     expect(saved.specialization_scores).toEqual(next?.specialization_scores);
     expect(saved.specialization_last_turn).toBe(1);
     expect((await db.query('select gold_reserve,production_reserve from realm_resources')).rows).toEqual([{ gold_reserve: '75', production_reserve: '50' }]);
