@@ -106,7 +106,7 @@ function scenarioFor(recipeKey: string, targetCapacity = 40) {
 }
 
 const SPECIFIC_REASONS = ['b_factor_limited', 'supply_exhausted', 'missing_supplier', 'trade_blocked', 'route_unreachable',
-  'route_capacity', 'source_retained', 'source_empty', 'beyond_reach', 'landed_cost_cap'];
+  'route_capacity', 'source_retained', 'source_empty', 'beyond_reach', 'landed_cost_cap', 'haul_exceeds_value'];
 const CHAIN_RECIPES = RECIPES.filter(r => materialInputs(r).length > 0);
 
 describe('catalog-wide industrial chains (adapter, LOCK)', () => {

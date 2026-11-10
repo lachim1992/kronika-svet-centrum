@@ -297,3 +297,11 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - Live TEST02 (t27, derived refresh, invariants identical): Pole bakeries use 3.47+0.16+0.99 flour, baked_staples 3.56 (was 0).
 - Open P0 (diagnosed only): Háj Velké mlýny + Lachimgrad Vodní mlýn → blocked landed_cost_cap, but code path also fires when haul value ≤ transport (label conflates two reasons; t26 Háj planned 0 was stability factor 0 in snapshot). Jewelry ore: the only mine is in Háj; ore used by Háj smelter → supply_exhausted. Brod bakeries now flour-starved (Pole keeps its flour).
 - Next: split landed_cost_cap into haul_exceeds_value vs landed_cap with test.
+
+## Slice 2026-11-10 — split factory-import refusal reasons
+- DONE/TESTED: `goodsEconomy.transfer` production_input guard emitted `landed_cost_cap` for two different formulas. Now `haul_exceeds_value` (delivered value after loss/tolls/tariff ≤ freight) vs `landed_cost_cap` (landed > 4× base). Formulas unchanged. Test `src/test/input-refusal-split.test.ts` (cheap haul imports, friction 12 → haul_exceeds_value + 0 shipped + conservation, deterministic rerun); on old code it would report landed_cost_cap. Label added to IndustrialInputsPanel.
+- Verified: vitest 736 passed / 3 skipped; tsgo clean; deno check refresh-economy + process-turn clean; vite build OK. Deployed refresh-economy, process-turn, commit-turn, economy-dev-snapshot.
+- TEST02 t27 (read-only, stored ledger computed by old code): flour planned Brod 5.43, Háj 2.86, Pole 4.79, Grad 0.54 ≈ 13.6; only Pole mills produce flour (grain used 2×1.11 of planned 1.85). Brod = supply_exhausted → legitimate regional flour shortage, not reservation/ordering bug. Háj 2×6.10 + Grad 3.49 grain blocked under the conflated label; true reason visible after next derived refresh.
+- BLOCKED: derived refresh not run — refresh-economy needs a signed-in member (401); no snapshot changes made. Invariants t27: turn 27, resolving NULL, gold 1,005,472, pop 85,098, buildings 94, history hash 2546a8f1….
+- OPEN (gameplay/balance, not bug): more flour needs grain reaching Háj/Grad mills (cheaper road/closer farms) or more Pole mills/farms. Unverified: why Pole mills used only 60 % of planned grain.
+- NEXT: P1 money audit (wage rates → payroll → settlement → household income; producer cash/ownership vs treasury/GDP/tariffs).
