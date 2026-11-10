@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { parcelPotential, parcelProducers, parcelClosing, type EconomicParcel } from '../../supabase/functions/_shared/parcelEconomy';
+import { parcelPotential, parcelProducers, parcelClosing, parcelWorkshops, type EconomicParcel } from '../../supabase/functions/_shared/parcelEconomy';
 import { resolveGoodsEconomy, produced, type City, type Good } from '../../supabase/functions/_shared/goodsEconomy';
 import { RECIPES, GOODS } from '../../supabase/functions/_shared/productionCatalog';
 
-const recipes = new Map(RECIPES.map(r => [r.key, { recipe_key:r.key, output_good_key:r.output, output_quantity:r.qty, labor_cost:1, input_items:r.inputs }]));
+const recipes = new Map(RECIPES.map(r => [r.key, { recipe_key:r.key, output_good_key:r.output, output_quantity:r.qty, labor_cost:1, input_items:r.inputs.map(i=>({key:i.good,qty:i.qty})) }]));
 const terrain = [{q:0,r:0,biome_family:'forest',has_river:true,is_passable:true}, {q:1,r:0,biome_family:'forest',is_passable:true}];
 const parcel = (id:string, sub_biome='clearing', x=0): EconomicParcel => ({id,grid_x:x,grid_y:0,parcel_index:0,sub_biome,buildable:true,status:'claimed',city_id:'P',owner_player:'Player',capacity_slots:2});
 const city: City = {id:'P',owner:'Player',name:'P',cell:'0,0',population:100,classes:{peasants:100},soldiers:0,stability:0.65,irrigation:0,labor:{},market:1,storage:10,admin:0,security:1,guild:0,ideology:'customary_local',coastal:false};
@@ -16,6 +16,20 @@ describe('owned physical parcel economy', () => {
   it('unclaimed, blocked, civic, foreign and disconnected parcels yield nothing', () => {
     for(const change of [{status:'wild'}, {status:'blocked'}, {land_use:'civic'}, {owner_player:'AI'}, {grid_x:9}])
       expect(parcelProducers([{...parcel('p'),...change}],terrain,[city],recipes,1)).toEqual([]);
+  });
+  it('diagonal freshwater needs a real passable intermediate square',()=>{
+    const diag={q:1,r:1,biome_family:'forest',has_river:true,is_passable:true};
+    expect(parcelPotential(parcel('p'),[{...terrain[0],has_river:false},diag]).some(p=>p.recipe==='draw_river_water')).toBe(false);
+    expect(parcelPotential(parcel('p'),[{...terrain[0],has_river:false},terrain[1],diag]).some(p=>p.recipe==='draw_river_water')).toBe(true);
+  });
+  it('hand processing physically consumes timber/stone before reserve conversion, never copies raw stock',()=>{
+    const seat={...parcel('seat'),status:'occupied',land_use:'civic'};
+    const producers=parcelWorkshops([seat],[city],recipes);
+    const r=resolveGoodsEconomy({turn:1,goods,cities:[city],producers,edges:[],fame:[],opening:[{city:'P',good:'raw_timber',qty:3,quality:1},{city:'P',good:'raw_stone',qty:3,quality:1}]});
+    expect(producers.every(p=>!p.source&&p.recipe.inputs.length>0)).toBe(true);
+    expect(r.balances.find(b=>b.good==='raw_timber')?.consumed_as_input).toBeGreaterThan(0);
+    expect(r.balances.find(b=>b.good==='lumber')?.capex).toBeGreaterThan(0);
+    for(const b of r.balances) expect(b.opening+produced(b)+b.imported).toBeCloseTo(b.consumed_household+b.consumed_state+b.consumed_as_input+b.exported+b.stored+b.capex+b.lost_spoilage,6);
   });
   it('claimed second macro square adds production, never duplicates the same parcel', () => {
     const a=parcel('a'),b=parcel('b','dense_forest',1);

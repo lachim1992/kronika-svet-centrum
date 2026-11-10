@@ -14,7 +14,7 @@ const woodland = /forest|woods|canopy|thicket/;
 const rocky = /rock|gravel|slope|shelf|ridge|hillock|terrace/;
 const fertile = /fertile|grass|clearing|sheltered|raised_bank|creek_bank|shore|harbour/;
 const dead = /water|channel|dune|sand|frozen|permafrost/;
-/** No sea-as-drinking-water, no diagonal reach, and no abstract province ownership. */
+/** No sea-as-drinking-water; diagonal access requires a passable cardinal path. */
 export function parcelPotential(p: EconomicParcel, terrain: ParcelTerrain[], turn = 1) {
   const home = terrain.find(h => (h.grid_x ?? h.q) === p.grid_x && (h.grid_y ?? h.r) === p.grid_y);
   if (!p.buildable || p.status === 'blocked' || dead.test(p.sub_biome) || !home || home.is_passable === false)

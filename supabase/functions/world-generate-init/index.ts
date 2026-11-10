@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { computeStructuralBonuses } from "../_shared/physics.ts";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
+import { applyParcelRollout } from "../_shared/parcelRollout.ts";
 
 
 /** Lightweight alias for world-generate-init usage */
@@ -1874,9 +1875,11 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
      */
     try {
       const starter = await ensureStarterEconomy(supabase, sessionId, { turnNumber: 1 });
+      await applyParcelRollout(supabase, sessionId);
       (counters as any).starterStructures = starter.reduce((n, r) => n + r.added.length, 0);
     } catch (e) {
       console.warn("starter economy backfill failed:", e);
+      throw e; // Never publish a ready world with missing physical city land.
     }
 
     // Set session ready
