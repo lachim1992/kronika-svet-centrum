@@ -25,7 +25,7 @@ export function subsistenceBuildGuidance(ledger: any, owner: string): BuildGuida
     const one = { ...ledger, snapshot: { ...ledger.snapshot, cities: [c] } };
     const p = chooseSubsistenceBuild(one, owner, all, () => c.name || c.id);
     const l = (ledger?.labor || []).find((x: any) => x.city === c.id);
-    if (p) out.push({ ...p, ...PRIMARY_BUILD_CATALOG[p.buildingName], idle_workers: l ? Math.max(0, Number(l.available_workforce) - Number(l.employed_total)) : 0 });
+    if (p) out.push({ ...p, cost_wealth: PRIMARY_BUILD_CATALOG[p.buildingName].cost_wealth, output: PRIMARY_BUILD_CATALOG[p.buildingName].output, idle_workers: l ? Math.max(0, Number(l.available_workforce) - Number(l.employed_total)) : 0 });
   }
   return out.sort((a, b) => a.coverage - b.coverage);
 }
