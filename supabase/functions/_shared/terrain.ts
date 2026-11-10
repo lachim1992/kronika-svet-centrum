@@ -758,12 +758,13 @@ export function generateWorldTerrain(
 }
 
 // ── Start position habitability ──
+const START_NBS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
 const NO_FOOD_LAND = /sea|mountain|swamp|desert|dune|glacier|ice|tundra/i;
 /** A player/AI capital must have reachable drinking water (river or coast within 1 hex) and
  * food land (a fishable coast or arable own hex). No universal production is granted instead. */
 export function isHabitableStart(h: HexData, byKey: Map<string, HexData>): boolean {
   if (!h.isPassable || /sea|mountain|swamp|glacier|ice/i.test(h.biomeFamily)) return false;
-  const nbs = NEIGHBORS_HEX.map(([dq, dr]) => byKey.get(`${h.q + dq},${h.r + dr}`)).filter(Boolean) as HexData[];
+  const nbs = START_NBS.map(([dq, dr]) => byKey.get(`${h.q + dq},${h.r + dr}`)).filter(Boolean) as HexData[];
   const water = h.coastal || nbs.some(n => n.hasRiver || /lake/i.test(n.biomeFamily));
   const food = h.coastal || !NO_FOOD_LAND.test(h.biomeFamily);
   return water && food;
