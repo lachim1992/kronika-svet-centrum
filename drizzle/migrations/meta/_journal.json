@@ -92,6 +92,13 @@
       "when": 1794339983343,
       "tag": "0012_validate_normalized_construction_points",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794340142542,
+      "tag": "0013_complete_lazy_founding_claims_atomically",
+      "breakpoints": true
     }
   ]
 }
