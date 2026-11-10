@@ -105,6 +105,8 @@ function scenarioFor(recipeKey: string, targetCapacity = 40) {
   return finalize(w);
 }
 
+const SPECIFIC_REASONS = ['b_factor_limited', 'supply_exhausted', 'missing_supplier', 'trade_blocked', 'route_unreachable',
+  'route_capacity', 'source_retained', 'source_empty', 'beyond_reach', 'landed_cost_cap'];
 const CHAIN_RECIPES = RECIPES.filter(r => materialInputs(r).length > 0);
 
 describe('catalog-wide industrial chains (adapter, LOCK)', () => {
@@ -194,7 +196,8 @@ describe('catalog-wide industrial chains (adapter, LOCK)', () => {
           usedInputs++;
         }
         if (ii.unmet > 1e-6) {
-          expect(ii.blocked, `${r.key}: ${i.good} missing shortage reason`).toBeTruthy();
+          // Every shortage must name its concrete cause; the generic catch-all is a diagnostic defect.
+          expect(SPECIFIC_REASONS, `${r.key}: ${i.good} vague reason ${ii.blocked}`).toContain(ii.blocked);
           scarceInputs++;
         }
         return ii;
