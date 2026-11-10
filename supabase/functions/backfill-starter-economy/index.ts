@@ -7,7 +7,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
-import { authorizeSessionCaller, AuthError } from "../_shared/sessionAuth.ts";
+import { AuthError } from "../_shared/sessionAuth.ts";
+import { authorizeBackfill } from "./policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
