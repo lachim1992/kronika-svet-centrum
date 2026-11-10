@@ -3096,8 +3096,8 @@ async function executeClaimTileParcel(
   const cost = parcelClaimCost(Number(parcel.build_cost_multiplier || 1), held.claimed);
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
-  if ((realm.gold_reserve || 0) < cost.gold) return { events: [], error: `Nedostatek zlata (potřeba ${cost.gold})` };
-  if ((realm.production_reserve || 0) < cost.production) return { events: [], error: `Nedostatek produkce (potřeba ${cost.production})` };
+  if ((realm.gold_reserve || 0) < cost.gold) return { events: [], error: `Nedostatek zlata (potřeba ${cost.gold}, máš ${Math.floor(realm.gold_reserve || 0)})` };
+  if ((realm.production_reserve || 0) < cost.production) return { events: [], error: `Nedostatek produkce (potřeba ${cost.production}, máš ${Math.floor(realm.production_reserve || 0)})` };
 
   const { error: claimError } = await supabase.from("tile_parcels").update({
     status: "claimed", city_id: cityId, owner_player: actor.name, claimed_turn: turnNumber, land_use: "open",
