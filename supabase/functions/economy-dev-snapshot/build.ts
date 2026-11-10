@@ -4,6 +4,7 @@
 // copied or summed from canonical ledger fields; diagnostics are invariant checks.
 
 import { buildCosts, buildSpecific, type MarginBlock, type FameEntry, type VariantCatalogueRow } from "./costs.ts";
+import { subsistenceRows } from '../_shared/subsistence.ts';
 export * from "./costs.ts";
 
 export const SCHEMA_VERSION = "economy-dev-snapshot/2";
@@ -51,8 +52,8 @@ export interface LedgerResult {
   diagnostics?: LedgerDiagnostic[]; metrics?: { city: string; roles?: string[]; [k: string]: unknown }[];
   productChoice?: ProductChoiceRow[]; cityAccounts?: CityAccountRow[]; famous?: FameEntry[];
   importBlockers?: { city: string; good: string; unmet: Num; reason: string; source: string | null }[];
-  budgetMode?: string;
-  snapshot?: { turn?: number; cities?: SnapshotCity[]; producers?: SnapshotProducer[]; edges?: SnapshotEdge[];
+  budgetMode?: string; labor?: any[];
+  snapshot?: { turn?: number; goods?: { key: string; basket: string }[]; cities?: SnapshotCity[]; producers?: SnapshotProducer[]; edges?: SnapshotEdge[];
     fame?: { city: string; good: string }[]; blockedTrade?: unknown[] };
 }
 
@@ -231,7 +232,8 @@ export function buildSnapshot(result: LedgerResult, prevAccounts: CityAccountRow
   const costs = buildCosts({ producers, diagnostics: diags, prices, famous: result.famous || [], owners });
   const recipesUsing = (good: string) => [...new Set(producers.filter((p) => (p.recipe.inputs || []).some((i) => i.good === good)).map((p) => p.recipe.key))];
   const specific = buildSpecific({ famous: result.famous || [], variants, owners, balances, flows, choice, prices, costs, recipesUsing });
-  return { industrial_inputs:result.industrialInputs, fuel_guidance: (result as any).fuelGuidance || [], import_blockers: result.importBlockers || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
+  const subsistence = subsistenceRows(cities.map((c: any) => ({ id: c.id, population: n(c.population) })), balances as any, snap.goods || [], result.labor || []);
+  return { subsistence, labor: result.labor || [], industrial_inputs:result.industrialInputs, fuel_guidance: (result as any).fuelGuidance || [], import_blockers: result.importBlockers || [], costs, specific, goods: goodsRows, producers: producerRows, demand: demandRows, flows: flowRows, cities: cityRows, world, anomalies,
     edges: edges.map((e) => ({ id: e.id, from: e.from, to: e.to, capacity: n(e.capacity), used: edgeUse.get(e.id) || 0 })) };
 }
 
