@@ -33,6 +33,7 @@ export interface City {
 }
 export interface Recipe { key: string; good: string; qty: number; inputs: KindedInput[]; labor: number; quality: number; minQuality: number }
 export interface Producer { id: string; city: string; node?: string; cell?: string; channel: Channel; capacity: number;
+  parcel?: { id: string; grid_x: number; grid_y: number; index: number; sub_biome: string; potential: number; reservoir: number; renewable: boolean; water: boolean };
   recipe: Recipe; allocation: number; staffing: number; logistics: number; mastery: number; source: boolean; distinctive: boolean;
   /** Workers this facility can employ at full capacity. Derived from capacity × recipe labour when absent. */
   jobs?: number;
