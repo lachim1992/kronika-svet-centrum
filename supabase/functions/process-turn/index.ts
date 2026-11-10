@@ -749,6 +749,13 @@ Deno.serve(async (req) => {
           reference: { food_supply: cityFoodSupply, demand: cityDemand, deficit: cityFoodDeficit, death_toll: deathToll, isolation: isolationPenalty },
         });
 
+      } else if (shortage.minor) {
+        // RATIONING (5–15 % deficit): mild unrest, nobody dies, not a famine.
+        await supabase.from("cities").update({
+          city_stability: Math.max(0, (city.city_stability ?? 50) - shortage.stabilityLoss),
+          famine_turn: false, famine_consecutive_turns: 0,
+        }).eq("id", city.id);
+        logEntries.push(`🍞 ${city.name}: přídělový systém, chybí ${cityFoodDeficit.toFixed(2)} potravin.`);
       } else {
         if (city.famine_turn) {
           await supabase.from("cities").update({ famine_turn: false, famine_consecutive_turns: 0 }).eq("id", city.id);
