@@ -1,3 +1,4 @@
+import { isSandboxMode } from "@/hooks/useSandboxMode";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowUpRight, Castle, Check, Factory, Flag, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, Undo2, X } from "lucide-react";
