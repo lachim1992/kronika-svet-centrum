@@ -330,3 +330,29 @@ export const CHANNEL_LABELS: Record<DemandChannel, string> = {
   military: 'Vojsko',
   fame: 'Poptávka po proslulém zboží',
 };
+
+/**
+ * Stability drift from household needs. Critical needs (food, water) decide the hard bands;
+ * satisfaction needs (fuel, basic clothing) act SLOWLY: at most −1/turn and never below
+ * COMFORT_STABILITY_FLOOR, so a cold or ragged town is limited, not doomed. Operational,
+ * civic, development and luxury baskets never move stability. Water/famine penalties are
+ * applied separately by their own helpers and are not double counted here.
+ */
+export const COMFORT_STABILITY_FLOOR = 40;
+export function needStabilityDrift(
+  rows: { basket_key: string; satisfaction_score: number; quantity_needed: number }[], stability: number,
+): { drift: number; critical: number; comfort: number } {
+  const avg = (cls: BasketClass) => {
+    const rs = rows.filter(r => BASKET_DEMAND[r.basket_key]?.class === cls && Number(r.quantity_needed) > 0);
+    const w = rs.reduce((s, r) => s + Number(r.quantity_needed), 0);
+    return w > 0 ? rs.reduce((s, r) => s + Math.max(0, Math.min(1, Number(r.satisfaction_score) || 0)) * Number(r.quantity_needed), 0) / w : 1;
+  };
+  const critical = avg('critical_need'), comfort = avg('basic_need');
+  let drift: number;
+  if (critical <= 0.3) drift = -5;
+  else if (critical <= 0.5) drift = -2;
+  else if (critical <= 0.8) drift = 0;
+  else drift = comfort >= 0.8 ? 2 : comfort >= 0.5 ? 1 : 0;
+  if (drift >= 0 && comfort < 0.5 && stability > COMFORT_STABILITY_FLOOR) drift = Math.min(drift, -1);
+  return { drift, critical, comfort };
+}

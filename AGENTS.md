@@ -20,3 +20,4 @@
 - World-creation player settings are normalized and mapped to concrete numbers only in `supabase/functions/_shared/worldGameSettings.ts`; every creation step (map, preview, neutral towns, init) reads it — one source for what each choice means.
 
 - The labour pass staffs food/drinking-water (then a fuel minimum) first inside each sector, only up to household need (`SUBSISTENCE_TIERS` in goodsEconomy.ts); declared jobs and capacity are never shrunk — so output per worker never changes and basic needs never starve behind node jobs.
+- Per-city subsistence readout (food status, labour headcount) lives only in `supabase/functions/_shared/subsistence.ts`, reusing `foodShortageImpact`; both secure reports embed it and UI renders it via `SubsistencePanel` — rationing vs famine can never disagree with process-turn.

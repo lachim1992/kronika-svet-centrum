@@ -108,3 +108,36 @@ export const fieldByKey = (key: string): EconomyField => {
   if (!f) throw new Error(`Unknown economy field ${key}`);
   return f;
 };
+
+/** Canonical labour readout (goodsEconomy.labor[]) shown identically in Economy tab and Dev Mode. */
+export const LABOR_FIELDS: EconomyField[] = [
+  { key: "population", label: "Obyvatelé", kind: "count", source: "labor", tip: "Obyvatelé města v ekonomickém tahu." },
+  { key: "available_workforce", label: "Pracovní síla", kind: "count", source: "labor", tip: "Lidé, kteří mohou pracovat (bez vojáků a neaktivních)." },
+  { key: "jobs_capacity", label: "Pracovní místa", kind: "count", source: "labor", tip: "Deklarovaná místa budov, čtvrtí a uzlů; nikdy se nezkracují." },
+  { key: "employed_total", label: "Zaměstnaní", kind: "count", source: "labor", tip: "Skutečně obsazená místa; nikdo není zaměstnán dvakrát." },
+  { key: "critical_priority_employed", label: "Přednostně na jídlo/vodu/palivo", kind: "count", source: "labor", tip: "Pracovníci obsazení nejdřív u výroby jídla a vody (do potřeby domácností), pak paliva (do 80 %). Zbytek dostávají ostatní provozy." },
+  { key: "vacancies_total", label: "Neobsazená místa", kind: "count", source: "labor", tip: "Místa, pro která chybí lidé — tyto provozy běží pod kapacitou." },
+  { key: "unemployed_total", label: "Nezaměstnaní", kind: "count", source: "labor", tip: "Pracovní síla bez místa." },
+  { key: "structural_unemployed", label: "Strukturální nezaměstnanost", kind: "count", source: "labor", tip: "Lidé bez práce vedle prázdných míst jiné odbornosti." },
+  { key: "retrained", label: "Přeškoleno", kind: "count", source: "labor", tip: "Pracovníci, kteří tento tah přešli do jiného odvětví." },
+  { key: "labor_mobility", label: "Mobilita práce", kind: "ratio", source: "labor", tip: "Podíl volné práce, který smí přejít mezi odvětvími." },
+  { key: "employment_rate", label: "Zaměstnanost", kind: "ratio", source: "labor", tip: "Zaměstnaní ÷ pracovní síla." },
+];
+export const LABOR_UNMAPPED_OK = new Set(["city", "economically_active", "unemployment_rate", "wage_rate", "sectors", "service"]);
+
+/** Same thresholds as process-turn (foodShortage.ts): rationing is not famine. */
+export const FOOD_STATUS_LABEL: Record<string, string> = {
+  ok: "Jídla dost", minor: "Drobný výpadek (bez dopadu)", rationing: "Přídělový systém (−1 stabilita, bez úmrtí)", famine: "Hladomor (úmrtí)",
+};
+
+/** Dominant cause of a producer running below potential, read from its own diagnostic fields only. */
+export function producerLimit(d: Record<string, any>): string | null {
+  if (d.blocked) return d.blocked === "missing_local_delivery_route" ? "chybí cesta do města" : String(d.blocked);
+  const f = d.factors || {};
+  if (d.bottleneck) return `chybí vstup: ${d.bottleneck}`;
+  if (Number(f.staffing ?? d.staffing_ratio ?? 1) < 0.95) return `málo pracovníků (${Math.round(Number(f.staffing ?? d.staffing_ratio) * 100)} %)`;
+  if (Number(f.tools ?? 1) < 0.95) return `nástroje (${Math.round(Number(f.tools) * 100)} %)`;
+  if (Number(f.stability ?? 1) < 0.95) return `stabilita (${Math.round(Number(f.stability) * 100)} %)`;
+  if (Number(f.logistics ?? 1) < 0.95) return `logistika (${Math.round(Number(f.logistics) * 100)} %)`;
+  return null;
+}

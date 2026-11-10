@@ -1,3 +1,4 @@
+import { STARTER_RESERVE_GOODS } from './starterEconomy.ts';
 import { resolveGoodsEconomy, produced, type Snapshot, type City, type Good, type Producer, type Edge } from './goodsEconomy.ts';
 import { actualSoldiers, workforceLawModifiers } from './manpower.ts';
 import { staffingCapacity } from './cityDistricts.ts';
@@ -361,6 +362,14 @@ export async function computeCanonicalEconomy(sb:any,session:string){
         if(inventory.data.length<1000)break;
       }
     }
+    // ONE-TIME STARTER RESERVE: only in this first-adoption branch (no prior/current ledger),
+    // so it is read exactly once and refresh/turn retries reuse the frozen opening. Only
+    // storable goods declared on the founding storehouse; tagged with provenance.
+    for(const b of db.city_buildings){const r=b.status==='completed'&&b.effects?.starter_economy?b.effects?.starter_reserve:null;
+      if(!r||!cityMap.has(b.city_id))continue;
+      for(const [good,qty] of Object.entries(r))if(STARTER_RESERVE_GOODS.has(good)&&goodMap.has(good)&&nonnegative(qty)>0)
+        opening.push({city:b.city_id,good,qty:nonnegative(qty),quality:1,provenance:'starter_reserve'});}
+
   }
   // Read-only history of the last COMMITTED turn: familiarity and household budget. Refresh never writes it.
   const familiarity:Record<string,Record<string,number>>={};

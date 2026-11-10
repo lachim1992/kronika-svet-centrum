@@ -7,7 +7,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
-import { authorizeSessionCaller, AuthError } from "../_shared/sessionAuth.ts";
+import { AuthError } from "../_shared/sessionAuth.ts";
+import { authorizeBackfill } from "./policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,8 +28,7 @@ Deno.serve(async (req) => {
     // Service-role credentials may be used only for trusted internal calls.
     // A verified session JWT must belong to an admin: normal session members cannot mutate saves.
     // Validate on every request, including dry-runs (which expose session data).
-    const caller = await authorizeSessionCaller(req, supabase, session_id);
-    if (!caller.service && !caller.admin) throw new AuthError("Admin role required", 403);
+    await authorizeBackfill(req, supabase, session_id);
     const reports = await ensureStarterEconomy(supabase, session_id, {
       cityId: city_id, turnNumber: turn_number, dryRun: dryRun !== false, upgradeStorage: upgradeStorage === true,
     });
