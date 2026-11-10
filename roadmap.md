@@ -345,7 +345,8 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 ## Long-horizon slice (2026-11-10)
 - [x] 200-turn harness `src/test/long-horizon-economy.test.ts` (real solver, growth, stocks, paid/staffed investment, KPIs at 5/20/67/200, no-investment stagnation, flood/crop shock famine + recovery).
 - [x] Proven late-save cause (TEST01 t67, TEST02 t27, read-only): cities grew to 2–10k while jobs stayed 400–900 (thousands idle) and only 4/12 primary buildings existed; blockers mostly `source_empty`. Fix: `_shared/subsistenceBuild.ts` deterministic AI farm/well/peat build (deployed in ai-faction-turn).
-- [ ] Real-game population growth is not gated by food/water coverage (saves grew to 10k while starving) — verify demography in process-turn.
-- [ ] Player-side guidance for the same remedy (UI hint), human players still must build.
+- [x] commit-turn growth now gated by canonical post-trade staple_food/drinking_water satisfaction (`physics.subsistenceGrowthFactor`); starving cities do not attract migrants. TEST01 (food ≤46 %, water ≤26 %) → zero growth next turns.
+- [x] Player guidance `build_guidance` in management report + SubsistencePanel (player builds manually).
+- [ ] Panel guidance not yet visually checked in preview; production publish left to host action.
 - [ ] Optional capital-to-capital footpath at world creation — not done (strategy-changing; needs user decision).
 - [ ] P2 rural workers: not implemented. Harness shows no systemic starvation without it (idle urban labour is abundant); bottleneck is missing primary buildings, not workers.
