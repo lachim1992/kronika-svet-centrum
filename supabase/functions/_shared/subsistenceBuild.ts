@@ -10,7 +10,25 @@ const coverageOf = (balances: any[], keys: Set<string>, city: string) => {
   const d = bs.reduce((s, b) => s + Number(b.demand || 0), 0), u = bs.reduce((s, b) => s + Number(b.unmet_demand || 0), 0);
   return d > 0 ? 1 - u / d : 1;
 };
+/** Mirror of building_templates rows (cost_wealth, basket_outputs) — audited by long-horizon test. */
+export const PRIMARY_BUILD_CATALOG: Record<string, { cost_wealth: number; basket: string; output: number }> = {
+  Farma: { cost_wealth: 10, basket: 'staple_food', output: 7 }, Studna: { cost_wealth: 5, basket: 'drinking_water', output: 6 },
+  'Rybářství': { cost_wealth: 10, basket: 'staple_food', output: 4 }, 'Rašeliniště': { cost_wealth: 8, basket: 'fuel', output: 3 },
+};
 export const SUBSISTENCE_BUILD = { threshold: 0.97, fuelThreshold: 0.6, minIdleWorkers: 25 } as const;
+
+export interface BuildGuidance extends SubsistenceBuildPick { cost_wealth: number; output: number; idle_workers: number }
+/** Player guidance: every owned city's missing primary building (player builds it themselves). */
+export function subsistenceBuildGuidance(ledger: any, owner: string): BuildGuidance[] {
+  const out: BuildGuidance[] = []; const all = new Set(Object.keys(PRIMARY_BUILD_CATALOG).map(n => n.toLowerCase()));
+  for (const c of (ledger?.snapshot?.cities || []).filter((c: any) => c.owner === owner)) {
+    const one = { ...ledger, snapshot: { ...ledger.snapshot, cities: [c] } };
+    const p = chooseSubsistenceBuild(one, owner, all, () => c.name || c.id);
+    const l = (ledger?.labor || []).find((x: any) => x.city === c.id);
+    if (p) out.push({ ...p, ...PRIMARY_BUILD_CATALOG[p.buildingName], idle_workers: l ? Math.max(0, Number(l.available_workforce) - Number(l.employed_total)) : 0 });
+  }
+  return out.sort((a, b) => a.coverage - b.coverage);
+}
 
 export function chooseSubsistenceBuild(ledger: any, owner: string, templates: Set<string>,
   cityName: (id: string) => string | undefined): SubsistenceBuildPick | null {
