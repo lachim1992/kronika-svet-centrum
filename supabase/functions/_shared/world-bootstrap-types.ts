@@ -149,6 +149,8 @@ export interface CreateWorldBootstrapRequest {
   lineageIds?: string[];
   factions?: FactionSeedInput[];
   server?: ServerBootstrapInput;
+  /** Player-chosen world settings (rivers, opponents, cities, wealth, spacing). */
+  gameSettings?: import("./worldGameSettings.ts").WorldGameSettings;
 }
 
 // ── Persisted spec artifact (stored in world_foundations.worldgen_spec) ──
