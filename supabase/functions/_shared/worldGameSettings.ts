@@ -72,3 +72,33 @@ export function aiDifficultyProfile(d?: WorldGameSettings["aiDifficulty"]) {
     : d === "hard" ? { reserveMultiplier: 1.5, defaultPersonality: "aggressive" }
     : { reserveMultiplier: 1, defaultPersonality: "balanced" };
 }
+
+/**
+ * Premise-derived defaults: the analysed world (biomes, land ratio, mountains)
+ * suggests river amount/length. Player choices always win over these.
+ */
+export function premiseDerivedSettings(terrain?: {
+  targetLandRatio?: number; mountainDensity?: number; biomeWeights?: Record<string, number>;
+} | null): Pick<WorldGameSettings, "riverAmount" | "riverLength"> {
+  if (!terrain) return {};
+  const w = terrain.biomeWeights ?? {};
+  const total = Object.values(w).reduce((a, b) => a + (Number(b) || 0), 0) || 1;
+  const share = (...keys: string[]) => keys.reduce((a, k) => a + (Number(w[k]) || 0), 0) / total;
+  const wet = share("forest", "swamp", "wetland", "marsh", "jungle", "rainforest", "taiga");
+  const dry = share("desert", "tundra", "steppe", "savanna", "badlands", "volcanic");
+  const moisture = wet - dry;
+  const riverAmount = moisture > 0.15 ? "high" : moisture < -0.2 ? "low" : "normal";
+  const land = terrain.targetLandRatio ?? 0.5;
+  const mountains = terrain.mountainDensity ?? 0.3;
+  // Big land masses with highlands grow long rivers; small islands only streams.
+  const riverLength = land < 0.3 ? "low" : land > 0.55 && mountains > 0.25 ? "high" : "normal";
+  return { riverAmount, riverLength };
+}
+
+/** Final settings: premise defaults overridden by explicit player choices. */
+export function effectiveGameSettings(player: WorldGameSettings, terrain?: Parameters<typeof premiseDerivedSettings>[0]): WorldGameSettings {
+  const derived = premiseDerivedSettings(terrain);
+  const out: WorldGameSettings = { ...derived };
+  for (const [k, v] of Object.entries(player)) if (v !== undefined) (out as any)[k] = v;
+  return out;
+}
