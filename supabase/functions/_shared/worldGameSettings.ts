@@ -20,6 +20,14 @@ export interface WorldGameSettings {
   startingWealth?: Level3;
   /** Distance between realms' starting positions. */
   realmDistance?: Level3;
+  /** Map size (overrides premise suggestion). */
+  mapSize?: "small" | "medium" | "large";
+  /** Target land share 0.2–0.9 (overrides premise suggestion). */
+  landRatio?: number;
+  /** Mountain density 0–1 (overrides premise suggestion). */
+  mountainDensity?: number;
+  /** Max human players (multiplayer 2–10). */
+  maxPlayers?: number;
 }
 
 const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>

@@ -125,6 +125,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved?.seed]);
+  // Map overrides from the world settings box are applied to the analysed world.
+  useEffect(() => {
+    if (!resolved) return;
+    if (gameSettings.mapSize && resolved.userIntent.size !== gameSettings.mapSize) editField("userIntent.size", gameSettings.mapSize);
+    if (gameSettings.landRatio !== undefined && resolved.terrain.targetLandRatio !== gameSettings.landRatio) editField("terrain.targetLandRatio", gameSettings.landRatio);
+    if (gameSettings.mountainDensity !== undefined && resolved.terrain.mountainDensity !== gameSettings.mountainDensity) editField("terrain.mountainDensity", gameSettings.mountainDensity);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolved?.seed, gameSettings.mapSize, gameSettings.landRatio, gameSettings.mountainDensity]);
   const [creating, setCreating] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState<number | undefined>(undefined);
   const [receivedSteps, setReceivedSteps] = useState<CreateWorldBootstrapResponse["steps"]>(undefined);
@@ -296,7 +304,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         .insert({
           room_code: roomCode,
           player1_name: playerName.trim(),
-          max_players: mode === "tb_multi" ? 10 : mode === "time_persistent" ? 50 : 1,
+          max_players: mode === "tb_multi" ? Math.min(10, Math.max(2, gameSettings.maxPlayers ?? 10)) : mode === "time_persistent" ? 50 : 1,
           created_by: userId,
           game_mode: mode,
           tier: "premium",
@@ -479,6 +487,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                   value={gameSettings}
                   onChange={setGameSettings}
                   premiseDefaults={premiseDefaults}
+                  showMaxPlayers={isMPMode}
+                  mapDefaults={resolved ? { size: resolved.userIntent.size, landRatio: resolved.terrain.targetLandRatio, mountainDensity: resolved.terrain.mountainDensity } : undefined}
                   opponents={isMPMode ? undefined : (resolved?.factionCount ?? gameSettings.aiOpponents)}
                   onOpponentsChange={isMPMode ? undefined : (n) => {
                     setGameSettings((s) => ({ ...s, aiOpponents: n }));
