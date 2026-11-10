@@ -280,3 +280,12 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] Deploy: refresh-economy, process-turn, compute-trade-flows, economy-dev-snapshot, commit-turn.
 - [ ] BLOQUEADO: refresh de TEST02 no ejecutado — auth gateway responde 522/expired session y `lovable auth-session` falla con pooler no disponible (cloud_status reporta healthy). Reintentar refresh-economy en cuanto el gateway responda; turno 25 intacto, ledgers committed sin tocar.
 - [ ] Pendiente P0: diagnóstico baked_staples=0 en TEST02 (mlín/herramientas/combustible), migración starter 140→frozen (diferida hasta comercio robusto).
+
+## FÁZE 0 — dokončení existující ekonomiky (2026-11-10)
+- DONE/TESTED: všechny-receptury test (catalog-chains) — příčina selhání: (a) fixture: dodavatel s_<good> dimenzovaný podle prvního odběratele, lineární řetěz 50+ měst (raw_stone 18 skoků), plánovaná poptávka bez B faktoru → globální nedostatek flour/iron_ingot/leather/stone_blocks/wine/textile; (b) DEFEKT diagnostiky: mlýn označen „landed_cost“ i když ho omezovaly nástroje (B); vyprodaný dodavatel hlášen jako missing_supplier; importBlockers uváděly prázdný zdroj (s_yarn). Opraveno: b_factor_limited, supply_exhausted, landed_cost_cap, beyond_reach pro tovární vstupy; test nyní vyžaduje konkrétní důvod u každého nedostatku.
+- DONE/TESTED: DEFEKT strážce fyzického deníku — ztráta při dopravě z odloučeného místa výroby (ne obchodní tok) blokovala refresh TEST02 (raw_grain 0.00827). Nové pole lost_site_delivery (podmnožina lost_transport) + regresní test.
+- DONE (LIVE): TEST02 t26 derived refresh OK, fiscal_unchanged, tah 26/NULL, zlato, populace 84002, committed hashe t24–26 a 90 budov beze změny. Brod pekárna reálně dováží mouku 1.92.
+- OPEN P0: Lachimgrad Vodní mlýn — raw_grain landed_cost_cap (dovoz > 4× zákl. ceny); Háj Velké mlýny planned 0 (nulový potenciál – pravděpodobně bez pracovníků, neověřeno); Pole pekárny bez mouky (vlastní mlýny ji spotřebují/vyvezou).
+- OPEN P1 (neprovedeno tento běh): audit mzdy→výplata→příjem domácností, rozpočet/cla/HDP — jen existující testy (wage-settlement, treasury-reconciliation, ownership), žádná nová kontrola.
+- TESTED (rozsah!): 20/200 tahů pouze fyzická konzervace (economy-long-horizon-ledger), NE ekonomická uzávěrka cen/mezd.
+- DEFERRED (mikroekonomie): cenotvorba z marží, identita firem, konkurence, monopoly, férové dělení vzácného vstupu mezi odběratele (dnes greedy pořadí).

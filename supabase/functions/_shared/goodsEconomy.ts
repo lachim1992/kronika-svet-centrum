@@ -83,6 +83,8 @@ export interface Balance { city: string; good: string; opening: number; produced
   /** Decomposition of lost_spoilage (the three sum to it): natural storage decay on opening stock,
    *  physical transport/delivery losses, and warehouse-capacity discard of unstorable surplus. */
   lost_decay: number; lost_transport: number; lost_discard: number;
+  /** Subset of lost_transport: haul between a producer's remote site and its city (not a trade flow). */
+  lost_site_delivery?: number;
   /** Closing batch composition of `stored` (sums to stored); next turn's Opening.lots. */
   stored_lots?: OpeningLot[];
   unmet_demand: number; demand: number; quality: number; gross_output_value: number; intermediate_value: number;
@@ -125,7 +127,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const k=key(city,good);let b=balances.get(k);
     if(!b){b={city,good,opening:0,produced_household:0,produced_node:0,produced_facility:0,produced_district:0,
       consumed_household:0,consumed_state:0,consumed_as_input:0,imported:0,exported:0,stored:0,lost_spoilage:0,
-      lost_decay:0,lost_transport:0,lost_discard:0,
+      lost_decay:0,lost_transport:0,lost_discard:0,lost_site_delivery:0,
       unmet_demand:0,demand:0,quality:1,gross_output_value:0,intermediate_value:0,extraction_value:0,capex:0};balances.set(k,b)}return b;
   };
   const available=(b:Balance)=>Math.max(0,b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage);
@@ -262,8 +264,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   /** Why the last household-ward transfer into a city×good was refused; diagnostics only, never alters stock. */
   type TradeRefusal='trade_blocked'|'route_unreachable'|'beyond_reach'|'margin_unprofitable'|'route_capacity'|'source_retained'|'source_empty';
   const tradeRefusals=new Map<string,{reason:TradeRefusal;source:string}>();
+  /** Last refusal a factory input pull got from a source that actually held stock (diagnostics only). */
+  const inputRefusals=new Map<string,TradeRefusal|'landed_cost_cap'>();
   const refuse=(src:City,dst:City,g:Good,why:string,r:TradeRefusal)=>{
-    if(why==='household_consumption'||why==='regional_redistribution')tradeRefusals.set(key(dst.id,g.key),{reason:r,source:src.id});
+    // A source that holds nothing must not overwrite the refusal of a real holder.
+    if(why==='production_input'){if(available(stock(src.id,g.key))>C.minLot)inputRefusals.set(key(dst.id,g.key),r);return 0;}
+    if(why!=='household_consumption'&&why!=='regional_redistribution')return 0;
+    const k=key(dst.id,g.key),prev=tradeRefusals.get(k);
+    const empty=available(stock(src.id,g.key))<=C.minLot;
+    if(!prev||!empty||prev.reason==='source_empty')tradeRefusals.set(k,{reason:empty?'source_empty':r,source:empty?null as any:src.id});
     return 0;};
   const transfer=(src:City,dst:City,g:Good,wanted:number,reason:string,via:string[]=[],keep=0,minQ=-Infinity)=>{
     if(tradeBlocked(src,dst))return refuse(src,dst,g,reason,'trade_blocked');
@@ -291,7 +300,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return refuse(src,dst,g,reason,'margin_unprofitable');
     // Factories are cost-driven: the physical haul must be worth the good, and the landed cost is capped.
     if(reason==='production_input'&&((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0
-      ||(landed(src,dst,g,minQ,wanted)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple))return 0;
+      ||(landed(src,dst,g,minQ,wanted)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple)){
+      if(available(b)>C.minLot)inputRefusals.set(key(dst.id,g.key),'landed_cost_cap');return 0;}
     // Realised sale value per delivered unit (gross trade — never GDP; only service margin is VA).
     const saleUnit=reason==='production_input'?unit:destinationWTP;
     // Quality-filtered sourcing: only lots meeting the buyer recipe's minQuality may be shipped.
@@ -680,7 +690,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         for(const x of drawn)origins[x.origin]=(origins[x.origin]||0)+x.qty;
         inputLots.push({good:i.good,qty:shipped,quality:usedQuality,origins,kind:kindOf(i)});
         const industrial=industrialInputs.find(x=>x.producer===id&&x.good===i.good);if(industrial)industrial.used+=amount;
-        b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;b.lost_transport+=shipped-amount;requality(b);if(mat)minQuality=Math.min(minQuality,usedQuality);
+        b.consumed_as_input+=amount;b.lost_spoilage+=shipped-amount;b.lost_transport+=shipped-amount;b.lost_site_delivery=(b.lost_site_delivery||0)+shipped-amount;requality(b);if(mat)minQuality=Math.min(minQuality,usedQuality);
         inputValue+=shipped*goodByKey.get(i.good)!.price*(1+usedQuality*C.qualityPremium);}
       // B factor wear: only wear × qty per output unit is physically consumed (never the whole stock).
       for(const f of p.recipe.inputs.filter(isFactor)){const b=stock(c.id,f.good),w=Math.min(available(b),qty*f.qty*wearOf(f)/p.recipe.qty);
@@ -698,7 +708,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const quality=outputQuality({recipeBonus:p.recipe.quality,craft:p.craft??c.guild,source:p.source,
         minInputQuality:Number.isFinite(minQuality)?minQuality:0,craftFactor:IDEOLOGIES[c.ideology]?.quality||1});
       const b=stock(c.id,g.key);add(b,qty,quality,p.channel,p.source);b.intermediate_value+=inputValue;
-      const inTransitLoss=qty*(delivery?.loss||0);b.lost_spoilage+=inTransitLoss;b.lost_transport+=inTransitLoss;
+      const inTransitLoss=qty*(delivery?.loss||0);b.lost_spoilage+=inTransitLoss;b.lost_transport+=inTransitLoss;b.lost_site_delivery=(b.lost_site_delivery||0)+inTransitLoss;
       for(const [edge,load] of loadByEdge)reserved.set(edge,(reserved.get(edge)||0)+qty*load);
       const total=(realized.get(id)||0)+qty;realized.set(id,total);
       const diagnostic={producer:id,good:g.key,capacity:p.capacity,realized:total,factors:{...factors,inputs:target?total/target:0},
@@ -735,8 +745,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const peaceful=holders.filter(s=>!tradeBlocked(s,c));
       const reachable=peaceful.filter(s=>usablePath(route(s.cell,c.cell,g,true)));
       const surplus=reachable.filter(s=>available(stock(s.id,g.key))>foodReserve(s,g)+C.minLot);
-      x.blocked=!holders.length?'missing_supplier':!peaceful.length?'trade_blocked':!reachable.length?'route_unreachable':
-        !surplus.length?'source_retained':surplus.every(s=>(route(s.cell,c.cell,g)?.capacity??0)<C.minLot)?'route_capacity':'landed_cost_or_partial_supply';
+      // Planned demand excludes B capital; if the producer's own B factor caps the batch it
+      // could not use more input even with a surplus next door — say so, not "landed cost".
+      const pr=producers.find(q=>q.id===x.producer);const capital=pr?capitalFactor(pr):1;
+      // Supply existed this pass but other buyers took it all: contention, not a missing producer.
+      const suppliedThisPass=cities.some(s=>s.id!==c.id&&produced(stock(s.id,g.key))>C.minLot);
+      x.blocked=capital<1-C.epsilon&&x.received>=x.planned*capital-C.minLot?'b_factor_limited':
+        !holders.length?(suppliedThisPass?'supply_exhausted':'missing_supplier'):!peaceful.length?'trade_blocked':!reachable.length?'route_unreachable':
+        !surplus.length?'source_retained':surplus.every(s=>(route(s.cell,c.cell,g)?.capacity??0)<C.minLot)?'route_capacity':(inputRefusals.get(key(c.id,g.key))??'landed_cost_or_partial_supply');
     }
   }
 

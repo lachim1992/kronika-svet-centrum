@@ -21,6 +21,13 @@ describe('canonical physical trade journal guard', () => {
     expect(() => assertPhysicalTradeJournal(rows, flows())).toThrow(/journal mismatch/);
   });
 
+  it('accepts a producer-site haul loss that is not a trade flow (TEST02 t26 regression)', () => {
+    const rows = [{ city: 'farm_city', good: 'raw_grain', imported: 0, exported: 0, lost_transport: 0.00827, lost_site_delivery: 0.00827 }];
+    expect(() => assertPhysicalTradeJournal(rows, [])).not.toThrow();
+    rows[0].lost_site_delivery = 0;
+    expect(() => assertPhysicalTradeJournal(rows, [])).toThrow(/journal mismatch/);
+  });
+
   it('rejects a transport loss omitted from the destination ledger', () => {
     const rows = balances();
     rows[1].lost_transport = 0;
