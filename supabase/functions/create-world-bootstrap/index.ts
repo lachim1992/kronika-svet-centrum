@@ -32,7 +32,7 @@ import type {
   WorldgenSpecV1,
 } from "../_shared/world-bootstrap-types.ts";
 
-type LegacySpec = WorldgenSpecV1 & LegacyWorldgenSpecFields;
+type LegacySpec = WorldgenSpecV1 & LegacyWorldgenSpecFields & { gameSettings?: unknown };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
