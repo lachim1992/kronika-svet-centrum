@@ -263,7 +263,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   type TradeRefusal='trade_blocked'|'route_unreachable'|'beyond_reach'|'margin_unprofitable'|'route_capacity'|'source_retained'|'source_empty';
   const tradeRefusals=new Map<string,{reason:TradeRefusal;source:string}>();
   const refuse=(src:City,dst:City,g:Good,why:string,r:TradeRefusal)=>{
-    if(why==='household_consumption'||why==='regional_redistribution')tradeRefusals.set(key(dst.id,g.key),{reason:r,source:src.id});
+    // A source that holds nothing must not overwrite the refusal of a real holder.
+    if(why!=='household_consumption'&&why!=='regional_redistribution')return 0;
+    const k=key(dst.id,g.key),prev=tradeRefusals.get(k);
+    const empty=available(stock(src.id,g.key))<=C.minLot;
+    if(!prev||!empty||prev.reason==='source_empty')tradeRefusals.set(k,{reason:empty?'source_empty':r,source:src.id});
     return 0;};
   const transfer=(src:City,dst:City,g:Good,wanted:number,reason:string,via:string[]=[],keep=0,minQ=-Infinity)=>{
     if(tradeBlocked(src,dst))return refuse(src,dst,g,reason,'trade_blocked');
@@ -735,7 +739,13 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const peaceful=holders.filter(s=>!tradeBlocked(s,c));
       const reachable=peaceful.filter(s=>usablePath(route(s.cell,c.cell,g,true)));
       const surplus=reachable.filter(s=>available(stock(s.id,g.key))>foodReserve(s,g)+C.minLot);
-      x.blocked=!holders.length?'missing_supplier':!peaceful.length?'trade_blocked':!reachable.length?'route_unreachable':
+      // Planned demand excludes B capital; if the producer's own B factor caps the batch it
+      // could not use more input even with a surplus next door — say so, not "landed cost".
+      const pr=producers.find(q=>q.id===x.producer);const capital=pr?capitalFactor(pr):1;
+      // Supply existed this pass but other buyers took it all: contention, not a missing producer.
+      const suppliedThisPass=cities.some(s=>s.id!==c.id&&produced(stock(s.id,g.key))>C.minLot);
+      x.blocked=capital<1-C.epsilon&&x.received>=x.planned*capital-C.minLot?'b_factor_limited':
+        !holders.length?(suppliedThisPass?'supply_exhausted':'missing_supplier'):!peaceful.length?'trade_blocked':!reachable.length?'route_unreachable':
         !surplus.length?'source_retained':surplus.every(s=>(route(s.cell,c.cell,g)?.capacity??0)<C.minLot)?'route_capacity':'landed_cost_or_partial_supply';
     }
   }
