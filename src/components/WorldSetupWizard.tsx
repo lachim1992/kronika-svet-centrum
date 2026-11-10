@@ -29,6 +29,7 @@ import { SpecFieldEditor } from "./world-setup/SpecFieldEditor";
 import { BlueprintStaleWarning } from "./world-setup/BlueprintStaleWarning";
 import { AdvancedTerrainPanel } from "./world-setup/AdvancedTerrainPanel";
 import { WorldSettingsPanel } from "./world-setup/WorldSettingsPanel";
+import { premiseDerivedSettings, effectiveGameSettings } from "@/lib/worldGameSettings";
 import type { WorldGameSettings } from "@/lib/worldGameSettings";
 import { SchematicMapPreview, type PreviewHex } from "./world-setup/SchematicMapPreview";
 import { LineageSelector } from "./world-setup/LineageSelector";
