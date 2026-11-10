@@ -22,7 +22,7 @@ const starter = (id: string, coastal: boolean, fuel: boolean, nodes: number) => 
 const cov = (r: any, c: string, b: string) => { const bs = r.balances.filter((x: any) => x.city === c && goodOf(x.good).basket === b);
   const d = bs.reduce((s: number, x: any) => s + x.demand, 0), u = bs.reduce((s: number, x: any) => s + x.unmet_demand, 0); return d > 0 ? 1 - u / d : 1; };
 
-const BIOMES = [{ name: 'coastal', coastal: true, fuel: true }, { name: 'inland river', coastal: false, fuel: true }, { name: 'wetland', coastal: true, fuel: true }];
+const BIOMES = [{ name: 'coastal', coastal: true, fuel: true }, { name: 'inland river', coastal: false, fuel: true }, { name: 'wetland', coastal: true, fuel: true }, { name: 'dry habitable (no peat)', coastal: false, fuel: false }];
 describe('strict starter KPIs, first 5 turns', () => {
   for (const b of BIOMES) it(`${b.name}: food=100 %, water=100 %, fuel ≥80 %, player+5 nodes and AI`, () => {
     let snap: Snapshot = { turn: 1, goods: KEYS.map(goodOf), edges: [], fame: [], cities: [town('player', 'P', b.coastal), town('ai', 'AI', b.coastal)],
