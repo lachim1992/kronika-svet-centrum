@@ -35,7 +35,7 @@ it('projects consume first; their raw material is not also awarded as reserve',(
 });
 it('both secure reports preserve physical withdrawals, stock and normalized construction points',()=>{
   const r=resolveGoodsEconomy(snapshot),report=buildManagementReport(snapshot,r,{player_name:'p',production_reserve:50});
-  const dev=buildSnapshot({...r,snapshot},null);
+  const dev=buildSnapshot({...r,snapshot:{...snapshot,producers:snapshot.producers.map(p=>({...p,node:p.node??null}))}},null);
   const raw=r.balances.find(b=>b.good==='raw_timber');
   expect(dev.construction_balances.find(b=>b.good==='raw_timber')).toEqual(raw);
   expect(report.cities.flatMap(c=>c.balances).find(b=>b.good==='raw_timber')).toEqual(raw);
