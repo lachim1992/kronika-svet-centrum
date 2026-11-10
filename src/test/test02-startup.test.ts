@@ -13,7 +13,7 @@ function settlement(population: number, water: boolean): Snapshot {
     classes: { peasants: population * .8, burghers: population * .15, clerics: population * .05 },
     soldiers: 0, stability: .7, irrigation: 0, labor: { farming: .6, crafting: .25, logistics: .1, administration: .05 },
     market: .5, storage: .5, admin: 0, security: .7, guild: 0, ideology: 'customary_local', coastal: water,
-  }], producers: starterBundle(water).map(contract => {
+  }], producers: starterBundle(water).filter(contract => contract.recipeKeys.length).map(contract => {
     const effect = starterEffects(contract, population), recipe = RECIPES.find(r => r.key === contract.recipeKeys[0])!;
     return { id: contract.name, city: 'city', channel: 'facility', capacity: Object.values(effect.basket_outputs)[0],
       jobs: effect.jobs_capacity, allocation: 1, staffing: 1, logistics: 1, mastery: 1,

@@ -145,6 +145,7 @@ export async function ensureStarterEconomy(
   };
   const rows: any[] = [];
   const resizes: { id: string; effects: any }[] = [];
+  const storageUpgrades: { id: string; effects: any }[] = [];
   const reports: StarterReport[] = [];
   for (const city of (cities || []).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)))) {
     const own = (buildings || []).filter((b: any) => b.city_id === city.id);
@@ -164,7 +165,7 @@ export async function ensureStarterEconomy(
         if (options.upgradeStorage && contract === STARTER_STORAGE && match.effects?.starter_economy
           && match.effects?.storage_capacity == null) {
           resized.push(contract.name);
-          resizes.push({ id: match.id, effects: { ...match.effects, storage_capacity: 1 } });
+          storageUpgrades.push({ id: match.id, effects: { ...match.effects, storage_capacity: 1 } });
         }
         // FROZEN AT FOUNDING: the starter aggregate is sized once, when created. It is
         // NEVER resized afterwards — otherwise a growing city would get free production
@@ -189,7 +190,7 @@ export async function ensureStarterEconomy(
       const { error } = await sb.from('city_buildings').insert(rows);
       if (error) throw new Error(error.message);
     }
-    for (const u of resizes) {
+    for (const u of [...resizes, ...storageUpgrades]) {
       const { error } = await sb.from('city_buildings').update({ effects: u.effects }).eq('id', u.id);
       if (error) throw new Error(error.message);
     }
