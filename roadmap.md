@@ -8,6 +8,20 @@
 5. AI & map — [x] AI builds validated + refusal reported; [x] construction retry idempotent; [ ] deterministic AI trade/construction planning
 6. UI & acceptance — [ ] canonical Economy/Dev cleanup of dead layers; [ ] 20/200-turn simulations; [ ] TEST02 acceptance
 
+## Starter collapse fix (JV72O7, 2026-11-10)
+- [x] Labour pass: food+water then fuel minimum staffed first inside each sector, up to household need; mobility kept; diagnostics critical_priority_employed (test subsistence-labor-priority.test.ts)
+- [x] AUTO: essential lines keep a bounded floor even when a profitable rival exists; still 0 without inputs
+- [x] Food: 5–15 % deficit = rationing (-1 stability, no deaths); famine from 15 %
+- [x] Starter: Osadní sklad = storage_capacity service (no lumber recipe); new Osadní sběr paliva (cut_peat) except desert; opt-in upgradeStorage in backfill-starter-economy
+- [x] JV72O7 t3 repaired + derived refresh: Lambadagrad food 100 %, water 100 %, fuel 51 %; turn/gold/pop/t2 ledger unchanged
+- [ ] One-time storable bootstrap stock (raw_grain/peat) at founding — not started
+- [ ] Start-site suitability check (water+food) in findStartPositions — not started
+- [ ] Start connectivity: JV72O7 trade systems link 1/3 cities, routes_used 0 (P1)
+- [ ] Node jobs vs real rural workforce (P2; node jobs kept as declared)
+- [ ] Clothing/fuel slow modifiers, tools as operational-only audit; Economy/Dev UI field for priority staffing
+- [ ] 5/20/200-turn full-world starter simulations per biome
+- [ ] backfill-starter-economy has no caller authorization — add admin check
+
 ## Current Economy 2.0 slice
 - [x] Expose existing producer A/B/C costs and imputed labour in both views through the shared field contract
 - [x] Verify canonical projection regressions, tests/typecheck (589 total, 586 passed / 3 skipped)
