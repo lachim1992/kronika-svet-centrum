@@ -1723,7 +1723,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     for (const r of (nb || []) as any[]) {
       const cur = needsByCity[r.city_id];
       if (cur && cur.turn > r.turn_number) continue;
-      const e = (cur && cur.turn === r.turn_number) ? cur : (needsByCity[r.city_id] = { turn: r.turn_number });
+      const e: { food?: number; water?: number; turn: number } = (cur && cur.turn === r.turn_number) ? cur : (needsByCity[r.city_id] = { turn: r.turn_number });
       const v = Math.max(0, Math.min(1, Number(r.domestic_satisfaction)));
       if (r.basket_key === "staple_food") e.food = v; else e.water = v;
     }

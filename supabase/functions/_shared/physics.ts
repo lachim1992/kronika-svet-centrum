@@ -761,9 +761,6 @@ export function applyCivIdentityToGrowth(
 
   let growthRate = baseGrowthRate + identity.grain_modifier;
   growthRate = Math.max(POP_GROWTH_MIN, Math.min(POP_GROWTH_MAX, growthRate));
-  // Carrying capacity: positive growth is only possible when food+water are actually met.
-  // Never adds deaths (famine/dehydration losses have their own paths) — it only scales births.
-  if (growthRate > 0) growthRate *= subsistenceGrowthFactor(opts.needs);
 
   return {
     growthRate,
