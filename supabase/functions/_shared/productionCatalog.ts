@@ -184,6 +184,10 @@ export const PRODUCTION_BUILDINGS: BuildingContract[] = [
     levels: [['cut_peat'], ['gather_incense'], []] },
   { name: 'Studna', category: 'infrastructure', roles: ['source'], tags: ['farming'],
     levels: [['draw_water'], [], []] },
+  { name: 'Říční odběr vody', category: 'infrastructure', roles: ['source'], tags: ['river_access'], requiresWater: true,
+    levels: [['draw_river_water'], [], []] },
+  { name: 'Lovecko-sběračská chata', category: 'economic', roles: ['source'], tags: ['hunting'],
+    levels: [['hunt_game'], [], []] },
   { name: 'Akvadukt', category: 'infrastructure', roles: ['source'], tags: ['farming'],
     levels: [['draw_water'], [], []] },
   // processing
