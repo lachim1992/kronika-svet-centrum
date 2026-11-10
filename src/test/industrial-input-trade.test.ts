@@ -155,8 +155,3 @@ describe('local mill→bakery priority (same city, same pass)',()=>{
     expect(row(p,'bakeryB').unmet).toBeGreaterThan(0);expect(row(p,'bakeryB').blocked).toBeTruthy();
   });
 });
-it('dbg',async()=>{for(const g of [28]){const t=fixture('auto',100,g);
- t.city_buildings.push(building('bakeryB','b',{recipe_keys:['bake_staples'],production_roles:['processing'],basket_outputs:{staple_food:8}}));
- 
- t.economy_turn_ledgers[0].opening.push({city:'b',good:'peat',qty:10,quality:0});const p=await run(t);
- console.log('DBG',g,JSON.stringify(bal(p,'b','flour')).slice(0,400),JSON.stringify(p.result.snapshot.goods.find((x:any)=>x.key==='flour')),produced(bal(p,'b','flour')),JSON.stringify(p.result.industrialInputs.filter((x:any)=>x.good==='flour').map((x:any)=>[x.producer,x.planned,x.used,x.blocked]),JSON.stringify((p.result.importBlockers||[]).filter((f:any)=>f.good==="flour"))));}});
