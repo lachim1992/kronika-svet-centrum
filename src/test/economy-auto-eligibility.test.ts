@@ -19,10 +19,10 @@ describe('AUTO profitable-option eligibility', () => {
     }
   });
 
-  it('still stops emergency loss-making output when a viable profitable recipe exists', () => {
+  it('keeps a bounded subsistence floor for an essential line even when a profitable recipe exists', () => {
     const r = autoAllocationDetail([essential, { key: 'other', necessity: 0.5, marginRatio: 0.4 }]);
-    expect(r.weights.bread).toBe(0);
-    expect(r.flags.bread).toBe('auto_loss_stopped');
+    expect(r.weights.bread).toBeGreaterThan(0);
+    expect(r.flags.bread).toBe('emergency_unprofitable_production');
     expect(r.weights.other).toBeGreaterThan(0);
   });
 

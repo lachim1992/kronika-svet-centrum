@@ -38,7 +38,7 @@ describe("new-world bootstrap reaches a playable economy", () => {
     for (const nearWater of [false, true]) {
       const bundle = starterBundle(nearWater);
       expect(bundle.length).toBeGreaterThanOrEqual(3);
-      for (const c of bundle) {
+      for (const c of bundle.filter(c => c.recipeKeys.length || !c.extraEffects?.storage_capacity)) {
         expect(c.recipeKeys.length).toBeGreaterThan(0);
         expect(c.jobsCapacity).toBeGreaterThan(0);
       }

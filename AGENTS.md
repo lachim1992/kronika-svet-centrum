@@ -18,3 +18,5 @@
 - Producer cost drilldowns share `ProducerCostDetails` and direct margin paths in that contract; Dev projections preserve canonical margin unchanged so B wear and imputed payroll cannot be counted twice.
 - Industrial A-material plans and acquisition diagnostics live only in goodsEconomy.industrialInputs, mapped by INDUSTRIAL_INPUT_FIELDS and rendered by IndustrialInputsPanel in both secure reports — planned scarcity never adds physical consumption.
 - World-creation player settings are normalized and mapped to concrete numbers only in `supabase/functions/_shared/worldGameSettings.ts`; every creation step (map, preview, neutral towns, init) reads it — one source for what each choice means.
+
+- The labour pass staffs food/drinking-water (then a fuel minimum) first inside each sector, only up to household need (`SUBSISTENCE_TIERS` in goodsEconomy.ts); declared jobs and capacity are never shrunk — so output per worker never changes and basic needs never starve behind node jobs.

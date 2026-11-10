@@ -17,14 +17,14 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const { session_id, city_id, turn_number, dryRun = true } = await req.json();
+    const { session_id, city_id, turn_number, dryRun = true, upgradeStorage = false } = await req.json();
     if (!session_id) throw new Error("session_id is required");
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
     const reports = await ensureStarterEconomy(supabase, session_id, {
-      cityId: city_id, turnNumber: turn_number, dryRun: dryRun !== false,
+      cityId: city_id, turnNumber: turn_number, dryRun: dryRun !== false, upgradeStorage: upgradeStorage === true,
     });
     const added = reports.reduce((n, r) => n + r.added.length, 0);
     // Deterministic capital repair for legacy saves without a capital. Same

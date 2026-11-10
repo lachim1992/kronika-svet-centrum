@@ -88,8 +88,8 @@ describe('6. AUTO never runs non-essential goods at a loss', () => {
     const d = autoAllocationDetail([{ key: 'food', necessity: 1, marginRatio: -0.2, essential: true }]);
     expect(d.weights.food).toBe(PRODUCT_MARKET.autoEmergencyFloor);
     expect(d.flags.food).toBe('emergency_unprofitable_production');
-    // A profitable option removes the emergency floor even for essentials.
-    expect(autoAllocation([{ key: 'food', necessity: 1, marginRatio: -0.2, essential: true }, { key: 'b', necessity: 1, marginRatio: 0.1 }]).food).toBe(0);
+    // Subsistence floor (2026-11): a profitable rival no longer zeroes an essential line.
+    expect(autoAllocation([{ key: 'food', necessity: 1, marginRatio: -0.2, essential: true }, { key: 'b', necessity: 1, marginRatio: 0.1 }]).food).toBe(PRODUCT_MARKET.autoEmergencyFloor);
   });
 });
 
