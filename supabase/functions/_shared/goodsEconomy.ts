@@ -267,7 +267,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(why!=='household_consumption'&&why!=='regional_redistribution')return 0;
     const k=key(dst.id,g.key),prev=tradeRefusals.get(k);
     const empty=available(stock(src.id,g.key))<=C.minLot;
-    if(!prev||!empty||prev.reason==='source_empty')tradeRefusals.set(k,{reason:empty?'source_empty':r,source:src.id});
+    if(!prev||!empty||prev.reason==='source_empty')tradeRefusals.set(k,{reason:empty?'source_empty':r,source:empty?null as any:src.id});
     return 0;};
   const transfer=(src:City,dst:City,g:Good,wanted:number,reason:string,via:string[]=[],keep=0,minQ=-Infinity)=>{
     if(tradeBlocked(src,dst))return refuse(src,dst,g,reason,'trade_blocked');
