@@ -50,6 +50,13 @@
       "when": 1794329275383,
       "tag": "0006_route_state_member_read",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794333655384,
+      "tag": "0007_owner_scoped_session_writes",
+      "breakpoints": true
     }
   ]
 }
