@@ -1,11 +1,14 @@
 # Map-first square-grid roadmap
 
 ## Parcel economy rollout — 2026-11-10 (current request)
-- [ ] Canonical owned-parcel sources, bounded ecology and ordinary solver labour/physical ledgers.
-- [ ] Transactional, versioned JV72O7 rollout with snapshot, preserved paid claims/calendar/treasury; future founding integration.
-- [ ] Construction processing and no duplicate starter/source credit.
-- [ ] Shared Economy/Dev provenance and parcel map readout.
-- [ ] Seeded 0/1/5/20-turn conservation/ownership/labour tests, full suite, deployment and live derived-only verification.
+- [x] Code: canonical owned-parcel sources, bounded committed-ledger ecology and ordinary solver labour/physical ledgers (`parcelEconomy.ts`, economyAdapter).
+- [x] Migration 0011: versioned rollout RPC snapshots cities/claims/resources/buildings and applies seats transactionally; admin-only endpoint, anonymous live request 401.
+- [ ] LIVE BLOCKER: JV72O7 rollout deliberately REFUSED before mutation. Latest deployed preflight reports Lambadagrad water 0 and later food shortfalls despite local actual-geography tests passing; resolve deployed/source execution discrepancy before application. Version remains 0, turn 1, no refresh/turn/reset performed.
+- [x] Construction hand processing uses real saw_timber/cut_stone/burn_charcoal BOM and staff; raw timber/stone never directly credited as reserve. Legacy source nodes and synthetic starter extraction suppressed only in versioned mode; real buildings retained.
+- [x] Shared Economy/Dev parcel provenance table through PARCEL_FIELDS; map potential readout added. Actual map collection drilldown not yet verified; no frontend publish.
+- [x] Tests actually run: 809 passed / 3 skipped with maxWorkers=2 (812 total); initial all-recipe missing-contract failure fixed, parallel 5-second timeouts resolved by lower concurrency. Actual-geography 20-turn frozen solver fixture included, NOT live process-turn replay or demographic/fiscal simulation.
+- [x] Deployed backfill-parcel-economy, refresh-economy, process-turn, commit-turn, compute-trade-flows, economy-dev-snapshot, create-world-bootstrap, world-generate-init; preview-economy deployed earlier. Latest automatic preview check build OK. No independent manual typecheck/build run.
+- [ ] Next exact task: reproduce live preflight snapshot locally, compare parcel source IDs/river access/committed ecology with deployed execution, then re-deploy verified source and require safe 5-turn preflight before applying JV72O7 RPC + two derived refreshes.
 - [ ] Rural workers remain P2; no reset, human turn or automatic foreign routes.
 
 ## Economy 2.0 completion phases (ordered; each depends on the previous)
