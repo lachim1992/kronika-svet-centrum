@@ -767,7 +767,10 @@ export function isHabitableStart(h: HexData, byKey: Map<string, HexData>): boole
   const nbs = START_NBS.map(([dq, dr]) => byKey.get(`${h.q + dq},${h.r + dr}`)).filter(Boolean) as HexData[];
   const water = h.coastal || nbs.some(n => n.hasRiver || /lake/i.test(n.biomeFamily));
   const food = h.coastal || !NO_FOOD_LAND.test(h.biomeFamily);
-  return water && food;
+  // A starter needs a biome-legal heating fuel (peat cut); desert/arid/dunes offer none, so the start
+  // would be cold from turn 1 — reject it rather than invent fuel (mirrors starterEconomy.hasFuelLand).
+  const fuel = !/desert|arid|dune/i.test(h.biomeFamily);
+  return water && food && fuel;
 }
 
 // ── Start position finder ──
