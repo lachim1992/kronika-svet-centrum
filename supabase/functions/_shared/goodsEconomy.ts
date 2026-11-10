@@ -411,10 +411,12 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       return jobs;};
     const crit=plan.map(r=>critJobsOf(r));
     const shortfall=plan.map((r,i)=>Math.max(0,crit[i]-r.supply-r.transferred));
-    const donor=plan.map((r,i)=>Math.max(0,r.supply-crit[i])*mobility);
+    // Donors are sectors with no idle surplus (idle surplus already moves in pass 2), so nobody moves twice.
+    const donor=plan.map((r,i)=>r.supply<=r.jobs+C.epsilon?Math.max(0,r.supply-crit[i])*mobility:0);
     const needCrit=shortfall.reduce((a,b)=>a+b,0),canGive=donor.reduce((a,b)=>a+b,0);
     const critMoved=Math.min(needCrit,canGive);
-    if(critMoved>C.epsilon)plan.forEach((r,i)=>{r.supply-=critMoved*donor[i]/canGive;r.transferred+=critMoved*shortfall[i]/needCrit;});
+    const critOut=plan.map(()=>0);
+    if(critMoved>C.epsilon)plan.forEach((r,i)=>{critOut[i]=critMoved*donor[i]/canGive;r.supply-=critOut[i];r.transferred+=critMoved*shortfall[i]/needCrit;});
     let priorityEmployed=0;
     for(const r of plan){
       const available=r.supply+r.transferred;
@@ -447,7 +449,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         vacancies:Math.max(0,r.jobs-filled),labor_shortage:Math.max(0,r.jobs-available),
         transferred_in:r.transferred,
         ...(r.sector==='logistics'?{service_jobs:r.serviceJobs,service_employed:serviceEmployed}:{})};
-      jobsTotal+=r.jobs;employedTotal+=filled;supplyTotal+=r.supply;
+      jobsTotal+=r.jobs;employedTotal+=filled;supplyTotal+=r.supply+critOut[plan.indexOf(r)];
     }
     const active=workforce.get(c.id)!.effectiveActivePop;
     const unemployed=Math.max(0,supplyTotal-employedTotal),vacancies=Math.max(0,jobsTotal-employedTotal);
