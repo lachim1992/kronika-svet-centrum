@@ -20,13 +20,21 @@ export interface WorldGameSettings {
   startingWealth?: Level3;
   /** Distance between realms' starting positions. */
   realmDistance?: Level3;
+  /** Map size (overrides premise suggestion). */
+  mapSize?: "small" | "medium" | "large";
+  /** Target land share 0.2–0.9 (overrides premise suggestion). */
+  landRatio?: number;
+  /** Mountain density 0–1 (overrides premise suggestion). */
+  mountainDensity?: number;
+  /** Max human players (multiplayer 2–10). */
+  maxPlayers?: number;
 }
 
 const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
   allowed.includes(v as T) ? (v as T) : fallback;
 const L3 = ["low", "normal", "high"] as const;
 
-export function normalizeGameSettings(raw: unknown): Required<Omit<WorldGameSettings, "aiOpponents">> & { aiOpponents?: number } {
+export function normalizeGameSettings(raw: unknown): Required<Omit<WorldGameSettings, "aiOpponents" | "mapSize" | "landRatio" | "mountainDensity" | "maxPlayers">> & { aiOpponents?: number } {
   const s = (raw && typeof raw === "object" ? raw : {}) as WorldGameSettings;
   const ai = Number(s.aiOpponents);
   const cities = Number(s.startingCities);

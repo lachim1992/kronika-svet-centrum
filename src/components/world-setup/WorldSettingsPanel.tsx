@@ -15,6 +15,9 @@ interface Props {
   disabled?: boolean;
   /** River defaults inferred from the analysed premise. */
   premiseDefaults?: Pick<WorldGameSettings, "riverAmount" | "riverLength">;
+  /** Current map values from the analysed premise (shown when not overridden). */
+  mapDefaults?: { size?: string; landRatio?: number; mountainDensity?: number };
+  showMaxPlayers?: boolean;
 }
 
 const LEVEL = [
@@ -41,7 +44,25 @@ function Choice({ label, hint, value, options, onChange, disabled }: {
   );
 }
 
-export const WorldSettingsPanel = ({ value, onChange, opponents, onOpponentsChange, disabled, premiseDefaults }: Props) => {
+const SZ: Record<string, string> = { small: "Malá", medium: "Střední", large: "Velká" };
+
+function Pct({ label, value, fallback, min, max, onChange, onReset, disabled }: {
+  label: string; value?: number; fallback?: number; min: number; max: number;
+  onChange: (n: number) => void; onReset: () => void; disabled?: boolean;
+}) {
+  const shown = Math.round(((value ?? fallback ?? (min + max) / 200)) * 100);
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}: <b>{shown} %</b>{" "}
+        {value === undefined ? <span className="text-muted-foreground">(podle premisy)</span>
+          : <button type="button" className="underline text-muted-foreground" onClick={onReset} disabled={disabled}>vrátit na premisu</button>}
+      </Label>
+      <Slider min={min} max={max} step={5} value={[shown]} disabled={disabled} onValueChange={(v) => onChange(v[0] / 100)} />
+    </div>
+  );
+}
+
+export const WorldSettingsPanel = ({ value, onChange, opponents, onOpponentsChange, disabled, premiseDefaults, mapDefaults, showMaxPlayers }: Props) => {
   const [open, setOpen] = useState(false);
   const set = (patch: Partial<WorldGameSettings>) => onChange({ ...value, ...patch });
   const LBL: Record<string, string> = { low: "málo", normal: "normálně", high: "hodně" };
@@ -71,6 +92,21 @@ export const WorldSettingsPanel = ({ value, onChange, opponents, onOpponentsChan
         <Choice label="Startovní zlato a obilí" disabled={disabled} value={value.startingWealth ?? "normal"}
           options={[{ v: "low", l: "Chudý start (50 zlata)" }, { v: "normal", l: "Normální (100 zlata)" }, { v: "high", l: "Bohatý start (250 zlata)" }]}
           onChange={(v) => set({ startingWealth: v as WorldGameSettings["startingWealth"] })} />
+        <Choice label="Velikost mapy" disabled={disabled} value={value.mapSize ?? "auto"}
+          options={[{ v: "auto", l: mapDefaults?.size ? `Podle premisy (${SZ[mapDefaults.size]})` : "Podle premisy" },
+            { v: "small", l: SZ.small }, { v: "medium", l: SZ.medium }, { v: "large", l: SZ.large }]}
+          onChange={(v) => set({ mapSize: v === "auto" ? undefined : v as WorldGameSettings["mapSize"] })} />
+        {showMaxPlayers && (
+          <Choice label="Max. hráčů" disabled={disabled} value={String(value.maxPlayers ?? 10)}
+            options={[2,3,4,5,6,7,8,9,10].map((n) => ({ v: String(n), l: `${n} hráčů` }))}
+            onChange={(v) => set({ maxPlayers: Number(v) })} />
+        )}
+        <Pct label="Podíl pevniny" min={20} max={90} disabled={disabled}
+          value={value.landRatio} fallback={mapDefaults?.landRatio}
+          onChange={(n) => set({ landRatio: n })} onReset={() => set({ landRatio: undefined })} />
+        <Pct label="Hustota hor" min={0} max={100} disabled={disabled}
+          value={value.mountainDensity} fallback={mapDefaults?.mountainDensity}
+          onChange={(n) => set({ mountainDensity: n })} onReset={() => set({ mountainDensity: undefined })} />
       </div>
 
       <Collapsible open={open} onOpenChange={setOpen}>
