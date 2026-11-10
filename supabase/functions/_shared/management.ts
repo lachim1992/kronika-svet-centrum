@@ -17,7 +17,7 @@ export function buildManagementReport(snapshot:Snapshot,ledger:Ledger,realm:any,
   const player=realm.player_name,cities=snapshot.cities.filter(c=>c.owner===player),owned=new Set(cities.map(c=>c.id));
   const goods=new Map(snapshot.goods.map(g=>[g.key,g])),names=new Map(cities.map(c=>[c.id,c.name]));
   const balances=ledger.balances.filter(b=>owned.has(b.city)),flows=ledger.flows.filter(f=>owned.has(f.source)||owned.has(f.destination));
-  const producers=ledger.diagnostics.flatMap(d=>{const p=snapshot.producers.find(p=>p.id===d.producer);return p&&owned.has(p.city)?[{...d,city:p.city,node:p.node,recipe:p.recipe,channel:p.channel}]:[]});
+  const producers=ledger.diagnostics.flatMap(d=>{const p=snapshot.producers.find(p=>p.id===d.producer);return p&&owned.has(p.city)?[{...d,city:p.city,node:p.node,recipe:p.recipe,channel:p.channel,parcel:p.parcel}]:[]});
   const metrics:Metric[]=[],alerts:ManagementAlert[]=[];
   const add=(key:string,label:string,unit:string,definition:string,sources:Contribution[],value:number|null=sum(sources,s=>s.value),assumption?:string)=>{
     metrics.push({key,label,unit,definition,sources,value,previous:previous?.metrics.find(m=>m.key===key)?.value??null,assumption});

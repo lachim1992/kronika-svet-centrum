@@ -124,6 +124,8 @@ export const RECIPES: CatalogRecipe[] = [
   r('draw_river_water', 'source', ['river_access'], 'well_water', 4),
   // Small, ecologically capped hunting/foraging in wild land (forest/hills/swamp/plains/tundra).
   r('hunt_game', 'source', ['hunting'], 'raw_meat', 2),
+  // Wild seeds are edible raw grain; finite parcel ecology, never a farm-sized passive bonus.
+  r('gather_wild_seeds', 'source', ['foraging'], 'raw_grain', 1),
   r('burn_charcoal', 'producer', ['logging'], 'charcoal', 3, [['raw_timber', 2]]),
   r('build_granary', 'producer', ['construction'], 'granary_storage', 2, [['lumber', 2]]),
   r('scribe_documents', 'producer', ['crafting'], 'scribed_documents', 1, [['raw_hide', 1]]),

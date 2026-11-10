@@ -1,4 +1,5 @@
 import { STARTER_RESERVE_GOODS } from './starterEconomy.ts';
+import { parcelProducers, parcelClosing } from './parcelEconomy.ts';
 import { resolveGoodsEconomy, produced, type Snapshot, type City, type Good, type Producer, type Edge } from './goodsEconomy.ts';
 import { actualSoldiers, workforceLawModifiers } from './manpower.ts';
 import { staffingCapacity } from './cityDistricts.ts';
@@ -65,7 +66,9 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations','node_projects'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
-  const sess=await query<any>('game_sessions',()=>sb.from('game_sessions').select('current_turn,resolving_turn').eq('id',session).single());
+  const sess=await query<any>('game_sessions',()=>sb.from('game_sessions').select('current_turn,resolving_turn,parcel_economy_version').eq('id',session).single());
+  const parcelMode=sess.parcel_economy_version===1;
+  if(parcelMode)db.tile_parcels=await rows(sb,'tile_parcels',session);
   const turn=sess.resolving_turn??sess.current_turn;
   /**
    * The committed ledger is a very large JSON document (flows, diagnostics, per-good balances of
@@ -73,7 +76,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
    * instead of the whole document — the full read is what pushes this query into a statement timeout.
    */
   const previous=await query<any>('economy_turn_ledgers',()=>sb.from('economy_turn_ledgers')
-    .select('prices:committed_result->prices,balances:committed_result->balances,cityAccounts:committed_result->cityAccounts,famous:committed_result->famous,management:committed_result->management')
+    .select('prices:committed_result->prices,balances:committed_result->balances,cityAccounts:committed_result->cityAccounts,famous:committed_result->famous,management:committed_result->management,parcelEcology:committed_result->parcelEcology')
     .eq('session_id',session).lt('turn_number',turn).eq('committed',true).order('turn_number',{ascending:false}).limit(1).maybeSingle());
   // PostgREST returns the requested sections directly; a client that ignores column selection
   // returns the whole document, so accept both shapes.
@@ -198,6 +201,7 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   }
 
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
+  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology));
   /**
    * Explicit production contract. A structure runs either an exact recipe whitelist
    * (effects.recipe_keys) or the recipes matching its declared capability tags and roles.
@@ -263,6 +267,9 @@ export async function computeCanonicalEconomy(sb:any,session:string){
   };
   const contractNotes:{structure:string;notes:string[]}[]=[];
   for(const b of db.city_buildings.filter(b=>b.status==='completed')){
+    // Founding huts are retained in the save but their extraction is now attributed to physical land.
+    // Wells and real player-built farms/workshops are never suppressed.
+    if(parcelMode&&b.effects?.starter_economy&&(b.effects?.recipe_keys||[]).some((k:string)=>['hunt_game','catch_fish','cut_peat','draw_river_water'].includes(k)))continue;
     const template=db.building_templates.find(t=>t.id===b.template_id);
     // Old saves keep stale role metadata: reconcile it against the current recipe catalogue.
     const norm=normalizeProductionContract({...template?.effects,...b.effects},recipeByKey);
@@ -394,7 +401,8 @@ const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
   const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,priorPrices,householdTaxRate,settledWages,settledOwnership,settlement,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
   const physical=resolveGoodsEconomy(snapshot);
   const management=Object.fromEntries(db.realm_resources.map(r=>[r.player_name,buildManagementReport(snapshot,physical,r,prior?.management?.[r.player_name])]));
-  const result={...physical,opening,snapshot,management,contractNormalizations:contractNotes};
+  const result={...physical,opening,snapshot,management,contractNormalizations:contractNotes,
+    ...(parcelMode?{parcelEcology:parcelClosing(producers,physical.diagnostics)}:{})};
   // Anchor every city on its own settlement node (node_subtype 'city'); only fall back to
   // another node of the same city when the settlement node is missing. Cities must never
   // drop out of the projection just because a workshop node was indexed first.
