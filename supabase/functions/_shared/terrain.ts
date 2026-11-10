@@ -614,7 +614,7 @@ export function generateWorldTerrain(
 
         // If cell is isolated (no neighbor shares its biome), adopt majority
         if (nbCount >= 4 && !(nbBiomes[cell.biome])) {
-          let maxBiome = cell.biome;
+          let maxBiome: BiomeFamily = cell.biome;
           let maxCount = 0;
           for (const [b, c] of Object.entries(nbBiomes)) {
             if (b !== "sea" && b !== "mountains" && c > maxCount) {
