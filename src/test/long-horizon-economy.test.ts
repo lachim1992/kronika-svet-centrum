@@ -55,6 +55,7 @@ function simulate(turns: number, policy: Policy, shocks: Shock[] = []) {
   const kpis: TurnKpi[] = []; let n = 0;
   for (let t = 1; t <= turns; t++) {
     for (const sh of shocks) if (sh.turn === t) producers = producers.filter(p => !(p.city === sh.city && goodOf(p.recipe.good).basket === sh.destroy));
+    for (const sh of shocks) if (sh.turn === t) opening = opening.filter(o => !(o.city === sh.city && goodOf(o.good).basket === sh.destroy)); // flood also ruins stores
     const snap: Snapshot = { turn: t, goods: GOODS_, edges: [], fame: [], cities, producers, opening };
     const r = resolveGoodsEconomy(snap);
     // Physical conservation + no phantom non-storables, every turn.
@@ -118,7 +119,7 @@ describe('long-horizon economy: bad decisions and shocks still cause crisis', ()
   it('crop-failure shock: destroying all farms causes real famine, then rebuilding recovers', () => {
     const { kpis } = simulate(120, 'invest', [{ turn: 60, city: 'player', destroy: 'staple_food' }]);
     const p = kpis.filter(k => k.city === 'player');
-    expect(p.filter(k => k.turn >= 60 && k.turn <= 75).some(k => k.food < 0.85)).toBe(true);
+    expect(p.filter(k => k.turn === 60).some(k => k.food < 0.5 && k.deaths > 0)).toBe(true);
     expect(p.find(k => k.turn === 120)!.food).toBeGreaterThanOrEqual(0.85);
   });
 });
