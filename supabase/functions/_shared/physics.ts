@@ -86,6 +86,17 @@ export function getNextSettlementTier(currentLevel: string): typeof SETTLEMENT_L
 // SETTLEMENT GROWTH
 // ═══════════════════════════════════════════
 
+/** Full growth at ≥97 % food & water satisfaction, linearly to zero at ≤85 %; unknown = 1 (no data). */
+export const SUBSISTENCE_GROWTH = { full: 0.97, zero: 0.85 } as const;
+export function subsistenceGrowthFactor(needs?: { food?: number | null; water?: number | null }): number {
+  const vals = [needs?.food, needs?.water].filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (!vals.length) return 1;
+  const m = Math.min(...vals);
+  return Math.max(0, Math.min(1, (m - SUBSISTENCE_GROWTH.zero) / (SUBSISTENCE_GROWTH.full - SUBSISTENCE_GROWTH.zero)));
+}
+/** A city whose people lack food or water does not attract migrants. */
+export const needsDistress = (needs?: { food?: number | null; water?: number | null }) => subsistenceGrowthFactor(needs) === 0 && !!needs && [needs.food, needs.water].some(v => typeof v === 'number');
+
 export interface CityForGrowth {
   id: string;
   name: string;
@@ -124,6 +135,8 @@ export function computeSettlementGrowth(
      */
     growthModifier?: number;
     openBordersBonuses?: { birth_rate_bonus?: number; migration_bonus?: number };
+    /** Post-trade canonical satisfaction (0..1) of staple_food and drinking_water this turn. */
+    needs?: { food?: number | null; water?: number | null };
   } = {}
 ): GrowthResult {
   if (city.status !== "ok") {
@@ -147,6 +160,9 @@ export function computeSettlementGrowth(
   let growthRate = POP_GROWTH_BASE + stabilityFactor + famineFactor + warFactor + growthModifier + openBordersBirthBonus + openBordersMigrationBonus;
 
   growthRate = Math.max(POP_GROWTH_MIN, Math.min(POP_GROWTH_MAX, growthRate));
+  // Carrying capacity: positive growth is only possible when food+water are actually met.
+  // Never adds deaths (famine/dehydration losses have their own paths) — it only scales births.
+  if (growthRate > 0) growthRate *= subsistenceGrowthFactor(opts.needs);
 
   const delta = Math.round(city.population_total * growthRate);
   const newPop = Math.max(POP_MIN, city.population_total + delta);
@@ -745,6 +761,9 @@ export function applyCivIdentityToGrowth(
 
   let growthRate = baseGrowthRate + identity.grain_modifier;
   growthRate = Math.max(POP_GROWTH_MIN, Math.min(POP_GROWTH_MAX, growthRate));
+  // Carrying capacity: positive growth is only possible when food+water are actually met.
+  // Never adds deaths (famine/dehydration losses have their own paths) — it only scales births.
+  if (growthRate > 0) growthRate *= subsistenceGrowthFactor(opts.needs);
 
   return {
     growthRate,

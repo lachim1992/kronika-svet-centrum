@@ -4,7 +4,7 @@ import { strictDatabase } from '../_shared/strictDatabase.ts';
 import { finalizeManagementReports } from '../_shared/economyAdapter.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  computeSettlementGrowth,
+  computeSettlementGrowth, needsDistress,
   computeInfluence, computeTension, evaluateRebellion,
   REPUTATION_DELTAS, REPUTATION_DECAY,
   computeTraitTensionModifier, computeTraitInfluenceModifier,
@@ -1713,13 +1713,28 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
   const buildingsByCity: Record<string, any[]> = {};
   for (const b of (allBuildings || [])) (buildingsByCity[b.city_id] = buildingsByCity[b.city_id] || []).push(b);
 
+  // Canonical post-trade need satisfaction (same rows process-turn reads) — latest turn ≤ current.
+  const needsByCity: Record<string, { food?: number; water?: number; turn: number }> = {};
+  {
+    const { data: nb } = await supabase.from("city_market_baskets")
+      .select("city_id, basket_key, turn_number, domestic_satisfaction")
+      .eq("session_id", sessionId).in("basket_key", ["staple_food", "drinking_water"])
+      .lte("turn_number", turnNumber).gte("turn_number", turnNumber - 1);
+    for (const r of (nb || []) as any[]) {
+      const cur = needsByCity[r.city_id];
+      if (cur && cur.turn > r.turn_number) continue;
+      const e = (cur && cur.turn === r.turn_number) ? cur : (needsByCity[r.city_id] = { turn: r.turn_number });
+      const v = Math.max(0, Math.min(1, Number(r.domestic_satisfaction)));
+      if (r.basket_key === "staple_food") e.food = v; else e.water = v;
+    }
+  }
   for (const city of (cities || [])) {
     // Civ DNA growth bonus is now an EXPLICIT growth-rate modifier.
     const ownerBonuses = civBonusMap[city.owner_player] || {};
     const growthBonus = ownerBonuses.growth_modifier || 0;
 
     const growth = computeSettlementGrowth(city as CityForGrowth, {
-      growthModifier: growthBonus,
+      growthModifier: growthBonus, needs: needsByCity[city.id],
     });
 
     const adjustedNewPop = Math.max(POPULATION_FLOOR, growth.newPop);
@@ -1762,7 +1777,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
         owner_player: c.owner_player,
         population_total: info?.afterGrowth ?? c.population_total,
         city_stability: info?.stability ?? (c.city_stability || 70),
-        famine_turn: !!c.famine_turn,
+        famine_turn: !!c.famine_turn || needsDistress(needsByCity[c.id]),
         housing_capacity: info?.housing ?? 400,
         // TODO(Phase E): wire demographic policies (open/closed gates) from
         // city_policies once they have a canonical owner. No column today.
