@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## HexNode audit + guild specialization continuation — 2026-11-10
+- [ ] Replace obsolete audit claims with versioned server evidence and separately queried session LIVE counts; correct Layer A capacity vs physical Layer B/fiscal aliases.
+- [ ] Accrue guild per-good specialization from canonical node diagnostics only inside the atomic process-turn fiscal plan; cap/decay and committed retry tests.
+- [ ] Validate upgrade/strategic authoritative paths; do not invent a node-upgrade command or execute descriptive bonusEffect/urbanization.
+- [ ] Run regression suite, edge checks, isolated integration and signed-in read-only panel check; deploy only verified functions; no JV72O7 writes.
+
 ## JV72O7 live rollout follow-up — 2026-11-10
 - [x] Re-read actual Cloud state: session d379caff… is already version 1, turn 1, with 108 parcels and 24 owned; no reset or replay of founding claims required.
 - [x] Fixed genuine diagnostic omission: already-applied dryRun returned empty success without checking anything. It now replays actual saved parcels and adapter opening; first step preserves adapter source depletion. Authenticated deployed dry-run: 108 parcels, unsafe=[], all 45 city/basket/step samples at 100% (five steps).
