@@ -26,7 +26,7 @@ describe('JV72O7 frozen fixture (turn 3)', () => {
   });
   it('Lambadagrad fuel ≥ 80 % once critical retraining may staff the peat cut', () => {
     const lam = snap.cities.find((c: any) => /Lambad/.test(c.name));
-    expect(cov(r, lam.id, 'fuel')).toBeGreaterThanOrEqual(0.8);
+    expect(cov(r, lam.id, 'fuel')).toBeGreaterThanOrEqual(0.8 - 1e-9); // was 0.51 before critical retraining
   });
   it('idempotent', () => expect(JSON.stringify(resolveGoodsEconomy(snap))).toBe(JSON.stringify(r)));
 });
