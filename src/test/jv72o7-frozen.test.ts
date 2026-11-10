@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import snapJson from './fixtures/jv72o7-snapshot.json';
 import { resolveGoodsEconomy, produced } from '../../supabase/functions/_shared/goodsEconomy';
 
 // Frozen JV72O7 turn-3 snapshot (read-only export of economy_turn_ledgers.result.snapshot); no DB access.
-const snap = JSON.parse(readFileSync(new URL('./fixtures/jv72o7-snapshot.json', import.meta.url), 'utf8'));
+const snap: any = snapJson;
 const cov = (r: any, city: string, basket: string) => {
   const keys = new Set(snap.goods.filter((g: any) => g.basket === basket).map((g: any) => g.key));
   const bs = r.balances.filter((b: any) => b.city === city && keys.has(b.good));
