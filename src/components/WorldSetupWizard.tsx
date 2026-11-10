@@ -29,6 +29,7 @@ import { SpecFieldEditor } from "./world-setup/SpecFieldEditor";
 import { BlueprintStaleWarning } from "./world-setup/BlueprintStaleWarning";
 import { AdvancedTerrainPanel } from "./world-setup/AdvancedTerrainPanel";
 import { WorldSettingsPanel } from "./world-setup/WorldSettingsPanel";
+import { premiseDerivedSettings, effectiveGameSettings } from "@/lib/worldGameSettings";
 import type { WorldGameSettings } from "@/lib/worldGameSettings";
 import { SchematicMapPreview, type PreviewHex } from "./world-setup/SchematicMapPreview";
 import { LineageSelector } from "./world-setup/LineageSelector";
@@ -115,6 +116,15 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
   // Bootstrap progress
   const [gameSettings, setGameSettings] = useState<WorldGameSettings>({});
+  const premiseDefaults = useMemo(() => premiseDerivedSettings(resolved?.terrain), [resolved?.terrain]);
+  const effectiveSettings = useMemo(() => effectiveGameSettings(gameSettings, resolved?.terrain), [gameSettings, resolved?.terrain]);
+  // Opponent count chosen before analysis is applied to the analysed world.
+  useEffect(() => {
+    if (resolved && gameSettings.aiOpponents !== undefined && resolved.factionCount !== gameSettings.aiOpponents) {
+      editField("factionCount", gameSettings.aiOpponents);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolved?.seed]);
   const [creating, setCreating] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState<number | undefined>(undefined);
   const [receivedSteps, setReceivedSteps] = useState<CreateWorldBootstrapResponse["steps"]>(undefined);
@@ -464,6 +474,20 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                 />
               </Card>
 
+              <Card className="p-3 sm:p-4">
+                <WorldSettingsPanel
+                  value={gameSettings}
+                  onChange={setGameSettings}
+                  premiseDefaults={premiseDefaults}
+                  opponents={isMPMode ? undefined : (resolved?.factionCount ?? gameSettings.aiOpponents)}
+                  onOpponentsChange={isMPMode ? undefined : (n) => {
+                    setGameSettings((s) => ({ ...s, aiOpponents: n }));
+                    if (resolved) editField("factionCount", n);
+                  }}
+                  disabled={isBusy}
+                />
+              </Card>
+
               {/* Inspiration + Premise + Analyze */}
               <Card className="p-3 sm:p-4 space-y-3">
                 <Label className="text-sm font-semibold">Inspirace (nepovinné)</Label>
@@ -545,16 +569,6 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
               {resolved && (
                 <>
-                  <Card className="p-3 sm:p-4">
-                    <WorldSettingsPanel
-                      value={gameSettings}
-                      onChange={setGameSettings}
-                      opponents={isMPMode ? undefined : resolved.factionCount}
-                      onOpponentsChange={isMPMode ? undefined : (n) => editField("factionCount", n)}
-                      disabled={isBusy}
-                    />
-                  </Card>
-
                   <Card className="p-3 sm:p-4 space-y-3">
                     <SpecReviewSummary resolved={resolved} warnings={state.warnings} />
                   </Card>
