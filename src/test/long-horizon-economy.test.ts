@@ -119,3 +119,8 @@ describe('long-horizon economy: bad decisions and shocks still cause crisis', ()
     expect(p.find(k => k.turn === 120)!.food).toBeGreaterThanOrEqual(0.85);
   });
 });
+it.only('debug', () => {
+  const a = simulate(67, 'none').kpis.filter(k => k.city === 'player' && k.turn % 10 === 0);
+  const b = simulate(70, 'invest', [{ turn: 60, city: 'player', destroy: 'harvest_wheat' }]).kpis.filter(k => k.city === 'player' && k.turn >= 58);
+  console.log(JSON.stringify({ a, b }));
+});
