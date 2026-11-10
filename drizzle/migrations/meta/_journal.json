@@ -85,6 +85,13 @@
       "when": 1794338853592,
       "tag": "0011_versioned_parcel_economy_rollout",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794339983343,
+      "tag": "0012_validate_normalized_construction_points",
+      "breakpoints": true
     }
   ]
 }
