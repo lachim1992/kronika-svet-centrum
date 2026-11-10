@@ -5,6 +5,7 @@
 
 import { dispatchOutcome } from "./dispatchOutcome.ts";
 import { chooseFuelBuild } from "../_shared/fuelGuidance.ts";
+import { chooseSubsistenceBuild } from "../_shared/subsistenceBuild.ts";
 import { createAIContext, invokeAI, getServiceClient, corsHeaders, jsonResponse as json, errorResponse } from "../_shared/ai-context.ts";
 import { buildBasketSnapshot } from "../_shared/basket-context.ts";
 import { applyStackMove } from "../_shared/stackMovementCommand.ts";
@@ -1113,6 +1114,22 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         }
       }
     } catch (e) { console.warn(`[ai-fuel] guidance skipped: ${e}`); }
+    // Deterministic primary investment: a growing city must get a real farm/well/peat cut (paid, staffed,
+    // validated by command-dispatch) when its critical coverage drops and idle workers exist. Takes
+    // precedence over discretionary LLM builds; never more than one per turn.
+    try {
+      const { data: led } = await supabase.from("economy_turn_ledgers").select("result")
+        .eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(1).maybeSingle();
+      const { data: tmpls } = await supabase.from("building_templates").select("name");
+      const names = new Set<string>((tmpls || []).map((t: any) => String(t.name).toLowerCase()));
+      const pick = chooseSubsistenceBuild((led as any)?.result, factionName, names, (id) => (cities || []).find((c: any) => c.id === id)?.name);
+      if (pick) {
+        result.actions = (result.actions || []).filter((a: any) => a.actionType !== "build_building" || /farm|studn|ryb|rašel/i.test(String(a.buildingName || "")));
+        result.actions.unshift({ actionType: "build_building", buildingName: pick.buildingName, targetCity: pick.cityName,
+          description: `Obživa: ${pick.basket} pokryto ${Math.round(pick.coverage * 100)} %`,
+          narrativeNote: `Frakce ${factionName} staví ${pick.buildingName} v ${pick.cityName}, aby rostoucí město nehladovělo.` });
+      }
+    } catch (e) { console.warn(`[ai-subsistence] skipped: ${e}`); }
     for (const action of (result.actions || []).slice(0, 8)) {
       try {
         const executed = await executeAction(
