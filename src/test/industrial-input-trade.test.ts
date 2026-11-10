@@ -124,3 +124,34 @@ describe('adapter industrial grain trade acceptance',()=>{
     expect(t.game_sessions[0].current_turn).toBe(3);
   });
 });
+
+// Live TEST02 t26 regression: Pole's mill flour was exported while Pole's own bakeries idled.
+describe('local mill→bakery priority (same city, same pass)',()=>{
+  const localFixture=(remoteBakery:boolean,grain=80)=>{const t=fixture('lock',100,grain);
+    t.city_buildings.push(building('bakeryB','b',{recipe_keys:['bake_staples'],production_roles:['processing'],basket_outputs:{staple_food:8}}));
+    t.structure_production_orders.push({session_id:S,structure_id:'bakeryB',mode:'lock',target_good_key:'baked_staples'});
+    t.economy_turn_ledgers[0].opening.push({city:'b',good:'peat',qty:10,quality:0});
+    if(!remoteBakery)t.city_buildings=t.city_buildings.filter((b:any)=>b.id!=='bakery');
+    // Bakeries listed BEFORE the mill so iteration order cannot hide the bug.
+    t.city_buildings.sort((x:any,y:any)=>(x.id.startsWith('bakery')?0:1)-(y.id.startsWith('bakery')?0:1));
+    return t;};
+  const row=(p:any,id:string)=>p.result.industrialInputs.find((x:any)=>x.producer===`${id}:bake_staples`&&x.good==='flour');
+  for(const remote of [false,true])it(`${remote?'2-city':'1-city'}: local bakery physically uses local flour`,async()=>{
+    const t=localFixture(remote,30),p=await run(t);conserve(p);
+    const flour=bal(p,'b','flour');
+    expect(produced(flour)).toBeGreaterThan(0);
+    expect(row(p,'bakeryB').used).toBeGreaterThan(0);
+    expect(flour.consumed_as_input).toBeCloseTo(row(p,'bakeryB').used+(remote?0:0),7);
+    expect(produced(bal(p,'b','baked_staples'))).toBeGreaterThan(0);
+    // Exports only what the local bakery could not use.
+    expect(flour.exported).toBeLessThanOrEqual(produced(flour)-row(p,'bakeryB').used+1e-7);
+    expect(row(p,'bakeryB').used).toBeGreaterThanOrEqual(Math.min(row(p,'bakeryB').planned,produced(flour))-1e-6);
+    expect((await run(t)).result).toEqual(p.result);
+  });
+  it('scarcity: no grain → no flour, unmet reported, nothing reported as lost',async()=>{
+    const t=localFixture(true);t.city_buildings=t.city_buildings.filter((b:any)=>b.id!=='farm');
+    const p=await run(t);conserve(p);
+    expect(produced(bal(p,'b','flour'))).toBe(0);expect(bal(p,'b','flour').lost_spoilage).toBe(0);
+    expect(row(p,'bakeryB').unmet).toBeGreaterThan(0);expect(row(p,'bakeryB').blocked).toBeTruthy();
+  });
+});

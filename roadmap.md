@@ -289,3 +289,11 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - OPEN P1 (neprovedeno tento běh): audit mzdy→výplata→příjem domácností, rozpočet/cla/HDP — jen existující testy (wage-settlement, treasury-reconciliation, ownership), žádná nová kontrola.
 - TESTED (rozsah!): 20/200 tahů pouze fyzická konzervace (economy-long-horizon-ledger), NE ekonomická uzávěrka cen/mezd.
 - DEFERRED (mikroekonomie): cenotvorba z marží, identita firem, konkurence, monopoly, férové dělení vzácného vstupu mezi odběratele (dnes greedy pořadí).
+
+## 2026-11-10 — P0 local mill→bakery priority (done)
+- Defect (live TEST02 t26 proof): Lachimská Pole flour produced 2.76, all exported to Lachimův Brod (production_input), Pole's 3 bakeries used 0 and were labelled missing_supplier. Cause: goodsEconomy sourcing reserve ignored the source city's own pending processors; producers ordered by id, so Brod's bakeries drew first.
+- Fix: goodsEconomy.ts reserves source's pending local industrial need (planned−used) before production_input export; supply_exhausted now also counts own-city output.
+- Tests: industrial-input-trade.test.ts +3 (1-city, 2-city local priority — failed on 22e40cbe, pass now; scarcity). Suite 733 pass / 3 skip; tsgo clean.
+- Live TEST02 (t27, derived refresh, invariants identical): Pole bakeries use 3.47+0.16+0.99 flour, baked_staples 3.56 (was 0).
+- Open P0 (diagnosed only): Háj Velké mlýny + Lachimgrad Vodní mlýn → blocked landed_cost_cap, but code path also fires when haul value ≤ transport (label conflates two reasons; t26 Háj planned 0 was stability factor 0 in snapshot). Jewelry ore: the only mine is in Háj; ore used by Háj smelter → supply_exhausted. Brod bakeries now flour-starved (Pole keeps its flour).
+- Next: split landed_cost_cap into haul_exceeds_value vs landed_cap with test.
