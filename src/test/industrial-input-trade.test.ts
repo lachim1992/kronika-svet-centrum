@@ -137,7 +137,7 @@ describe('local mill→bakery priority (same city, same pass)',()=>{
     return t;};
   const row=(p:any,id:string)=>p.result.industrialInputs.find((x:any)=>x.producer===`${id}:bake_staples`&&x.good==='flour');
   for(const remote of [false,true])it(`${remote?'2-city':'1-city'}: local bakery physically uses local flour`,async()=>{
-    const t=localFixture(remote),p=await run(t);conserve(p);
+    const t=localFixture(remote,6),p=await run(t);conserve(p);
     const flour=bal(p,'b','flour');
     expect(produced(flour)).toBeGreaterThan(0);
     expect(row(p,'bakeryB').used).toBeGreaterThan(0);
@@ -145,7 +145,7 @@ describe('local mill→bakery priority (same city, same pass)',()=>{
     expect(produced(bal(p,'b','baked_staples'))).toBeGreaterThan(0);
     // Exports only what the local bakery could not use.
     expect(flour.exported).toBeLessThanOrEqual(produced(flour)-row(p,'bakeryB').used+1e-7);
-    if(remote)expect(row(p,'bakeryB').used).toBeGreaterThanOrEqual(Math.min(row(p,'bakeryB').planned,produced(flour)-flour.stored)-1e-6);
+    expect(row(p,'bakeryB').used).toBeGreaterThanOrEqual(Math.min(row(p,'bakeryB').planned,produced(flour))-1e-6);
     expect((await run(t)).result).toEqual(p.result);
   });
   it('scarcity: no grain → no flour, unmet reported, nothing reported as lost',async()=>{
