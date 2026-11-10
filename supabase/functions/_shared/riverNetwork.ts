@@ -95,14 +95,35 @@ export function buildRiverNetwork(
   const rivers = new Map<string, string>();
   const sources: RiverCell[] = [];
 
-  for (const candidate of candidates) {
-    if (sources.length >= target) break;
-    const tooClose = sources.some(
-      (source) =>
-        Math.abs(source.gridX - candidate.cell.gridX) + Math.abs(source.gridY - candidate.cell.gridY) < 4,
-    );
-    if (tooClose) continue;
-    sources.push(candidate.cell);
+  // Spread sources across the whole landmass: split it into regions and take
+  // the best highland of each region in turn, so rivers never cluster in one corner.
+  const minGap = Math.max(4, Math.floor(Math.sqrt(land.length / Math.max(1, target)) * 0.8));
+  const xs = land.map((c) => c.gridX), ys = land.map((c) => c.gridY);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  const side = Math.max(1, Math.ceil(Math.sqrt(target)));
+  const spanX = (Math.max(...xs) - minX + 1) / side, spanY = (Math.max(...ys) - minY + 1) / side;
+  const buckets = new Map<string, typeof candidates>();
+  for (const c of candidates) {
+    const b = `${Math.floor((c.cell.gridX - minX) / spanX)}:${Math.floor((c.cell.gridY - minY) / spanY)}`;
+    if (!buckets.has(b)) buckets.set(b, []);
+    buckets.get(b)!.push(c);
+  }
+  const queues = [...buckets.entries()].sort(([a], [b]) => hash(`${seed}:b:${a}`) - hash(`${seed}:b:${b}`)).map(([, q]) => q);
+  const farEnough = (cell: RiverCell, gap: number) =>
+    !sources.some((s) => Math.abs(s.gridX - cell.gridX) + Math.abs(s.gridY - cell.gridY) < gap);
+  for (const gap of [minGap, 4]) {
+    let progressed = true;
+    while (sources.length < target && progressed) {
+      progressed = false;
+      for (const q of queues) {
+        if (sources.length >= target) break;
+        const i = q.findIndex((c) => farEnough(c.cell, gap));
+        if (i < 0) continue;
+        sources.push(q[i].cell);
+        q.splice(0, i + 1);
+        progressed = true;
+      }
+    }
   }
 
   for (const source of sources) {
