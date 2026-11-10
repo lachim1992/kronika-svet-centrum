@@ -262,8 +262,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   /** Why the last household-ward transfer into a city×good was refused; diagnostics only, never alters stock. */
   type TradeRefusal='trade_blocked'|'route_unreachable'|'beyond_reach'|'margin_unprofitable'|'route_capacity'|'source_retained'|'source_empty';
   const tradeRefusals=new Map<string,{reason:TradeRefusal;source:string}>();
+  /** Last refusal a factory input pull got from a source that actually held stock (diagnostics only). */
+  const inputRefusals=new Map<string,TradeRefusal|'landed_cost_cap'>();
   const refuse=(src:City,dst:City,g:Good,why:string,r:TradeRefusal)=>{
     // A source that holds nothing must not overwrite the refusal of a real holder.
+    if(why==='production_input'){if(available(stock(src.id,g.key))>C.minLot)inputRefusals.set(key(dst.id,g.key),r);return 0;}
     if(why!=='household_consumption'&&why!=='regional_redistribution')return 0;
     const k=key(dst.id,g.key),prev=tradeRefusals.get(k);
     const empty=available(stock(src.id,g.key))<=C.minLot;
@@ -295,7 +298,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(reason!=='production_input'&&margin<=g.price*C.arbitrageMargin)return refuse(src,dst,g,reason,'margin_unprofitable');
     // Factories are cost-driven: the physical haul must be worth the good, and the landed cost is capped.
     if(reason==='production_input'&&((1-p.loss)*unit-transport-p.tolls-unit*targetPolicy.tariff<=0
-      ||(landed(src,dst,g,minQ,wanted)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple))return 0;
+      ||(landed(src,dst,g,minQ,wanted)?.landed??Infinity)>g.price*PRODUCT_MARKET.maxLandedInputMultiple)){
+      if(available(b)>C.minLot)inputRefusals.set(key(dst.id,g.key),'landed_cost_cap');return 0;}
     // Realised sale value per delivered unit (gross trade — never GDP; only service margin is VA).
     const saleUnit=reason==='production_input'?unit:destinationWTP;
     // Quality-filtered sourcing: only lots meeting the buyer recipe's minQuality may be shipped.
@@ -746,7 +750,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const suppliedThisPass=cities.some(s=>s.id!==c.id&&produced(stock(s.id,g.key))>C.minLot);
       x.blocked=capital<1-C.epsilon&&x.received>=x.planned*capital-C.minLot?'b_factor_limited':
         !holders.length?(suppliedThisPass?'supply_exhausted':'missing_supplier'):!peaceful.length?'trade_blocked':!reachable.length?'route_unreachable':
-        !surplus.length?'source_retained':surplus.every(s=>(route(s.cell,c.cell,g)?.capacity??0)<C.minLot)?'route_capacity':'landed_cost_or_partial_supply';
+        !surplus.length?'source_retained':surplus.every(s=>(route(s.cell,c.cell,g)?.capacity??0)<C.minLot)?'route_capacity':(inputRefusals.get(key(c.id,g.key))??'landed_cost_or_partial_supply');
     }
   }
 
