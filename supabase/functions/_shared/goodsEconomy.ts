@@ -396,6 +396,25 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const deficit=plan.reduce((s,r)=>s+Math.max(0,r.jobs-r.supply),0);
     const moved=Math.min(surplus*mobility,deficit);
     if(moved>C.epsilon&&deficit>C.epsilon)for(const r of plan)r.transferred=moved*Math.max(0,r.jobs-r.supply)/deficit;
+    /**
+     * Pass 2b: CRITICAL RETRAINING. If a sector cannot crew its food/water/fuel-minimum jobs from its
+     * own pool, workers above other sectors' own critical needs may cross over — still bounded by the
+     * city's mobility, each person moved once (donor supply falls by exactly what the recipient gains).
+     * Discretionary node/industry jobs never outrank a hungry, thirsty or cold household.
+     */
+    const critJobsOf=(r:typeof plan[number])=>{let jobs=0;
+      for(const tier of SUBSISTENCE_TIERS)for(const basket of tier.baskets){let need=subsistenceNeed(c,basket)*tier.share;
+        const cands=r.own.filter(p=>goodByKey.get(p.recipe.good)?.basket===basket&&jobsOf(p)>C.epsilon)
+          .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*clamp(c.stability)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
+          .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
+        for(const {p,per} of cands){if(need<=C.epsilon)break;const take=Math.min(jobsOf(p),need/per);jobs+=take;need-=take*per;}}
+      return jobs;};
+    const crit=plan.map(r=>critJobsOf(r));
+    const shortfall=plan.map((r,i)=>Math.max(0,crit[i]-r.supply-r.transferred));
+    const donor=plan.map((r,i)=>Math.max(0,r.supply-crit[i])*mobility);
+    const needCrit=shortfall.reduce((a,b)=>a+b,0),canGive=donor.reduce((a,b)=>a+b,0);
+    const critMoved=Math.min(needCrit,canGive);
+    if(critMoved>C.epsilon)plan.forEach((r,i)=>{r.supply-=critMoved*donor[i]/canGive;r.transferred+=critMoved*shortfall[i]/needCrit;});
     let priorityEmployed=0;
     for(const r of plan){
       const available=r.supply+r.transferred;
@@ -435,7 +454,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     laborMetrics.push({city:c.id,population:c.population,economically_active:active,
       available_workforce:workforce.get(c.id)!.workforce,employed_total:employedTotal,
       unemployed_total:unemployed,jobs_capacity:jobsTotal,vacancies_total:vacancies,
-      labor_mobility:mobility,retrained:moved,
+      labor_mobility:mobility,retrained:moved+critMoved,
       // People idle while jobs stand empty: the mismatch itself, not a general labour shortage.
       structural_unemployed:Math.min(unemployed,vacancies),
       critical_priority_employed:priorityEmployed,
