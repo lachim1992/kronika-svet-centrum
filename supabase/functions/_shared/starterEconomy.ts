@@ -97,6 +97,15 @@ export const starterJobsFor = (c: StarterContract, population: number): number =
   return Math.max(10, Math.min(units * c.jobsCapacity, Math.round(pop * 0.3)));
 };
 
+/** Storable goods only — water and fish cannot be stockpiled, so they are never seeded. */
+export const STARTER_RESERVE_GOODS = new Set(['raw_grain', 'preserved_food', 'peat', 'charcoal']);
+/** ~2.5 turns of household need (food 0.01/soul, fuel 0.006/soul), physically seeded once at founding. */
+export const starterReserveFor = (population: number, fuelLand = true): Record<string, number> => {
+  const pop = Math.max(0, Number(population) || 0);
+  const round = (x: number) => Math.round(x * 1000) / 1000;
+  return { raw_grain: round(pop * 0.025), ...(fuelLand ? { peat: round(pop * 0.015) } : {}) };
+};
+
 const scalesWithPopulation = (c: StarterContract) => c !== STARTER_STORAGE && c !== STARTER_FUEL;
 
 export const starterEffects = (c: StarterContract, population: number) => {
@@ -174,6 +183,8 @@ export async function ensureStarterEconomy(
         continue;
       }
       added.push(contract.name);
+      // Reserve rides only on a NEWLY founded storehouse; the adapter reads it once on first adoption.
+      if (contract === STARTER_STORAGE) (effects as any).starter_reserve = starterReserveFor(population, hasFuelLand(biomeAt.get(`${cx},${cy}`) as string));
       rows.push({
         session_id: sessionId, city_id: city.id, name: contract.name, category: contract.category,
         description: contract.description, effects, status: 'completed',
