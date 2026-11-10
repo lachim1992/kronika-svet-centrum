@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## JV72O7 live rollout follow-up — 2026-11-10
+- [x] Re-read actual Cloud state: session d379caff… is already version 1, turn 1, with 108 parcels and 24 owned; no reset or replay of founding claims required.
+- [ ] Revalidate deployed dry-run against actual existing parcels (including five-turn staffing/ecology), then two derived refreshes; compare all-session treasury/calendar/reserve state.
+- [ ] Run parcel/conservation/full regression tests, verify deployment and live physical outputs; record numeric acceptance and outstanding blockers.
+- [ ] Previous HexNode audit slice deferred while this explicitly requested live-rollout verification is completed; no audit or guild changes in this slice.
+
 ## Parcel economy rollout — 2026-11-10 (current request)
 - [x] Final addendum: raw timber 0.20 / stone 0.15 points per consumed unit; 25% residual, max 1 unit per 100 residents. goodsEconomy physical capex sink separate from construction_points; adapter + management aggregate points; migration 0012 validates points with legacy fallback. Projects/industry/trade settle before residual.
 - [x] Code: canonical owned-parcel sources, bounded committed-ledger ecology and ordinary solver labour/physical ledgers (`parcelEconomy.ts`, economyAdapter).
