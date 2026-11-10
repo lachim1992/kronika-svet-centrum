@@ -13,6 +13,8 @@ interface Props {
   opponents?: number;
   onOpponentsChange?: (n: number) => void;
   disabled?: boolean;
+  /** River defaults inferred from the analysed premise. */
+  premiseDefaults?: Pick<WorldGameSettings, "riverAmount" | "riverLength">;
 }
 
 const LEVEL = [
@@ -39,13 +41,17 @@ function Choice({ label, hint, value, options, onChange, disabled }: {
   );
 }
 
-export const WorldSettingsPanel = ({ value, onChange, opponents, onOpponentsChange, disabled }: Props) => {
+export const WorldSettingsPanel = ({ value, onChange, opponents, onOpponentsChange, disabled, premiseDefaults }: Props) => {
   const [open, setOpen] = useState(false);
   const set = (patch: Partial<WorldGameSettings>) => onChange({ ...value, ...patch });
+  const LBL: Record<string, string> = { low: "málo", normal: "normálně", high: "hodně" };
+  const LEN: Record<string, string> = { low: "krátké", normal: "normální", high: "dlouhé" };
+  const auto = (d?: string, map = LBL) => ({ v: "auto", l: d ? `Podle premisy (${map[d]})` : "Podle premisy (po analýze)" });
 
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold">⚙️ Nastavení světa</h3>
+      <p className="text-[11px] text-muted-foreground">Co nenastavíš, odvodí se z premisy světa.</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {onOpponentsChange && (
@@ -75,12 +81,12 @@ export const WorldSettingsPanel = ({ value, onChange, opponents, onOpponentsChan
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Choice label="Množství řek" disabled={disabled} value={value.riverAmount ?? "normal"} options={LEVEL}
-            hint="Řeky se vždy generují podle terénu — z hor k moři."
-            onChange={(v) => set({ riverAmount: v as WorldGameSettings["riverAmount"] })} />
-          <Choice label="Délka a význam řek" disabled={disabled} value={value.riverLength ?? "normal"}
-            options={[{ v: "low", l: "Krátké potoky" }, { v: "normal", l: "Normální řeky" }, { v: "high", l: "Dlouhé veletoky" }]}
-            onChange={(v) => set({ riverLength: v as WorldGameSettings["riverLength"] })} />
+          <Choice label="Množství řek" disabled={disabled} value={value.riverAmount ?? "auto"} options={[auto(premiseDefaults?.riverAmount), ...LEVEL]}
+            hint="Vlhký svět s lesy má víc řek, poušť méně. Řeky tečou z hor k moři."
+            onChange={(v) => set({ riverAmount: v === "auto" ? undefined : v as WorldGameSettings["riverAmount"] })} />
+          <Choice label="Délka a význam řek" disabled={disabled} value={value.riverLength ?? "auto"}
+            options={[auto(premiseDefaults?.riverLength, LEN), { v: "low", l: "Krátké potoky" }, { v: "normal", l: "Normální řeky" }, { v: "high", l: "Dlouhé veletoky" }]}
+            onChange={(v) => set({ riverLength: v === "auto" ? undefined : v as WorldGameSettings["riverLength"] })} />
           <Choice label="Neutrální města" disabled={disabled} value={value.neutralTowns ?? "normal"}
             options={[{ v: "none", l: "Žádná" }, ...LEVEL]}
             onChange={(v) => set({ neutralTowns: v as WorldGameSettings["neutralTowns"] })} />
