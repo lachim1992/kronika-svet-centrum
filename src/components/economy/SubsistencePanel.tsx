@@ -4,8 +4,9 @@ import { Badge } from "@/components/ui/badge";
 
 type Row = { city: string; food_status: string; food_deficit_ratio: number };
 /** Shared by the Economy tab and Economy Dev Mode: canonical labour + food status + producer limits. */
-export default function SubsistencePanel({ subsistence, labor, producers, name, showSource = false }: {
+export default function SubsistencePanel({ subsistence, labor, producers, name, showSource = false, guidance }: {
   subsistence?: Row[]; labor?: any[]; producers?: any[]; name: (id: string) => string; showSource?: boolean;
+  guidance?: { city: string; buildingName: string; basket: string; coverage: number; cost_wealth: number; output: number; idle_workers: number }[];
 }) {
   if (!subsistence?.length && !labor?.length) return null;
   const limited = (producers || []).map(p => ({ p, why: producerLimit(p) })).filter(x => x.why);
@@ -24,6 +25,13 @@ export default function SubsistencePanel({ subsistence, labor, producers, name, 
           </div>
         );
       })}
+      {(guidance || []).length > 0 && <div className="border-t pt-2 space-y-1">
+        <div className="text-sm font-medium">Doporučená stavba (stavíte sami)</div>
+        {guidance!.map(g => <div key={g.city + g.buildingName} className="text-xs">
+          {name(g.city)}: <b>{g.buildingName}</b> — {g.basket === "staple_food" ? "jídlo" : g.basket === "drinking_water" ? "voda" : "palivo"} pokryto {Math.round(g.coverage * 100)} %;
+          {" "}cena {g.cost_wealth} zlata, výnos až {g.output}/tah při plném obsazení, volných pracovníků {Math.round(g.idle_workers)}.
+        </div>)}
+      </div>}
       {limited.length > 0 && <table className="text-xs w-full"><caption className="text-left">Provozy pod potenciálem a hlavní důvod</caption>
         <thead><tr>{["Provoz", "Zboží", "Vyrobeno", "Potenciál", "Zaměstnaní / místa", "Důvod"].map(h => <th key={h} className="p-1 text-left">{h}</th>)}</tr></thead>
         <tbody>{limited.map(({ p, why }) => <tr key={p.producer} className="border-t">

@@ -23,7 +23,7 @@ export default function PhysicalEconomyPanel({sessionId,cities,playerName,curren
   return <section className="space-y-4 rounded-xl border p-4">
     <h3 className="font-semibold">Fyzická ekonomika a původ hodnot</h3>
     <p className="text-xs text-muted-foreground">Údaje z uzavřeného tahu {report.turn}.</p>
-    <SubsistencePanel subsistence={(report as any).subsistence?.filter((x:any)=>!city||x.city===city)} labor={report.labor?.filter((l:any)=>!city||l.city===city)} producers={report.producers?.filter((p:any)=>!city||p.city===city)} name={name} />
+    <SubsistencePanel subsistence={(report as any).subsistence?.filter((x:any)=>!city||x.city===city)} labor={report.labor?.filter((l:any)=>!city||l.city===city)} producers={report.producers?.filter((p:any)=>!city||p.city===city)} name={name} guidance={(report as any).build_guidance?.filter((x:any)=>!city||x.city===city)} />
     <FuelGuidancePanel warnings={(report as any).fuel_guidance} name={name} />
     <IndustrialInputsPanel rows={report.industrial_inputs?.filter(x=>!city||x.city===city)} name={name} />
     <div className="flex flex-wrap gap-3">

@@ -4,7 +4,8 @@ import { ECONOMY } from '../../supabase/functions/_shared/economyConfig';
 import { RECIPES, GOODS } from '../../supabase/functions/_shared/productionCatalog';
 import { subsistenceRows } from '../../supabase/functions/_shared/subsistence';
 import { starterBundle, starterEffects, starterReserveFor } from '../../supabase/functions/_shared/starterEconomy';
-import { chooseSubsistenceBuild } from '../../supabase/functions/_shared/subsistenceBuild';
+import { chooseSubsistenceBuild, PRIMARY_BUILD_CATALOG } from '../../supabase/functions/_shared/subsistenceBuild';
+import { computeSettlementGrowth, subsistenceGrowthFactor } from '../../supabase/functions/_shared/physics';
 
 // LONG-HORIZON STRESS HARNESS: real goods solver, growing population, physical stocks, and the same
 // deterministic primary-investment chooser the AI uses (paid from a treasury, staffed by real workers).
@@ -72,8 +73,11 @@ function simulate(turns: number, policy: Policy, shocks: Shock[] = []) {
       // Population: growth only with secure food+water; genuine deficit (≥15 % = famine) kills.
       const famine = row.food_deficit_ratio >= 0.15 || water < 0.85;
       const deaths = famine ? Math.round(c.population * Math.max(row.food_deficit_ratio, 1 - water) * 0.2) : 0;
-      const growth = food >= 0.97 && water >= 0.97 ? Math.round(c.population * 0.015) : 0;
-      const pop = Math.max(10, c.population + growth - deaths);
+      // Same growth function commit-turn uses, fed the same canonical need satisfaction.
+      const g = computeSettlementGrowth({ id: c.id, name: c.id, owner_player: c.owner, status: 'ok', population_total: c.population,
+        population_peasants: c.population, population_burghers: 0, population_clerics: 0, city_stability: 55, famine_turn: famine,
+        development_level: 1 } as any, { needs: { food, water } });
+      const pop = Math.max(10, g.newPop - deaths);
       kpis.push({ turn: t, city: c.id, pop: c.population, food, water, fuel, deaths, idle: l.available_workforce - l.employed_total, buildings: producers.filter(p => p.city === c.id).length });
       next.push({ ...c, population: pop, classes: { peasants: pop } });
       treasury[c.owner] += c.population * 0.05;
@@ -121,5 +125,26 @@ describe('long-horizon economy: bad decisions and shocks still cause crisis', ()
     const p = kpis.filter(k => k.city === 'player');
     expect(p.filter(k => k.turn === 60).some(k => k.food < 0.5 && k.deaths > 0)).toBe(true);
     expect(p.find(k => k.turn === 120)!.food).toBeGreaterThanOrEqual(0.85);
+  });
+});
+
+describe('real demography: growth gated by canonical food/water satisfaction', () => {
+  it('full growth ≥97 %, none ≤85 %, linear between; no data keeps legacy behaviour', () => {
+    expect(subsistenceGrowthFactor({ food: 1, water: 0.98 })).toBe(1);
+    expect(subsistenceGrowthFactor({ food: 0.85, water: 1 })).toBe(0);
+    expect(subsistenceGrowthFactor({ food: 0.19, water: 0.03 })).toBe(0); // TEST01 t67 pattern
+    expect(subsistenceGrowthFactor({ food: 0.91, water: 1 })).toBeCloseTo(0.5, 6);
+    expect(subsistenceGrowthFactor(undefined)).toBe(1);
+  });
+  it('starving city does not grow; prosperous city keeps its positive growth', () => {
+    const c = { id: 'x', name: 'x', owner_player: 'P', status: 'ok', population_total: 5000, population_peasants: 5000, population_burghers: 0,
+      population_clerics: 0, city_stability: 70, famine_turn: false, development_level: 1 } as any;
+    expect(computeSettlementGrowth(c, { needs: { food: 0.64, water: 0.65 } }).delta).toBe(0);
+    expect(computeSettlementGrowth(c, { needs: { food: 1, water: 1 } }).delta).toBe(computeSettlementGrowth(c, {}).delta);
+    expect(computeSettlementGrowth(c, { needs: { food: 1, water: 1 } }).delta).toBeGreaterThan(0);
+  });
+  it('catalogue mirror matches building_templates costs/outputs', () => {
+    expect(PRIMARY_BUILD_CATALOG.Farma).toEqual({ cost_wealth: 10, basket: 'staple_food', output: 7 });
+    expect(PRIMARY_BUILD_CATALOG.Studna.cost_wealth).toBe(5);
   });
 });
