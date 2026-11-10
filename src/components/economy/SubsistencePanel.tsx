@@ -1,5 +1,5 @@
 import EconomyFieldList from "./EconomyFieldList";
-import { FOOD_STATUS_LABEL, LABOR_FIELDS, producerLimit } from "@/lib/economyFieldContract";
+import { FOOD_STATUS_LABEL, LABOR_FIELDS, producerLimit, subsistenceSources } from "@/lib/economyFieldContract";
 import { Badge } from "@/components/ui/badge";
 
 type Row = { city: string; food_status: string; food_deficit_ratio: number };
@@ -21,6 +21,9 @@ export default function SubsistencePanel({ subsistence, labor, producers, name, 
               {s && <Badge variant={s.food_status === "famine" ? "destructive" : s.food_status === "rationing" ? "secondary" : "outline"}>
                 {FOOD_STATUS_LABEL[s.food_status] ?? s.food_status}{s.food_deficit_ratio > 0 ? ` · chybí ${Math.round(s.food_deficit_ratio * 100)} %` : ""}</Badge>}
             </div>
+            {(() => { const src = subsistenceSources(producers, l.city); return src.length > 0 && <div className="text-xs text-muted-foreground">
+              Zdroje: {src.map((x, i) => <span key={i}>{i > 0 && " · "}{x.kind === "water" ? "voda" : "jídlo"} — <b className="text-foreground">{x.label}</b> {x.realized.toFixed(2)}/tah{x.employed != null ? ` (${x.employed.toFixed(1)}/${x.jobs ?? "—"} prac.)` : ""}</span>)}
+            </div>; })()}
             <EconomyFieldList row={l} fields={LABOR_FIELDS} showSource={showSource} />
           </div>
         );

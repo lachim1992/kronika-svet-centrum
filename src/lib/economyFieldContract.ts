@@ -141,3 +141,25 @@ export function producerLimit(d: Record<string, any>): string | null {
   if (Number(f.logistics ?? 1) < 0.95) return `logistika (${Math.round(Number(f.logistics) * 100)} %)`;
   return null;
 }
+
+/** Physical source of drinking water / food, by recipe — shown in both Economy and Dev view. */
+export const SUBSISTENCE_SOURCE_LABEL: Record<string, { kind: "water" | "food"; label: string }> = {
+  draw_river_water: { kind: "water", label: "Řeka" },
+  draw_water: { kind: "water", label: "Studna" },
+  catch_fish: { kind: "food", label: "Ryby" },
+  hunt_game: { kind: "food", label: "Lov a sběr" },
+  harvest_wheat: { kind: "food", label: "Pole" },
+  harvest_barley: { kind: "food", label: "Pole" },
+  harvest_rice: { kind: "food", label: "Rýžoviště" },
+  herd_cattle: { kind: "food", label: "Farma (dobytek)" },
+};
+export function subsistenceSources(producers: any[] | undefined, city: string) {
+  const out: { kind: "water" | "food"; label: string; realized: number; employed: number | null; jobs: number | null }[] = [];
+  for (const p of producers || []) {
+    const key = p?.recipe?.key ?? p?.recipe_key;
+    const meta = key ? SUBSISTENCE_SOURCE_LABEL[key] : undefined;
+    if (!meta || p.city !== city) continue;
+    out.push({ ...meta, realized: Number(p.realized || 0), employed: p.employed ?? null, jobs: p.jobs_capacity ?? null });
+  }
+  return out;
+}
