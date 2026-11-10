@@ -8406,6 +8406,7 @@ export type Database = {
           session_id: string
           siege_turn_start: number | null
           spawned_strategic_resource: string | null
+          specialization_last_turn: number | null
           specialization_scores: Json | null
           stability_factor: number
           strategic_resource_tier: number
@@ -8496,6 +8497,7 @@ export type Database = {
           session_id: string
           siege_turn_start?: number | null
           spawned_strategic_resource?: string | null
+          specialization_last_turn?: number | null
           specialization_scores?: Json | null
           stability_factor?: number
           strategic_resource_tier?: number
@@ -8586,6 +8588,7 @@ export type Database = {
           session_id?: string
           siege_turn_start?: number | null
           spawned_strategic_resource?: string | null
+          specialization_last_turn?: number | null
           specialization_scores?: Json | null
           stability_factor?: number
           strategic_resource_tier?: number

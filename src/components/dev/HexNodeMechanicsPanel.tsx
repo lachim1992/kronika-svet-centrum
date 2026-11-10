@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
+import { AUDIT_ITEMS, AUDIT_STATUSES, HEX_NODE_AUDIT_VERSION } from "@/lib/hexNodeAudit";
+import AuditLiveEvidence from './AuditLiveEvidence';
 
 // ═══════════════════════════════════════════
 // CAUSAL MAP DATA
@@ -62,26 +64,26 @@ const CAUSAL_LINKS: CausalLink[] = [
   { from: "civ_identity modifiers", to: "node production", effect: "production_modifier, wealth_modifier etc.", status: "partial", where: "physics.ts (defined) — NOT applied in compute-economy-flow" },
   { from: "strategic_resource tier", to: "combat bonuses", effect: "gameplayEffects per tier (iron +10% etc.)", status: "blind", where: "economyFlow.ts (defined) — NOT consumed by resolve-battle" },
   { from: "strategic_resource tier", to: "build cost discount", effect: "marble −10%/−20% build cost", status: "blind", where: "economyFlow.ts (defined) — NOT consumed by build logic" },
-  { from: "node.bonusEffect text", to: "engine", effect: "Descriptive only — no mechanical application", status: "blind", where: "nodeTypes.ts" },
+  { from: "node.bonusEffect text", to: "engine", effect: "Descriptive only; typed validated effects required", status: "planned", where: "nodeTypes.ts + buildValidation.ts" },
   { from: "preferredBiomes", to: "node placement AI", effect: "AI uses for suggestMajorType only, not economic bonus", status: "partial", where: "nodeTypes.ts → AI faction turn" },
   { from: "micro.strategicResourcePool", to: "resource spawn", effect: "rollStrategicResource with spawnChance", status: "active", where: "nodeTypes.ts + generate-hex" },
-  { from: "node.maxUpgrade", to: "upgrade cap", effect: "Major=5, Minor=5, Micro=2-3 — enforced in UI", status: "partial", where: "UI only — no server validation" },
+  { from: "node.maxUpgrade", to: "upgrade cap", effect: "No dedicated node upgrade command; START_PROJECT infrastructure and building/route levels are distinct", status: "partial", where: "command-dispatch + turnProgress.ts" },
   // GOODS ECONOMY v4.1 — new causal links
   { from: "resource_deposits", to: "source_node_output", effect: "Hex resource yield × quality → raw goods extraction", status: "active", where: "compute-province-nodes + compute-economy-flow" },
   { from: "capability_tags", to: "recipe_eligibility", effect: "Node tags auto-assigned from subtype+biome, match recipe required_tags", status: "active", where: "compute-province-nodes (auto) + compute-economy-flow" },
   { from: "production_role", to: "goods_chain_position", effect: "source→processing→urban→guild pipeline", status: "active", where: "compute-province-nodes (auto)" },
   { from: "guild_level", to: "branch_unlock + quality", effect: "Lv.3+ unlocks luxury/famous tier recipes", status: "planned", where: "goodsCatalog.ts" },
-  { from: "specialization_scores", to: "famous_good_chance", effect: "Cumulative branch mastery → variant unlock probability", status: "planned", where: "province_nodes.specialization_scores" },
-  { from: "demand_basket_satisfaction", to: "city_stability", effect: "Unfulfilled tier 1-2 baskets → stability penalty", status: "planned", where: "demand_baskets table" },
-  { from: "trade_pressure", to: "trade_flow_creation", effect: "High pressure → new city-to-city flows", status: "planned", where: "compute-trade-flows (planned)" },
-  { from: "commercial_retention", to: "wealth_tax_base", effect: "Higher domestic fulfillment → stronger market tax", status: "planned", where: "realm_resources.commercial_retention" },
-  { from: "commercial_capture", to: "export_income", effect: "Serving foreign demand → capture bonus wealth", status: "planned", where: "realm_resources.commercial_capture" },
-  { from: "trade_ideology", to: "merchant_flow + tariffs", effect: "5 ideologies with mechanical multipliers", status: "planned", where: "realm_resources.trade_ideology + goodsCatalog.ts" },
-  { from: "goods_output", to: "macro_production", effect: "Aggregated chain output → top-bar Production", status: "planned", where: "compute-economy-flow (planned)" },
-  { from: "market_tax + transit_tax", to: "macro_wealth", effect: "Tax components → top-bar Wealth", status: "planned", where: "realm_resources tax columns" },
-  { from: "storable_goods_surplus", to: "macro_supplies", effect: "Storable goods balance → top-bar Supplies", status: "planned", where: "goods.storable + node_inventory" },
-  { from: "ritual_basket_fulfillment", to: "macro_faith", effect: "Ritual basket satisfaction → top-bar Faith", status: "planned", where: "demand_baskets (planned)" },
-  { from: "luxury_famous_output", to: "macro_prestige", effect: "Luxury/famous goods volume → top-bar Prestige", status: "planned", where: "goods.market_tier + trade_flows" },
+  { from: "specialization_scores", to: "famous_good_chance", effect: "Committed per-good guild production experience, cap/decay and retry marker", status: "active", where: "guildSpecialization.ts + process-turn fiscal plan" },
+  { from: "demand_basket_satisfaction", to: "city_stability", effect: "Canonical basket shortage → stability/famine rules", status: "active", where: "goodsEconomy.ts + process-turn" },
+  { from: "trade_pressure", to: "trade_flow_creation", effect: "Canonical input and household sourcing on reachable physical routes", status: "active", where: "compute-trade-flows → economyAdapter → goodsEconomy" },
+  { from: "commercial_retention", to: "wealth_tax_base", effect: "Goods-based prestige consumer; not an extra tax", status: "active", where: "process-turn" },
+  { from: "commercial_capture", to: "export_income", effect: "Persisted projection; downstream extra income unverified", status: "partial", where: "economyAdapter + process-turn" },
+  { from: "trade_ideology", to: "merchant_flow + tariffs", effect: "Canonical route/tariff and market modifiers", status: "active", where: "goodsEconomy.ts + landedRoute.ts" },
+  { from: "goods_output", to: "macro_production", effect: "Layer B physical goods/value added distinct from Layer A total_production capacity alias", status: "partial", where: "economyAdapter + aggregate-realm-totals" },
+  { from: "market_tax + transit_tax", to: "macro_wealth", effect: "Fiscal revenue only; total_wealth is not household wealth", status: "active", where: "process-turn + treasury.ts" },
+  { from: "storable_goods_surplus", to: "macro_supplies", effect: "Canonical committed physical stores; refresh never adds reserves", status: "active", where: "goodsEconomy.ts + process-turn" },
+  { from: "ritual_basket_fulfillment", to: "macro_faith", effect: "Event reference records bonus; actual faith settlement must be verified", status: "partial", where: "process-turn" },
+  { from: "luxury_famous_output", to: "macro_prestige", effect: "Goods-based prestige, fame separate from objective quality", status: "active", where: "process-turn + goodsEconomy.ts" },
 ];
 
 // ═══════════════════════════════════════════
@@ -122,19 +124,19 @@ const CONSTANTS: ConstantEntry[] = [
   { category: "Hex modifikátory", name: "Coastal bonus", value: "×0.9", source: "physics.ts", editable: true },
   { category: "Hex modifikátory", name: "Trade density max discount", value: "×0.6 (at density 100)", source: "physics.ts", editable: true },
   // Node production
-  { category: "Node base production", name: "resource_node", value: "8", source: "economyFlow.ts", editable: true },
-  { category: "Node base production", name: "village_cluster", value: "6", source: "economyFlow.ts", editable: true },
-  { category: "Node base production", name: "port", value: "5", source: "economyFlow.ts", editable: true },
-  { category: "Node base production", name: "primary_city", value: "4", source: "economyFlow.ts", editable: true },
-  { category: "Node base production", name: "secondary_city / logistic_hub", value: "3", source: "economyFlow.ts", editable: true },
-  { category: "Node base production", name: "trade_hub / religious_center", value: "2", source: "economyFlow.ts", editable: true },
-  { category: "Node base production", name: "fortress", value: "1", source: "economyFlow.ts", editable: true },
+  { category: "Layer A — rated capacity (not physical goods)", name: "resource_node", value: "8", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Layer A — rated capacity (not physical goods)", name: "village_cluster", value: "6", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Layer A — rated capacity (not physical goods)", name: "port", value: "5", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Layer A — rated capacity (not physical goods)", name: "primary_city", value: "4", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Layer A — rated capacity (not physical goods)", name: "secondary_city / logistic_hub", value: "3", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Layer A — rated capacity (not physical goods)", name: "trade_hub / religious_center", value: "2", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Layer A — rated capacity (not physical goods)", name: "fortress", value: "1", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
   // Role multipliers
-  { category: "Role → Trade Efficiency", name: "hub", value: "1.0", source: "economyFlow.ts", editable: true },
-  { category: "Role → Trade Efficiency", name: "gateway", value: "0.8", source: "economyFlow.ts", editable: true },
-  { category: "Role → Trade Efficiency", name: "regulator", value: "0.6", source: "economyFlow.ts", editable: true },
-  { category: "Role → Trade Efficiency", name: "producer", value: "0.3", source: "economyFlow.ts", editable: true },
-  { category: "Role → Trade Efficiency", name: "neutral", value: "0.2", source: "economyFlow.ts", editable: true },
+  { category: "Role → Trade Efficiency", name: "hub", value: "1.0", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Role → Trade Efficiency", name: "gateway", value: "0.8", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Role → Trade Efficiency", name: "regulator", value: "0.6", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Role → Trade Efficiency", name: "producer", value: "0.3", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
+  { category: "Role → Trade Efficiency", name: "neutral", value: "0.2", source: "economyFlow.ts (legacy capacity/preview)", editable: true },
   // Biome match
   { category: "Biome match produkce", name: "Match", value: "1.0×", source: "nodeTypes.ts", editable: true },
   { category: "Biome match produkce", name: "Mismatch", value: "0.6×", source: "nodeTypes.ts", editable: true },
@@ -157,55 +159,15 @@ const CONSTANTS: ConstantEntry[] = [
 // IMPLEMENTATION AUDIT
 // ═══════════════════════════════════════════
 
-interface AuditItem {
-  feature: string;
-  status: "implemented" | "partial" | "missing" | "ui_only";
-  serverFile: string;
-  clientFile: string;
-  notes: string;
-}
-
-const AUDIT_ITEMS: AuditItem[] = [
-  { feature: "Biome traversal cost", status: "implemented", serverFile: "physics.ts", clientFile: "hexPathfinding.ts", notes: "Plně zrcadleno server ↔ klient" },
-  { feature: "A* hex pathfinding", status: "implemented", serverFile: "physics.ts", clientFile: "hexPathfinding.ts", notes: "Server = kanonické cesty, klient = preview" },
-  { feature: "Flow path computation", status: "implemented", serverFile: "compute-hex-flows/index.ts", clientFile: "—", notes: "Pouze server. Klient čte z flow_paths tabulky" },
-  { feature: "Route dirty flag + recompute", status: "implemented", serverFile: "compute-hex-flows + triggers", clientFile: "—", notes: "DB triggery na node/hex/building změny" },
-  { feature: "Node production (Minor/Micro)", status: "implemented", serverFile: "compute-economy-flow", clientFile: "nodeTypes.ts", notes: "Klient mirror pro UI preview" },
-  { feature: "Node upkeep (supplies/wealth)", status: "implemented", serverFile: "compute-economy-flow", clientFile: "nodeTypes.ts", notes: "Odečítáno v process-turn" },
-  { feature: "Macro-regional modifiers", status: "implemented", serverFile: "compute-economy-flow", clientFile: "—", notes: "Climate, elevation, moisture → node output" },
-  { feature: "Trade density corridor discount", status: "implemented", serverFile: "physics.ts", clientFile: "—", notes: "cumulative_trade_flow → hex cost reduction" },
-  { feature: "Collapse chain effects", status: "implemented", serverFile: "collapse-chain/index.ts", clientFile: "—", notes: "Kaskáda na 2 skoky v grafu cest" },
-  { feature: "Province control snapshots", status: "implemented", serverFile: "commit-turn (step 12a/e)", clientFile: "—", notes: "Per-turn dominance, supply_health, route_access" },
-  { feature: "Workforce → production penalty", status: "implemented", serverFile: "process-turn", clientFile: "economyConstants.ts", notes: "Over-mobilization reduces production" },
-  { feature: "Infrastructure level → cost discount", status: "partial", serverFile: "physics.ts (reads)", clientFile: "—", notes: "infrastructure_level defaultuje na 0 — zatím žádná budova ho nemění" },
-  { feature: "Civ identity → node production", status: "partial", serverFile: "physics.ts (defined)", clientFile: "—", notes: "Modifikátory definovány ale NEAPLIKOVÁNY v compute-economy-flow" },
-  { feature: "Strategic resource → combat", status: "missing", serverFile: "—", clientFile: "economyFlow.ts (defined)", notes: "gameplayEffects popsány ale resolve-battle je nepoužívá" },
-  { feature: "Strategic resource → build costs", status: "missing", serverFile: "—", clientFile: "economyFlow.ts (defined)", notes: "marble/timber discounts nepropojeny do build logic" },
-  { feature: "bonusEffect text → engine", status: "missing", serverFile: "—", clientFile: "nodeTypes.ts", notes: "Popisné texty — žádný mechanický efekt" },
-  { feature: "Node maxUpgrade validation", status: "ui_only", serverFile: "—", clientFile: "nodeTypes.ts", notes: "Enforced jen v UI, server nevaliduje" },
-  { feature: "Road visualization ↔ flow_paths", status: "implemented", serverFile: "flow_paths tabulka", clientFile: "RoadNetworkOverlay.tsx", notes: "Striktně z DB, bez fallbacků" },
-  { feature: "Emergent urbanization", status: "missing", serverFile: "—", clientFile: "—", notes: "Trade flow akumulace má generovat minor zástavbu — nepropojeno" },
-  { feature: "Toll collection (regulators)", status: "partial", serverFile: "process-turn", clientFile: "—", notes: "Definováno v designu, implementace nejistá" },
-  // GOODS ECONOMY v4.1 — planned features
-  { feature: "Goods production chain (source→processing→urban→guild)", status: "missing", serverFile: "compute-economy-flow (planned)", clientFile: "goodsCatalog.ts", notes: "Architektura připravena, engine nezpracovává recipes" },
-  { feature: "Demand basket computation", status: "missing", serverFile: "compute-economy-flow (planned)", clientFile: "goodsCatalog.ts", notes: "DB tabulka demand_baskets vytvořena, engine neplní" },
-  { feature: "Trade pressure engine", status: "missing", serverFile: "compute-trade-flows (planned)", clientFile: "goodsCatalog.ts", notes: "Vzorec definován, edge function neexistuje" },
-  { feature: "Commercial retention/capture", status: "missing", serverFile: "process-turn (planned)", clientFile: "—", notes: "Sloupce přidány do realm_resources" },
-  { feature: "Macro aggregation from goods", status: "missing", serverFile: "process-turn (planned)", clientFile: "goodsCatalog.ts", notes: "Top-bar stats mají být odvozeny z goods layer" },
-  { feature: "Quality inheritance (variants)", status: "missing", serverFile: "—", clientFile: "goodsCatalog.ts", notes: "Pravidlo: variants dekorují, nepřepisují parent ekonomiku" },
-  { feature: "Node capability tags", status: "partial", serverFile: "—", clientFile: "goodsCatalog.ts", notes: "Mapping definován v goodsCatalog.ts, DB sloupec přidán" },
-  { feature: "Guild specialization memory", status: "missing", serverFile: "—", clientFile: "—", notes: "specialization_scores jsonb na province_nodes — engine nepoužívá" },
-];
-
 // ═══════════════════════════════════════════
 // STATUS HELPERS
 // ═══════════════════════════════════════════
 
 const statusIcon = (s: string) => {
   switch (s) {
-    case "active": case "implemented": return <CheckCircle className="h-3.5 w-3.5 text-green-500" />;
-    case "partial": case "ui_only": return <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />;
-    case "blind": case "missing": return <XCircle className="h-3.5 w-3.5 text-red-500" />;
+    case "active": case "implemented": return <CheckCircle className="h-3.5 w-3.5 text-primary" />;
+    case "partial": case "ui_only": return <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground" />;
+    case "blind": case "missing": return <XCircle className="h-3.5 w-3.5 text-destructive" />;
     default: return <Eye className="h-3.5 w-3.5 text-muted-foreground" />;
   }
 };
@@ -322,7 +284,7 @@ const HexNodeMechanicsPanel = ({ sessionId }: { sessionId: string }) => {
     const map = new Map<string, CausalLink[]>();
     for (const link of CAUSAL_LINKS) {
       const cat = link.from.split(".")[0].split("_")[0] || "hex";
-      const group = link.status === "blind" ? "🔴 Slepé" : link.status === "partial" ? "🟡 Částečné" : "🟢 Aktivní";
+      const group = link.status === "planned" ? "Plánované" : link.status === "blind" ? "🔴 Slepé" : link.status === "partial" ? "🟡 Částečné" : "🟢 Aktivní";
       const arr = map.get(group) || [];
       arr.push(link);
       map.set(group, arr);
@@ -429,8 +391,9 @@ const HexNodeMechanicsPanel = ({ sessionId }: { sessionId: string }) => {
           {/* AUDIT */}
           <TabsContent value="audit" className="mt-2">
             <p className="text-[10px] text-muted-foreground mb-2">
-              Co je reálně propojené v kódu vs. co je jen definice.
+              Code review · {HEX_NODE_AUDIT_VERSION} · implementováno ≠ ověřeno živým tahem.
             </p>
+            <AuditLiveEvidence sessionId={sessionId} />
             <div className="space-y-0.5 max-h-[500px] overflow-y-auto">
               {AUDIT_ITEMS.map((item, i) => (
                 <div key={i} className="flex items-start gap-2 text-[10px] py-1 px-2 rounded hover:bg-muted/30 border-b border-border/30">
@@ -449,8 +412,8 @@ const HexNodeMechanicsPanel = ({ sessionId }: { sessionId: string }) => {
                 </div>
               ))}
             </div>
-            <div className="mt-3 grid grid-cols-4 gap-2 text-[10px]">
-              {(["implemented", "partial", "missing", "ui_only"] as const).map(s => (
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-[10px]">
+              {AUDIT_STATUSES.map(s => (
                 <div key={s} className="flex items-center gap-1">
                   {statusIcon(s)}
                   <span>{s}: {AUDIT_ITEMS.filter(a => a.status === s).length}</span>
@@ -553,7 +516,7 @@ const HexNodeMechanicsPanel = ({ sessionId }: { sessionId: string }) => {
 // ═══════════════════════════════════════════
 
 function DataAuditSection({ sessionId }: { sessionId: string }) {
-  const { data: stats } = useQuery({
+  const { data: stats, error } = useQuery({
     queryKey: ["hex-node-data-audit", sessionId],
     queryFn: async () => {
       const [hexes, nodes, routes, flowPaths, regions] = await Promise.all([
@@ -563,6 +526,8 @@ function DataAuditSection({ sessionId }: { sessionId: string }) {
         supabase.from("flow_paths").select("id, flow_type, total_cost, path_length", { count: "exact" }).eq("session_id", sessionId),
         supabase.from("macro_regions").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
       ]);
+
+      for (const result of [hexes, nodes, routes, flowPaths, regions]) if (result.error) throw result.error;
 
       // Compute node breakdowns
       const nodeData = nodes.data || [];
@@ -618,6 +583,7 @@ function DataAuditSection({ sessionId }: { sessionId: string }) {
     staleTime: 30000,
   });
 
+  if (error) return <p className="text-[10px] text-destructive">LIVE data unavailable: {error.message}</p>;
   if (!stats) return <p className="text-[10px] text-muted-foreground">Načítání...</p>;
 
   const renderMap = (m: Record<string, number>) => (
@@ -667,15 +633,15 @@ function DataAuditSection({ sessionId }: { sessionId: string }) {
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-muted/30 rounded p-2">
           <div className="font-semibold">Neaktivní uzly</div>
-          <div className={stats.inactiveNodes > 0 ? "text-yellow-500 font-bold" : "text-green-500"}>{stats.inactiveNodes}</div>
+          <div className={stats.inactiveNodes > 0 ? "text-muted-foreground font-bold" : "text-primary"}>{stats.inactiveNodes}</div>
         </div>
         <div className="bg-muted/30 rounded p-2">
           <div className="font-semibold">Dirty routes</div>
-          <div className={stats.dirtyRoutes > 0 ? "text-yellow-500 font-bold" : "text-green-500"}>{stats.dirtyRoutes}</div>
+          <div className={stats.dirtyRoutes > 0 ? "text-muted-foreground font-bold" : "text-primary"}>{stats.dirtyRoutes}</div>
         </div>
         <div className="bg-muted/30 rounded p-2">
           <div className="font-semibold">Blocked routes</div>
-          <div className={stats.blockedRoutes > 0 ? "text-red-500 font-bold" : "text-green-500"}>{stats.blockedRoutes}</div>
+          <div className={stats.blockedRoutes > 0 ? "text-destructive font-bold" : "text-primary"}>{stats.blockedRoutes}</div>
         </div>
       </div>
 
