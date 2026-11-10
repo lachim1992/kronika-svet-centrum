@@ -13,6 +13,9 @@ describe('owned physical parcel economy', () => {
     expect(parcelPotential(parcel('p'),terrain).some(p=>p.recipe==='draw_river_water')).toBe(true);
     expect(parcelPotential(parcel('p'),[{q:0,r:0,biome_family:'sea',coastal:true}]).some(p=>p.recipe==='draw_river_water')).toBe(false);
   });
+  it('canonical seat land_use=open has the same legal natural sources as wild land',()=>{
+    expect(parcelPotential({...parcel('p'),land_use:'open'},terrain)).toEqual(parcelPotential(parcel('p'),terrain));
+  });
   it('unclaimed, blocked, civic, foreign and disconnected parcels yield nothing', () => {
     for(const change of [{status:'wild'}, {status:'blocked'}, {land_use:'civic'}, {owner_player:'AI'}, {grid_x:9}])
       expect(parcelProducers([{...parcel('p'),...change}],terrain,[city],recipes,1)).toEqual([]);
