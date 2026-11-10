@@ -43,6 +43,31 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Real food stock: what the goods economy actually stored in this player's cities
+  // (latest two turns -> stock and per-turn change). Legacy grain_reserve is no longer written.
+  const [foodStock, setFoodStock] = useState<{ now: number; prev: number | null; turn: number } | null>(null);
+  const myCityKey = cities.filter(c => c.owner_player === playerName).map(c => c.id).sort().join(",");
+  useEffect(() => {
+    const ids = myCityKey ? myCityKey.split(",") : [];
+    if (!ids.length) { setFoodStock(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: foods } = await supabase.from("goods").select("key").eq("demand_basket", "staple_food");
+      const foodKeys = new Set((foods || []).map((g: any) => g.key));
+      const { data: latest } = await supabase.from("city_good_balances").select("turn_number")
+        .eq("session_id", sessionId).in("city_id", ids).order("turn_number", { ascending: false }).limit(1);
+      const turn = latest?.[0]?.turn_number;
+      if (turn == null) { if (!cancelled) setFoodStock(null); return; }
+      const { data: rows } = await supabase.from("city_good_balances").select("turn_number, good_key, balance")
+        .eq("session_id", sessionId).in("city_id", ids).in("turn_number", [turn, turn - 1]);
+      const sum = (t: number) => (rows || []).filter((r: any) => r.turn_number === t && foodKeys.has(r.good_key))
+        .reduce((acc: number, r: any) => acc + Number(r.balance?.stored || 0), 0);
+      const hasPrev = (rows || []).some((r: any) => r.turn_number === turn - 1);
+      if (!cancelled) setFoodStock({ now: sum(turn), prev: hasPrev ? sum(turn - 1) : null, turn });
+    })();
+    return () => { cancelled = true; };
+  }, [sessionId, myCityKey, currentTurn, realm?.updated_at]);
+
   const fetchStacks = useCallback(async () => {
     const { data } = await supabase
       .from("military_stacks")
@@ -120,30 +145,38 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
   const goodsProd = realm.goods_production_value ?? 0;
   const fi = getFiscalIncome(realm);
 
-  const grainNet = realm.last_turn_grain_net ?? 0;
-  const grainNetStr = grainNet > 0 ? `+${grainNet}` : `${grainNet}`;
+  // Construction stock grows only from surplus lumber / stone / building material (process-turn).
+  const prodIncome = Number(realm.construction_available_for_capex ?? 0);
+  const fmt = (n: number) => (Math.abs(n) < 10 ? n.toFixed(1) : n.toFixed(0));
+  const signed = (n: number) => `${n >= 0 ? "+" : "−"}${fmt(Math.abs(n))}`;
+  const foodNow = foodStock?.now ?? 0;
+  const foodDelta = foodStock && foodStock.prev != null ? foodStock.now - foodStock.prev : null;
 
   const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean; suffix?: string; derivation?: string }[] = [
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
       label: "Produkce",
-      value: `${Math.round(prodReserve)} (+${totalProd.toFixed(0)}/kolo)`,
-      derivation: `🏗️ Infra (uzly): ${totalProd.toFixed(1)} | 📦 Goods: ${goodsProd.toFixed(1)} | Workforce: ${(wf.effectiveWorkforceRatio * 100).toFixed(0)}%`,
+      value: `${Math.round(prodReserve)} (${signed(prodIncome)}/kolo)`,
+      warning: prodIncome <= 0,
+      derivation: prodIncome > 0
+        ? `Stavební zásoba roste o přebytek řeziva, kamene a stavebního materiálu: +${prodIncome.toFixed(1)}/kolo. Stavby ji spotřebovávají.`
+        : `Stavební zásoba neroste: tvá města nevyrábějí přebytek řeziva, kamene ani stavebního materiálu. Postav pilu nebo lom.\nVýrobní kapacita měst (není příjem): ${totalProd.toFixed(0)}`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
       label: "Bohatství",
-      // SSOT: hrubý příjem státu /kolo (sjednoceno s EconomyTab a TreasuryHub).
-      // Tooltip ukazuje rozklad včetně výdajů a čisté změny pokladny.
-      value: `${Math.round(wealthReserve)} (+${fi.totalIncome.toFixed(0)}/kolo)`,
-      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo\n  • Populační daň: ${fi.popTax.toFixed(1)}\n  • Domácí trh: ${fi.domesticMarket.toFixed(1)}\n  • Daně ze zboží: ${fi.goodsFiscal.toFixed(1)}\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistá změna pokladny: ${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(1)}/kolo`,
+      value: `${Math.round(wealthReserve)} (${signed(fi.netChange)}/kolo)`,
+      warning: fi.netChange < 0,
+      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo\n  • Populační daň: ${fi.popTax.toFixed(1)}\n  • Domácí trh: ${fi.domesticMarket.toFixed(1)}\n  • Daně ze zboží: ${fi.goodsFiscal.toFixed(1)}\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistá změna pokladny: ${signed(fi.netChange)}/kolo`,
     },
     {
       icon: <span className="text-xs">🌾</span>,
       label: "Zásoby",
-      value: `${Math.round(grainReserve)} (${grainNetStr}/kolo)`,
-      warning: grainReserve < 20,
-      derivation: `Kapacita sýpek: ${realm.granary_capacity ?? 0} | Bilance: produkce(${realm.last_turn_grain_prod ?? 0}) − spotřeba(${realm.last_turn_grain_cons ?? 0}) − armáda`,
+      value: `${fmt(foodNow)}${foodDelta != null ? ` (${signed(foodDelta)}/kolo)` : ""}`,
+      warning: famineCities.length > 0,
+      derivation: foodStock
+        ? `Uskladněné potraviny ve tvých městech po tahu ${foodStock.turn} (obilí, mouka, pečivo, maso, ryby…). Změna = rozdíl proti předchozímu tahu.`
+        : `Zatím žádné uskladněné potraviny.`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.capacity}</span>,
