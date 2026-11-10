@@ -72,7 +72,7 @@ serve(async (req) => {
     const config = { ...(sizeConfig[worldSize] || sizeConfig.small) };
     if (gameSettings.aiOpponents !== undefined) config.factions = gameSettings.aiOpponents;
     // Starting cities: every realm (AI + player) gets exactly this many.
-    config.cities = (Math.max(config.factions, factionConfigs?.length || 0) + 1) * gameSettings.startingCities;
+    if (rawGameSettings?.startingCities !== undefined) config.cities = (Math.max(config.factions, factionConfigs?.length || 0) + 1) * gameSettings.startingCities;
     const difficulty = aiDifficultyProfile(gameSettings.aiDifficulty);
 
     // ═══════════════════════════════════════════════
@@ -159,7 +159,7 @@ POŽADAVKY:
 - Každá frakce (${factionCount + 1} celkem) má VLASTNÍ stát (country) se jménem, popisem a image_prompt
 - ${factionCount} AI frakcí (+ 1 hráčova frakce = ${factionCount + 1} celkem)
 - ${config.regions} regionů tematicky propojených se státem, každý s alespoň 1 provincií
-- ${config.cities} měst rozdělených mezi frakce
+- ${config.cities} měst rozdělených mezi frakce${rawGameSettings?.startingCities !== undefined ? ` — KAŽDÁ frakce (i hráč) má PŘESNĚ ${gameSettings.startingCities} měst` : ""}
 - ${config.persons} osobností: minimálně polovina LEGENDÁRNÍCH z prehistorie (born_year záporný), zbytek současných. Každý s detailním bio, image_prompt, a vazbou na místo/událost.
 - ${config.wonders} divů světa: minimálně 2 zničené (destroyed) s příběhem zániku. Každý vázán na město a osobnost.
 - ${config.preHistoryEvents} prehistorických událostí (roky -100 až -1): mýty, legendy, založení, proroctví, bitvy, katastrofy. Každá s legacy_impact a vazbami na osoby.
