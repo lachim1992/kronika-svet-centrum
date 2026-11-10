@@ -186,6 +186,6 @@ describe('catalog-wide industrial chains (adapter, LOCK)', () => {
           rows.push({recipe:r.key,good:i.good,planned:+ii.planned.toFixed(1),imp:+ii.imported.toFixed(1),unmet:+ii.unmet.toFixed(1),blocked:ii.blocked,supplier:ii.supplier,dist:Math.abs((idx.get(city)??0)-(idx.get(sup)??0)),
             supProd:+produced(sb??{}).toFixed(1),supExp:+(sb?.exported??0).toFixed(1),supStored:+(sb?.stored??0).toFixed(1),supHH:+(sb?.consumed_household??0).toFixed(1),supLost:+(sb?.lost_spoilage??0).toFixed(1),totalPlanned:+allDem.toFixed(1),totalProd:+prodAll.toFixed(1)});}}}
     console.log(JSON.stringify(rows));
-    const blk=p.result.importBlockers?.slice(0,30); console.log('BLOCKERS',JSON.stringify(blk));
+    const blk=p.result.importBlockers?.filter((b:any)=>["c_mill_grain","c_prepare_feast","c_forge_tools"].includes(b.city));console.log("FLOWS",JSON.stringify(p.result.flows.filter((f:any)=>f.good==="raw_grain").map((f:any)=>[f.source,f.destination,f.reason,+f.delivered.toFixed(1)]))); console.log('BLOCKERS',JSON.stringify(blk));
   });
 });
