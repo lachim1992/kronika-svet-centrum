@@ -22,6 +22,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { resolveMapSize, type WorldSize } from "../_shared/world-sizes.ts";
 import { seedRealmSkeleton } from "../_shared/seed-realm-skeleton.ts";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
+import { applyParcelRollout } from "../_shared/parcelRollout.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
 import { authorizeSessionCaller, AuthError } from "../_shared/sessionAuth.ts";
 import type {
@@ -539,6 +540,7 @@ Deno.serve(async (req) => {
     try {
       const capitals = await ensureSingleCapital(sb, normalized.sessionId);
       const starter = await ensureStarterEconomy(sb, normalized.sessionId, { turnNumber: 1 });
+      await applyParcelRollout(sb, normalized.sessionId);
       const added = starter.reduce((n, r) => n + r.added.length, 0);
       steps.push({
         step: "starter-economy",

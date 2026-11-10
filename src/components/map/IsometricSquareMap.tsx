@@ -19,6 +19,7 @@ import ArmyMarker from "@/components/map/ArmyMarker";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
+import { parcelPotential } from "../../../supabase/functions/_shared/parcelEconomy";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
 import spriteWorkshop from "@/assets/map/node-workshop.png";
 import spriteGuardPost from "@/assets/map/node-guard-post.png";
@@ -1938,6 +1939,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
         {selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
           <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p><h3 className="text-sm">{SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</h3></div><span className="text-xs text-muted-foreground">{selectedParcelUsed}/{selectedParcel.capacity_slots} slotů</span></div>
+          {(() => {
+            const potential = parcelPotential(selectedParcel as any, tiles as any, currentTurn);
+            return <div className="text-[11px] text-muted-foreground">
+              <b className="text-foreground">Přírodní potenciál dílku:</b>{" "}
+              {potential.length ? potential.map(p => `${p.recipe} ${p.capacity.toFixed(2)}/tah · ${p.jobs} prac.`).join(" · ") : "žádný sběr ani těžba"}
+              <br />{selectedParcel.city_id ? "Využívá ho vlastník; skutečný sběr a obsazení ukazuje Ekonomika." : "Nevlastněný dílek nic neprodukuje."}
+            </div>;
+          })()}
           {(selectedParcelContents.length > 0 || selectedParcelNodes.length > 0) && <div className="space-y-1 text-xs">
             {selectedParcelContents.filter(item => item.entity_type !== "node").map(item => {
               const structure = constructionById.get(item.entity_id);

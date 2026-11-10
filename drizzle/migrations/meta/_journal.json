@@ -78,6 +78,13 @@
       "when": 1794336132546,
       "tag": "0010_river_water_and_hunting_recipes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794338853592,
+      "tag": "0011_versioned_parcel_economy_rollout",
+      "breakpoints": true
     }
   ]
 }
