@@ -1,3 +1,4 @@
+import { normalizeGameSettings, startingReserves, aiDifficultyProfile } from "../_shared/worldGameSettings.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { computeStructuralBonuses } from "../_shared/physics.ts";
@@ -18,7 +19,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, worldName, premise, tone, victoryStyle, worldSize, tier, settlementName, cultureName, languageName, realmName, rulerName, rulerTitle, rulerArchetype, rulerBio, foundingLegend, governmentForm, dominantFaith, secretObjectiveArchetype, factionConfigs, terrainParams: userTerrainParams, mapWidth: userMapWidth, mapHeight: userMapHeight } = await req.json();
+    const { sessionId, playerName, worldName, premise, tone, victoryStyle, worldSize, tier, settlementName, cultureName, languageName, realmName, rulerName, rulerTitle, rulerArchetype, rulerBio, foundingLegend, governmentForm, dominantFaith, secretObjectiveArchetype, factionConfigs, gameSettings: rawGameSettings, terrainParams: userTerrainParams, mapWidth: userMapWidth, mapHeight: userMapHeight } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -67,7 +68,12 @@ serve(async (req) => {
       medium: { factions: 5, cities: 12, regions: 4, persons: 10, wonders: 5, preHistoryEvents: 12, battles: 15, rumors: 40, mapW: 31, mapH: 31 },
       large:  { factions: 7, cities: 20, regions: 6, persons: 15, wonders: 7, preHistoryEvents: 15, battles: 20, rumors: 50, mapW: 41, mapH: 41 },
     };
-    const config = sizeConfig[worldSize] || sizeConfig.small;
+    const gameSettings = normalizeGameSettings(rawGameSettings);
+    const config = { ...(sizeConfig[worldSize] || sizeConfig.small) };
+    if (gameSettings.aiOpponents !== undefined) config.factions = gameSettings.aiOpponents;
+    // Starting cities: every realm (AI + player) gets exactly this many.
+    config.cities = (Math.max(config.factions, factionConfigs?.length || 0) + 1) * gameSettings.startingCities;
+    const difficulty = aiDifficultyProfile(gameSettings.aiDifficulty);
 
     // ═══════════════════════════════════════════════
     // AI PROMPT — Rich interconnected world with deep prehistory
@@ -120,7 +126,7 @@ LOGICKÁ POSLOUPNOST:
 Odpověz POUZE voláním funkce generate_world.`;
 
     // Build faction config instructions for the prompt
-    const factionCount = factionConfigs?.length || config.factions;
+    const factionCount = Math.max(factionConfigs?.length || 0, config.factions);
     let factionInstructions = "";
     if (factionConfigs && factionConfigs.length > 0) {
       factionInstructions = "\nKONFIGURACE AI FRAKCÍ (hráčem zadaná — MUSÍŠ respektovat):\n";
@@ -564,7 +570,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
 
       if (!faction.isPlayer) {
         await supabase.from("ai_factions").insert({
-          session_id: sessionId, faction_name: faction.name, personality: faction.personality,
+          session_id: sessionId, faction_name: faction.name, personality: faction.personality || difficulty.defaultPersonality,
           disposition: { [playerName]: faction.dispositionToPlayer || 0 },
           goals: faction.goals || [], is_active: true,
         });
@@ -636,9 +642,10 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
 
       await supabase.from("realm_resources").insert({
         session_id: sessionId, player_name: factionPlayerName,
-        grain_reserve: 20, wood_reserve: 0, stone_reserve: 0, iron_reserve: 0,
+        grain_reserve: Math.round(startingReserves(gameSettings.startingWealth).grain * (factionPlayerName === playerName ? 1 : difficulty.reserveMultiplier)),
+        wood_reserve: 0, stone_reserve: 0, iron_reserve: 0,
         production_reserve: 50,
-        gold_reserve: 100, stability: Math.max(40, Math.min(100, 70 + stab)), granary_capacity: 500, mobilization_rate: 0.1,
+        gold_reserve: Math.round(startingReserves(gameSettings.startingWealth).gold * (factionPlayerName === playerName ? 1 : difficulty.reserveMultiplier)), stability: Math.max(40, Math.min(100, 70 + stab)), granary_capacity: 500, mobilization_rate: 0.1,
       });
     }
 
