@@ -5,7 +5,7 @@ import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.t
 import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demographics.ts";
 import { TAX_MAX, laffer, governance, taxRevenue, sportFundingExpense as computeSportFunding } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { isNeedBasket, waterShortageImpact } from "../_shared/demandModel.ts";
+import { isNeedBasket, needStabilityDrift, waterShortageImpact } from "../_shared/demandModel.ts";
 import { foodShortageImpact } from '../_shared/foodShortage.ts';
 import { routeUpkeepDueThisTurn } from '../_shared/routeUpkeep.ts';
 import { settleWages } from '../_shared/wageSettlement.ts';
@@ -1432,12 +1432,9 @@ Deno.serve(async (req) => {
         // Feast is the canonical ritual/ceremonial basket in Goods 4.3.
         const ritualSat = Number(baskets.find((b: any) => b.basket_key === "feast")?.satisfaction_score || 0);
 
-        // Stability drift from demand fulfillment
-        let stabilityDrift = 0;
-        if (avgSat > 0.8) stabilityDrift = 2;      // Well-supplied
-        else if (avgSat > 0.5) stabilityDrift = 0;  // OK
-        else if (avgSat > 0.3) stabilityDrift = -2;  // Under-supplied
-        else stabilityDrift = -5;                      // Critical shortage
+        // Stability drift: critical needs set hard bands, fuel/clothing act slowly with a floor.
+        const needDrift = needStabilityDrift(needRows, Number(city.city_stability ?? 50));
+        let stabilityDrift = needDrift.drift;
         stabilityDrift -= water.stabilityLoss;
 
         // PHASE A: process-turn is NOT a population writer. The staple-based
@@ -1485,7 +1482,7 @@ Deno.serve(async (req) => {
           });
         }
 
-        if (avgSat < 0.3) {
+        if (needDrift.critical < 0.3) {
           newEvents.push({
             event_type: "goods_shortage_crisis",
             note: `${city.name}: Kritický nedostatek základních potřeb — pokrytí ${Math.round(avgSat * 100)} %. Stabilita klesá.`,
