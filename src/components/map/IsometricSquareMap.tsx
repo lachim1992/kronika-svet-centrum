@@ -719,6 +719,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const roadDraftBlock = useMemo(() => {
     if (roadDraft.length < 2) return "Nakresli alespoň dva sousední podčtverce.";
+    { const macro = macroPathFromSubRoad(roadDraft); if (new Set(macro.map(c => `${c.x},${c.y}`)).size !== macro.length) return "Trasa se nesmí vracet přes stejné pole — veď ji bez návratu do už projitého čtverce."; }
     if (treasury.gold < roadDraftSummary.gold || treasury.production < roadDraftSummary.production) return `Chybí zdroje: potřeba ${roadDraftSummary.gold} zlata a ${roadDraftSummary.production} produkce.`;
     // Same rule as the server: an edge can host only one road, upgrades need the finished tier below.
     const byEdge = new Map<string, { level: number; status: string }>();
