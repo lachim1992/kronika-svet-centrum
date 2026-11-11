@@ -1,4 +1,4 @@
-import { aiBuildRunway, ESSENTIAL_BUILD } from "../_shared/aiBuildBudget.ts";
+import { aiBuildRunway, ESSENTIAL_BUILD, ownsScalableEssential, chooseFallbackInvestment } from "../_shared/aiBuildBudget.ts";
 /**
  * ai-faction-turn: Enhanced AI faction decision-making with FULL military capability.
  * Uses unified AI context (createAIContext + invokeAI) for premise injection.
@@ -1746,17 +1746,26 @@ async function executeAction(
         .select("id, name").eq("session_id", sessionId)
         .eq("owner_player", factionName).ilike("name", exact(action.targetCity)).limit(1).maybeSingle();
       if (!city) return "city_not_found";
+      let buildTmpl: any = tmpl;
       {
         const [{ data: rr }, { data: allT }, { data: owned }] = await Promise.all([
           supabase.from("realm_resources").select("production_reserve, construction_available_for_capex").eq("session_id", sessionId).eq("player_name", factionName).maybeSingle(),
-          supabase.from("building_templates").select("name, cost_wood, cost_stone, cost_iron"),
-          supabase.from("city_buildings").select("name").eq("session_id", sessionId).eq("city_id", city.id),
+          supabase.from("building_templates").select("id, name, cost_wood, cost_stone, cost_iron, requires_water"),
+          supabase.from("city_buildings").select("name, effects").eq("session_id", sessionId).eq("city_id", city.id),
         ]);
-        const why = aiBuildRunway({ template: tmpl, reserve: Number(rr?.production_reserve) || 0,
+        const reserve = Number(rr?.production_reserve) || 0;
+        const why = aiBuildRunway({ template: tmpl, reserve,
           accrualPerTurn: Number(rr?.construction_available_for_capex) || 0,
           essentialTemplates: (allT || []).filter((t: any) => ESSENTIAL_BUILD.test(t.name)),
-          ownsEssential: (owned || []).some((b: any) => ESSENTIAL_BUILD.test(b.name)) });
-        if (why) return `rejected_${why}`;
+          ownsEssential: ownsScalableEssential(owned || []) });
+        if (why?.startsWith("deferred")) {
+          // Same-turn proactive primary investment instead of idling; command-dispatch re-validates cost/geography.
+          const fb = chooseFallbackInvestment(allT || [], owned || [], reserve);
+          console.log(`[ai-runway] ${factionName} ${tmpl.name} ${why} → fallback ${fb?.name ?? "none"}`);
+          if (!fb) return `rejected_${why}_no_affordable_essential`;
+          buildTmpl = fb; action.description = `Nejdřív výroba: ${fb.name} místo ${tmpl.name}`;
+          action.narrativeNote = `Frakce ${factionName} odkládá ${tmpl.name} a zakládá ${fb.name} v ${city.name}.`;
+        } else if (why) return `rejected_${why}`;
       }
 
       const buildRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
@@ -1765,9 +1774,9 @@ async function executeAction(
         commandType: "BUILD_BUILDING",
         commandPayload: {
           cityId: city.id, cityName: city.name,
-          buildingName: tmpl.name, templateId: tmpl.id,
+          buildingName: buildTmpl.name, templateId: buildTmpl.id,
           note: action.description,
-          chronicleText: action.narrativeNote || `Frakce ${factionName} zahájila stavbu ${tmpl.name} v ${city.name}.`,
+          chronicleText: action.narrativeNote || `Frakce ${factionName} zahájila stavbu ${buildTmpl.name} v ${city.name}.`,
         },
         commandId,
       });
