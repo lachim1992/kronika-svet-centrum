@@ -421,3 +421,6 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] UPGRADE_BUILDING authoritative quote (`quoteBuildingUpgrade`): template base × level cost_mult, template name/effects, legacy fail-closed, no client wonder flag, level CAS + funds CAS with rollback; deployed. Test upgrade-quote.test.ts.
 - [ ] Strategic iron/obsidian battle multipliers in resolve-battle (shared tier module) — not started.
 - [ ] Marble build-cost discount in BUILD/UPGRADE — not started.
+- [x] Stitched 20/200-turn parcel world simulator (src/test/parcel-world-longrun.test.ts): real parcel ecology, goods solver, growth, runway chooser, live catalogue. Excludes battles, LLM AI, wage/tax SQL, route rebuild.
+- [ ] BALANCE BLOCKER (measured, not tuned): AI1 construction points fall to 0 by t20 (raw timber diverted to fuel, no stone parcel) → stuck at food 23 %/fuel 23 % from t50. Lambadagrad food 60 % at pop 673 even with one farm (capacity 7). Fuel falls below 50 % in all cities by t20. Needs owner decision: cheaper first farm / higher raw efficiency / fuel source — no constant changed without approval.
+- [ ] Invested scenario stops after first farm: once a real farm is owned the chooser no longer proposes further essentials (needs a growth-driven next-investment rule).
