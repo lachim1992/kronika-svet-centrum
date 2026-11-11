@@ -13,7 +13,9 @@ const RAW_ACCRUAL = 0.041; // AI1 live committed raw-construction accrual per tu
 function run(turns: number, guard: boolean, wantFirst: any) {
   let reserve = 50, ownsEssential = false, accrual = RAW_ACCRUAL; const built: string[] = []; let stuck = 0;
   for (let t = 1; t <= turns; t++) {
-    const want = built.length === 0 ? wantFirst : ownsEssential ? T.Kasárny : T.Farma;
+    let want = built.length === 0 ? wantFirst : ownsEssential ? T.Kasárny : T.Farma;
+    if (guard && aiBuildRunway({ template: want, reserve, accrualPerTurn: accrual, essentialTemplates: essentials, ownsEssential })?.startsWith('deferred')) want = T.Farma; // chooser falls back to essential
+    if (built.includes('Kasárny') && want === T.Kasárny) { reserve += accrual; continue; }
     const why = guard ? aiBuildRunway({ template: want, reserve, accrualPerTurn: accrual, essentialTemplates: essentials, ownsEssential })
       : (reserve < templateProductionCost(want) ? 'insufficient' : null);
     if (!why) { reserve -= templateProductionCost(want); built.push(want.name); if (/Farma|Pila|Studna/.test(want.name)) { ownsEssential = true; accrual = Math.max(accrual, 0.2); } }
