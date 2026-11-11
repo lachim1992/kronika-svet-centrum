@@ -1,3 +1,4 @@
+import { aiBuildRunway, ESSENTIAL_BUILD } from "../_shared/aiBuildBudget.ts";
 /**
  * ai-faction-turn: Enhanced AI faction decision-making with FULL military capability.
  * Uses unified AI context (createAIContext + invokeAI) for premise injection.
@@ -1745,6 +1746,18 @@ async function executeAction(
         .select("id, name").eq("session_id", sessionId)
         .eq("owner_player", factionName).ilike("name", exact(action.targetCity)).limit(1).maybeSingle();
       if (!city) return "city_not_found";
+      {
+        const [{ data: rr }, { data: allT }, { data: owned }] = await Promise.all([
+          supabase.from("realm_resources").select("production_reserve, construction_available_for_capex").eq("session_id", sessionId).eq("player_name", factionName).maybeSingle(),
+          supabase.from("building_templates").select("name, cost_wood, cost_stone, cost_iron"),
+          supabase.from("city_buildings").select("name").eq("session_id", sessionId).eq("city_id", city.id),
+        ]);
+        const why = aiBuildRunway({ template: tmpl, reserve: Number(rr?.production_reserve) || 0,
+          accrualPerTurn: Number(rr?.construction_available_for_capex) || 0,
+          essentialTemplates: (allT || []).filter((t: any) => ESSENTIAL_BUILD.test(t.name)),
+          ownsEssential: (owned || []).some((b: any) => ESSENTIAL_BUILD.test(b.name)) });
+        if (why) return `rejected_${why}`;
+      }
 
       const buildRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
