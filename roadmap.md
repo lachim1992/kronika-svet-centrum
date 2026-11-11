@@ -413,3 +413,5 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [ ] A: isolated cloned-world 20/200-turn harness through real process-turn (not started; needs scratch session clone tooling).
 - [ ] C: per-parcel map drilldown with realized producer output (parcel:uuid:recipe) vs potential.
 - [ ] D: HUD check that legacy wood_reserve is not shown as canonical stock.
+- [x] D/HUD: tiny gains shown (+0.038), tooltip lists raw timber 0.2 / raw stone 0.15, capacity labelled potential (src/lib/hudFormat.ts).
+- [x] C (partial): map plot shows committed realized output per parcel producer, staff, remaining resource, reason for 0; square summary splits owned realized vs unclaimed potential (src/lib/parcelActual.ts). Visual check of plot panel pending.

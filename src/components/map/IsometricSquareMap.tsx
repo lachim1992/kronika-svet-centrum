@@ -168,6 +168,8 @@ const DISTRICT_SPRITE: Record<string, string> = {
 import { RESIDENTIAL_DISTRICTS, PRODUCTION_DISTRICTS, PRODUCTION_PER_RESIDENTIAL, type DistrictBlueprint } from "@/lib/cityDistricts";
 import { DEMAND_BASKETS } from "@/lib/goodsCatalog";
 import { BuildCatalogPanel } from "@/components/map/BuildCatalogPanel";
+import { useManagementReport } from "@/hooks/useManagementReport";
+import { indexParcelProducers, parcelZeroReason, macroSummary } from "@/lib/parcelActual";
 
 
 
@@ -338,6 +340,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const lastSelectedId = useRef<string | null>(null);
   const [cityLayerCityId, setCityLayerCityId] = useState<string | null>(null);
   const [tileParcels, setTileParcels] = useState<TileParcel[]>([]);
+  const { data: mgmt } = useManagementReport(sessionId, playerName, currentTurn);
+  const parcelActuals = useMemo(() => indexParcelProducers((mgmt?.report as any)?.producers), [mgmt]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
   const [treasury, setTreasury] = useState({ gold: 0, production: 0 });
@@ -1944,8 +1948,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             return <div className="text-[11px] text-muted-foreground">
               <b className="text-foreground">Přírodní potenciál dílku:</b>{" "}
               {potential.length ? potential.map(p => `${p.recipe} ${p.capacity.toFixed(2)}/tah · ${p.jobs} prac.`).join(" · ") : "žádný sběr ani těžba"}
-              <br />{selectedParcel.city_id ? "Využívá ho vlastník; skutečný sběr a obsazení ukazuje Ekonomika." : "Nevlastněný dílek nic neprodukuje."}
+              <br /><span>Vlastník: {selectedParcel.owner_player || "nikdo"} · stav {selectedParcel.status} · využití {selectedParcel.land_use || "—"}</span>
             </div>;
+          })()}
+          {(() => {
+            const actual = parcelActuals.get(selectedParcel.id);
+            const why = parcelZeroReason(selectedParcel as any, actual, !!mgmt?.report);
+            const zeroed = why && (!selectedParcel.city_id || selectedParcel.status !== "claimed");
+            return <div className="text-[11px]" data-testid="parcel-actual">
+              <b>Skutečný výnos{mgmt?.reportTurn ? ` (uzavřený tah ${mgmt.reportTurn})` : ""}:</b>{" "}
+              {!zeroed && actual?.length ? actual.map(a => <span key={a.producer} className="block">{a.recipe} → {a.good}: {a.realized.toFixed(3)}/tah · {a.employed.toFixed(1)}/{a.jobs ?? "—"} prac.{a.reservoir != null ? ` · zbývá ${Number(a.reservoir).toFixed(2)}` : ""}{a.reason ? ` · ${a.reason}` : ""}</span>) : "0"}
+              {why && <span className="block text-muted-foreground">Proč 0: {why}</span>}
+            </div>;
+          })()}
+          {(() => {
+            const cellParcels = tileParcels.filter(p => p.grid_x === selectedParcel.grid_x && p.grid_y === selectedParcel.grid_y);
+            const m = macroSummary(cellParcels as any, parcelActuals, p => parcelPotential(p as any, tiles as any, currentTurn).reduce((a, x) => a + x.capacity, 0));
+            return <p className="text-[10px] text-muted-foreground">Čtverec: vlastněno {m.ownedCount} dílků, skutečně vybráno {m.ownedRealized.toFixed(3)}/tah · nevlastněno {m.unclaimedCount}, jen potenciál {m.unclaimedPotential.toFixed(2)}/tah</p>;
           })()}
           {(selectedParcelContents.length > 0 || selectedParcelNodes.length > 0) && <div className="space-y-1 text-xs">
             {selectedParcelContents.filter(item => item.entity_type !== "node").map(item => {
