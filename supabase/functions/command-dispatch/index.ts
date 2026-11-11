@@ -1,5 +1,6 @@
 import { validateBuild, canonicalBuilding, stripProductionEffects } from "../_shared/buildValidation.ts";
 import { validateBuildingUpgrade, quoteBuildingUpgrade } from '../_shared/upgradeValidation.ts';
+import { strategicBuildCostMult, discountedCost } from '../_shared/strategicEffects.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUBNODE_DEFS as SHARED_SUBNODE_DEFS } from "../_shared/subnodeCatalog.ts";
 import { readRealmWorkforce, actualSoldiers } from '../_shared/manpower.ts';
@@ -3440,21 +3441,34 @@ async function executeBuildBuilding(
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
 
-  const costGold = building.cost_wealth || 0;
-  const prodCost = (building.cost_wood || 0) + (building.cost_stone || 0) + (building.cost_iron || 0);
+  // Marble discount from the realm's own server tier, applied once (client discounts ignored).
+  const marble = strategicBuildCostMult(realm);
+  const costGold = discountedCost(building.cost_wealth || 0, marble);
+  const prodCost = discountedCost((building.cost_wood || 0) + (building.cost_stone || 0) + (building.cost_iron || 0), marble);
 
   if ((realm.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold}, máš ${Math.floor(realm.gold_reserve || 0)})` };
   if ((realm.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost}, máš ${Math.floor(realm.production_reserve || 0)})` };
 
   // Deduct with compare-and-set: a concurrent command that already spent these
   // reserves makes this one fail instead of overwriting the balance (no phantom builds).
-  const { data: deducted, error: deductErr } = await supabase.from("realm_resources").update({
-    gold_reserve: (realm.gold_reserve || 0) - costGold,
-    production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
-  }).eq("id", realm.id)
-    .eq("gold_reserve", realm.gold_reserve ?? 0)
-    .eq("production_reserve", realm.production_reserve ?? 0)
-    .select("id");
+  // Retry the compare-and-set on a fresh read: a benign concurrent write (e.g. refresh) must not fail the build.
+  let deducted: any[] | null = null, deductErr: any = null, cur: any = realm;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      cur = await getRealmFull(supabase, sessionId, actor.name);
+      if (!cur) break;
+      if ((cur.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold}, máš ${Math.floor(cur.gold_reserve || 0)})` };
+      if ((cur.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost}, máš ${Math.floor(cur.production_reserve || 0)})` };
+    }
+    ({ data: deducted, error: deductErr } = await supabase.from("realm_resources").update({
+      gold_reserve: (cur.gold_reserve || 0) - costGold,
+      production_reserve: Math.max(0, (cur.production_reserve || 0) - prodCost),
+    }).eq("id", cur.id)
+      .gte("gold_reserve", Number(cur.gold_reserve ?? 0) - 1e-6).lte("gold_reserve", Number(cur.gold_reserve ?? 0) + 1e-6)
+      .gte("production_reserve", Number(cur.production_reserve ?? 0) - 1e-6).lte("production_reserve", Number(cur.production_reserve ?? 0) + 1e-6)
+      .select("id"));
+    if (!deductErr && deducted?.length) break;
+  }
   if (deductErr || !deducted?.length) return { events: [], error: "Zdroje se mezitím změnily, zkuste stavbu znovu" };
 
   // Insert building
@@ -3542,7 +3556,8 @@ async function executeUpgradeBuilding(
   // Authoritative quote: client costs/newName/newEffects/isWonderConversion are ignored.
   const quote = quoteBuildingUpgrade(existing, authoritativeTemplate, Number(newLevel));
   if (typeof quote === "string") return { events: [], error: quote };
-  const costGold = quote.cost_wealth, prodCost = quote.cost_production;
+  const marble = strategicBuildCostMult(realm);
+  const costGold = discountedCost(quote.cost_wealth, marble), prodCost = discountedCost(quote.cost_production, marble);
   const gold0 = Number(realm.gold_reserve) || 0, prod0 = Number(realm.production_reserve) || 0;
   if (gold0 < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold})` };
   if (prod0 < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost})` };

@@ -184,9 +184,9 @@ export const STRATEGIC_RESOURCE_META: Record<StrategicResource, {
     category: "military",
     description: "Klíčový vojenský materiál. Umožňuje těžkou pěchotu a obléhací stroje.",
     gameplayEffects: {
-      1: ["Těžká pěchota", "Obléhací stroje", "+10% síla vojska"],
-      2: ["Elitní obrněnci", "Železné hradby", "+20% obrana měst"],
-      3: ["Imperiální legie", "Ocelová citadela", "+30% síla + prestiž"],
+      1: ["Těžká pěchota", "Obléhací stroje", "+5% síla v bitvě"],
+      2: ["Elitní obrněnci", "+12% síla v bitvě (útok i obrana)"],
+      3: ["Imperiální legie", "+20% síla v bitvě + prestiž"],
     },
     prestigePerTier: 2,
   },
@@ -241,7 +241,7 @@ export const STRATEGIC_RESOURCE_META: Record<StrategicResource, {
     gameplayEffects: {
       1: ["Monumenty (-10% stavební náklady)", "+kulturní prestiž"],
       2: ["Velké chrámy (-20% stavby)", "+diplomatický vliv"],
-      3: ["Divy světa (bonus)", "+velká kulturní prestiž"],
+      3: ["Divy světa (-30% stavby)", "+velká kulturní prestiž"],
     },
     prestigePerTier: 3,
   },
@@ -273,8 +273,8 @@ export const STRATEGIC_RESOURCE_META: Record<StrategicResource, {
     description: "Rituální a vojenské použití. Elitní zbraně a náboženské obřady.",
     gameplayEffects: {
       1: ["Obsidiánové zbraně (+5% síla)", "Rituální předměty (+víra)"],
-      2: ["Elitní gardisté (+15% síla)", "Prorocké rituály"],
-      3: ["Posvátná garda", "+vojenská + náboženská prestiž"],
+      2: ["Elitní gardisté (+10% síla)", "Prorocké rituály"],
+      3: ["Posvátná garda (+15% síla)", "+vojenská + náboženská prestiž"],
     },
     prestigePerTier: 3,
   },

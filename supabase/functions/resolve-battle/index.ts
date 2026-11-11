@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cellDistance, loadGridKind, neighborOffsets } from "../_shared/topology.ts";
 import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { deterministicSeed } from "../_shared/diplomacyEnforcement.ts";
+import { strategicCombatMult } from "../_shared/strategicEffects.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -328,11 +329,16 @@ Deno.serve(async (req) => {
     const biomeMod = BIOME_DEFENSE_BONUS[biome] || 0;
     const defTerrainMult = defenderFormation === "DEFENSIVE" ? 1.5 : 1.0;
     const totalDefenseMultiplier = 1 + effectiveFortification + (biomeMod * defTerrainMult) + defFormBonus.defense;
-    const effectiveDefenderStrength = Math.round(defenderStrength * totalDefenseMultiplier);
+    // Strategic iron/obsidian: looked up server-side by exact session + owner, applied once per side.
+    const realmOf = async (player: string | null | undefined) => player ? (await supabase.from("realm_resources")
+      .select("strategic_iron_tier, strategic_obsidian_tier").eq("session_id", session_id).eq("player_name", player).maybeSingle()).data : null;
+    const attackerStrategicMult = strategicCombatMult(await realmOf(attackerStack.player_name));
+    const defenderStrategicMult = strategicCombatMult(await realmOf(defenderCivPlayer));
+    const effectiveDefenderStrength = Math.round(defenderStrength * totalDefenseMultiplier * defenderStrategicMult);
 
     // Attack multipliers
     const attackerCivFort = defender_city_id ? 0 : (civBonuses.fortification_bonus || 0) * 0.5;
-    const effectiveAttackerBase = Math.round(attackerStrength * (1 + attackerCivFort + atkFormBonus.attack + matchupBonus + siegeCityBonus + ambushBonus));
+    const effectiveAttackerBase = Math.round(attackerStrength * (1 + attackerCivFort + atkFormBonus.attack + matchupBonus + siegeCityBonus + ambushBonus) * attackerStrategicMult);
 
     // RNG
     const rng = seededRandom(battleSeed);
@@ -866,6 +872,6 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     console.error("resolve-battle error:", err);
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

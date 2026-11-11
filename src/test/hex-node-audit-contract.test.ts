@@ -3,7 +3,7 @@ import { it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { AUDIT_ITEMS, HEX_NODE_AUDIT_VERSION, AUDIT_STATUSES } from '../lib/hexNodeAudit';
 it('reviewed features have existing authoritative evidence, valid status and version', () => {
-  expect(HEX_NODE_AUDIT_VERSION).toBe('2026-11-10.2');
+  expect(HEX_NODE_AUDIT_VERSION).toBe('2026-11-11.1');
   for (const item of AUDIT_ITEMS) {
     expect(AUDIT_STATUSES).toContain(item.status);
     expect(existsSync(item.serverFile), item.feature).toBe(true);
@@ -21,4 +21,13 @@ it('guild writer is behind fiscal buffering; refresh has no specialization accru
   expect(turn.indexOf('const fiscalPlan = planFiscalWrites')).toBeLessThan(turn.indexOf('const next = accrueGuildSpecialization'));
   expect(turn).toContain('p_writes: fiscalPlan.writes');
   expect(readFileSync('supabase/functions/refresh-economy/index.ts', 'utf8')).not.toContain('accrueGuildSpecialization');
+});it('strategic combat and marble build are wired to the shared module', () => {
+  for (const f of ['Strategic resource → combat', 'Strategic resource → build costs']) expect(AUDIT_ITEMS.find(i => i.feature === f)?.status).toBe('implemented');
+  const battle = readFileSync('supabase/functions/resolve-battle/index.ts', 'utf8');
+  expect(battle).toContain('strategicCombatMult');
+  expect(battle).toContain('* attackerStrategicMult');
+  expect(battle).toContain('* defenderStrategicMult');
+  const cd = readFileSync('supabase/functions/command-dispatch/index.ts', 'utf8');
+  expect(cd.match(/strategicBuildCostMult\(realm\)/g)?.length).toBe(2);
+  expect(readFileSync('supabase/functions/process-turn/index.ts', 'utf8')).not.toContain('const STRATEGIC_TIER_BONUSES');
 });
