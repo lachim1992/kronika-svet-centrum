@@ -43,7 +43,7 @@ export function chooseFallbackInvestment(templates: any[], owned: any[], reserve
   const have = new Set((owned || []).filter(b => !isStarter(b)).map(b => String(b.name).toLowerCase()));
   for (const re of FALLBACK_PRIORITY) {
     const t = (templates || []).find(x => re.test(String(x?.name || "")) && !have.has(String(x.name).toLowerCase()));
-    if (t && templateProductionCost(t) <= reserve && !t.requires_water) return t;
+    if (t && templateProductionCost(t) <= reserve && !t.effects?.requires_water) return t;
   }
   return null;
 }

@@ -1750,7 +1750,7 @@ async function executeAction(
       {
         const [{ data: rr }, { data: allT }, { data: owned }] = await Promise.all([
           supabase.from("realm_resources").select("production_reserve, construction_available_for_capex").eq("session_id", sessionId).eq("player_name", factionName).maybeSingle(),
-          supabase.from("building_templates").select("id, name, cost_wood, cost_stone, cost_iron, requires_water"),
+          supabase.from("building_templates").select("id, name, cost_wood, cost_stone, cost_iron, effects"),
           supabase.from("city_buildings").select("name, effects").eq("session_id", sessionId).eq("city_id", city.id),
         ]);
         const reserve = Number(rr?.production_reserve) || 0;
