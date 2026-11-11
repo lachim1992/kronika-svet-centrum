@@ -3518,7 +3518,7 @@ async function executeUpgradeBuilding(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { cityId, cityName, buildingId, newLevel, newName, newEffects, costs, isWonderConversion, chronicleText } = payload;
+  const { cityId, cityName, buildingId, newLevel, chronicleText } = payload;
   if (!buildingId || !newLevel) return { events: [], error: "Missing buildingId or newLevel" };
 
   const { data: existing, error: buildingError } = await supabase.from('city_buildings').select('*')
@@ -3539,20 +3539,29 @@ async function executeUpgradeBuilding(
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
 
-  const costGold = costs?.cost_wealth || 0;
-  const prodCost = (costs?.cost_wood || 0) + (costs?.cost_stone || 0) + (costs?.cost_iron || 0);
-
-  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: "Nedostatek zlata" };
-  if ((realm.production_reserve || 0) < prodCost) return { events: [], error: "Nedostatek produkce" };
-
-  await supabase.from("realm_resources").update({
-    gold_reserve: Math.max(0, (realm.gold_reserve || 0) - costGold),
-    production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
-  }).eq("id", realm.id);
-
-  const updateData: any = { current_level: newLevel };
-  if (newName) updateData.name = newName;
-  if (newEffects) updateData.effects = newEffects;
+  // Authoritative quote: client costs/newName/newEffects/isWonderConversion are ignored.
+  const quote = quoteBuildingUpgrade(existing, authoritativeTemplate, Number(newLevel));
+  if (typeof quote === "string") return { events: [], error: quote };
+  const costGold = quote.cost_wealth, prodCost = quote.cost_production;
+  const gold0 = Number(realm.gold_reserve) || 0, prod0 = Number(realm.production_reserve) || 0;
+  if (gold0 < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold})` };
+  if (prod0 < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost})` };
+  // Level compare-and-set first: a retry/concurrent upgrade of the same level cannot charge twice.
+  const { data: lvlRow } = await supabase.from("city_buildings")
+    .update({ current_level: newLevel, name: quote.name, effects: quote.effects })
+    .eq("id", buildingId).eq("current_level", existing.current_level ?? 1).select("id").maybeSingle();
+  if (!lvlRow) return { events: [], error: "Budova byla mezitím změněna" };
+  const { data: paid } = await supabase.from("realm_resources")
+    .update({ gold_reserve: gold0 - costGold, production_reserve: prod0 - prodCost })
+    .eq("id", realm.id).eq("gold_reserve", realm.gold_reserve).eq("production_reserve", realm.production_reserve).select("id").maybeSingle();
+  if (!paid) {
+    await supabase.from("city_buildings").update({ current_level: existing.current_level ?? 1, name: existing.name, effects: existing.effects })
+      .eq("id", buildingId).eq("current_level", newLevel);
+    return { events: [], error: "Pokladna byla mezitím změněna, zkuste znovu" };
+  }
+  const updateData: any = {};
+  const newName = quote.name; const newEffects = quote.effects; const isWonderConversion = quote.wonder && !existing.is_wonder;
+  void payload.newName; void payload.newEffects; void payload.costs; void payload.isWonderConversion;
 
   let wonderId: string | null = null;
   if (isWonderConversion) {
@@ -3578,7 +3587,7 @@ async function executeUpgradeBuilding(
     }
   }
 
-  await supabase.from("city_buildings").update(updateData).eq("id", buildingId);
+  if (Object.keys(updateData).length) await supabase.from("city_buildings").update(updateData).eq("id", buildingId);
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
