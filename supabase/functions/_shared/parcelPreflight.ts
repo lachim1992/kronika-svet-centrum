@@ -4,6 +4,9 @@ import { parcelProducers, parcelClosing, type EconomicParcel, type ParcelTerrain
 /** Read-only replay of the exact adapter opening/staffing and committed ecology candidate.
  * First step preserves adapter sources; later steps carry physical stores and ecology forward. */
 export function parcelSubsistencePreflight(baseline: Snapshot, parcels: EconomicParcel[], terrain: ParcelTerrain[], recipes: Map<string, any>, steps = 5) {
+  if (!Number.isSafeInteger(steps) || steps < 1 || steps > 200) {
+    throw new RangeError('parcel preflight steps must be an integer between 1 and 200');
+  }
   let opening = baseline.opening;
   let ecology = {};
   const coverage = [];
