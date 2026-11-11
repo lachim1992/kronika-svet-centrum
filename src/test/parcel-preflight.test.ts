@@ -26,3 +26,9 @@ it('preflight cannot regenerate depleted first-step sources into free food', () 
   const result = parcelSubsistencePreflight(depleted, parcels, fixture.terrain, recipes);
   expect(result.unsafe.some(b => b.step === 1 && b.basket === 'staple_food' && b.coverage === 0)).toBe(true);
 });
+
+it('rejects empty, fractional, nonfinite and excessive preflight horizons without reporting false safety', () => {
+  for (const steps of [0, -1, 1.5, NaN, Infinity, 201]) {
+    expect(() => parcelSubsistencePreflight(baseline, parcels, fixture.terrain, recipes, steps)).toThrow(RangeError);
+  }
+});
