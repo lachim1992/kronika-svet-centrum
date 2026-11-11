@@ -3451,13 +3451,24 @@ async function executeBuildBuilding(
 
   // Deduct with compare-and-set: a concurrent command that already spent these
   // reserves makes this one fail instead of overwriting the balance (no phantom builds).
-  const { data: deducted, error: deductErr } = await supabase.from("realm_resources").update({
-    gold_reserve: (realm.gold_reserve || 0) - costGold,
-    production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
-  }).eq("id", realm.id)
-    .eq("gold_reserve", realm.gold_reserve ?? 0)
-    .eq("production_reserve", realm.production_reserve ?? 0)
-    .select("id");
+  // Retry the compare-and-set on a fresh read: a benign concurrent write (e.g. refresh) must not fail the build.
+  let deducted: any[] | null = null, deductErr: any = null, cur: any = realm;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      cur = await getRealmFull(supabase, sessionId, actor.name);
+      if (!cur) break;
+      if ((cur.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold}, máš ${Math.floor(cur.gold_reserve || 0)})` };
+      if ((cur.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost}, máš ${Math.floor(cur.production_reserve || 0)})` };
+    }
+    ({ data: deducted, error: deductErr } = await supabase.from("realm_resources").update({
+      gold_reserve: (cur.gold_reserve || 0) - costGold,
+      production_reserve: Math.max(0, (cur.production_reserve || 0) - prodCost),
+    }).eq("id", cur.id)
+      .gte("gold_reserve", Number(cur.gold_reserve ?? 0) - 1e-6).lte("gold_reserve", Number(cur.gold_reserve ?? 0) + 1e-6)
+      .gte("production_reserve", Number(cur.production_reserve ?? 0) - 1e-6).lte("production_reserve", Number(cur.production_reserve ?? 0) + 1e-6)
+      .select("id"));
+    if (!deductErr && deducted?.length) break;
+  }
   if (deductErr || !deducted?.length) return { events: [], error: "Zdroje se mezitím změnily, zkuste stavbu znovu" };
 
   // Insert building
