@@ -418,3 +418,6 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] AI capital trap: `_shared/aiBuildBudget.ts` defers non-essential builds (e.g. Kasárny 50) when no farm/well/sawmill is owned and real accrual cannot refund the cheapest essential within 10 turns; wired in ai-faction-turn before command-dispatch; deployed. Test ai-build-runway.test.ts (reserve-trajectory scenario, not full process-turn).
 - [ ] Full cloned-world 20/200-turn harness through process-turn (PGlite) — still open.
 - [x] Runway guard ignores starter_economy buildings; deferred non-essential build dispatches affordable Farma/Pila same turn (deployed). Limitation: reserve illustration holds accrual constant; full solver long-run still open.
+- [x] UPGRADE_BUILDING authoritative quote (`quoteBuildingUpgrade`): template base × level cost_mult, template name/effects, legacy fail-closed, no client wonder flag, level CAS + funds CAS with rollback; deployed. Test upgrade-quote.test.ts.
+- [ ] Strategic iron/obsidian battle multipliers in resolve-battle (shared tier module) — not started.
+- [ ] Marble build-cost discount in BUILD/UPGRADE — not started.
