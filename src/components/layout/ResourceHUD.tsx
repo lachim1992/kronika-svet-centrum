@@ -1,3 +1,4 @@
+import { fmtAmount, fmtSigned, constructionTooltip } from "@/lib/hudFormat";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Slider } from "@/components/ui/slider";
@@ -147,20 +148,18 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
 
   // Construction stock grows only from surplus lumber / stone / building material (process-turn).
   const prodIncome = Number(realm.construction_available_for_capex ?? 0);
-  const fmt = (n: number) => (Math.abs(n) < 10 ? n.toFixed(1) : n.toFixed(0));
-  const signed = (n: number) => `${n >= 0 ? "+" : "−"}${fmt(Math.abs(n))}`;
+  const fmt = fmtAmount;
+  const signed = fmtSigned;
   const foodNow = foodStock?.now ?? 0;
   const foodDelta = foodStock && foodStock.prev != null ? foodStock.now - foodStock.prev : null;
 
   const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean; suffix?: string; derivation?: string }[] = [
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
-      label: "Produkce",
+      label: "Stavební rezerva",
       value: `${Math.round(prodReserve)} (${signed(prodIncome)}/kolo)`,
       warning: prodIncome <= 0,
-      derivation: prodIncome > 0
-        ? `Stavební zásoba roste o přebytek řeziva, kamene a stavebního materiálu: +${prodIncome.toFixed(1)}/kolo. Stavby ji spotřebovávají.`
-        : `Stavební zásoba neroste: tvá města nevyrábějí přebytek řeziva, kamene ani stavebního materiálu. Postav pilu nebo lom.\nVýrobní kapacita měst (není příjem): ${totalProd.toFixed(0)}`,
+      derivation: constructionTooltip(prodIncome, totalProd),
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
