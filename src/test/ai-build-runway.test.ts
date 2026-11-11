@@ -40,7 +40,7 @@ describe('AI runway decision (pure)', () => {
     expect(chooseFallbackInvestment(T, STARTER, 5)).toBeNull();
   });
   it('repeated turn after the farm purchase cannot spend the same points twice', () => {
-    let reserve = 50; const owned = [...STARTER];
+    let reserve = 50; const owned: any[] = [...STARTER];
     const a = decide(KAS, owned, reserve, 0.041); reserve -= templateProductionCost(a.build); owned.push({ name: a.build.name, effects: {} });
     const b = decide(KAS, owned, reserve, 0.041); // now owns farm → barracks allowed only if affordable
     expect(b.build).toBeNull(); expect(reserve).toBe(30);
