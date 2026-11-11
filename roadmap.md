@@ -407,3 +407,9 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] Turn 1: all 3 capitals food/water/fuel 100 %, no famine, 50 workers/75 jobs, starter grain 2.5 + peat 1.5 once; double derived refresh idempotent
 - [ ] Frontend publish blocked by remaining error-level security scan findings (e.g. league_teams)
 - [x] River water + hunting: draw_river_water (river only, never sea) replaces the starter well; small non-scaling hunt_game in wild biomes; tests in starter-geography.test.ts; JV72O7 regenerated (id d379caff…), previous turn-1 copy kept as JV7OL2
+
+## 2026-11-11 slice
+- [x] B: JV72O7 reserve audit — Player 50→15.038 = Tkalcovna (20 wood+10 stone+5 iron=35) + 0.038 committed raw capex; AI1 50→0.041 = Kasárny (25+15+10=50) + 0.041. No accounting bug. Regression: src/test/jv72o7-reserve-audit.test.ts. total_production (37) is Layer A capacity, not physical output; wood_reserve/stone_reserve (10/5) are legacy, not canonical goods.
+- [ ] A: isolated cloned-world 20/200-turn harness through real process-turn (not started; needs scratch session clone tooling).
+- [ ] C: per-parcel map drilldown with realized producer output (parcel:uuid:recipe) vs potential.
+- [ ] D: HUD check that legacy wood_reserve is not shown as canonical stock.
