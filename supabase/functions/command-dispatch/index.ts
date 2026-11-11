@@ -1,5 +1,5 @@
 import { validateBuild, canonicalBuilding, stripProductionEffects } from "../_shared/buildValidation.ts";
-import { validateBuildingUpgrade } from '../_shared/upgradeValidation.ts';
+import { validateBuildingUpgrade, quoteBuildingUpgrade } from '../_shared/upgradeValidation.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUBNODE_DEFS as SHARED_SUBNODE_DEFS } from "../_shared/subnodeCatalog.ts";
 import { readRealmWorkforce, actualSoldiers } from '../_shared/manpower.ts';
