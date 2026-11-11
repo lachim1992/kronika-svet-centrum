@@ -417,4 +417,4 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] C (partial): map plot shows committed realized output per parcel producer, staff, remaining resource, reason for 0; square summary splits owned realized vs unclaimed potential (src/lib/parcelActual.ts). Visual check of plot panel pending.
 - [x] AI capital trap: `_shared/aiBuildBudget.ts` defers non-essential builds (e.g. Kasárny 50) when no farm/well/sawmill is owned and real accrual cannot refund the cheapest essential within 10 turns; wired in ai-faction-turn before command-dispatch; deployed. Test ai-build-runway.test.ts (reserve-trajectory scenario, not full process-turn).
 - [ ] Full cloned-world 20/200-turn harness through process-turn (PGlite) — still open.
-- [ ] JV72O7 AI1 is already at 0.041 reserve (pre-guard); no corrective grant applied — it recovers only via real accrual.
+- [x] Runway guard ignores starter_economy buildings; deferred non-essential build dispatches affordable Farma/Pila same turn (deployed). Limitation: reserve illustration holds accrual constant; full solver long-run still open.
