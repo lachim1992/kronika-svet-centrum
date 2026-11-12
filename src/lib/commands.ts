@@ -35,7 +35,9 @@ export async function dispatchCommand(params: {
     data: { session },
   } = await supabase.auth.getSession();
 
-  const { data, error } = await supabase.functions.invoke("command-dispatch", {
+  let data: any, error: any;
+  try {
+    ({ data, error } = await supabase.functions.invoke("command-dispatch", {
     body: {
       sessionId: params.sessionId,
       turnNumber: params.turnNumber,
@@ -50,7 +52,11 @@ export async function dispatchCommand(params: {
       // Testing mode: skip resource costs & construction waiting, keep effects.
       sandbox: isSandboxMode(),
     },
-  });
+  }));
+  } catch (e: any) {
+    // Network/runtime failure must surface as a message, never as an unhandled crash.
+    return { ok: false, idempotent: false, events: [], error: e?.message || "Spojení se serverem selhalo" };
+  }
 
   if (error) {
     // Try to extract body from FunctionsHttpError
@@ -69,5 +75,6 @@ export async function dispatchCommand(params: {
     };
   }
 
+  if (!data || typeof data !== "object") return { ok: false, idempotent: false, events: [], error: "Prázdná odpověď serveru" };
   return data as DispatchResult;
 }

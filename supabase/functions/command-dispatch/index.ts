@@ -36,6 +36,7 @@ import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
+import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 
 /** The 12 canonical demand baskets a production district may be pointed at. */
 const CANONICAL_BASKETS = new Set([
@@ -3449,27 +3450,11 @@ async function executeBuildBuilding(
   if ((realm.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold}, máš ${Math.floor(realm.gold_reserve || 0)})` };
   if ((realm.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost}, máš ${Math.floor(realm.production_reserve || 0)})` };
 
-  // Deduct with compare-and-set: a concurrent command that already spent these
-  // reserves makes this one fail instead of overwriting the balance (no phantom builds).
-  // Retry the compare-and-set on a fresh read: a benign concurrent write (e.g. refresh) must not fail the build.
-  let deducted: any[] | null = null, deductErr: any = null, cur: any = realm;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) {
-      cur = await getRealmFull(supabase, sessionId, actor.name);
-      if (!cur) break;
-      if ((cur.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold}, máš ${Math.floor(cur.gold_reserve || 0)})` };
-      if ((cur.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost}, máš ${Math.floor(cur.production_reserve || 0)})` };
-    }
-    ({ data: deducted, error: deductErr } = await supabase.from("realm_resources").update({
-      gold_reserve: (cur.gold_reserve || 0) - costGold,
-      production_reserve: Math.max(0, (cur.production_reserve || 0) - prodCost),
-    }).eq("id", cur.id)
-      .gte("gold_reserve", Number(cur.gold_reserve ?? 0) - 1e-6).lte("gold_reserve", Number(cur.gold_reserve ?? 0) + 1e-6)
-      .gte("production_reserve", Number(cur.production_reserve ?? 0) - 1e-6).lte("production_reserve", Number(cur.production_reserve ?? 0) + 1e-6)
-      .select("id"));
-    if (!deductErr && deducted?.length) break;
-  }
-  if (deductErr || !deducted?.length) return { events: [], error: "Zdroje se mezitím změnily, zkuste stavbu znovu" };
+  // Delta compare-and-set with retry (shared ledger helper): charged at most once, refunds add back exactly the cost.
+  const reserveIO = realmReserveIO(supabase, realm.id);
+  const buildCost = { gold: costGold, production: prodCost };
+  const charge = await chargeReserves(reserveIO, buildCost, 3, realm);
+  if (!charge.ok) return { events: [], error: charge.error };
 
   // Insert building
   const buildDuration = building.build_duration || building.build_turns || 1;
@@ -3502,14 +3487,14 @@ async function executeBuildBuilding(
   }).select("id").single();
 
   if (insertErr) {
-    await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+    await refundReserves(reserveIO, buildCost);
     return { events: [], error: `Insert failed: ${insertErr.message}` };
   }
   if (targetParcel) {
     const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category));
     if (occupancyError) {
       await supabase.from("city_buildings").delete().eq("id", inserted.id);
-      await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+      await refundReserves(reserveIO, buildCost);
       return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
     }
   }
@@ -3566,13 +3551,12 @@ async function executeUpgradeBuilding(
     .update({ current_level: newLevel, name: quote.name, effects: quote.effects })
     .eq("id", buildingId).eq("current_level", existing.current_level ?? 1).select("id").maybeSingle();
   if (!lvlRow) return { events: [], error: "Budova byla mezitím změněna" };
-  const { data: paid } = await supabase.from("realm_resources")
-    .update({ gold_reserve: gold0 - costGold, production_reserve: prod0 - prodCost })
-    .eq("id", realm.id).eq("gold_reserve", realm.gold_reserve).eq("production_reserve", realm.production_reserve).select("id").maybeSingle();
+  const paidCharge = await chargeReserves(realmReserveIO(supabase, realm.id), { gold: costGold, production: prodCost }, 3, realm);
+  const paid = paidCharge.ok;
   if (!paid) {
     await supabase.from("city_buildings").update({ current_level: existing.current_level ?? 1, name: existing.name, effects: existing.effects })
       .eq("id", buildingId).eq("current_level", newLevel);
-    return { events: [], error: "Pokladna byla mezitím změněna, zkuste znovu" };
+    return { events: [], error: paidCharge.ok ? "" : paidCharge.error };
   }
   const updateData: any = {};
   const newName = quote.name; const newEffects = quote.effects; const isWonderConversion = quote.wonder && !existing.is_wonder;
@@ -3654,10 +3638,10 @@ async function executeBuildDistrict(
   if ((realm.gold_reserve || 0) < costGold) return { events: [], error: "Nedostatek zlata" };
   if ((realm.production_reserve || 0) < prodCost) return { events: [], error: "Nedostatek produkce" };
 
-  await supabase.from("realm_resources").update({
-    gold_reserve: (realm.gold_reserve || 0) - costGold,
-    production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
-  }).eq("id", realm.id);
+  const reserveIO = realmReserveIO(supabase, realm.id);
+  const buildCost = { gold: costGold, production: prodCost };
+  const charge = await chargeReserves(reserveIO, buildCost, 3, realm);
+  if (!charge.ok) return { events: [], error: charge.error };
 
   const buildTurns = district.build_turns || 1;
   const { data: inserted, error: dErr } = await supabase.from("city_districts").insert({
@@ -3689,14 +3673,14 @@ async function executeBuildDistrict(
   }).select("id").single();
 
   if (dErr) {
-    await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+    await refundReserves(reserveIO, buildCost);
     return { events: [], error: `District insert failed: ${dErr.message}` };
   }
   if (targetParcel) {
     const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "district", inserted.id, district.district_type || "residential");
     if (occupancyError) {
       await supabase.from("city_districts").delete().eq("id", inserted.id);
-      await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+      await refundReserves(reserveIO, buildCost);
       return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
     }
   }
