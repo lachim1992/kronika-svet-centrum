@@ -85,10 +85,10 @@ function Scene({ tiles, cities }: { tiles: Tile3D[]; cities: City3D[] }) {
   const tileH = useMemo(() => new Map(tiles.map((t) => [`${t.grid_x},${t.grid_y}`, tileHeight(t)])), [tiles]);
   return <>
     <color attach="background" args={["#0b1e2c"]} />
-    <hemisphereLight args={["#fff4dc", "#2b4a5a", 0.6]} />
-    <directionalLight position={[center[0] + 12, 18, center[1] + 6]} intensity={2.2} color="#ffe6b8" castShadow shadow-mapSize={[2048, 2048]}
+    <hemisphereLight args={["#fff4dc", "#2b4a5a", 0.4]} />
+    <directionalLight position={[center[0] + 12, 18, center[1] + 6]} intensity={1.5} color="#ffe6b8" castShadow shadow-mapSize={[2048, 2048]}
       shadow-camera-left={-30} shadow-camera-right={30} shadow-camera-top={30} shadow-camera-bottom={-30} />
-    <Environment resolution={64}><Lightformer intensity={1.5} position={[0, 5, 0]} scale={[10, 10, 1]} /><Lightformer intensity={0.6} color="#8bd" position={[-5, 1, -1]} rotation-y={Math.PI / 2} scale={[20, 1, 1]} /></Environment>
+    <Environment resolution={64}><Lightformer intensity={0.6} position={[0, 5, 0]} scale={[10, 10, 1]} /><Lightformer intensity={0.6} color="#8bd" position={[-5, 1, -1]} rotation-y={Math.PI / 2} scale={[20, 1, 1]} /></Environment>
     <mesh rotation-x={-Math.PI / 2} position={[center[0], -0.01, center[1]]} receiveShadow><planeGeometry args={[200, 200]} /><meshStandardMaterial color={SEA_DEEP} roughness={0.3} metalness={0.1} /></mesh>
     <Tiles tiles={tiles} />
     <GridLines tiles={tiles} />

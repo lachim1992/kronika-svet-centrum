@@ -11,7 +11,7 @@ export function tileHeight(t: Tile3D): number {
 }
 
 export const BIOME_COLOR: Record<string, string> = {
-  plains: "#8fae3c", forest: "#3f6b2a", hills: "#9c8a55", tundra: "#9aa1a3", swamp: "#4e6b3d", desert: "#d9be7a",
+  plains: "#6f9a2a", forest: "#2f5a20", hills: "#8a7440", tundra: "#7d8487", swamp: "#4e6b3d", desert: "#d9be7a",
 };
 export const SEA_SHALLOW = "#2fb3c4";
 export const SEA_DEEP = "#11507e";
