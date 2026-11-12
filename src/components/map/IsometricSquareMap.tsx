@@ -3,6 +3,7 @@ import texForest from "@/assets/map/tex-forest.jpg";
 import texRock from "@/assets/map/tex-rock.jpg";
 import texWater from "@/assets/map/tex-water.jpg";
 import texSand from "@/assets/map/tex-sand.jpg";
+import texDirt from "@/assets/map/tex-dirt.jpg";
 import sprTrees from "@/assets/map/spr-trees.png";
 import { isSandboxMode } from "@/hooks/useSandboxMode";
 import { createPortal } from "react-dom";
@@ -1562,7 +1563,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <line x1="0" y1="0" x2="0" y2="6" stroke="var(--map-city-rival)" strokeWidth="2.4" opacity=".85" />
           </pattern>
           <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="var(--map-water-glint)" strokeWidth="1" opacity=".22" /></pattern>
-          {Array.from(new Set(Object.values(TERRAIN_TEX))).map(href => (
+          {Array.from(new Set([...Object.values(TERRAIN_TEX), texDirt])).map(href => (
             <pattern key={href} id={`tex-${href.split("/").pop()?.split(".")[0]}`} width={TILE_SIZE * 2} height={TILE_SIZE * 2} patternUnits="userSpaceOnUse"
               patternTransform={`matrix(1 .5 -1 .5 ${pan.x} ${pan.y})`}>
               <image href={href} width={TILE_SIZE * 2} height={TILE_SIZE * 2} preserveAspectRatio="none" />
@@ -1598,8 +1599,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {roadSurface && <g pointerEvents="none">
                 {roadSurface.cells.map(sub => (
                   <polygon key={`road-sub-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
-                    fill={roadFill} stroke="var(--map-road-edge)" strokeWidth=".5"
-                    opacity={roadSurface.draft ? .7 : .95} />
+                    fill={`url(#${texId(texDirt)})`} stroke="none"
+                    opacity={roadSurface.draft ? .7 : 1} />
+                ))}
+                {visibleRoadLevel >= 2 && roadSurface.cells.map(sub => (
+                  <polygon key={`road-tint-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)} fill={roadFill} opacity=".35" />
                 ))}
               </g>}
 
@@ -1645,21 +1649,20 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             })}
           </g>}
           {selected && tileParcels.length > 0 && renderSelectedCellSubnodes(at(selectedCell?.a ?? 0, selectedCell?.b ?? 0))}
-          {!cityLayerCityId && riverSegments.map(segment => {
-            const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
-            const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
-            return <g key={segment.id} pointerEvents="none">
-              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water-edge)" strokeWidth="2.4" strokeLinecap="round" opacity=".48" />
-              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water)" strokeWidth="1.15" strokeLinecap="round" opacity=".95" />
-            </g>;
-          })}
+          {!cityLayerCityId && riverSegments.length > 0 && <g pointerEvents="none">
+            {([["var(--map-forest-edge)", 7, .55], ["var(--map-water-edge)", 5, .9], [`url(#${texId(texWater)})`, 3.6, 1], ["var(--map-water-glint)", .8, .45]] as const).map(([stroke, width, opacity], layer) => (
+              <g key={`river-layer-${layer}`} stroke={stroke} strokeWidth={width} strokeLinecap="round" opacity={opacity}>
+                {riverSegments.map(segment => <line key={segment.id} x1={segment.from.x + pan.x} y1={segment.from.y + pan.y} x2={segment.to.x + pan.x} y2={segment.to.y + pan.y} />)}
+              </g>
+            ))}
+          </g>}
           {roadNetwork.segments.map(segment => {
             const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
             const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
             const width = segment.level >= 3 ? 4.4 : segment.level === 2 ? 3.4 : 2.4;
             return <g key={segment.id} pointerEvents="none">
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 1.4} strokeLinecap="round" opacity=".35" />
-              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-route)" strokeWidth={width} strokeLinecap="round"
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke={`url(#${texId(texDirt)})`} strokeWidth={width} strokeLinecap="round"
                 strokeDasharray={segment.building || segment.level === 1 ? "4 3" : undefined} opacity=".95" />
             </g>;
           })}
