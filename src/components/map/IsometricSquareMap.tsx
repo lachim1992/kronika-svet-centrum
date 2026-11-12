@@ -17,6 +17,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 
 import { dispatchCommand } from "@/lib/commands";
+import { rasterizeTerrain, type TerrainQuad, type TerrainSprite, type TerrainRaster } from "@/lib/terrainRaster";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { SUB_BIOME_COLORS, parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
@@ -852,6 +853,44 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const sortedTiles = useMemo(() => [...tiles].sort((left, right) => {
     const a = tileCell(left); const b = tileCell(right); return (a.a + a.b) - (b.a + b.b);
   }), [tiles, tileCell]);
+
+  /** Static terrain baked into one bitmap (world coords, no pan) — the map would otherwise draw ~100k SVG nodes. */
+  const [terrainRaster, setTerrainRaster] = useState<TerrainRaster | null>(null);
+  useEffect(() => {
+    if (!sortedTiles.length) return;
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      const quads: TerrainQuad[] = []; const sprites: TerrainSprite[] = [];
+      sortedTiles.forEach(tile => {
+        const cell = tileCell(tile); const point = projectCell("square4", cell, TILE_SIZE);
+        const P = (a: number, b: number): [number, number] => [point.x + (a - b) * TILE_SIZE, point.y + (a + b - 1) * TILE_SIZE / 2];
+        const hasFootprint = (parcelsByCell.get(cellKey(cell.a, cell.b)) || []).length > 0;
+        const roadSubs = new Set((roadSurfaceByCell.get(cellKey(cell.a, cell.b))?.cells || []).map(sub => `${sub.x}:${sub.y}`));
+        const peakTile = PEAK_TILES.has(tile.biome_family);
+        subBiomesOf(tile, cell.a, cell.b).forEach(parcel => {
+          const x0 = parcel.parcelX / TILE_PARCEL_COLS, x1 = (parcel.parcelX + 1) / TILE_PARCEL_COLS;
+          const y0 = parcel.parcelY / TILE_PARCEL_ROWS, y1 = (parcel.parcelY + 1) / TILE_PARCEL_ROWS;
+          const subTex = subBiomeTex(parcel.subBiome);
+          quads.push({ pts: [P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)], tex: subTex || TERRAIN_TEX[tile.biome_family], tint: SUB_BIOME_COLORS[parcel.subBiome] });
+          if (hasFootprint || roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)) return;
+          const [cx, cy] = P((parcel.parcelX + .5) / TILE_PARCEL_COLS, (parcel.parcelY + .5) / TILE_PARCEL_ROWS);
+          const forest = (SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)");
+          if (forest) { const w = 15; sprites.push({ href: sprTrees, x: cx - w / 2, y: cy - w * .55, w, h: w * .68 }); return; }
+          if (MOUNTAIN_SUBS.has(parcel.subBiome) && peakTile && subTex !== texSand) {
+            const w = parcel.subBiome === "crag" ? 26 : 20; sprites.push({ href: sprMountain, x: cx - w / 2, y: cy - w * .7, w, h: w * .85 }); return;
+          }
+          const rocky = MOUNTAIN_SUBS.has(parcel.subBiome) || ((subTex || TERRAIN_TEX[tile.biome_family]) === texRock && parcel.parcelX % 2 === 0 && parcel.parcelY % 2 === 0);
+          if (!rocky || ["desert", "sea"].includes(tile.biome_family) || subTex === texSand || subTex === texWater) return;
+          const w = 13; sprites.push({ href: sprHill, x: cx - w / 2, y: cy - w * .55, w, h: w * .75 });
+        });
+      });
+      rasterizeTerrain(quads, sprites, TILE_SIZE * .6).then(result => {
+        if (cancelled) { if (result) URL.revokeObjectURL(result.url); return; }
+        setTerrainRaster(previous => { if (previous) URL.revokeObjectURL(previous.url); return result; });
+      });
+    }, 50);
+    return () => { cancelled = true; window.clearTimeout(handle); };
+  }, [sortedTiles, tileCell, subBiomesOf, parcelsByCell, roadSurfaceByCell]);
   const selectedCell = selected ? tileCell(selected) : null;
   const selectedHexPopulation = selected ? hexPopulation.find(row => row.q === selected.q && row.r === selected.r) : undefined;
   const selectedParcel = tileParcels.find(parcel => parcel.id === selectedParcelId) || null;
@@ -1592,6 +1631,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           ))}
         </defs>
         <g transform={`scale(${zoom})`}>
+          {terrainRaster && <image href={terrainRaster.url} x={terrainRaster.x + pan.x} y={terrainRaster.y + pan.y} width={terrainRaster.w} height={terrainRaster.h} preserveAspectRatio="none" pointerEvents="none" />}
           {sortedTiles.map(tile => {
             const cell = tileCell(tile); const point = at(cell.a, cell.b); const colors = BIOMES[tile.biome_family] || BIOMES.plains;
             const roadSurface = roadSurfaceByCell.get(cellKey(cell.a, cell.b));
@@ -1607,41 +1647,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (roadDraft.length > 0) return; if (!dragRef.current?.moved) focusTile(tile); }}
               className={roadDraft.length > 0 ? "cursor-crosshair" : "cursor-pointer"}>
 
-              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]}
+              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={terrainRaster ? "transparent" : colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
-                strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 0}
-                opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />
-              {TERRAIN_TEX[tile.biome_family] && <polygon points={squareDiamondPoints(point, TILE_SIZE - (holderCity || active ? 2 : 0))} pointerEvents="none"
-                fill={`url(#tex-${TERRAIN_TEX[tile.biome_family].split("/").pop()?.split(".")[0]})`} opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />}
-              {TERRAIN_TINT[tile.biome_family] && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill={TERRAIN_TINT[tile.biome_family]} opacity=".35" />}
+                strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 0} />
+              {cityLayerCityId && !inActiveCity && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill="var(--map-marker-edge)" opacity=".55" />}
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
-              <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
-              {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
-              {<g pointerEvents="none">
-                <g opacity={cityLayerCityId && !inActiveCity ? .42 : 1}>
-                  {subBiomesOf(tile, cell.a, cell.b).map(parcel => {
-                    const tex = subBiomeTex(parcel.subBiome) || TERRAIN_TEX[tile.biome_family];
-                    const pts = parcelQuad(point, parcel.parcelX, parcel.parcelY, 1);
-                    return <g key={`subbiome-${parcel.parcelIndex}`}>
-                      {tex && <polygon points={pts} fill={`url(#${texId(tex)})`} stroke={`url(#${texId(tex)})`} strokeWidth=".6" />}
-                      {SUB_BIOME_COLORS[parcel.subBiome] && <polygon points={pts} fill={SUB_BIOME_COLORS[parcel.subBiome]} opacity=".3" stroke="none" />}
-                    </g>;
-                  })}
-                </g>
-                <g opacity={showSubBiomes && zoom>=1.2?.12:0}>
-                  {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
-                    const fraction = (index + 1) / TILE_PARCEL_COLS;
-                    const line = (ax: number, ay: number, bx: number, by: number) =>
-                      ({ x1: point.x + (ax - ay) * TILE_SIZE, y1: point.y + (ax + ay - 1) * TILE_SIZE / 2,
-                        x2: point.x + (bx - by) * TILE_SIZE, y2: point.y + (bx + by - 1) * TILE_SIZE / 2 });
-                    const across = line(fraction, 0, fraction, 1);
-                    const along = line(0, fraction, 1, fraction);
-                    return <g key={`subgrid-${index}`}>
-                      <line {...across} stroke="var(--map-label)" strokeWidth=".5" />
-                      <line {...along} stroke="var(--map-label)" strokeWidth=".5" />
-                    </g>;
-                  })}
-                </g>
+              {showSubBiomes && zoom >= 1.2 && <g pointerEvents="none" opacity=".12">
+                {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
+                  const fraction = (index + 1) / TILE_PARCEL_COLS;
+                  const line = (ax: number, ay: number, bx: number, by: number) =>
+                    ({ x1: point.x + (ax - ay) * TILE_SIZE, y1: point.y + (ax + ay - 1) * TILE_SIZE / 2,
+                      x2: point.x + (bx - by) * TILE_SIZE, y2: point.y + (bx + by - 1) * TILE_SIZE / 2 });
+                  return <g key={`subgrid-${index}`}>
+                    <line {...line(fraction, 0, fraction, 1)} stroke="var(--map-label)" strokeWidth=".5" />
+                    <line {...line(0, fraction, 1, fraction)} stroke="var(--map-label)" strokeWidth=".5" />
+                  </g>;
+                })}
               </g>}
 
               {/* the road itself only paints the sub-parcels it runs through */}
@@ -1661,35 +1682,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 ))}
               </g>}
 
-              {/* trees follow the forest sub-squares, so woods spill over macro borders */}
-              {!footprint.length && (() => {
-                const step = 1;
-                const roadSubs = new Set((roadSurface?.cells || []).map(sub => `${sub.x}:${sub.y}`));
-                return subBiomesOf(tile, cell.a, cell.b)
-                  .filter(parcel => parcel.parcelX % step === 0 && parcel.parcelY % step === 0 && !roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)
-                    && ((SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)") || MOUNTAIN_SUBS.has(parcel.subBiome)
-                      || ((subBiomeTex(parcel.subBiome) || TERRAIN_TEX[tile.biome_family]) === texRock && parcel.parcelX % (2 * step) === 0 && parcel.parcelY % (2 * step) === 0)))
-                  .map(parcel => {
-                    const peakTile = PEAK_TILES.has(tile.biome_family);
-                    if (!(SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)") && !(MOUNTAIN_SUBS.has(parcel.subBiome) && peakTile && subBiomeTex(parcel.subBiome) !== texSand)) {
-                      if (["desert", "sea"].includes(tile.biome_family) || subBiomeTex(parcel.subBiome) === texSand || subBiomeTex(parcel.subBiome) === texWater) return null;
-                      const fx = (parcel.parcelX + step / 2) / TILE_PARCEL_COLS, fy = (parcel.parcelY + step / 2) / TILE_PARCEL_COLS;
-                      const cx = point.x + (fx - fy) * TILE_SIZE, cy = point.y + (fx + fy - 1) * TILE_SIZE / 2;
-                      const w = 13 * step;
-                      return <image key={`hill-${parcel.parcelIndex}`} href={sprHill} x={cx - w / 2} y={cy - w * .55} width={w} height={w * .75} pointerEvents="none" />;
-                    }
-                    if (MOUNTAIN_SUBS.has(parcel.subBiome)) {
-                      const fx = (parcel.parcelX + step / 2) / TILE_PARCEL_COLS, fy = (parcel.parcelY + step / 2) / TILE_PARCEL_COLS;
-                      const cx = point.x + (fx - fy) * TILE_SIZE, cy = point.y + (fx + fy - 1) * TILE_SIZE / 2;
-                      const w = (parcel.subBiome === "crag" ? 26 : 20) * step;
-                      return <image key={`mtn-${parcel.parcelIndex}`} href={sprMountain} x={cx - w / 2} y={cy - w * .7} width={w} height={w * .85} pointerEvents="none" />;
-                    }
-                    const fx = (parcel.parcelX + step / 2) / TILE_PARCEL_COLS, fy = (parcel.parcelY + step / 2) / TILE_PARCEL_COLS;
-                    const cx = point.x + (fx - fy) * TILE_SIZE, cy = point.y + (fx + fy - 1) * TILE_SIZE / 2;
-                    const w = 15 * step;
-                    return <image key={`tree-${parcel.parcelIndex}`} href={sprTrees} x={cx - w / 2} y={cy - w * .55} width={w} height={w * .68} pointerEvents="none" />;
-                  });
-              })()}
               {active && tileParcels.length > 0 && renderTileParcels(point)}
             </g>;
           })}
