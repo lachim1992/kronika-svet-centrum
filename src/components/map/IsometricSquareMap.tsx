@@ -1661,7 +1661,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 ))}
               </g>}
 
-              {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
               {/* trees follow the forest sub-squares, so woods spill over macro borders */}
               {!footprint.length && (() => {
                 const step = 1;
