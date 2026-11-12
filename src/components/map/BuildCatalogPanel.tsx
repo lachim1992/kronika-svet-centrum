@@ -31,6 +31,8 @@ interface Props {
   hasWater: boolean;
   treasury: { gold: number; production: number };
   subnodeBlockReason: (key: string) => string | null;
+  /** Canonical terrain/deposit restrictions for selected purchased microparcel. */
+  terrainBlockReason?: (item: CatalogItem) => string | null;
   basketOptions: (districtKey: string) => { key: string; label: string }[];
   spriteFor: (item: CatalogItem) => string;
   devMode?: boolean;
@@ -62,6 +64,10 @@ export function BuildCatalogPanel(props: Props) {
     if (item.kind === "subnode") return props.subnodeBlockReason(item.refId);
     if (props.parcelBlock) return props.parcelBlock;
     if (!props.ownCity) return "Nedostupné: stavět lze jen na parcele vlastního města";
+    if (item.kind === "building") {
+      const mismatch = props.terrainBlockReason?.(item);
+      if (mismatch) return mismatch;
+    }
     if (item.kind === "district" && item.category === "district" && props.freeDistrictSlots <= 0)
       return "Nedostupné: žádná volná obytná kapacita — postav nejdřív obytnou čtvrť";
     // Same hard rule and wording as the server (buildValidation.WATER_REASON).
@@ -83,7 +89,7 @@ export function BuildCatalogPanel(props: Props) {
     if (!matchesQuery(item, query)) return false;
     const blocked = !!blockedBy(item);
     return availability === "all" || (availability === "now" ? !blocked : blocked);
-  }), [catalog, query, availability, props.parcelBlock, props.ownCity, props.freeDistrictSlots, props.treasury.gold, props.hasWater]);
+  }), [catalog, query, availability, props.parcelBlock, props.ownCity, props.freeDistrictSlots, props.treasury.gold, props.hasWater, props.terrainBlockReason]);
 
   const groups = useMemo(() => {
     const map = new Map<BuildCategory, CatalogItem[]>();
