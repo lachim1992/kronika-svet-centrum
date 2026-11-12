@@ -1263,27 +1263,44 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return [...byPoint.values()].filter(entry => entry.dirs.size > 1).map(entry => entry.point);
   };
 
-  /** One low stone rampart run, drawn as a solid wall face with a lit crown. */
+  /** Stone rampart run: textured face, shaded base, crenellated crown and round roofed towers. */
   const renderWallRun = (
     edges: { from: { x: number; y: number }; to: { x: number; y: number } }[],
     wallColor: string, height = 2.4, prefix = "wall",
-  ) => <g>
-    {edges.map((edge, index) => (
-      <path key={`${prefix}-face-${index}`}
-        d={`M${edge.from.x} ${edge.from.y} L${edge.to.x} ${edge.to.y} L${edge.to.x} ${edge.to.y - height} L${edge.from.x} ${edge.from.y - height} Z`}
-        fill="var(--map-city-wall-dark)" stroke="none" opacity=".92" />
-    ))}
-    {edges.map((edge, index) => (
-      <line key={`${prefix}-crown-${index}`} x1={edge.from.x} y1={edge.from.y - height} x2={edge.to.x} y2={edge.to.y - height}
-        stroke="var(--map-city-wall-light)" strokeWidth=".9" strokeLinecap="square" />
-    ))}
-    {wallCorners(edges).map((point, index) => (
-      <g key={`${prefix}-tower-${index}`} transform={`translate(${point.x},${point.y})`}>
-        <rect x="-1.1" y={-height - 2.2} width="2.2" height={height + 2.4} fill="var(--map-city-wall-light)" stroke="var(--map-city-wall-dark)" strokeWidth=".3" />
-        <rect x="-1.4" y={-height - 3} width="2.8" height=".9" fill={wallColor} />
-      </g>
-    ))}
-  </g>;
+  ) => {
+    const h = height * 1.6;
+    return <g>
+      {edges.map((edge, index) => (
+        <path key={`${prefix}-shadow-${index}`} d={`M${edge.from.x} ${edge.from.y} L${edge.to.x} ${edge.to.y}`}
+          stroke="var(--map-marker-edge)" strokeWidth="2.4" strokeLinecap="round" opacity=".35" transform="translate(.8,1)" />
+      ))}
+      {edges.map((edge, index) => {
+        const d = `M${edge.from.x} ${edge.from.y} L${edge.to.x} ${edge.to.y} L${edge.to.x} ${edge.to.y - h} L${edge.from.x} ${edge.from.y - h} Z`;
+        return <g key={`${prefix}-face-${index}`}>
+          <path d={d} fill="var(--map-city-wall-dark)" />
+          <path d={d} fill={`url(#${texId(texRock)})`} opacity=".55" />
+          <line x1={edge.from.x} y1={edge.from.y - .3} x2={edge.to.x} y2={edge.to.y - .3} stroke="var(--map-marker-edge)" strokeWidth=".6" opacity=".6" />
+        </g>;
+      })}
+      {edges.map((edge, index) => (
+        <g key={`${prefix}-crown-${index}`}>
+          <line x1={edge.from.x} y1={edge.from.y - h} x2={edge.to.x} y2={edge.to.y - h}
+            stroke="var(--map-city-wall-light)" strokeWidth="1.1" strokeLinecap="square" />
+          <line x1={edge.from.x} y1={edge.from.y - h - .9} x2={edge.to.x} y2={edge.to.y - h - .9}
+            stroke="var(--map-city-wall-light)" strokeWidth="1" strokeDasharray=".9 .9" />
+        </g>
+      ))}
+      {wallCorners(edges).map((point, index) => (
+        <g key={`${prefix}-tower-${index}`} transform={`translate(${point.x},${point.y})`}>
+          <ellipse cx=".6" cy=".8" rx="2.4" ry="1.1" fill="var(--map-marker-edge)" opacity=".35" />
+          <rect x="-1.6" y={-h - 2.6} width="3.2" height={h + 2.6} fill="var(--map-city-wall-dark)" />
+          <rect x="-1.6" y={-h - 2.6} width="3.2" height={h + 2.6} fill={`url(#${texId(texRock)})`} opacity=".5" />
+          <rect x="-1.6" y={-h - 2.6} width="1.1" height={h + 2.6} fill="var(--map-city-wall-light)" opacity=".45" />
+          <path d={`M-2.1 ${-h - 2.6} L0 ${-h - 6.2} L2.1 ${-h - 2.6} Z`} fill={wallColor} stroke="var(--map-marker-edge)" strokeWidth=".3" />
+        </g>
+      ))}
+    </g>;
+  };
 
 
   /** Small house or an active construction site, built in the same visual language as the walls. */
@@ -1304,7 +1321,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const built = constructionByParcel.get(parcel.id);
     const sprite = built?.name ? buildSprite(built.name, built.category || undefined) : LAND_USE_SPRITE[parcel.land_use || ""];
     if (sprite) {
-      const size = width * 3.1;
+      const size = width * 2.4;
       return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
         <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".3" />
         <image href={sprite} x={-size / 2} y={-size + height * .55} width={size} height={size} preserveAspectRatio="xMidYMax meet" />
