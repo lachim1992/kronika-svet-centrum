@@ -956,9 +956,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const cityForPressure = selectedCity || expansionCity;
   const cityHeldParcels = useMemo(() => cityForPressure ? cityParcels.filter(parcel => parcel.city_id === cityForPressure.id) : [], [cityParcels, cityForPressure]);
-  const cityCapacity = cityHeldParcels.reduce((sum, parcel) => sum + (parcel.capacity_slots || 0), 0) * POPULATION_PER_SLOT;
+  // Worked hinterland produces goods; it does NOT expand urban housing slots.
+  const cityCapacity = cityHeldParcels.filter(parcel => parcel.claim_kind !== "worked")
+    .reduce((sum, parcel) => sum + (parcel.capacity_slots || 0), 0) * POPULATION_PER_SLOT;
   const growthPressure = cityForPressure ? Math.min(100, Math.round(cityForPressure.population_total / Math.max(1, cityCapacity) * 100)) : 0;
-  const occupiedParcels = cityHeldParcels.filter(parcel => parcel.status === "occupied").length;
+  const occupiedParcels = cityHeldParcels.filter(parcel => parcel.status === "occupied" && parcel.claim_kind !== "worked").length;
   const netGrowth = cityForPressure ? Math.round(cityForPressure.population_total * ((cityForPressure.birth_rate || 0) - (cityForPressure.death_rate || 0)) + (cityForPressure.migration_pressure || 0)) : 0;
 
   const loadTileParcels = useCallback(async (gridX: number, gridY: number) => {
@@ -1100,7 +1102,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         const base = SUB_BIOME_COLOR[parcel.sub_biome] || "var(--map-plains)";
         const mine = !!parcel.city_id;
         const fill = parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open)
-          : parcel.status === "claimed" ? "var(--map-parcel-open)" : base;
+          : parcel.status === "claimed" ? (parcel.claim_kind === "worked" ? "var(--map-forest)" : "var(--map-parcel-open)") : base;
         const quad = parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y);
         const activeParcel = parcel.id === selectedParcelId;
         return <g key={parcel.id} role="button" tabIndex={0} className="cursor-pointer"
@@ -1112,7 +1114,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             opacity={mine ? 1 : parcel.buildable ? (parcel.status === "wild" ? .6 : .95) : .45} />
           {/* hatching marks every sub-parcel the city holds */}
           {mine && <polygon points={quad} fill={hatchFill} opacity=".55" />}
-          <title>{`${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}${mine ? ` · patří ${holder?.name || "městu"}` : ""}`}</title>
+          <title>{`${parcel.region_name ? parcel.region_name + " · " : ""}${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}${mine ? ` · patří ${holder?.name || "městu"}` : ""}`}</title>
+          {parcel.region_name && <text x={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.x + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.x) / 2}
+            y={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.y + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.y) / 2}
+            textAnchor="middle" fontSize="4" fontWeight="700" fill="var(--map-label)" pointerEvents="none">{parcel.region_name.length > 17 ? parcel.region_name.slice(0, 16) + "…" : parcel.region_name}</text>}
         </g>;
       })}
       {/* city land is ringed so the built-up block reads at a glance */}
@@ -1165,6 +1170,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const buildOnParcel = async (template: BuildingTemplate) => {
     if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
+    if (selectedParcel.claim_kind === "worked" || selectedParcel.status === "wild") { toast.error("Nejprve kup stavební parcelu"); return; }
     const needGold = Number(template.cost_wealth || 0);
     const needProd = Number(template.cost_wood || 0) + Number(template.cost_stone || 0) + Number(template.cost_iron || 0);
     if (!isSandboxMode() && treasury.gold < needGold) { toast.error(`Nedostatek zlata (potřeba ${needGold}, máš ${Math.floor(treasury.gold)})`); return; }
@@ -1237,10 +1243,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const parcelBlock = useMemo(() => {
     if (!selectedParcel) return null;
     if (!selectedParcel.buildable) return "Tato parcela je nezastavitelná (voda, skála nebo prudký sráz).";
+    if (selectedParcel.claim_kind === "worked") return "Využívaná krajina — můžeš z ní těžit, ale stavět až po koupi stavebního práva.";
     if (selectedParcel.owner_player !== playerName) {
       return selectedParcel.owner_player
         ? `Parcelu drží ${selectedParcel.owner_player}.`
-        : "Parcela ještě není tvoje — klikni na ni v mřížce a město ji vykoupí, pak se dá stavět.";
+        : "Nejdřív vyber v detailu akci Koupit stavební parcelu; samotný klik nic nekupuje.";
     }
     if (!selectedParcel.city_id) return "Parcela není přiřazena žádnému tvému městu.";
     if (selectedParcelUsed >= selectedParcel.capacity_slots) return "Parcela je plná — všechny stavební sloty jsou obsazené.";
@@ -1254,6 +1261,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     if (selectedParcel.owner_player && selectedParcel.owner_player !== playerName) return `Parcelu drží ${selectedParcel.owner_player}`;
     if (foreignOwner) return `Pole ovládá ${foreignOwner}`;
     if (!selectedParcel.buildable) return "Nezastavitelná parcela";
+    if (selectedParcel.claim_kind === "worked") return "Využívanou půdu je nutné před stavbou koupit";
     if (selectedParcelUsed >= selectedParcel.capacity_slots) return "Parcela je plná";
     if (option.key === "river_wharf" && !selected?.has_river && !selected?.coastal) return "Vyžaduje řeku nebo pobřeží";
     if (option.key === "farmstead" && ["mountains", "mountain", "desert"].includes(selected?.biome_family || "")) return "Nevhodný terén";
@@ -1979,13 +1987,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild" && affordable;
                 return <button key={parcel.id} type="button" disabled={claimingParcel !== null}
                   onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); openStructureOnParcel(parcel.id); }}
-                  title={`${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.capacity_slots} slotů · ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
+                  title={`${parcel.region_name ? parcel.region_name + " · " : ""}${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.claim_kind === "worked" ? "využívaná půda, bez staveb" : `${parcel.capacity_slots} stavebních slotů`} · kupní cena ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
                   className={`aspect-square border text-[8px] leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
                     parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
+                    : parcel.status === "claimed" && parcel.claim_kind === "worked" ? "border-emerald-500/70 bg-emerald-800/30"
                     : parcel.status === "claimed" ? (mine ? "border-primary/40 bg-primary/10" : "border-border bg-muted/40")
                     : !parcel.buildable ? "border-border/40 bg-muted/20 text-muted-foreground"
                     : canClaim ? "border-border bg-card hover:border-primary hover:bg-primary/10" : "border-border bg-card"}`}>
-                  {parcel.status === "occupied" ? "🏠" : parcel.status === "claimed" ? "▣" : !parcel.buildable ? "▲" : parcel.parcel_index + 1}
+                  {parcel.status === "occupied" ? "🏠" : parcel.claim_kind === "worked" ? "🌿" : parcel.status === "claimed" ? "▣" : !parcel.buildable ? "▲" : parcel.parcel_index + 1}
                 </button>;
               })}
             </div>
@@ -2072,7 +2081,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </section>}
 
         {selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
-          <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p><h3 className="text-sm">{SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</h3></div><span className="text-xs text-muted-foreground">{selectedParcelUsed}/{selectedParcel.capacity_slots} slotů</span></div>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p>
+              <h3 className="text-sm">{selectedParcel.region_name || SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</h3>
+              {selectedParcel.region_name && <p className="text-[11px] text-muted-foreground">{SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</p>}
+              <p className="text-[11px] text-muted-foreground">{selectedParcel.claim_kind === "worked" ? "Využívané hospodářské území" : selectedParcel.status === "wild" ? "Volná půda" : "Stavební parcela"}</p>
+            </div>
+            <span className="text-xs text-muted-foreground">{selectedParcel.claim_kind === "worked" ? "bez staveb" : `${selectedParcelUsed}/${selectedParcel.capacity_slots} slotů`}</span>
+          </div>
           {(() => {
             const potential = parcelPotential(selectedParcel as any, tiles as any, currentTurn);
             return <div className="text-[11px] text-muted-foreground">
@@ -2115,10 +2132,27 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <div className="mt-2 flex gap-3"><span>Produkce {selectedNode.production_output}</span><span>Bohatství {selectedNode.wealth_output}</span><span>Potraviny {selectedNode.food_value}</span></div>
           </div>}
           {parcelBlock && <p className="border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-200">{parcelBlock}</p>}
-          {selectedParcel.status === "wild" && selectedParcel.buildable && !!claimHost && <Button size="sm" className="w-full" disabled={claimingParcel !== null || !!buildingAction} onClick={() => void claimParcel(selectedParcel)}>
-            {claimingParcel !== null ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
-            Vykoupit parcelu · {parcelClaimCost(Number(selectedParcel.build_cost_multiplier || 1), claimedForCity).gold} zlata / {parcelClaimCost(Number(selectedParcel.build_cost_multiplier || 1), claimedForCity).production} produkce
-          </Button>}
+          {!!claimHost && selectedParcel.buildable &&
+            (selectedParcel.status === "wild" || (selectedParcel.claim_kind === "worked" && selectedParcel.city_id === claimHost.id)) &&
+            <div className="space-y-2">
+              <Button size="sm" className="w-full" disabled={claimingParcel !== null || !!buildingAction} onClick={() => void claimParcel(selectedParcel)}>
+                {claimingParcel !== null ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                {selectedParcel.claim_kind === "worked" ? "Převést na stavební parcelu" : "Koupit stavební parcelu"} · {parcelClaimCost(Number(selectedParcel.build_cost_multiplier || 1), claimedForCity).gold} zlata / {parcelClaimCost(Number(selectedParcel.build_cost_multiplier || 1), claimedForCity).production} produkce
+              </Button>
+              {selectedParcel.status === "wild" && <Button size="sm" variant="outline" className="w-full"
+                disabled={claimingParcel !== null || !!buildingAction || claimedForCity <= workedForCity}
+                onClick={() => void workParcel(selectedParcel)}>
+                Využívat bez koupě · zbývá {Math.max(0, claimedForCity - workedForCity)} nároků
+              </Button>}
+              <p className="text-[10px] text-muted-foreground">Využívaná parcela umožňuje těžbu a sběr, ale nesmí se zastavět. Každá koupená stavební parcela odemkne právě jeden takový nárok.</p>
+            </div>}
+          {selectedParcel.owner_player === playerName && selectedParcel.city_id && selectedParcel.status !== "wild" &&
+            <div className="flex gap-2">
+              <Input value={regionDraft} maxLength={48} placeholder="Např. Temný háj" aria-label="Název parcely"
+                onChange={event => setRegionDraft(event.target.value)} />
+              <Button size="sm" variant="secondary" disabled={claimingParcel !== null || !regionDraft.trim()}
+                onClick={() => void renameParcel(selectedParcel)}>Pojmenovat</Button>
+            </div>}
 
           <BuildCatalogPanel
             templates={buildingTemplates as any}
