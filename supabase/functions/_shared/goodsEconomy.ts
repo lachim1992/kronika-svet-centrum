@@ -677,7 +677,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       // prevents essential production from collapsing harder as famine lowers stability.
       // Finite parcel harvest limits and actual staffed labour remain unchanged.
       const stability = p.source && ['staple_food', 'drinking_water', 'fuel'].includes(g.basket)
-        ? Math.max(clamp(c.stability), C.criticalSourceStabilityFloor)
+        ? Math.max(C.criticalSourceStabilityFloor, C.criticalSourceAutonomy + (1 - C.criticalSourceAutonomy) * clamp(c.stability))
         : clamp(c.stability);
       const factors={staffing:staffed,stability,logistics:clamp(p.logistics),mastery:n(p.mastery),
         infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1,tools:toolFactor(p),capital:capitalFactor(p)};
