@@ -1,3 +1,4 @@
+import sprMountain from "@/assets/map/spr-mountain.png";
 import texGrass from "@/assets/map/tex-grass.jpg";
 import texRock from "@/assets/map/tex-rock.jpg";
 import texWater from "@/assets/map/tex-water.jpg";
@@ -16,7 +17,7 @@ import { Input } from "@/components/ui/input";
 
 import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
-import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
+import { SUB_BIOME_COLORS, parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
 import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDetour, subRoadPathBetween, tileBridgeCells, tileRoadBranches, tileRoadCells, tileRoadCost, type RoadStep, type SubRoadCell } from "@/lib/tileRoads";
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
@@ -275,6 +276,7 @@ const SUB_BIOME_LABEL: Record<string, string> = {
   thicket: "houští",
 };
 
+const MOUNTAIN_SUBS = new Set(["steep_slope", "crag", "mountain_shelf", "cliff_edge"]);
 const SUB_BIOME_COLOR: Record<string, string> = {
   fertile_flat: "var(--map-plains)", grassland: "var(--map-plains)", dry_flat: "var(--map-desert)",
   hillock: "var(--map-hills)", terrace: "var(--map-hills)", saddle: "var(--map-hills)",
@@ -1611,9 +1613,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 <g opacity={cityLayerCityId && !inActiveCity ? .42 : 1}>
                   {subBiomesOf(tile, cell.a, cell.b).filter(parcel=>zoom>=1.2||(parcel.parcelX%2===0&&parcel.parcelY%2===0)).map(parcel => {
                     const tex = subBiomeTex(parcel.subBiome);
-                    if (!tex || tex === TERRAIN_TEX[tile.biome_family]) return null;
-                    return <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY,zoom>=1.2?1:2)}
-                      fill={`url(#${texId(tex)})`} stroke="none" />;
+                    const pts = parcelQuad(point, parcel.parcelX, parcel.parcelY, zoom >= 1.2 ? 1 : 2);
+                    return <g key={`subbiome-${parcel.parcelIndex}`}>
+                      {tex && tex !== TERRAIN_TEX[tile.biome_family] && <polygon points={pts} fill={`url(#${texId(tex)})`} stroke="none" />}
+                      {SUB_BIOME_COLORS[parcel.subBiome] && <polygon points={pts} fill={SUB_BIOME_COLORS[parcel.subBiome]} opacity=".3" stroke="none" />}
+                    </g>;
                   })}
                 </g>
                 <g opacity={zoom>=1.2?.12:0}>
@@ -1639,8 +1643,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const roadSubs = new Set((roadSurface?.cells || []).map(sub => `${sub.x}:${sub.y}`));
                 return subBiomesOf(tile, cell.a, cell.b)
                   .filter(parcel => parcel.parcelX % step === 0 && parcel.parcelY % step === 0 && !roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)
-                    && (SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)"))
+                    && ((SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)") || MOUNTAIN_SUBS.has(parcel.subBiome)))
                   .map(parcel => {
+                    if (MOUNTAIN_SUBS.has(parcel.subBiome)) {
+                      const fx = (parcel.parcelX + step / 2) / TILE_PARCEL_COLS, fy = (parcel.parcelY + step / 2) / TILE_PARCEL_COLS;
+                      const cx = point.x + (fx - fy) * TILE_SIZE, cy = point.y + (fx + fy - 1) * TILE_SIZE / 2;
+                      const w = (parcel.subBiome === "crag" ? 26 : 20) * step;
+                      return <image key={`mtn-${parcel.parcelIndex}`} href={sprMountain} x={cx - w / 2} y={cy - w * .7} width={w} height={w * .85} pointerEvents="none" />;
+                    }
                     const fx = (parcel.parcelX + step / 2) / TILE_PARCEL_COLS, fy = (parcel.parcelY + step / 2) / TILE_PARCEL_COLS;
                     const cx = point.x + (fx - fy) * TILE_SIZE, cy = point.y + (fx + fy - 1) * TILE_SIZE / 2;
                     const w = 15 * step;
