@@ -3093,6 +3093,12 @@ async function occupyParcel(supabase: any, sessionId: string, parcelId: string, 
  * housing capacity the parcel adds. Only parcels on the city cell or a cell next to it.
  * Payload: { cityId, gridX, gridY, parcelIndex }
  */
+/**
+ * Paid urban parcel claim and optional worked→urban conversion.
+ * All rights checks, price quotation and the realm debit run together inside
+ * buy_city_parcel(), so a failed payment NEVER leaves a free building plot.
+ * RPC only executable by the trusted command-dispatch service role.
+ */
 async function executeClaimTileParcel(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
@@ -3101,72 +3107,36 @@ async function executeClaimTileParcel(
   const gridX = Number(payload.gridX);
   const gridY = Number(payload.gridY);
   const parcelIndex = Number(payload.parcelIndex);
-  if (!cityId || !Number.isInteger(gridX) || !Number.isInteger(gridY) || !Number.isInteger(parcelIndex) || parcelIndex < 0 || parcelIndex >= TILE_PARCEL_COUNT) {
-    return { events: [], error: "Neplatná parcela" };
+  if (!cityId || !Number.isInteger(gridX) || !Number.isInteger(gridY)
+    || !Number.isInteger(parcelIndex) || parcelIndex < 0 || parcelIndex >= TILE_PARCEL_COUNT) {
+    return { events: [], error: "Neplatná stavební parcela" };
   }
-
-  const { data: city } = await supabase.from("cities")
-    .select("id, name, owner_player, grid_x, grid_y, province_q, province_r")
-    .eq("id", cityId).eq("session_id", sessionId).maybeSingle();
-  if (!city || city.owner_player !== actor.name) return { events: [], error: "Toto město vám nepatří" };
-
-  const held = await cityParcelCapacity(supabase, sessionId, cityId);
-  const owned = held.cells.map((key: string) => {
-    const [x, y] = key.split(",").map(Number);
-    return { grid_x: x, grid_y: y };
-  });
-  owned.push({ grid_x: city.grid_x ?? city.province_q, grid_y: city.grid_y ?? city.province_r });
-  const onOwnCell = owned.some((cell: any) => cell.grid_x === gridX && cell.grid_y === gridY);
-  const adjacent = owned.some((cell: any) => Math.abs(cell.grid_x - gridX) + Math.abs(cell.grid_y - gridY) === 1);
-  if (!onOwnCell && !adjacent) return { events: [], error: "Parcela musí ležet na poli města nebo na poli přímo vedle něj" };
-
-  const { data: tile } = await supabase.from("province_hexes")
-    .select("id, is_passable, owner_player, biome_family")
-    .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
-  if (!tile || tile.is_passable === false || tile.biome_family === "sea") return { events: [], error: "Na tomto poli nelze získávat parcely" };
-  if (tile.owner_player && tile.owner_player !== actor.name) return { events: [], error: `Pole ovládá ${tile.owner_player}` };
-
+  // Materialize the deterministic 6×6 tile first; this is not an ownership change.
   const parcels = await ensureTileParcels(supabase, sessionId, gridX, gridY);
   const parcel = (parcels || []).find((row: any) => row.parcel_index === parcelIndex);
   if (!parcel) return { events: [], error: "Parcela nebyla nalezena" };
-  if (!parcel.buildable) return { events: [], error: "Tato parcela je nezastavitelná" };
-  if (parcel.city_id && parcel.city_id !== cityId) return { events: [], error: "Parcelu už drží jiné město" };
-  const converting = parcel.claim_kind === "worked" && parcel.city_id === cityId && parcel.status === "claimed";
-  if (parcel.status !== "wild" && !converting) return { events: [], error: "Parcela už je obsazená" };
-
-  const cost = parcelClaimCost(Number(parcel.build_cost_multiplier || 1), held.claimed);
-  const realm = await getRealmFull(supabase, sessionId, actor.name);
-  if (!realm) return { events: [], error: "Realm not found" };
-  if ((realm.gold_reserve || 0) < cost.gold) return { events: [], error: `Nedostatek zlata (potřeba ${cost.gold}, máš ${Math.floor(realm.gold_reserve || 0)})` };
-  if ((realm.production_reserve || 0) < cost.production) return { events: [], error: `Nedostatek produkce (potřeba ${cost.production}, máš ${Math.floor(realm.production_reserve || 0)})` };
-
-  // Optimistic parcel guard. If another command already acquired this physical tile,
-  // the UPDATE returns no row and must NEVER charge the realm.
-  let parcelUpdate = supabase.from("tile_parcels").update({
-    status: "claimed", city_id: cityId, owner_player: actor.name, claimed_turn: turnNumber, land_use: "open", claim_kind: "urban",
-  }).eq("id", parcel.id).eq("status", converting ? "claimed" : "wild");
-  parcelUpdate = converting
-    ? parcelUpdate.eq("claim_kind", "worked").eq("city_id", cityId).eq("owner_player", actor.name)
-    : parcelUpdate.is("city_id", null).is("owner_player", null);
-  const { data: changedParcel, error: claimError } = await parcelUpdate.select("id").maybeSingle();
-  if (claimError) return { events: [], error: claimError.message };
-  if (!changedParcel) return { events: [], error: "Parcela byla mezitím získána jiným příkazem" };
-
-  await supabase.from("realm_resources").update({
-    gold_reserve: realm.gold_reserve - cost.gold,
-    production_reserve: realm.production_reserve - cost.production,
-  }).eq("id", realm.id);
-
+  const { data: purchased, error } = await supabase.rpc("buy_city_parcel", {
+    p_session: sessionId, p_city: cityId, p_player: actor.name,
+    p_parcel: parcel.id, p_turn: turnNumber,
+  });
+  if (error) return { events: [], error: error.message };
+  if (purchased?.already) return { events: [], result: { parcelId: parcel.id, already: true } } as CommandResult;
+  const { data: city } = await supabase.from("cities").select("name").eq("id", cityId).eq("session_id", sessionId).maybeSingle();
+  const costGold = Number(purchased?.costGold ?? 0);
+  const costProduction = Number(purchased?.costProduction ?? 0);
   return insertEvents(supabase, commandId, [{
     ...base, event_type: "city_planning", city_id: cityId,
-    note: `${city.name} získalo parcelu ${parcelIndex + 1} na poli ${gridX}, ${gridY}.`,
+    note: `${city?.name || "Město"} ${purchased?.converted ? "převedlo využívanou půdu na stavební" : "koupilo stavební parcelu"} ${parcelIndex + 1} na poli ${gridX}, ${gridY}.`,
     importance: "minor",
     reference: {
-      cityId, gridX, gridY, parcelIndex, subBiome: parcel.sub_biome, elevation: parcel.elevation,
-      costGold: cost.gold, costProduction: cost.production,
-      capacityAdded: (parcel.capacity_slots || 0) * POPULATION_PER_SLOT,
+      cityId, gridX, gridY, parcelIndex,
+      subBiome: purchased?.subBiome,
+      elevation: purchased?.elevation,
+      costGold, costProduction,
+      capacityAdded: Number(purchased?.capacitySlots ?? 0) * POPULATION_PER_SLOT,
+      converted: Boolean(purchased?.converted),
     },
-  }], { parcelId: parcel.id });
+  }], { parcelId: parcel.id, costGold, costProduction });
 }
 
 /** Canonical subnode definitions — shared with the construction UI. */
