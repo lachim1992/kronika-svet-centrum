@@ -1268,7 +1268,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     edges: { from: { x: number; y: number }; to: { x: number; y: number } }[],
     wallColor: string, height = 2.4, prefix = "wall",
   ) => {
-    const h = height * 1.6;
+    const h = height * 1.3;
     return <g>
       {edges.map((edge, index) => (
         <path key={`${prefix}-shadow-${index}`} d={`M${edge.from.x} ${edge.from.y} L${edge.to.x} ${edge.to.y}`}
@@ -1296,7 +1296,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <rect x="-1.6" y={-h - 2.6} width="3.2" height={h + 2.6} fill="var(--map-city-wall-dark)" />
           <rect x="-1.6" y={-h - 2.6} width="3.2" height={h + 2.6} fill={`url(#${texId(texRock)})`} opacity=".5" />
           <rect x="-1.6" y={-h - 2.6} width="1.1" height={h + 2.6} fill="var(--map-city-wall-light)" opacity=".45" />
-          <path d={`M-2.1 ${-h - 2.6} L0 ${-h - 6.2} L2.1 ${-h - 2.6} Z`} fill={wallColor} stroke="var(--map-marker-edge)" strokeWidth=".3" />
+          <path d={`M-2.1 ${-h - 2.6} L0 ${-h - 5} L2.1 ${-h - 2.6} Z`} fill="var(--map-city-wall-dark)" stroke="none" />
+          <path d={`M-1.4 ${-h - 2.6} L0 ${-h - 4.6} L1.4 ${-h - 2.6} Z`} fill={wallColor} opacity=".35" />
         </g>
       ))}
     </g>;
