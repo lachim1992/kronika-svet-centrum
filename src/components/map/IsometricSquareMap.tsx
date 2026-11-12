@@ -1616,31 +1616,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {TERRAIN_TINT[tile.biome_family] && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill={TERRAIN_TINT[tile.biome_family]} opacity=".35" />}
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
-              {/* the road itself only paints the sub-parcels it runs through */}
-              {roadSurface && <g pointerEvents="none">
-                {/* outline pass: dark border shows only on the road's outer edge, so it reads raised */}
-                {roadSurface.cells.map(sub => (
-                  <polygon key={`road-edge-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
-                    fill="var(--map-marker-edge)" stroke="var(--map-marker-edge)" strokeWidth="2.2" strokeLinejoin="round" opacity=".45" />
-                ))}
-                {roadSurface.cells.map(sub => (
-                  <polygon key={`road-sub-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
-                    fill={`url(#${texId(texDirt)})`} stroke="none"
-                    opacity={roadSurface.draft ? .7 : 1} />
-                ))}
-                {visibleRoadLevel >= 2 && roadSurface.cells.map(sub => (
-                  <polygon key={`road-tint-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)} fill={roadFill} opacity=".35" />
-                ))}
-              </g>}
-
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
-              {!active && showSubBiomes && <g pointerEvents="none">
+              {showSubBiomes && <g pointerEvents="none">
                 <g opacity={cityLayerCityId && !inActiveCity ? .42 : 1}>
-                  {subBiomesOf(tile, cell.a, cell.b).filter(parcel=>zoom>=1.2||(parcel.parcelX%2===0&&parcel.parcelY%2===0)).map(parcel => {
-                    const tex = subBiomeTex(parcel.subBiome);
-                    const pts = parcelQuad(point, parcel.parcelX, parcel.parcelY, zoom >= 1.2 ? 1 : 2);
+                  {subBiomesOf(tile, cell.a, cell.b).map(parcel => {
+                    const tex = subBiomeTex(parcel.subBiome) || TERRAIN_TEX[tile.biome_family];
+                    const pts = parcelQuad(point, parcel.parcelX, parcel.parcelY, 1);
                     return <g key={`subbiome-${parcel.parcelIndex}`}>
-                      {tex && tex !== TERRAIN_TEX[tile.biome_family] && <polygon points={pts} fill={`url(#${texId(tex)})`} stroke="none" />}
+                      {tex && <polygon points={pts} fill={`url(#${texId(tex)})`} stroke={`url(#${texId(tex)})`} strokeWidth=".6" />}
                       {SUB_BIOME_COLORS[parcel.subBiome] && <polygon points={pts} fill={SUB_BIOME_COLORS[parcel.subBiome]} opacity=".3" stroke="none" />}
                     </g>;
                   })}
@@ -1661,10 +1644,27 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 </g>
               </g>}
 
+              {/* the road itself only paints the sub-parcels it runs through */}
+              {roadSurface && <g pointerEvents="none">
+                {/* outline pass: dark border shows only on the road's outer edge, so it reads raised */}
+                {roadSurface.cells.map(sub => (
+                  <polygon key={`road-edge-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
+                    fill="var(--map-marker-edge)" stroke="var(--map-marker-edge)" strokeWidth="2.2" strokeLinejoin="round" opacity=".45" />
+                ))}
+                {roadSurface.cells.map(sub => (
+                  <polygon key={`road-sub-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
+                    fill={`url(#${texId(texDirt)})`} stroke="none"
+                    opacity={roadSurface.draft ? .7 : 1} />
+                ))}
+                {visibleRoadLevel >= 2 && roadSurface.cells.map(sub => (
+                  <polygon key={`road-tint-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)} fill={roadFill} opacity=".35" />
+                ))}
+              </g>}
+
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
               {/* trees follow the forest sub-squares, so woods spill over macro borders */}
-              {!active && !footprint.length && (() => {
-                const step = zoom >= 1.2 ? 1 : 2;
+              {!footprint.length && (() => {
+                const step = 1;
                 const roadSubs = new Set((roadSurface?.cells || []).map(sub => `${sub.x}:${sub.y}`));
                 return subBiomesOf(tile, cell.a, cell.b)
                   .filter(parcel => parcel.parcelX % step === 0 && parcel.parcelY % step === 0 && !roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)
