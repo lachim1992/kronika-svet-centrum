@@ -1,6 +1,13 @@
 import { useIsMobile } from "@/hooks/use-mobile";
 import ManpowerHUDCard from "@/components/map/ManpowerHUDCard";
 import IsometricSquareMap from "@/components/map/IsometricSquareMap";
+import { lazy, Suspense, useState } from "react";
+// A stale module after an update must not blank the game: reload once, then fall back to a message.
+const Map3DTrial = lazy(() => import("@/components/map/three/Map3DTrial").catch(() => {
+  const key = "map3d-reload";
+  if (!sessionStorage.getItem(key)) { sessionStorage.setItem(key, "1"); window.location.reload(); }
+  return { default: () => <div className="flex h-full items-center justify-center text-sm text-muted-foreground">3D mapu se nepodařilo načíst. Obnovte stránku.</div> };
+}).then((m) => { sessionStorage.removeItem("map3d-reload"); return m; }));
 
 interface Props {
   sessionId: string;
@@ -17,9 +24,15 @@ interface Props {
 
 const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentTurn, onCityClick, gridKind = "hex6", backgroundMode = false, onDetailOpenChange, resetSignal = 0 }: Props) => {
   const isMobile = useIsMobile();
+  const [view3d, setView3d] = useState(false);
 
   return (
     <div className="relative h-full w-full min-h-[300px]">
+      {view3d ? (
+        <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Načítám 3D mapu…</div>}>
+          <Map3DTrial sessionId={sessionId} />
+        </Suspense>
+      ) : (
       <IsometricSquareMap
         sessionId={sessionId}
         playerName={currentPlayerName}
@@ -29,6 +42,13 @@ const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentT
         onDetailOpenChange={onDetailOpenChange}
         resetSignal={resetSignal}
       />
+      )}
+      {!backgroundMode && (
+        <button type="button" onClick={() => setView3d((v) => !v)}
+          className="absolute bottom-4 left-4 z-30 rounded-full border border-border bg-card/85 px-3 py-1 text-xs font-semibold text-foreground shadow-lg backdrop-blur-md hover:bg-card">
+          {view3d ? "Zpět na původní mapu" : "3D náhled (zkušební)"}
+        </button>
+      )}
 
       {/* Phase 5: roads are built on the physical map layer (road_projects /
           road_segments) only. The abstract province_routes graph stays internal
