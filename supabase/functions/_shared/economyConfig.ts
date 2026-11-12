@@ -16,6 +16,11 @@ export const ECONOMY = {
    * Applies ONLY to primary staffed source producers of food/water/fuel;
    * manufacturing and noncritical exports keep the full stability penalty. */
   criticalSourceStabilityFloor: 0.72,
+  /** Autonomous farm/fishing/utility tasks need less central organisation than
+   * industrial production. The effective stability curve is 60% autonomous
+   * resilience + 40% civic stability, still bounded below by the floor above.
+   * Zero workers/land/inputs still means zero production. */
+  criticalSourceAutonomy: 0.6,
   guildProductivity: 0.15, riverFriction: 0.8, riverCapacity: 70,
   priceScarcityGain: 1.4, priceGlutRelief: 0.35, priceFloor: 0.45, priceCeiling: 3.2,
   priceStorageRelief: 0.05, priceRiskCost: 0.04, arbitrageMargin: 0.03,
