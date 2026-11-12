@@ -1567,9 +1567,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </pattern>
           <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="var(--map-water-glint)" strokeWidth="1" opacity=".22" /></pattern>
           {Array.from(new Set([...Object.values(TERRAIN_TEX), texDirt])).map(href => (
-            <pattern key={href} id={`tex-${href.split("/").pop()?.split(".")[0]}`} width={TILE_SIZE * 2} height={TILE_SIZE * 2} patternUnits="userSpaceOnUse"
+            <pattern key={href} id={`tex-${href.split("/").pop()?.split(".")[0]}`} width={TILE_SIZE * .6} height={TILE_SIZE * .6} patternUnits="userSpaceOnUse"
               patternTransform={`matrix(1 .5 -1 .5 ${pan.x} ${pan.y})`}>
-              <image href={href} width={TILE_SIZE * 2} height={TILE_SIZE * 2} preserveAspectRatio="none" />
+              <image href={href} width={TILE_SIZE * .6} height={TILE_SIZE * .6} preserveAspectRatio="none" />
             </pattern>
           ))}
         </defs>
@@ -1600,6 +1600,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {/* the road itself only paints the sub-parcels it runs through */}
               {roadSurface && <g pointerEvents="none">
+                {/* outline pass: dark border shows only on the road's outer edge, so it reads raised */}
+                {roadSurface.cells.map(sub => (
+                  <polygon key={`road-edge-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
+                    fill="var(--map-marker-edge)" stroke="var(--map-marker-edge)" strokeWidth="2.2" strokeLinejoin="round" opacity=".45" />
+                ))}
                 {roadSurface.cells.map(sub => (
                   <polygon key={`road-sub-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
                     fill={`url(#${texId(texDirt)})`} stroke="none"
