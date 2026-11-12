@@ -16,7 +16,9 @@ export type ChargeResult = { ok: true; before: ReserveRow; after: { gold_reserve
 export const CAS_EPSILON = 1e-6;
 const n = (v: unknown) => Number(v ?? 0) || 0;
 
-export async function chargeReserves(io: ReserveIO, cost: ReserveCost, attempts = 3, first?: ReserveRow | null): Promise<ChargeResult> {
+export async function chargeReserves(io: ReserveIO, rawCost: ReserveCost, attempts = 3, first?: ReserveRow | null): Promise<ChargeResult> {
+  // gold_reserve is an integer column: never charge a fraction (would fail the write).
+  const cost = { gold: Math.ceil(n(rawCost.gold) - CAS_EPSILON), production: n(rawCost.production) };
   for (let i = 0; i < attempts; i++) {
     const cur = i === 0 && first ? first : await io.read();
     if (!cur) return { ok: false, error: "Realm not found" };
@@ -24,7 +26,11 @@ export async function chargeReserves(io: ReserveIO, cost: ReserveCost, attempts 
     if (g + CAS_EPSILON < cost.gold) return { ok: false, error: `Nedostatek zlata (potřeba ${cost.gold}, máš ${Math.floor(g)})` };
     if (p + CAS_EPSILON < cost.production) return { ok: false, error: `Nedostatek produkce (potřeba ${cost.production}, máš ${Math.floor(p)})` };
     const next = { gold_reserve: g - cost.gold, production_reserve: Math.max(0, p - cost.production) };
-    if (await io.cas(cur, next)) return { ok: true, before: cur, after: next };
+    try {
+      if (await io.cas(cur, next)) return { ok: true, before: cur, after: next };
+    } catch (e: any) {
+      return { ok: false, error: `Platbu nelze zapsat: ${e?.message || e}` };
+    }
   }
   return { ok: false, error: "Zdroje se mezitím změnily, zkuste to znovu" };
 }
@@ -33,7 +39,7 @@ export async function refundReserves(io: ReserveIO, cost: ReserveCost, attempts 
   for (let i = 0; i < attempts; i++) {
     const cur = await io.read();
     if (!cur) return false;
-    if (await io.cas(cur, { gold_reserve: n(cur.gold_reserve) + cost.gold, production_reserve: n(cur.production_reserve) + cost.production })) return true;
+    if (await io.cas(cur, { gold_reserve: n(cur.gold_reserve) + Math.ceil(n(cost.gold) - CAS_EPSILON), production_reserve: n(cur.production_reserve) + cost.production })) return true;
   }
   return false;
 }
@@ -47,11 +53,13 @@ export function realmReserveIO(supabase: any, realmId: string): ReserveIO {
     },
     async cas(e, next) {
       const g = n(e.gold_reserve), p = n(e.production_reserve);
-      const { data, error } = await supabase.from("realm_resources").update(next).eq("id", e.id)
+      const row = { gold_reserve: Math.round(next.gold_reserve), production_reserve: next.production_reserve };
+      const { data, error } = await supabase.from("realm_resources").update(row).eq("id", e.id)
         .gte("gold_reserve", g - CAS_EPSILON).lte("gold_reserve", g + CAS_EPSILON)
         .gte("production_reserve", p - CAS_EPSILON).lte("production_reserve", p + CAS_EPSILON)
         .select("id");
-      return !error && Array.isArray(data) && data.length > 0;
+      if (error) throw new Error(error.message);
+      return Array.isArray(data) && data.length > 0;
     },
   };
 }
