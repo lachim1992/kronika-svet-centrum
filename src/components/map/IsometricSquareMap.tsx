@@ -241,6 +241,17 @@ const TERRAIN_TEX: Record<string, string> = {
   sea: texWater, plains: texGrass, grassland: texGrass, hills: texGrass, swamp: texGrass,
   forest: texForest, dense_forest: texForest, mountains: texRock, mountain: texRock, tundra: texRock, desert: texSand,
 };
+const SUB_TEX_BY_VAR: Record<string, string> = {
+  "--map-plains": texGrass, "--map-plains-edge": texGrass, "--map-hills": texGrass, "--map-hills-edge": texRock,
+  "--map-mountain": texRock, "--map-mountain-edge": texRock, "--map-forest": texForest, "--map-water": texWater,
+  "--map-water-edge": texSand, "--map-swamp": texGrass, "--map-swamp-edge": texGrass, "--map-desert": texSand,
+  "--map-desert-edge": texSand, "--map-tundra": texRock, "--map-tundra-edge": texRock,
+};
+const texId = (href: string) => `tex-${href.split("/").pop()?.split(".")[0]}`;
+const subBiomeTex = (subBiome: string) => {
+  const v = (SUB_BIOME_COLOR[subBiome] || "").match(/var\((--[\w-]+)\)/)?.[1];
+  return v ? SUB_TEX_BY_VAR[v] : undefined;
+};
 const TERRAIN_TINT: Record<string, string> = { hills: "var(--map-hills)", swamp: "var(--map-swamp)" };
 const BIOMES: Record<string, [string, string]> = {
   sea: ["var(--map-water)", "var(--map-water-edge)"], plains: ["var(--map-plains)", "var(--map-plains-edge)"],
@@ -1576,7 +1587,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
-                strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
+                strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 0}
                 opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />
               {TERRAIN_TEX[tile.biome_family] && <polygon points={squareDiamondPoints(point, TILE_SIZE - (holderCity || active ? 2 : 0))} pointerEvents="none"
                 fill={`url(#tex-${TERRAIN_TEX[tile.biome_family].split("/").pop()?.split(".")[0]})`} opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />}
@@ -1594,11 +1605,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
               {!active && showSubBiomes && <g pointerEvents="none">
-                <g opacity=".14">
-                  {subBiomesOf(tile, cell.a, cell.b).filter(parcel=>zoom>=1.2||(parcel.parcelX%2===0&&parcel.parcelY%2===0)).map(parcel => (
-                    <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY,zoom>=1.2?1:2)}
-                      fill={SUB_BIOME_COLOR[parcel.subBiome] || colors[0]} stroke="none" />
-                  ))}
+                <g opacity={cityLayerCityId && !inActiveCity ? .42 : 1}>
+                  {subBiomesOf(tile, cell.a, cell.b).filter(parcel=>zoom>=1.2||(parcel.parcelX%2===0&&parcel.parcelY%2===0)).map(parcel => {
+                    const tex = subBiomeTex(parcel.subBiome);
+                    if (!tex || tex === TERRAIN_TEX[tile.biome_family]) return null;
+                    return <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY,zoom>=1.2?1:2)}
+                      fill={`url(#${texId(tex)})`} stroke="none" />;
+                  })}
                 </g>
                 <g opacity={zoom>=1.2?.12:0}>
                   {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
