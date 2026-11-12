@@ -12,7 +12,7 @@ import {
 } from "./tileParcels.ts";
 
 const PARCEL_SELECT =
-  "id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, status, buildable, capacity_slots, build_cost_multiplier, sub_biome, elevation, city_id, owner_player, land_use";
+  "id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, status, buildable, capacity_slots, build_cost_multiplier, sub_biome, elevation, city_id, owner_player, land_use, claim_kind, region_name";
 
 /** Materialize the deterministic 36 sub-parcels of a map cell (idempotent). */
 export async function ensureTileParcels(
@@ -73,9 +73,10 @@ export async function ensureTileParcels(
 /** Housing capacity backed by the sub-parcels a city actually holds. */
 export async function cityParcelCapacity(supabase: any, sessionId: string, cityId: string) {
   const { data } = await supabase.from("tile_parcels")
-    .select("capacity_slots, status, grid_x, grid_y")
+    .select("capacity_slots, status, grid_x, grid_y, claim_kind")
     .eq("session_id", sessionId).eq("city_id", cityId)
-    .in("status", ["claimed", "occupied"]);
+    .in("status", ["claimed", "occupied"])
+    .or("claim_kind.is.null,claim_kind.eq.urban");
   const rows = data || [];
   const slots = rows.reduce((sum: number, row: any) => sum + (row.capacity_slots || 0), 0);
   const cells = new Set<string>(rows.map((row: any) => `${row.grid_x},${row.grid_y}`));
@@ -100,7 +101,7 @@ function quality(row: any) {
 
 /** Best defensible / workable seat: high capacity, cheap ground, near the middle of the cell. */
 function pickSeat(parcels: any[], preferredIndex: number | null) {
-  const buildable = parcels.filter((row: any) => row.buildable && (!row.city_id || row.status !== "occupied"));
+  const buildable = parcels.filter((row: any) => row.buildable && row.claim_kind !== "worked" && (!row.city_id || row.status !== "occupied"));
   if (!buildable.length) return null;
   if (preferredIndex !== null) {
     const wanted = buildable.find((row: any) => row.parcel_index === preferredIndex);
