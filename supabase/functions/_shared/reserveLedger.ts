@@ -55,7 +55,7 @@ export function realmReserveIO(supabase: any, realmId: string): ReserveIO {
       const g = n(e.gold_reserve), p = n(e.production_reserve);
       const row = { gold_reserve: Math.round(next.gold_reserve), production_reserve: next.production_reserve };
       const { data, error } = await supabase.from("realm_resources").update(row).eq("id", e.id)
-        .gte("gold_reserve", g - CAS_EPSILON).lte("gold_reserve", g + CAS_EPSILON)
+        .eq("gold_reserve", Math.round(g))
         .gte("production_reserve", p - CAS_EPSILON).lte("production_reserve", p + CAS_EPSILON)
         .select("id");
       if (error) throw new Error(error.message);
