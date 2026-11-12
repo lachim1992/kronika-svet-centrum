@@ -1,3 +1,4 @@
+import { terrainReason, sanitizeRegionName } from "../_shared/terrainSuitability.ts";
 import { validateBuild, canonicalBuilding, stripProductionEffects } from "../_shared/buildValidation.ts";
 import { validateBuildingUpgrade, quoteBuildingUpgrade } from '../_shared/upgradeValidation.ts';
 import { strategicBuildCostMult, discountedCost } from '../_shared/strategicEffects.ts';
@@ -519,6 +520,25 @@ async function executeCommand(
     case "ASSIGN_CITY_PARCEL":
       return await executeAssignCityParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+
+    case "CLAIM_WORKED_PARCEL": {
+      const { data, error } = await supabase.rpc("claim_worked_parcel", { p_session: sessionId, p_city: String(payload.cityId || ""),
+        p_player: actor.name, p_parcel: String(payload.parcelId || ""), p_turn: turnNumber });
+      if (error) return { events: [], error: error.message };
+      return insertEvents(supabase, commandId, [{ ...base, event_type: "city_planning", city_id: payload.cityId,
+        note: `Město začalo zdarma využívat okolní parcelu.`, importance: "minor", reference: { parcelId: payload.parcelId, ...data } }], data);
+    }
+
+    case "RENAME_PARCEL": {
+      const name = sanitizeRegionName(payload.name);
+      if (!name) return { events: [], error: "Název musí mít 2–48 znaků (písmena, čísla, mezera, - ' .)" };
+      const { data, error } = await supabase.from("tile_parcels").update({ region_name: name })
+        .eq("id", String(payload.parcelId || "")).eq("session_id", sessionId).eq("owner_player", actor.name)
+        .in("status", ["claimed", "occupied"]).select("id");
+      if (error) return { events: [], error: error.message };
+      if (!data?.length) return { events: [], error: "Pojmenovat lze jen vlastní parcelu" };
+      return { events: [], result: { parcelId: data[0].id, name } } as any;
+    }
 
     case "CLAIM_TILE_PARCEL":
       return await executeClaimTileParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
@@ -3037,7 +3057,7 @@ async function getRealmFull(supabase: any, sessionId: string, playerName: string
 /** First claimed sub-parcel with remaining slots, optionally a specific one. */
 async function getAvailableParcel(supabase: any, cityId: string, requestedParcelId?: string) {
   let query = supabase.from("tile_parcels")
-    .select("id, city_id, grid_x, grid_y, parcel_index, status, capacity_slots")
+    .select("id, city_id, grid_x, grid_y, parcel_index, status, capacity_slots, claim_kind, sub_biome")
     .eq("city_id", cityId)
     .in("status", ["claimed", "occupied"])
     .order("parcel_index")
@@ -3110,7 +3130,8 @@ async function executeClaimTileParcel(
   if (!parcel) return { events: [], error: "Parcela nebyla nalezena" };
   if (!parcel.buildable) return { events: [], error: "Tato parcela je nezastavitelná" };
   if (parcel.city_id && parcel.city_id !== cityId) return { events: [], error: "Parcelu už drží jiné město" };
-  if (parcel.status !== "wild") return { events: [], error: "Parcela už je obsazená" };
+  const converting = parcel.claim_kind === "worked" && parcel.city_id === cityId && parcel.status === "claimed";
+  if (parcel.status !== "wild" && !converting) return { events: [], error: "Parcela už je obsazená" };
 
   const cost = parcelClaimCost(Number(parcel.build_cost_multiplier || 1), held.claimed);
   const realm = await getRealmFull(supabase, sessionId, actor.name);
@@ -3119,8 +3140,8 @@ async function executeClaimTileParcel(
   if ((realm.production_reserve || 0) < cost.production) return { events: [], error: `Nedostatek produkce (potřeba ${cost.production}, máš ${Math.floor(realm.production_reserve || 0)})` };
 
   const { error: claimError } = await supabase.from("tile_parcels").update({
-    status: "claimed", city_id: cityId, owner_player: actor.name, claimed_turn: turnNumber, land_use: "open",
-  }).eq("id", parcel.id).eq("status", "wild");
+    status: "claimed", city_id: cityId, owner_player: actor.name, claimed_turn: turnNumber, land_use: "open", claim_kind: "urban",
+  }).eq("id", parcel.id).eq("status", converting ? "claimed" : "wild");
   if (claimError) return { events: [], error: claimError.message };
 
   await supabase.from("realm_resources").update({
@@ -3429,6 +3450,11 @@ async function executeBuildBuilding(
 
   const targetParcel = await getAvailableParcel(supabase, cityId, parcelId);
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
+  if (targetParcel) {
+    if (targetParcel.claim_kind === "worked") return { events: [], error: "Na využívané půdě nelze stavět — nejdřív ji kup jako stavební parcelu" };
+    const tr = terrainReason(template?.effects?.recipe_keys, targetParcel.sub_biome);
+    if (tr) return { events: [], error: tr };
+  }
 
   // Resolve city name if missing
   if (!cityName) {
