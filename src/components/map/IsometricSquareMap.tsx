@@ -1,3 +1,9 @@
+import texGrass from "@/assets/map/tex-grass.jpg";
+import texForest from "@/assets/map/tex-forest.jpg";
+import texRock from "@/assets/map/tex-rock.jpg";
+import texWater from "@/assets/map/tex-water.jpg";
+import texSand from "@/assets/map/tex-sand.jpg";
+import sprTrees from "@/assets/map/spr-trees.png";
 import { isSandboxMode } from "@/hooks/useSandboxMode";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -231,6 +237,11 @@ const NODE_STYLE: Record<string, { landUse: string; accent: string; walled: bool
 };
 
 const TILE_SIZE = 42;
+const TERRAIN_TEX: Record<string, string> = {
+  sea: texWater, plains: texGrass, grassland: texGrass, hills: texGrass, swamp: texGrass,
+  forest: texForest, dense_forest: texForest, mountains: texRock, mountain: texRock, tundra: texRock, desert: texSand,
+};
+const TERRAIN_TINT: Record<string, string> = { hills: "var(--map-hills)", swamp: "var(--map-swamp)" };
 const BIOMES: Record<string, [string, string]> = {
   sea: ["var(--map-water)", "var(--map-water-edge)"], plains: ["var(--map-plains)", "var(--map-plains-edge)"],
   grassland: ["var(--map-plains)", "var(--map-plains-edge)"], forest: ["var(--map-forest)", "var(--map-forest-edge)"],
@@ -1540,6 +1551,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <line x1="0" y1="0" x2="0" y2="6" stroke="var(--map-city-rival)" strokeWidth="2.4" opacity=".85" />
           </pattern>
           <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="var(--map-water-glint)" strokeWidth="1" opacity=".22" /></pattern>
+          {Array.from(new Set(Object.values(TERRAIN_TEX))).map(href => (
+            <pattern key={href} id={`tex-${href.split("/").pop()?.split(".")[0]}`} width={TILE_SIZE * 2} height={TILE_SIZE * 2} patternUnits="userSpaceOnUse"
+              patternTransform={`matrix(1 .5 -1 .5 ${pan.x} ${pan.y})`}>
+              <image href={href} width={TILE_SIZE * 2} height={TILE_SIZE * 2} preserveAspectRatio="none" />
+            </pattern>
+          ))}
         </defs>
         <g transform={`scale(${zoom})`}>
           {sortedTiles.map(tile => {
@@ -1561,6 +1578,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 1}
                 opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />
+              {TERRAIN_TEX[tile.biome_family] && <polygon points={squareDiamondPoints(point, TILE_SIZE - (holderCity || active ? 2 : 0))} pointerEvents="none"
+                fill={`url(#tex-${TERRAIN_TEX[tile.biome_family].split("/").pop()?.split(".")[0]})`} opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />}
+              {TERRAIN_TINT[tile.biome_family] && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill={TERRAIN_TINT[tile.biome_family]} opacity=".35" />}
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {/* the road itself only paints the sub-parcels it runs through */}
@@ -1574,7 +1594,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
               {!active && showSubBiomes && <g pointerEvents="none">
-                <g opacity=".5">
+                <g opacity=".14">
                   {subBiomesOf(tile, cell.a, cell.b).filter(parcel=>zoom>=1.2||(parcel.parcelX%2===0&&parcel.parcelY%2===0)).map(parcel => (
                     <polygon key={`subbiome-${parcel.parcelIndex}`} points={parcelQuad(point, parcel.parcelX, parcel.parcelY,zoom>=1.2?1:2)}
                       fill={SUB_BIOME_COLOR[parcel.subBiome] || colors[0]} stroke="none" />
@@ -1597,7 +1617,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </g>}
 
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
-              {tile.biome_family.includes("forest") && !footprint.length && <Trees x={point.x - 8} y={point.y - 11} width="16" height="16" fill="var(--map-forest-edge)" stroke="var(--map-label)" strokeWidth=".8" />}
+              {tile.biome_family.includes("forest") && !footprint.length && <image href={sprTrees} x={point.x - 34} y={point.y - 34} width="68" height="46" pointerEvents="none" />}
               {active && tileParcels.length > 0
                 ? renderTileParcels(point)
                 : footprint.length > 0 && renderCityFootprint(footprint, point, holderOwn)}
