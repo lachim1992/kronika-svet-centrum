@@ -29,6 +29,7 @@ import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/Build
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
 import { parcelPotential } from "../../../supabase/functions/_shared/parcelEconomy";
+import { terrainReason } from "../../../supabase/functions/_shared/terrainSuitability";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
 import spriteWorkshop from "@/assets/map/node-workshop.png";
 import spriteGuardPost from "@/assets/map/node-guard-post.png";
@@ -2168,6 +2169,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             hasWater={!!selected?.has_river || !!selected?.coastal}
             treasury={{ gold: treasury.gold, production: treasury.production }}
             subnodeBlockReason={key => subnodeBlockReason({ key } as SubnodeOption)}
+            terrainBlockReason={item => terrainReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome)}
             basketOptions={districtKey => {
               const blueprint = PRODUCTION_DISTRICTS.find(d => d.key === districtKey);
               const choices = blueprint?.baskets?.length ? blueprint.baskets : DEMAND_BASKETS.map(b => b.key);
