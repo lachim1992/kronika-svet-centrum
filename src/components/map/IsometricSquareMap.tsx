@@ -1,3 +1,4 @@
+import sprHill from "@/assets/map/spr-hill.png";
 import sprMountain from "@/assets/map/spr-mountain.png";
 import texGrass from "@/assets/map/tex-grass.jpg";
 import texRock from "@/assets/map/tex-rock.jpg";
@@ -276,6 +277,7 @@ const SUB_BIOME_LABEL: Record<string, string> = {
   thicket: "houští",
 };
 
+const PEAK_TILES = new Set(["mountains", "mountain", "hills", "tundra"]);
 const MOUNTAIN_SUBS = new Set(["steep_slope", "crag", "mountain_shelf", "cliff_edge"]);
 const SUB_BIOME_COLOR: Record<string, string> = {
   fertile_flat: "var(--map-plains)", grassland: "var(--map-plains)", dry_flat: "var(--map-desert)",
@@ -1643,8 +1645,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const roadSubs = new Set((roadSurface?.cells || []).map(sub => `${sub.x}:${sub.y}`));
                 return subBiomesOf(tile, cell.a, cell.b)
                   .filter(parcel => parcel.parcelX % step === 0 && parcel.parcelY % step === 0 && !roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)
-                    && ((SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)") || MOUNTAIN_SUBS.has(parcel.subBiome)))
+                    && ((SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)") || MOUNTAIN_SUBS.has(parcel.subBiome)
+                      || ((subBiomeTex(parcel.subBiome) || TERRAIN_TEX[tile.biome_family]) === texRock && parcel.parcelX % (2 * step) === 0 && parcel.parcelY % (2 * step) === 0)))
                   .map(parcel => {
+                    const peakTile = PEAK_TILES.has(tile.biome_family);
+                    if (!(SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)") && !(MOUNTAIN_SUBS.has(parcel.subBiome) && peakTile && subBiomeTex(parcel.subBiome) !== texSand)) {
+                      if (["desert", "sea"].includes(tile.biome_family) || subBiomeTex(parcel.subBiome) === texSand || subBiomeTex(parcel.subBiome) === texWater) return null;
+                      const fx = (parcel.parcelX + step / 2) / TILE_PARCEL_COLS, fy = (parcel.parcelY + step / 2) / TILE_PARCEL_COLS;
+                      const cx = point.x + (fx - fy) * TILE_SIZE, cy = point.y + (fx + fy - 1) * TILE_SIZE / 2;
+                      const w = 13 * step;
+                      return <image key={`hill-${parcel.parcelIndex}`} href={sprHill} x={cx - w / 2} y={cy - w * .55} width={w} height={w * .75} pointerEvents="none" />;
+                    }
                     if (MOUNTAIN_SUBS.has(parcel.subBiome)) {
                       const fx = (parcel.parcelX + step / 2) / TILE_PARCEL_COLS, fy = (parcel.parcelY + step / 2) / TILE_PARCEL_COLS;
                       const cx = point.x + (fx - fy) * TILE_SIZE, cy = point.y + (fx + fy - 1) * TILE_SIZE / 2;
