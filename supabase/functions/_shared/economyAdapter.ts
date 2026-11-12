@@ -1,4 +1,5 @@
 import { STARTER_RESERVE_GOODS } from './starterEconomy.ts';
+import { suppressStarterLandExtraction } from './starterParcelPolicy.ts';
 import { parcelProducers, parcelClosing, parcelWorkshops } from './parcelEconomy.ts';
 import { resolveGoodsEconomy, produced, type Snapshot, type City, type Good, type Producer, type Edge } from './goodsEconomy.ts';
 import { actualSoldiers, workforceLawModifiers } from './manpower.ts';
@@ -271,9 +272,9 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   };
   const contractNotes:{structure:string;notes:string[]}[]=[];
   for(const b of db.city_buildings.filter(b=>b.status==='completed')){
-    // Founding huts are retained in the save but their extraction is now attributed to physical land.
-    // Wells and real player-built farms/workshops are never suppressed.
-    if(parcelMode&&b.effects?.starter_economy&&(b.effects?.recipe_keys||[]).some((k:string)=>['hunt_game','catch_fish','cut_peat','draw_river_water'].includes(k)))continue;
+    // Only wild gathering/peat are replaced by land. The installed fishery and freshwater
+    // intake are staffed settlement facilities, not phantom outputs from the parcel.
+    if(parcelMode && b.effects?.starter_economy && suppressStarterLandExtraction(b.effects?.recipe_keys))continue;
     const template=db.building_templates.find(t=>t.id===b.template_id);
     // Old saves keep stale role metadata: reconcile it against the current recipe catalogue.
     const norm=normalizeProductionContract({...template?.effects,...b.effects},recipeByKey);

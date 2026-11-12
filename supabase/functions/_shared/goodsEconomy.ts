@@ -351,6 +351,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // Structures declare jobs; the city fills them from the civilian workforce of the sector.
   // No worker is counted twice, employment never exceeds supply nor declared jobs.
   const producerSector=(p:Producer)=>BASKET_SECTOR[goodByKey.get(p.recipe.good)?.basket||'']||'crafting';
+  /** One coefficient for both the labour planner and the production ledger.
+   * A planner assuming the old penalty reserves too many critical-source workers,
+   * crowding out fuel/processing/exports after output is recalibrated. */
+  const producerStability=(p:Producer,c:City,g:Good)=>p.source &&
+    ['staple_food','drinking_water','fuel'].includes(g.basket)
+      ? Math.max(C.criticalSourceStabilityFloor,
+          C.criticalSourceAutonomy+(1-C.criticalSourceAutonomy)*clamp(c.stability))
+      : clamp(c.stability);
   /**
    * HEADCOUNT. A producing structure declares its crew (ECONOMY.structureJobsBase at level 1,
    * doubling per level). Jobs are split between its recipe lines by allocation, so a structure
@@ -408,7 +416,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const critJobsOf=(r:typeof plan[number])=>{let jobs=0;
       for(const tier of SUBSISTENCE_TIERS)for(const basket of tier.baskets){let need=subsistenceNeed(c,basket)*tier.share;
         const cands=r.own.filter(p=>goodByKey.get(p.recipe.good)?.basket===basket&&jobsOf(p)>C.epsilon)
-          .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*clamp(c.stability)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
+          .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*producerStability(p,c,goodByKey.get(p.recipe.good)!)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
           .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
         for(const {p,per} of cands){if(need<=C.epsilon)break;const take=Math.min(jobsOf(p),need/per);jobs+=take;need-=take*per;}}
       return jobs;};
@@ -433,7 +441,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         for(const basket of tier.baskets){
           let need=subsistenceNeed(c,basket)*tier.share;
           const cands=r.own.filter(p=>goodByKey.get(p.recipe.good)?.basket===basket&&jobsOf(p)>C.epsilon)
-            .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*clamp(c.stability)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
+            .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*producerStability(p,c,goodByKey.get(p.recipe.good)!)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
             .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
           for(const {p,per} of cands){if(left<=C.epsilon||need<=C.epsilon)break;
             const take=Math.min(left,jobsOf(p)-(assigned.get(p.id)||0),need/per);if(take<=C.epsilon)continue;
@@ -672,7 +680,12 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const sector=BASKET_SECTOR[g.basket]||'crafting';
       const jobs=jobsOf(p),staffed=staffingRatio(p);
       // POTENTIAL OUTPUT: what the staffed facility could make if supplied with its inputs.
-      const factors={staffing:staffed,stability:clamp(c.stability),logistics:clamp(p.logistics),mastery:n(p.mastery),
+      // Basic physical extraction can continue during a governance crisis. Stability
+      // still penalises industry and discretionary goods normally; this limited floor
+      // prevents essential production from collapsing harder as famine lowers stability.
+      // Finite parcel harvest limits and actual staffed labour remain unchanged.
+      const stability=producerStability(p,c,g);
+      const factors={staffing:staffed,stability,logistics:clamp(p.logistics),mastery:n(p.mastery),
         infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1,tools:toolFactor(p),capital:capitalFactor(p)};
       const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
       const desired=Math.max(0,target-(realized.get(id)||0));

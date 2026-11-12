@@ -31,6 +31,7 @@ import {
 } from "../_shared/citySeat.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
+import { foundingHamletPopulation, FOUNDING_HAMLET_POPULATION } from "../_shared/foundingPopulation.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
 import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
@@ -987,11 +988,7 @@ async function executeFoundCity(
     // atomically out of the rural population pool of the surrounding cells
     // instead of creating them ex nihilo. INVARIANT 2 becomes active then.
     // Guarded by src/test/population-ownership.test.ts.
-    population_total: 1000,
-    population_peasants: 800,
-    population_burghers: 150,
-    population_clerics: 50,
-    population_warriors: 0,
+    ...foundingHamletPopulation(),
     city_stability: 70,
     local_grain_reserve: 0,
     local_granary_capacity: 0,
@@ -1003,7 +1000,7 @@ async function executeFoundCity(
   // ── 1b. Physical footprint on the 32 sub-parcel grid of the founding cell ──
   const seatResult = await seatCityOnParcels(supabase, {
     sessionId, cityId, cityName: cityName.trim(), ownerPlayer: actor.name,
-    gridX: freeQ, gridY: freeR, population: 1000, turnNumber,
+    gridX: freeQ, gridY: freeR, population: FOUNDING_HAMLET_POPULATION, turnNumber,
     preferredIndex: foundedParcelIndex,
   });
   if (seatResult.seatIndex !== null && seatResult.seatIndex !== foundedParcelIndex) {
@@ -3454,7 +3451,7 @@ async function executeBuildBuilding(
   const reserveIO = realmReserveIO(supabase, realm.id);
   const buildCost = { gold: costGold, production: prodCost };
   const charge = await chargeReserves(reserveIO, buildCost, 3, realm);
-  if (!charge.ok) return { events: [], error: charge.error };
+  if (charge.ok === false) return { events: [], error: charge.error };
 
   // Insert building
   const buildDuration = building.build_duration || building.build_turns || 1;
@@ -3556,7 +3553,7 @@ async function executeUpgradeBuilding(
   if (!paid) {
     await supabase.from("city_buildings").update({ current_level: existing.current_level ?? 1, name: existing.name, effects: existing.effects })
       .eq("id", buildingId).eq("current_level", newLevel);
-    return { events: [], error: paidCharge.ok ? "" : paidCharge.error };
+    return { events: [], error: paidCharge.ok === false ? paidCharge.error : "Platba stavby se nezdařila" };
   }
   const updateData: any = {};
   const newName = quote.name; const newEffects = quote.effects; const isWonderConversion = quote.wonder && !existing.is_wonder;
@@ -3641,7 +3638,7 @@ async function executeBuildDistrict(
   const reserveIO = realmReserveIO(supabase, realm.id);
   const buildCost = { gold: costGold, production: prodCost };
   const charge = await chargeReserves(reserveIO, buildCost, 3, realm);
-  if (!charge.ok) return { events: [], error: charge.error };
+  if (charge.ok === false) return { events: [], error: charge.error };
 
   const buildTurns = district.build_turns || 1;
   const { data: inserted, error: dErr } = await supabase.from("city_districts").insert({
