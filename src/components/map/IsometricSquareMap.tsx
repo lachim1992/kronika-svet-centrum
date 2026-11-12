@@ -1,5 +1,4 @@
 import texGrass from "@/assets/map/tex-grass.jpg";
-import texForest from "@/assets/map/tex-forest.jpg";
 import texRock from "@/assets/map/tex-rock.jpg";
 import texWater from "@/assets/map/tex-water.jpg";
 import texSand from "@/assets/map/tex-sand.jpg";
