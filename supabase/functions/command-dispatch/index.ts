@@ -3060,6 +3060,7 @@ async function getAvailableParcel(supabase: any, cityId: string, requestedParcel
     .select("id, city_id, grid_x, grid_y, parcel_index, status, capacity_slots, claim_kind, sub_biome")
     .eq("city_id", cityId)
     .in("status", ["claimed", "occupied"])
+    .or("claim_kind.is.null,claim_kind.eq.urban")
     .order("parcel_index")
     .limit(requestedParcelId ? 1 : 100);
   if (requestedParcelId) query = query.eq("id", requestedParcelId);
@@ -3139,10 +3140,17 @@ async function executeClaimTileParcel(
   if ((realm.gold_reserve || 0) < cost.gold) return { events: [], error: `Nedostatek zlata (potřeba ${cost.gold}, máš ${Math.floor(realm.gold_reserve || 0)})` };
   if ((realm.production_reserve || 0) < cost.production) return { events: [], error: `Nedostatek produkce (potřeba ${cost.production}, máš ${Math.floor(realm.production_reserve || 0)})` };
 
-  const { error: claimError } = await supabase.from("tile_parcels").update({
+  // Optimistic parcel guard. If another command already acquired this physical tile,
+  // the UPDATE returns no row and must NEVER charge the realm.
+  let parcelUpdate = supabase.from("tile_parcels").update({
     status: "claimed", city_id: cityId, owner_player: actor.name, claimed_turn: turnNumber, land_use: "open", claim_kind: "urban",
   }).eq("id", parcel.id).eq("status", converting ? "claimed" : "wild");
+  parcelUpdate = converting
+    ? parcelUpdate.eq("claim_kind", "worked").eq("city_id", cityId).eq("owner_player", actor.name)
+    : parcelUpdate.is("city_id", null).is("owner_player", null);
+  const { data: changedParcel, error: claimError } = await parcelUpdate.select("id").maybeSingle();
   if (claimError) return { events: [], error: claimError.message };
+  if (!changedParcel) return { events: [], error: "Parcela byla mezitím získána jiným příkazem" };
 
   await supabase.from("realm_resources").update({
     gold_reserve: realm.gold_reserve - cost.gold,
@@ -3176,11 +3184,12 @@ async function executeBuildSubnode(
   if (!parcelId || !def) return { events: [], error: "Neplatný typ subuzlu" };
 
   const { data: parcel } = await supabase.from("tile_parcels")
-    .select("id, city_id, owner_player, grid_x, grid_y, parcel_index, buildable, capacity_slots, sub_biome")
+    .select("id, city_id, owner_player, grid_x, grid_y, parcel_index, buildable, capacity_slots, sub_biome, claim_kind")
     .eq("id", parcelId).eq("session_id", sessionId).maybeSingle();
   if (!parcel) return { events: [], error: "Parcela nebyla nalezena" };
   if (parcel.owner_player && parcel.owner_player !== actor.name) return { events: [], error: `Parcelu drží ${parcel.owner_player}` };
   if (!parcel.buildable) return { events: [], error: "Na této parcele nelze stavět" };
+  if (parcel.claim_kind === "worked") return { events: [], error: "Využívanou parcelu nejprve kup jako stavební, teprve pak lze stavět" };
 
   const { data: contents } = await supabase.from("tile_parcel_contents").select("slots_used").eq("parcel_id", parcelId);
   const used = (contents || []).reduce((sum: number, item: any) => sum + Number(item.slots_used || 0), 0);
