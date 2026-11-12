@@ -2,7 +2,12 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import ManpowerHUDCard from "@/components/map/ManpowerHUDCard";
 import IsometricSquareMap from "@/components/map/IsometricSquareMap";
 import { lazy, Suspense, useState } from "react";
-const Map3DTrial = lazy(() => import("@/components/map/three/Map3DTrial"));
+// A stale module after an update must not blank the game: reload once, then fall back to a message.
+const Map3DTrial = lazy(() => import("@/components/map/three/Map3DTrial").catch(() => {
+  const key = "map3d-reload";
+  if (!sessionStorage.getItem(key)) { sessionStorage.setItem(key, "1"); window.location.reload(); }
+  return { default: () => <div className="flex h-full items-center justify-center text-sm text-muted-foreground">3D mapu se nepodařilo načíst. Obnovte stránku.</div> };
+}).then((m) => { sessionStorage.removeItem("map3d-reload"); return m; }));
 
 interface Props {
   sessionId: string;
