@@ -46,6 +46,19 @@ describe("physical town parcels: bought urban rights versus worked hinterland", 
     expect(seat).toContain('row.claim_kind !== "worked"');
   });
 
+  it("paid urban purchase locks both land and money in one database transaction", () => {
+    const migration = src("drizzle/migrations/0016_atomic_urban_parcel_purchase.sql");
+    const commands = src("supabase/functions/command-dispatch/index.ts");
+    expect(migration).toContain("FOR UPDATE");
+    expect(migration).toContain("gold_reserve=gold_reserve-price_gold");
+    expect(migration).toContain("production_reserve=production_reserve-price_production");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.buy_city_parcel");
+    expect(commands).toContain('supabase.rpc("buy_city_parcel"');
+    const start = commands.indexOf("async function executeClaimTileParcel(");
+    const end = commands.indexOf("/** Canonical subnode definitions", start);
+    expect(commands.slice(start,end)).not.toContain('.from("realm_resources").update(');
+  });
+
   it("worked claim is an atomic quota-checked database operation", () => {
     const migration = src("drizzle/migrations/0015_parcel_worked_claims_and_names.sql");
     expect(migration).toContain("FOR UPDATE");
