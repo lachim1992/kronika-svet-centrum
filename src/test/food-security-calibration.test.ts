@@ -61,10 +61,10 @@ describe('farm calibration — food-equivalent per turn from one shared budget',
     expect(edibleRealized(resolveGoodsEconomy(snap([city('a', 0)], foods, farm('a', 7 * LEVEL_CAPACITY_SCALE[1]))), 'a')).toBeCloseTo(14, 6);
     expect(edibleRealized(resolveGoodsEconomy(snap([city('a', 0)], foods, farm('a', 7 * LEVEL_CAPACITY_SCALE[2]))), 'a')).toBeCloseTo(28, 6);
   });
-  it('stability .68 with missing tools (floor .75) yields ≈3.57 at Lv1', () => {
+  it('basic source at stability .68 uses bounded .72 floor; missing tools still costs 25%', () => {
     const g = [...foods, good('metalwork_tools', 'tools', 8)];
     const r = resolveGoodsEconomy(snap([city('a', 0, 10000, 0.68)], g, farm('a', 7)));
-    expect(edibleRealized(r, 'a')).toBeCloseTo(7 * 0.68 * 0.75, 2);
+    expect(edibleRealized(r, 'a')).toBeCloseTo(7 * ECONOMY.criticalSourceStabilityFloor * 0.75, 2);
   });
   it('AUTO with Lv2 non-food recipes shares the SAME budget — total never exceeds the rating', () => {
     const mixed = farm('a', 7, [['wheat', 'raw_grain'], ['barley', 'raw_grain'], ['cattle', 'raw_meat'], ['flax', 'raw_fiber'], ['sheep', 'raw_fiber']]);
