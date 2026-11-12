@@ -426,3 +426,10 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [ ] Invested scenario stops after first farm: once a real farm is owned the chooser no longer proposes further essentials (needs a growth-driven next-investment rule).
 - [x] Strategic iron/obsidian combat + marble build discount via _shared/strategicEffects.ts (unit-tested, not live battle tested)
 - [ ] Client build/upgrade cost previews should show marble-discounted quote
+
+## 2026-11-12 stabilization
+- [x] package-lock.json regenerated (pglite, lovable vite plugins were missing) — `npm ci` passes.
+- [x] Build/upgrade/district payments use `_shared/reserveLedger.ts` (delta CAS + retry); refunds add back cost instead of restoring a stale absolute balance (could erase concurrent turn credits); district build had no CAS at all. Test src/test/reserve-ledger.test.ts. NOT deployed (awaiting authorization).
+- [x] dispatchCommand never throws (network/empty reply → error message).
+- [ ] Deploy command-dispatch after authorization; verify a real build in a scratch world.
+- [ ] Early-game viability decision (cheaper farm / raw construction efficiency / starter fuel) still awaits owner.
