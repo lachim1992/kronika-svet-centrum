@@ -672,7 +672,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const sector=BASKET_SECTOR[g.basket]||'crafting';
       const jobs=jobsOf(p),staffed=staffingRatio(p);
       // POTENTIAL OUTPUT: what the staffed facility could make if supplied with its inputs.
-      const factors={staffing:staffed,stability:clamp(c.stability),logistics:clamp(p.logistics),mastery:n(p.mastery),
+      // Basic physical extraction can continue during a governance crisis. Stability
+      // still penalises industry and discretionary goods normally; this limited floor
+      // prevents essential production from collapsing harder as famine lowers stability.
+      // Finite parcel harvest limits and actual staffed labour remain unchanged.
+      const stability = p.source && ['staple_food', 'drinking_water', 'fuel'].includes(g.basket)
+        ? Math.max(clamp(c.stability), C.criticalSourceStabilityFloor)
+        : clamp(c.stability);
+      const factors={staffing:staffed,stability,logistics:clamp(p.logistics),mastery:n(p.mastery),
         infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1,tools:toolFactor(p),capital:capitalFactor(p)};
       const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
       const desired=Math.max(0,target-(realized.get(id)||0));
