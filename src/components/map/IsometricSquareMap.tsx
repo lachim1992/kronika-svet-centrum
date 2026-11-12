@@ -1617,7 +1617,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {/* sub-parcel grid with its real sub-biome tint, so the landscape reads on the macro map */}
-              {showSubBiomes && <g pointerEvents="none">
+              {<g pointerEvents="none">
                 <g opacity={cityLayerCityId && !inActiveCity ? .42 : 1}>
                   {subBiomesOf(tile, cell.a, cell.b).map(parcel => {
                     const tex = subBiomeTex(parcel.subBiome) || TERRAIN_TEX[tile.biome_family];
@@ -1628,7 +1628,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                     </g>;
                   })}
                 </g>
-                <g opacity={zoom>=1.2?.12:0}>
+                <g opacity={showSubBiomes && zoom>=1.2?.12:0}>
                   {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
                     const fraction = (index + 1) / TILE_PARCEL_COLS;
                     const line = (ax: number, ay: number, bx: number, by: number) =>
@@ -1661,7 +1661,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 ))}
               </g>}
 
-              {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
               {/* trees follow the forest sub-squares, so woods spill over macro borders */}
               {!footprint.length && (() => {
                 const step = 1;
