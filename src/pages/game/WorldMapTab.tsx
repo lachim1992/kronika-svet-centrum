@@ -43,12 +43,6 @@ const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentT
         resetSignal={resetSignal}
       />
       )}
-      {!backgroundMode && (
-        <button type="button" onClick={() => setView3d((v) => !v)}
-          className="absolute bottom-4 left-4 z-30 rounded-full border border-border bg-card/85 px-3 py-1 text-xs font-semibold text-foreground shadow-lg backdrop-blur-md hover:bg-card">
-          {view3d ? "Zpět na původní mapu" : "3D náhled (zkušební)"}
-        </button>
-      )}
 
       {/* Phase 5: roads are built on the physical map layer (road_projects /
           road_segments) only. The abstract province_routes graph stays internal
