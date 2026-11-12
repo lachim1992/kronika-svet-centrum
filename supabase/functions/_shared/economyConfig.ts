@@ -10,6 +10,12 @@ export const ECONOMY = {
   fameTurns: 3, fameGain: 8, fameDecay: 12, fameMinOutput: 2, fameMinExport: 1,
   fameMinQuality: 2, fameSpecialization: 0.4, famePremium: 0.25, fameDemand: 0.003,
   populationDemand: 0.01, armyDemand: 0.004, maxProductionPasses: 16,
+  /** Harvesting basic needs remains possible during a civic crisis. Without this
+   * floor, 30% stability × 75% tool floor collapses a fully staffed farm to
+   * 22.5% of nominal capacity and creates a self-reinforcing famine spiral.
+   * Applies ONLY to primary staffed source producers of food/water/fuel;
+   * manufacturing and noncritical exports keep the full stability penalty. */
+  criticalSourceStabilityFloor: 0.72,
   guildProductivity: 0.15, riverFriction: 0.8, riverCapacity: 70,
   priceScarcityGain: 1.4, priceGlutRelief: 0.35, priceFloor: 0.45, priceCeiling: 3.2,
   priceStorageRelief: 0.05, priceRiskCost: 0.04, arbitrageMargin: 0.03,
