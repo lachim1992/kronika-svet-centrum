@@ -1634,10 +1634,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </g>}
 
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
-              {tile.biome_family.includes("forest") && !footprint.length && <image href={sprTrees} x={point.x - 34} y={point.y - 34} width="68" height="46" pointerEvents="none" />}
-              {active && tileParcels.length > 0
-                ? renderTileParcels(point)
-                : footprint.length > 0 && renderCityFootprint(footprint, point, holderOwn)}
+              {/* trees follow the forest sub-squares, so woods spill over macro borders */}
+              {!active && !footprint.length && (() => {
+                const step = zoom >= 1.2 ? 1 : 2;
+                const roadSubs = new Set((roadSurface?.cells || []).map(sub => `${sub.x}:${sub.y}`));
+                return subBiomesOf(tile, cell.a, cell.b)
+                  .filter(parcel => parcel.parcelX % step === 0 && parcel.parcelY % step === 0 && !roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)
+                    && subBiomeTex(parcel.subBiome) === texForest)
+                  .map(parcel => {
+                    const fx = (parcel.parcelX + step / 2) / TILE_PARCEL_COLS, fy = (parcel.parcelY + step / 2) / TILE_PARCEL_COLS;
+                    const cx = point.x + (fx - fy) * TILE_SIZE, cy = point.y + (fx + fy - 1) * TILE_SIZE / 2;
+                    const w = 15 * step;
+                    return <image key={`tree-${parcel.parcelIndex}`} href={sprTrees} x={cx - w / 2} y={cy - w * .55} width={w} height={w * .68} pointerEvents="none" />;
+                  });
+              })()}
+              {active && tileParcels.length > 0 && renderTileParcels(point)}
             </g>;
           })}
           {roadCatchmentOverlay.length > 0 && <g pointerEvents="none">
@@ -1650,7 +1661,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </g>}
           {selected && tileParcels.length > 0 && renderSelectedCellSubnodes(at(selectedCell?.a ?? 0, selectedCell?.b ?? 0))}
           {!cityLayerCityId && riverSegments.length > 0 && <g pointerEvents="none">
-            {([["var(--map-forest-edge)", 7, .55], ["var(--map-water-edge)", 5, .9], [`url(#${texId(texWater)})`, 3.6, 1], ["var(--map-water-glint)", .8, .45]] as const).map(([stroke, width, opacity], layer) => (
+            {([["var(--map-forest-edge)", 3.6, .35], ["var(--map-water-edge)", 2.6, .7], [`url(#${texId(texWater)})`, 1.8, .9], ["var(--map-water-glint)", .4, .35]] as const).map(([stroke, width, opacity], layer) => (
               <g key={`river-layer-${layer}`} stroke={stroke} strokeWidth={width} strokeLinecap="round" opacity={opacity}>
                 {riverSegments.map(segment => <line key={segment.id} x1={segment.from.x + pan.x} y1={segment.from.y + pan.y} x2={segment.to.x + pan.x} y2={segment.to.y + pan.y} />)}
               </g>
@@ -1665,6 +1676,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke={`url(#${texId(texDirt)})`} strokeWidth={width} strokeLinecap="round"
                 strokeDasharray={segment.building || segment.level === 1 ? "4 3" : undefined} opacity=".95" />
             </g>;
+          })}
+          {/* settlements sit above rivers and roads */}
+          {sortedTiles.map(tile => {
+            if (selected?.id === tile.id && tileParcels.length > 0) return null;
+            const cell = tileCell(tile);
+            const footprint = parcelsByCell.get(cellKey(cell.a, cell.b)) || [];
+            if (!footprint.length) return null;
+            const holderCity = cityById.get(cityByCell.get(cellKey(cell.a, cell.b)) || "");
+            return <g key={`fp-${tile.id}`} pointerEvents="none">{renderCityFootprint(footprint, at(cell.a, cell.b), holderCity ? holderCity.owner_player === playerName : true)}</g>;
           })}
           {roadNetwork.bridges.map(bridge => {
             const point = { x: bridge.point.x + pan.x, y: bridge.point.y + pan.y };
