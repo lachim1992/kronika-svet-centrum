@@ -3451,7 +3451,7 @@ async function executeBuildBuilding(
   const reserveIO = realmReserveIO(supabase, realm.id);
   const buildCost = { gold: costGold, production: prodCost };
   const charge = await chargeReserves(reserveIO, buildCost, 3, realm);
-  if (!charge.ok) return { events: [], error: charge.error };
+  if (charge.ok === false) return { events: [], error: charge.error };
 
   // Insert building
   const buildDuration = building.build_duration || building.build_turns || 1;
@@ -3553,7 +3553,7 @@ async function executeUpgradeBuilding(
   if (!paid) {
     await supabase.from("city_buildings").update({ current_level: existing.current_level ?? 1, name: existing.name, effects: existing.effects })
       .eq("id", buildingId).eq("current_level", newLevel);
-    return { events: [], error: paidCharge.ok ? "" : paidCharge.error };
+    return { events: [], error: paidCharge.ok === false ? paidCharge.error : "Platba stavby se nezdařila" };
   }
   const updateData: any = {};
   const newName = quote.name; const newEffects = quote.effects; const isWonderConversion = quote.wonder && !existing.is_wonder;
@@ -3638,7 +3638,7 @@ async function executeBuildDistrict(
   const reserveIO = realmReserveIO(supabase, realm.id);
   const buildCost = { gold: costGold, production: prodCost };
   const charge = await chargeReserves(reserveIO, buildCost, 3, realm);
-  if (!charge.ok) return { events: [], error: charge.error };
+  if (charge.ok === false) return { events: [], error: charge.error };
 
   const buildTurns = district.build_turns || 1;
   const { data: inserted, error: dErr } = await supabase.from("city_districts").insert({
