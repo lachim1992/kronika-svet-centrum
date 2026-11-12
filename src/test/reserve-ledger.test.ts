@@ -47,3 +47,18 @@ describe("reserve ledger (build/upgrade/district payment)", () => {
     expect(f.row.production_reserve).toBeCloseTo(50.5, 9);
   });
 });
+
+import { chargeReserves as charge2 } from "../../supabase/functions/_shared/reserveLedger";
+describe("fractional gold", () => {
+  it("charges whole gold only and reports write errors", async () => {
+    let row = { id: "r", gold_reserve: 80, production_reserve: 50 };
+    const io = { read: async () => row, cas: async (_e: any, nx: any) => { row = { ...row, ...nx }; return true; } };
+    const r = await charge2(io, { gold: 9.5, production: 20 });
+    expect(r.ok).toBe(true);
+    expect(row.gold_reserve).toBe(70);
+    const bad = { read: async () => row, cas: async () => { throw new Error("boom"); } };
+    const r2 = await charge2(bad, { gold: 1, production: 1 });
+    expect(r2.ok).toBe(false);
+    expect((r2 as { error?: string }).error).toContain("boom");
+  });
+});
