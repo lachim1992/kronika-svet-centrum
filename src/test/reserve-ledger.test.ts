@@ -59,6 +59,6 @@ describe("fractional gold", () => {
     const bad = { read: async () => row, cas: async () => { throw new Error("boom"); } };
     const r2 = await charge2(bad, { gold: 1, production: 1 });
     expect(r2.ok).toBe(false);
-    if (!r2.ok) expect(r2.error).toContain("boom");
+    expect((r2 as { error?: string }).error).toContain("boom");
   });
 });
