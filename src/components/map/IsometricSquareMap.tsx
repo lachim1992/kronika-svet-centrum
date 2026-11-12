@@ -886,7 +886,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       });
       rasterizeTerrain(quads, sprites, TILE_SIZE * .6).then(result => {
         if (cancelled) { result.forEach(chunk => URL.revokeObjectURL(chunk.url)); return; }
-        setTerrainRaster(previous => { previous?.forEach(chunk => URL.revokeObjectURL(chunk.url)); return result; });
+        setTerrainRaster(previous => { if (Array.isArray(previous)) previous.forEach(chunk => URL.revokeObjectURL(chunk.url)); return result; });
       });
     }, 50);
     return () => { cancelled = true; window.clearTimeout(handle); };
@@ -1631,7 +1631,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           ))}
         </defs>
         <g transform={`scale(${zoom})`}>
-          {terrainRaster?.map(chunk => <image key={chunk.url} href={chunk.url} x={chunk.x + pan.x} y={chunk.y + pan.y} width={chunk.w + .4} height={chunk.h + .4} preserveAspectRatio="none" pointerEvents="none" />)}
+          {Array.isArray(terrainRaster) && terrainRaster.map(chunk => <image key={chunk.url} href={chunk.url} x={chunk.x + pan.x} y={chunk.y + pan.y} width={chunk.w + .4} height={chunk.h + .4} preserveAspectRatio="none" pointerEvents="none" />)}
           {sortedTiles.map(tile => {
             const cell = tileCell(tile); const point = at(cell.a, cell.b); const colors = BIOMES[tile.biome_family] || BIOMES.plains;
             const roadSurface = roadSurfaceByCell.get(cellKey(cell.a, cell.b));
@@ -1647,7 +1647,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (roadDraft.length > 0) return; if (!dragRef.current?.moved) focusTile(tile); }}
               className={roadDraft.length > 0 ? "cursor-crosshair" : "cursor-pointer"}>
 
-              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={terrainRaster?.length ? "transparent" : colors[0]}
+              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={Array.isArray(terrainRaster) && terrainRaster.length ? "transparent" : colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 0} />
               {cityLayerCityId && !inActiveCity && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill="var(--map-marker-edge)" opacity=".55" />}
