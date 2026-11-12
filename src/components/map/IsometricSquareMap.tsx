@@ -1,5 +1,4 @@
 import texGrass from "@/assets/map/tex-grass.jpg";
-import texForest from "@/assets/map/tex-forest.jpg";
 import texRock from "@/assets/map/tex-rock.jpg";
 import texWater from "@/assets/map/tex-water.jpg";
 import texSand from "@/assets/map/tex-sand.jpg";
@@ -240,11 +239,11 @@ const NODE_STYLE: Record<string, { landUse: string; accent: string; walled: bool
 const TILE_SIZE = 42;
 const TERRAIN_TEX: Record<string, string> = {
   sea: texWater, plains: texGrass, grassland: texGrass, hills: texGrass, swamp: texGrass,
-  forest: texForest, dense_forest: texForest, mountains: texRock, mountain: texRock, tundra: texRock, desert: texSand,
+  forest: texGrass, dense_forest: texGrass, mountains: texRock, mountain: texRock, tundra: texRock, desert: texSand,
 };
 const SUB_TEX_BY_VAR: Record<string, string> = {
   "--map-plains": texGrass, "--map-plains-edge": texGrass, "--map-hills": texGrass, "--map-hills-edge": texRock,
-  "--map-mountain": texRock, "--map-mountain-edge": texRock, "--map-forest": texForest, "--map-water": texWater,
+  "--map-mountain": texRock, "--map-mountain-edge": texRock, "--map-forest": texGrass, "--map-water": texWater,
   "--map-water-edge": texSand, "--map-swamp": texGrass, "--map-swamp-edge": texGrass, "--map-desert": texSand,
   "--map-desert-edge": texSand, "--map-tundra": texRock, "--map-tundra-edge": texRock,
 };
@@ -253,7 +252,7 @@ const subBiomeTex = (subBiome: string) => {
   const v = (SUB_BIOME_COLOR[subBiome] || "").match(/var\((--[\w-]+)\)/)?.[1];
   return v ? SUB_TEX_BY_VAR[v] : undefined;
 };
-const TERRAIN_TINT: Record<string, string> = { hills: "var(--map-hills)", swamp: "var(--map-swamp)" };
+const TERRAIN_TINT: Record<string, string> = { forest: "var(--map-forest)", dense_forest: "var(--map-forest)", hills: "var(--map-hills)", swamp: "var(--map-swamp)" };
 const BIOMES: Record<string, [string, string]> = {
   sea: ["var(--map-water)", "var(--map-water-edge)"], plains: ["var(--map-plains)", "var(--map-plains-edge)"],
   grassland: ["var(--map-plains)", "var(--map-plains-edge)"], forest: ["var(--map-forest)", "var(--map-forest-edge)"],
@@ -1640,7 +1639,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const roadSubs = new Set((roadSurface?.cells || []).map(sub => `${sub.x}:${sub.y}`));
                 return subBiomesOf(tile, cell.a, cell.b)
                   .filter(parcel => parcel.parcelX % step === 0 && parcel.parcelY % step === 0 && !roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)
-                    && subBiomeTex(parcel.subBiome) === texForest)
+                    && (SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)"))
                   .map(parcel => {
                     const fx = (parcel.parcelX + step / 2) / TILE_PARCEL_COLS, fy = (parcel.parcelY + step / 2) / TILE_PARCEL_COLS;
                     const cx = point.x + (fx - fy) * TILE_SIZE, cy = point.y + (fx + fy - 1) * TILE_SIZE / 2;
