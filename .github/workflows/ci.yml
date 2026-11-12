@@ -19,6 +19,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Main's npm lock is presently older than the 3D map dependency additions.
+      # Resolve it locally in CI for feature validation; a committed lockfile refresh is still required.
+      - run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - run: npm ci
       - run: npm run typecheck
       - run: npm run typecheck:edge
