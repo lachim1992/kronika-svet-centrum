@@ -10469,6 +10469,7 @@ export type Database = {
           building_id: string | null
           capacity_slots: number
           city_id: string | null
+          claim_kind: string | null
           claimed_turn: number | null
           created_at: string
           district_id: string | null
@@ -10481,6 +10482,7 @@ export type Database = {
           parcel_index: number
           parcel_x: number
           parcel_y: number
+          region_name: string | null
           session_id: string
           status: string
           sub_biome: string
@@ -10492,6 +10494,7 @@ export type Database = {
           building_id?: string | null
           capacity_slots?: number
           city_id?: string | null
+          claim_kind?: string | null
           claimed_turn?: number | null
           created_at?: string
           district_id?: string | null
@@ -10504,6 +10507,7 @@ export type Database = {
           parcel_index: number
           parcel_x: number
           parcel_y: number
+          region_name?: string | null
           session_id: string
           status?: string
           sub_biome?: string
@@ -10515,6 +10519,7 @@ export type Database = {
           building_id?: string | null
           capacity_slots?: number
           city_id?: string | null
+          claim_kind?: string | null
           claimed_turn?: number | null
           created_at?: string
           district_id?: string | null
@@ -10527,6 +10532,7 @@ export type Database = {
           parcel_index?: number
           parcel_x?: number
           parcel_y?: number
+          region_name?: string | null
           session_id?: string
           status?: string
           sub_biome?: string
@@ -12610,6 +12616,16 @@ export type Database = {
       begin_turn_resolution: {
         Args: { p_session: string; p_turn: number }
         Returns: string
+      }
+      claim_worked_parcel: {
+        Args: {
+          p_city: string
+          p_parcel: string
+          p_player: string
+          p_session: string
+          p_turn: number
+        }
+        Returns: Json
       }
       cleanup_route_events: {
         Args: { p_current_turn: number; p_session_id: string }

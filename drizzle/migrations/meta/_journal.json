@@ -106,6 +106,13 @@
       "when": 1794341646362,
       "tag": "0014_guild_specialization_commit_marker",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1794519197175,
+      "tag": "0015_parcel_worked_claims_and_names",
+      "breakpoints": true
     }
   ]
 }
