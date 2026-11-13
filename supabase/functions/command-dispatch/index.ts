@@ -572,6 +572,21 @@ async function executeCommand(
       return { events: [], result: data } as any;
     }
 
+    case "CREATE_TERRITORY_DISTRICT":
+    case "ADD_TO_TERRITORY_DISTRICT":
+    case "RENAME_TERRITORY_DISTRICT": {
+      const isAdd = commandType === "ADD_TO_TERRITORY_DISTRICT";
+      const name = isAdd ? "" : sanitizeRegionName(payload.name);
+      if (!isAdd && !name) return { events: [], error: "Název musí mít 2–48 znaků (písmena, čísla, mezera, - ' .)" };
+      const kind = ["forest", "meadow", "mine", "desert", "other"].includes(String(payload.kind)) ? String(payload.kind) : "other";
+      const { data, error } = commandType === "CREATE_TERRITORY_DISTRICT"
+        ? await supabase.rpc("create_territory_district", { p_session: sessionId, p_player: actor.name, p_parcel: String(payload.parcelId || ""), p_name: name, p_kind: kind, p_turn: turnNumber })
+        : isAdd ? await supabase.rpc("add_parcel_to_district", { p_session: sessionId, p_player: actor.name, p_district: String(payload.districtId || ""), p_parcel: String(payload.parcelId || "") })
+        : await supabase.rpc("rename_territory_district", { p_session: sessionId, p_player: actor.name, p_district: String(payload.districtId || ""), p_name: name });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: data } as any;
+    }
+
     case "CLAIM_WORKED_PARCEL": {
       const { data, error } = await supabase.rpc("claim_worked_parcel", { p_session: sessionId, p_city: String(payload.cityId || ""),
         p_player: actor.name, p_parcel: String(payload.parcelId || ""), p_turn: turnNumber });
