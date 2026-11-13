@@ -29,7 +29,7 @@ describe('rural sites', () => {
     const ps=[parcel('u',0,'clearing',null),parcel('r',1,'clearing'),parcel('m',2,'rocky_slope')];
     const site={parcelId:'m',recipeKeys:['mine_iron'],level:1,owner:'Player'};
     const roads=[{from:'0,0',to:'1,0'},{from:'1,0',to:'2,0'}];
-    const ore=(deposits:Set<string>)=>parcelProducers(ps,terrain,[city],recipes,1,{},{sites:[site],roads,deposits}).filter(p=>p.recipe.key==='mine_iron');
+    const ore=(deposits:Set<string>)=>parcelProducers(ps,terrain,[city],recipes,1,{},{sites:[site],roads,deposits,reserves:new Map([['2,0|iron',{reserve:50,grade:2}]])}).filter(p=>p.recipe.key==='mine_iron');
     expect(ore(new Set())).toHaveLength(0);
     expect(ore(new Set([depositKey('Player',2,0,'gold')]))).toHaveLength(0);
     expect(ore(new Set([depositKey('Player',2,0,'iron')]))[0].capacity).toBeGreaterThan(0);

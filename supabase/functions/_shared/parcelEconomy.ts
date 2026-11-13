@@ -1,4 +1,4 @@
-import { parcelTransport, siteSpecs, FREIGHT_RECIPES, type RuralContext } from './ruralSites.ts';
+import { parcelTransport, siteSpecs, FREIGHT_RECIPES, MACRO_RESERVE_RECIPES, macroReserveKey, type RuralContext } from './ruralSites.ts';
 import type { Producer } from './goodsEconomy.ts';
 
 /** Physical potential, not output. Only the goods solver can harvest it with staffed labour. */
@@ -51,6 +51,8 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
   prior: ParcelEcology = {}, rural: RuralContext = {}): Producer[] {
   const siteByParcel = new Map((rural.sites || []).map(s => [s.parcelId, s]));
   const out: Producer[] = [], seen = new Set<string>();
+  // Shared finite macro deposits: every mine on the same macro draws one committed budget, in stable parcel-id order.
+  const macroLeft = new Map<string, number>(), macroStart = new Map<string, number>();
   for (const p of [...parcels].sort((a,b) => a.id.localeCompare(b.id))) {
     const city = cities.find(c => c.id === p.city_id && c.owner === p.owner_player);
     if (!city || !['claimed','occupied'].includes(p.status)) continue;
@@ -76,13 +78,24 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
       const initial = raw.capacity * (spec.renewable ? 5 : 40);
       // Coppiced woodland replenishes faster than wild food/game; finite pressure still caps extraction.
       const regrowth = spec.recipe === 'fell_timber' ? 0.35 : 0.1;
-      const remaining = water ? spec.capacity : Math.min(initial, Math.max(0, prior[id] ?? initial) + (spec.renewable ? spec.capacity * regrowth : 0));
+      let remaining = water ? spec.capacity : Math.min(initial, Math.max(0, prior[id] ?? initial) + (spec.renewable ? spec.capacity * regrowth : 0));
+      const macroKind = MACRO_RESERVE_RECIPES[spec.recipe]; let macro: string | undefined, grade = 0;
+      if (macroKind) {
+        macro = macroReserveKey(p.grid_x, p.grid_y, macroKind);
+        const truth = rural.reserves?.get(`${p.grid_x},${p.grid_y}|${macroKind}`);
+        if (!macroLeft.has(macro)) { const start = Math.max(0, Math.min(truth?.reserve ?? 0, prior[macro] ?? truth?.reserve ?? 0)); macroStart.set(macro, start); macroLeft.set(macro, start); }
+        grade = truth?.grade ?? 0;
+        const share = Math.min(spec.capacity, remaining, macroLeft.get(macro)!);
+        macroLeft.set(macro, macroLeft.get(macro)! - share); remaining = share;
+        if (share <= 0) continue;
+      }
       out.push({ id, city: city.id, channel: 'facility', capacity: Math.min(spec.capacity, remaining), jobs: spec.jobs,
-        recipe: { key: r.recipe_key, good: r.output_good_key, qty: Number(r.output_quantity), inputs: [], labor: Number(r.labor_cost), quality: 0, minQuality: 0 },
+        recipe: { key: r.recipe_key, good: r.output_good_key, qty: Number(r.output_quantity), inputs: [], labor: Number(r.labor_cost), quality: macro ? Math.max(0, Math.min(2, grade - 1)) : 0, minQuality: 0 },
         allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: true, distinctive: false,
         parcel: { id: p.id, grid_x: p.grid_x, grid_y: p.grid_y, index: p.parcel_index, sub_biome: p.sub_biome,
           potential: raw.capacity, reservoir: remaining, renewable: spec.renewable, water,
-          transport: { ...transport, applied: factor }, site: raw.site || false } as any,
+          transport: { ...transport, applied: factor }, site: raw.site || false,
+          ...(macro ? { macro, macroStart: macroStart.get(macro), grade } : {}) } as any,
       });
     }
   }
@@ -90,8 +103,14 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
 }
 
 export function parcelClosing(producers: Producer[], diagnostics: { producer: string; realized: number }[]): ParcelEcology {
-  return Object.fromEntries(producers.filter(p => p.parcel).map(p => [p.id,
-    Math.max(0, Number(p.parcel?.reservoir || 0) - Number(diagnostics.find(d => d.producer === p.id)?.realized || 0))]));
+  const realized = (id: string) => Number(diagnostics.find(d => d.producer === id)?.realized || 0);
+  const out: ParcelEcology = Object.fromEntries(producers.filter(p => p.parcel).map(p => [p.id,
+    Math.max(0, Number(p.parcel?.reservoir || 0) - realized(p.id))]));
+  // Shared macro deposit closes once: opening reserve minus everything all its mines actually extracted. Never regrows.
+  for (const p of producers) { const m = (p.parcel as any)?.macro; if (!m) continue;
+    if (!(m in out)) out[m] = Number((p.parcel as any).macroStart || 0);
+    out[m] = Math.max(0, out[m] - realized(p.id)); }
+  return out;
 }
 
 /** Hand processing in the existing occupied civic seat. Paid in labour and physically

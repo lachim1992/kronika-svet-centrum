@@ -216,7 +216,11 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const roadEdges=db.road_segments.filter((r:any)=>r.status==='completed').map((r:any)=>({from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`,owner:r.owner_player??null}));
   const surveys=parcelMode?await rows(sb,'macro_surveys',session):[];
   const confirmedDeposits=new Set<string>(surveys.filter((s:any)=>s.level>=2).flatMap((s:any)=>(s.findings||[]).map((f:any)=>depositKey(s.player_name,s.grid_x,s.grid_y,f.kind))));
-  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
+  // TRUE finite reserves (service-only); only deposits someone has surveyed exist as rows.
+  const macroTruth=parcelMode?await rows(sb,'macro_deposits',session):[];
+  const reserves=new Map<string,{reserve:number;grade:number}>();
+  for(const m of macroTruth as any[])for(const d of (m.deposits||[]))if(d.reserve!=null)reserves.set(`${m.grid_x},${m.grid_y}|${d.kind}`,{reserve:Number(d.reserve)||0,grade:Number(d.grade)||1});
+  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
   /**
    * Explicit production contract. A structure runs either an exact recipe whitelist
    * (effects.recipe_keys) or the recipes matching its declared capability tags and roles.

@@ -148,6 +148,13 @@
       "when": 1794598902627,
       "tag": "0020_territory_districts",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794599526695,
+      "tag": "0021_gold_mining_chain",
+      "breakpoints": true
     }
   ]
 }

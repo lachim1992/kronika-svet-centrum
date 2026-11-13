@@ -3522,6 +3522,10 @@ async function executeBuildBuilding(
         .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle();
       if (!sv || sv.level < 2 || !(sv.findings || []).some((f: any) => f.kind === need))
         return { events: [], error: `Nedostupné: důl potřebuje potvrzené ložisko (${need}) — proveďte podrobný průzkum pole` };
+      const { data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId)
+        .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle();
+      if (!((truth as any)?.deposits || []).some((d: any) => d.kind === need && Number(d.reserve) > 0))
+        return { events: [], error: `Ložisko (${need}) na tomto poli není k dispozici` };
     }
   }
   if (!parcelId && !targetParcel && recipeKeys?.length && terrainReason(recipeKeys, null)) {
