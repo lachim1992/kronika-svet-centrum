@@ -3055,7 +3055,7 @@ async function getRealmFull(supabase: any, sessionId: string, playerName: string
 }
 
 /** First claimed sub-parcel with remaining slots, optionally a specific one. */
-async function getAvailableParcel(supabase: any, cityId: string, requestedParcelId?: string) {
+async function getAvailableParcel(supabase: any, cityId: string, requestedParcelId?: string, recipeKeys?: string[]) {
   let query = supabase.from("tile_parcels")
     .select("id, city_id, grid_x, grid_y, parcel_index, status, capacity_slots, claim_kind, sub_biome")
     .eq("city_id", cityId)
@@ -3066,6 +3066,8 @@ async function getAvailableParcel(supabase: any, cityId: string, requestedParcel
   if (requestedParcelId) query = query.eq("id", requestedParcelId);
   const { data } = await query;
   for (const parcel of data || []) {
+    // Auto-pick only plots whose terrain suits the building; an explicit choice is validated by the caller.
+    if (!requestedParcelId && recipeKeys?.length && terrainReason(recipeKeys, parcel.sub_biome)) continue;
     const { data: contents } = await supabase.from("tile_parcel_contents").select("slots_used").eq("parcel_id", parcel.id);
     const used = (contents || []).reduce((sum: number, item: any) => sum + Number(item.slots_used || 0), 0);
     if (used < Number(parcel.capacity_slots || 0)) return { ...parcel, used_slots: used };
@@ -3427,8 +3429,12 @@ async function executeBuildBuilding(
     if (reason) return { events: [], error: reason };
   }
 
-  const targetParcel = await getAvailableParcel(supabase, cityId, parcelId);
+  const recipeKeys: string[] | undefined = template?.effects?.recipe_keys;
+  const targetParcel = await getAvailableParcel(supabase, cityId, parcelId, recipeKeys);
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
+  if (!parcelId && !targetParcel && recipeKeys?.length && terrainReason(recipeKeys, null)) {
+    return { events: [], error: terrainReason(recipeKeys, null)!.replace(/ \(parcela: .*\)$/, "") + " — město nemá volnou stavební parcelu s vhodným terénem" };
+  }
   if (targetParcel) {
     if (targetParcel.claim_kind === "worked") return { events: [], error: "Na využívané půdě nelze stavět — nejdřív ji kup jako stavební parcelu" };
     const tr = terrainReason(template?.effects?.recipe_keys, targetParcel.sub_biome);
