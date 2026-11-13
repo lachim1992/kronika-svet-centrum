@@ -7,11 +7,11 @@ import { generateMacroDeposits, goldVeinCells, surveyFindings } from '../../supa
 import { terrainReason } from '../../supabase/functions/_shared/terrainSuitability';
 
 const recipes = new Map(RECIPES.map(r => [r.key, { recipe_key: r.key, output_good_key: r.output, output_quantity: r.qty, labor_cost: 1, input_items: [] }]));
-const hexes = ((fixture as any).tiles ?? fixture) as any[];
+const hexes = (fixture as any[]).map(([x, y, biome_family, mean_height, temp_band, moisture_band]) => ({ x, y, biome_family, mean_height, temp_band, moisture_band }));
 const salt = 'test-salt-gold';
-const veins = goldVeinCells(salt, hexes.map(h => ({ x: h.x ?? h.grid_x, y: h.y ?? h.grid_y, biome_family: h.biome_family })));
+const veins = goldVeinCells(salt, hexes);
 const [vx, vy] = [...veins][0].split(',').map(Number);
-const vhex = hexes.find(h => (h.x ?? h.grid_x) === vx && (h.y ?? h.grid_y) === vy);
+const vhex = hexes.find(h => h.x === vx && h.y === vy);
 const truth = generateMacroDeposits(salt, vx, vy, vhex, veins);
 const gold = truth.find(d => d.kind === 'gold')!;
 const terrain = [{ q: vx, r: vy, grid_x: vx, grid_y: vy, biome_family: 'hills', is_passable: true }];
