@@ -42,7 +42,10 @@ export function parcelTransport(parcelCell: string, cityCell: string, roads: Roa
 }
 
 export interface RuralSite { parcelId: string; recipeKeys: string[]; level: number; owner: string }
-export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string> }
+/** True (private) macro deposit, key `${x},${y}|${kind}` from service-only macro_deposits. */
+export interface MacroReserve { reserve: number; grade: number }
+export const macroReserveKey = (x: number, y: number, kind: string) => `macro:${x},${y}:${kind}`;
+export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve> }
 
 /** Merge natural specs with the parcel's rural site; enforce deposits. Returns specs + reasons for blocked recipes. */
 export function siteSpecs(natural: { recipe: string; capacity: number; jobs: number; renewable: boolean }[], site: RuralSite | undefined,
