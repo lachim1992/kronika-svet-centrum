@@ -39,7 +39,7 @@ import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
 import { templateSiteRole, DEPOSIT_REQUIRED, type SiteRole } from "../_shared/ruralSites.ts";
-import { generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
+import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 
 /** The 12 canonical demand baskets a production district may be pointed at. */
@@ -526,14 +526,18 @@ async function executeCommand(
     case "SURVEY_MACRO": {
       const x = Number(payload.gridX), y = Number(payload.gridY), level = Number(payload.level || 1) >= 2 ? 2 : 1;
       if (!Number.isInteger(x) || !Number.isInteger(y)) return { events: [], error: "Neplatné pole" };
-      const { data: hex } = await supabase.from("province_hexes").select("biome_family, mean_height, is_passable, has_river, coastal")
+      const { data: hex } = await supabase.from("province_hexes").select("biome_family, mean_height, is_passable, has_river, coastal, temp_band, moisture_band")
         .eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).maybeSingle();
       if (!hex) return { events: [], error: "Pole neexistuje" };
       await supabase.from("geology_seeds").upsert({ session_id: sessionId }, { onConflict: "session_id", ignoreDuplicates: true });
       const { data: seed } = await supabase.from("geology_seeds").select("salt").eq("session_id", sessionId).single();
       let { data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).maybeSingle();
       if (!truth) {
-        const deposits = generateMacroDeposits(seed!.salt, x, y, hex as any);
+        // Gold veins are a world-level rank (rarest hills), so they need every rocky tile once.
+        const { data: rocky } = await supabase.from("province_hexes").select("grid_x, grid_y, biome_family")
+          .eq("session_id", sessionId).or("biome_family.ilike.%hill%,biome_family.ilike.%mountain%").limit(5000);
+        const veins = goldVeinCells(seed!.salt, (rocky || []).map((h: any) => ({ x: h.grid_x, y: h.grid_y, biome_family: h.biome_family })));
+        const deposits = generateMacroDeposits(seed!.salt, x, y, hex as any, veins);
         await supabase.from("macro_deposits").upsert({ session_id: sessionId, grid_x: x, grid_y: y, deposits }, { onConflict: "session_id,grid_x,grid_y", ignoreDuplicates: true });
         ({ data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).single());
       }
