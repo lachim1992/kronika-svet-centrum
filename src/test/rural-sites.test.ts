@@ -5,7 +5,7 @@ import { RECIPES } from '../../supabase/functions/_shared/productionCatalog';
 
 const recipes = new Map(RECIPES.map(r => [r.key, { recipe_key:r.key, output_good_key:r.output, output_quantity:r.qty, labor_cost:1, input_items:[] }]));
 const terrain = [{q:0,r:0,biome_family:'forest',is_passable:true},{q:1,r:0,biome_family:'forest',is_passable:true},{q:2,r:0,biome_family:'hills',is_passable:true}];
-const parcel = (id:string, x=0, sub='clearing', kind:string|null='worked'): EconomicParcel & {claim_kind:string|null} => ({id,grid_x:x,grid_y:0,parcel_index:0,sub_biome:sub,buildable:true,status:'claimed',city_id:'P',owner_player:'Player',capacity_slots:2,claim_kind:kind});
+const parcel = (id:string, x=0, sub='forest_floor', kind:string|null='worked'): EconomicParcel & {claim_kind:string|null} => ({id,grid_x:x,grid_y:0,parcel_index:0,sub_biome:sub,buildable:true,status:'claimed',city_id:'P',owner_player:'Player',capacity_slots:2,claim_kind:kind});
 const city = {id:'P',owner:'Player',cell:'0,0'};
 const timber = (ps:any[], ctx:any) => parcelProducers(ps,terrain,[city],recipes,1,{},ctx).filter(p=>p.recipe.key==='fell_timber');
 
