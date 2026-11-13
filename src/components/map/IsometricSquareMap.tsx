@@ -28,6 +28,7 @@ import ArmyMarker from "@/components/map/ArmyMarker";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
+import MacroTerritoryPanel from "@/components/map/MacroTerritoryPanel";
 import { parcelPotential } from "../../../supabase/functions/_shared/parcelEconomy";
 import { terrainReason } from "../../../supabase/functions/_shared/terrainSuitability";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
@@ -1951,6 +1952,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <p className="mt-1 text-xs text-muted-foreground">{selected.owner_player || "Neutrální území"} · {selected.is_passable === false ? "Neprůchodné" : "Průchodné"}{selected.has_river ? " · Řeka" : ""}</p>
         </div>
 
+        {selectedCell && <MacroTerritoryPanel key={`${selectedCell.a},${selectedCell.b}`} sessionId={sessionId} playerName={playerName} currentTurn={currentTurn}
+          gridX={selectedCell.a} gridY={selectedCell.b} owner={selected.owner_player || null} provinceId={(selected as any).province_id || null}
+          passable={selected.is_passable !== false} biome={selected.biome_family} ownedTiles={tiles.filter(t => t.owner_player === playerName).length}
+          adjacentOwned={tiles.some(t => t.owner_player === playerName && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)}
+          onChanged={() => void load()} />}
         <section className="mt-4 border border-border/70 bg-muted/20 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
