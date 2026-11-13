@@ -4,6 +4,7 @@ const RULES: Record<string, { re: RegExp; label: string }> = {
   fell_timber: { re: /forest|woods|canopy|thicket/, label: "les" },
   quarry_stone: { re: /rock|gravel|slope|shelf|ridge|hillock|terrace/, label: "skalnatý terén" },
   mine_iron: { re: /rock|slope|shelf|ridge|hillock|terrace/, label: "skalnatý terén s ložiskem" },
+  mine_gold: { re: /rock|slope|shelf|ridge|hillock|terrace/, label: "kopcovitý či skalnatý terén se zlatou žilou" },
   harvest_wheat: { re: /fertile|grass|clearing|sheltered|raised_bank|creek_bank|flat/, label: "úrodná louka" },
   harvest_barley: { re: /fertile|grass|clearing|sheltered|raised_bank|creek_bank|flat/, label: "úrodná louka" },
   herd_cattle: { re: /fertile|grass|clearing|sheltered|flat/, label: "pastvina" },

@@ -8,7 +8,7 @@ export interface Deposit { kind: DepositKind; good: string | null; implemented: 
 export interface MacroHexInput { biome_family: string; mean_height?: number | null; temp_band?: number | null; moisture_band?: number | null; is_passable?: boolean | null; has_river?: boolean | null; coastal?: boolean | null }
 
 export const DEPOSIT_GOOD: Record<DepositKind, string | null> = {
-  stone: "raw_stone", granite: null, iron: "raw_ore", copper: null, gold: null,
+  stone: "raw_stone", granite: null, iron: "raw_ore", copper: null, gold: "gold_ore",
   timber: "raw_timber", fertile_soil: null, wild_grapes: "raw_grapes", herbs: null,
 };
 export const DEPOSIT_LABEL: Record<DepositKind, string> = {
