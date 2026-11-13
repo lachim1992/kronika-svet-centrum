@@ -66,4 +66,11 @@ describe("physical town parcels: bought urban rights versus worked hinterland", 
     expect(migration).toContain("REVOKE ALL");
     expect(migration).toContain("claim_worked_parcel");
   });
+
+  it("the live-schema rural guard accepts the implemented gold mine recipe", () => {
+    const migration = src("drizzle/migrations/0022_allow_gold_mine_on_worked_parcel.sql");
+    expect(migration).toContain("'mine_gold'");
+    expect(migration).toContain("p.claim_kind IS DISTINCT FROM 'worked'");
+    expect(migration).toContain("Využívaná parcela má jen jednu těžební stavbu");
+  });
 });
