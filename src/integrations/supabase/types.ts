@@ -12800,6 +12800,15 @@ export type Database = {
         }
         Returns: Json
       }
+      rename_province: {
+        Args: {
+          p_name: string
+          p_player: string
+          p_province: string
+          p_session: string
+        }
+        Returns: Json
+      }
       replace_goods_economy_projection: {
         Args: { p_payload: Json; p_session: string; p_turn: number }
         Returns: undefined
