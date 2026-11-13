@@ -53,3 +53,14 @@ describe('rural sites', () => {
     expect(food([])[0]?.capacity).toBeCloseTo(food([{from:'0,0',to:'1,0'}])[0]?.capacity);
   });
 });
+
+import { FREIGHT_RECIPES as FR, parcelTransport as PT } from '../../supabase/functions/_shared/ruralSites';
+describe('freight covers all rural goods', () => {
+  it('remote grain without road delivers 0, adjacent 25%, roaded full', () => {
+    for (const r of ['harvest_wheat','herd_cattle','harvest_rice','catch_fish','cut_peat','fell_timber','mine_iron']) expect(FR.has(r)).toBe(true);
+    expect(PT('5,5','3,5',[]).factor).toBe(0);
+    expect(PT('4,5','3,5',[]).factor).toBe(0.25);
+    expect(PT('5,5','3,5',[{from:'3,5',to:'4,5'},{from:'4,5',to:'5,5'}]).factor).toBe(1);
+    expect(FR.has('draw_river_water')).toBe(false);
+  });
+});
