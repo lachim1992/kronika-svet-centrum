@@ -73,7 +73,7 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
       const r = recipes.get(spec.recipe); if (!r) throw new Error(`Missing parcel recipe ${spec.recipe}`);
       const id = `parcel:${p.id}:${spec.recipe}`; if (seen.has(id)) continue; seen.add(id);
       const water = spec.recipe === 'draw_river_water';
-      const initial = spec.capacity * (spec.renewable ? 5 : 40);
+      const initial = raw.capacity * (spec.renewable ? 5 : 40);
       // Coppiced woodland replenishes faster than wild food/game; finite pressure still caps extraction.
       const regrowth = spec.recipe === 'fell_timber' ? 0.35 : 0.1;
       const remaining = water ? spec.capacity : Math.min(initial, Math.max(0, prior[id] ?? initial) + (spec.renewable ? spec.capacity * regrowth : 0));
