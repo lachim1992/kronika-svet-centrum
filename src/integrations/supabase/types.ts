@@ -12617,6 +12617,16 @@ export type Database = {
         Args: { p_session: string; p_turn: number }
         Returns: string
       }
+      buy_city_parcel: {
+        Args: {
+          p_city: string
+          p_parcel: string
+          p_player: string
+          p_session: string
+          p_turn: number
+        }
+        Returns: Json
+      }
       claim_worked_parcel: {
         Args: {
           p_city: string
