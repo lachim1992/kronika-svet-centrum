@@ -182,6 +182,8 @@ const BuildingDetailSheet = ({
       if (!row.factors && p.factors) row.factors = {
         staffing: num(p.staffing_ratio ?? p.factors.staffing), stability: num(p.factors.stability),
         tools: num(p.factors.tools), logistics: num(p.factors.logistics) };
+      if (p.parcel?.transport && !row.transport.some(t => t.mode === p.parcel.transport.mode))
+        row.transport.push({ mode: p.parcel.transport.mode, factor: num(p.parcel.transport.factor) });
       if (edible(p.good)) row.foodEquiv += num(p.realized);
       for (const i of p.inputs || []) {
         const found = row.inputs.find((x: any) => x.good === i.good);
@@ -340,6 +342,9 @@ const BuildingDetailSheet = ({
               {operation.feeds != null && <> — uživí přibližně {fmt(operation.feeds)} obyvatel (při současném výkonu a lokální potřebě)</>}.
             </p>}
             <p className="text-[11px] text-muted-foreground">Pracuje {Math.round(operation.employed)} z {Math.round(operation.jobs)} lidí.</p>
+            {operation.transport.length > 0 && <p className="text-[11px] text-muted-foreground">
+              Doprava do města: {operation.transport.map(t => `${{ local: "lokální", road: "dokončená cesta", footpath: "pěšina", no_road: "bez cesty" }[t.mode] || t.mode} · ${Math.round(t.factor * 100)} %`).join(" · ")}
+            </p>}
             {operation.factors && <p className="text-[11px] text-muted-foreground">
               Obsazenost {Math.round(operation.factors.staffing * 100)} % · stabilita {Math.round(operation.factors.stability * 100)} % · nástroje {Math.round(operation.factors.tools * 100)} % · logistika {Math.round(operation.factors.logistics * 100)} %
             </p>}
