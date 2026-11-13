@@ -159,12 +159,14 @@ const BuildingDetailSheet = ({
   const { data: reportData } = useManagementReport(sessionId, playerName, currentTurn);
   const operation = useMemo(() => {
     const report = (reportData?.report as any);
-    const lines = (report?.producers || []).filter((p: any) => String(p.producer).split(":")[0] === target?.id);
+    const recipeKeys = Object.keys({ ...(template?.effects?.recipe_keys || {}), ...(entity?.effects?.recipe_keys || {}) });
+    const lines = buildingOperationLines(report?.producers || [], { id: target?.id || "", parcelId: entity?.parcel_id, recipeKeys });
     if (!lines.length) return null;
     const row = { goods: [] as string[], jobs: 0, employed: 0, realized: 0, potential: 0,
       inputs: [] as any[], suppliers: [] as string[], reasons: [] as string[],
       byGood: [] as { good: string; realized: number; potential: number }[],
       factors: null as null | { staffing: number; stability: number; tools: number; logistics: number },
+      transport: [] as { mode: string; factor: number }[],
       foodEquiv: 0, feeds: null as null | number };
     // Canonical goods metadata from the same management report: which outputs are edible
     // (staple_food, final use). All edible goods carry functional_value 1 — one physical unit

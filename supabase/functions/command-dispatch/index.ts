@@ -104,29 +104,19 @@ Deno.serve(async (req) => {
     if(session.resolving_turn != null && actor?.type !== 'ai_faction' && actor?.type !== 'system')
       return json({error:'Tah se právě uzavírá. Nejprve dokončete jeho zpracování.'},409);
 
-    // ── Resolve actor.name to canonical realm player_name ──
-    // Keep the authenticated caller separate from client-supplied actor data.
+    // Human authority is the verified JWT's own seat, never a body-supplied realm name.
     let authenticatedUserId: string | null = null;
     if (actor?.type !== "system" && actor?.type !== "ai_faction") {
       try {
         const authHeader = req.headers.get("authorization") || "";
-        const jwt = authHeader.replace(/^Bearer\s+/i, "");
-        if (jwt) {
-          const { data: userData } = await supabase.auth.getUser(jwt);
-          const userId = userData?.user?.id;
-          if (userId) {
-            authenticatedUserId = userId;
-            actor.id = userId;
-          }
-        }
-
-        const canonicalName = await resolveCanonicalPlayerName(supabase, sessionId, actor);
-        if (canonicalName && canonicalName !== actor.name) {
-          console.log(`[command-dispatch] Resolved actor "${actor.name}" → "${canonicalName}"`);
-          actor.name = canonicalName;
-        }
+        const jwt = authHeader.replace(/^Bearer\s+/i, "").trim() || null;
+        const seated = await requirePlayerSeat(supabase, sessionId, actor, jwt);
+        authenticatedUserId = seated.id || null;
+        actor.id = seated.id;
+        actor.name = seated.name;
       } catch (e) {
-        console.warn("[command-dispatch] actor resolution failed:", (e as Error).message);
+        if (e instanceof PlayerIdentityError) return json({ error: e.message }, e.status);
+        throw e;
       }
     }
 

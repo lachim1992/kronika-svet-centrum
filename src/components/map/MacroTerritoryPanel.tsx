@@ -23,9 +23,11 @@ export default function MacroTerritoryPanel(p: Props) {
       supabase.from("macro_surveys").select("level, findings").eq("session_id", p.sessionId).eq("player_name", p.playerName).eq("grid_x", p.gridX).eq("grid_y", p.gridY).maybeSingle(),
       supabase.from("provinces").select("id, name").eq("session_id", p.sessionId).eq("owner_player", p.playerName),
     ]);
-    setSurvey(s ? { level: s.level, findings: (s.findings as unknown as Finding[]) || [] } : null);
+    const next = s ? { level: s.level, findings: (s.findings as unknown as Finding[]) || [] } : null;
+    setSurvey(next);
+    p.onSurveyChange?.(next);
     setProvinces(pr || []);
-  }, [p.sessionId, p.playerName, p.gridX, p.gridY]);
+  }, [p.sessionId, p.playerName, p.gridX, p.gridY, p.onSurveyChange]);
   useEffect(() => { void load(); }, [load]);
 
   const run = async (key: string, commandType: string, payload: Record<string, unknown>, ok: string) => {
