@@ -13,7 +13,7 @@ describe("geology", () => {
   });
   it("gold is rare and finite, only in mountains", () => {
     const m = scan("a", "mountains"); const gold = m.filter(d => d.kind === "gold");
-    expect(gold.length).toBeLessThan(961 * 0.1);
+    expect(gold.length).toBeLessThan(961 * 0.05);
     expect(gold.every(d => d.reserve! > 0 && !d.regenerates && !d.implemented && d.good === null)).toBe(true);
     expect(scan("a", "hills").some(d => d.kind === "gold")).toBe(false);
   });
