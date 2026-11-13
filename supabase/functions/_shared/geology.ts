@@ -5,7 +5,7 @@
  */
 export type DepositKind = "stone" | "granite" | "iron" | "copper" | "gold" | "timber" | "fertile_soil" | "wild_grapes" | "herbs";
 export interface Deposit { kind: DepositKind; good: string | null; implemented: boolean; grade: 1 | 2 | 3; reserve: number | null; regenerates: boolean; tag?: string }
-export interface MacroHexInput { biome_family: string; mean_height?: number | null; is_passable?: boolean | null; has_river?: boolean | null; coastal?: boolean | null }
+export interface MacroHexInput { biome_family: string; mean_height?: number | null; temp_band?: number | null; moisture_band?: number | null; is_passable?: boolean | null; has_river?: boolean | null; coastal?: boolean | null }
 
 export const DEPOSIT_GOOD: Record<DepositKind, string | null> = {
   stone: "raw_stone", granite: null, iron: "raw_ore", copper: null, gold: null,
@@ -26,9 +26,33 @@ function cluster(salt: string, kind: string, x: number, y: number, size: number)
 }
 const grade = (r: number): 1 | 2 | 3 => (r > .85 ? 3 : r > .5 ? 2 : 1);
 
+/** Wild vines: temperate-to-warm (temp_band ≥ 2), not waterlogged (moisture ≤ 2), modest height (≤ 60 on the 0–100 scale). */
+export function grapeClimate(hex: MacroHexInput) {
+  if (/tundra|taiga|snow|desert/.test(hex.biome_family)) return false;
+  const h = Number(hex.mean_height ?? 0), t = hex.temp_band, m = hex.moisture_band;
+  return h <= 60 && (t == null ? true : t >= 2) && (m == null ? true : m <= 2);
+}
 export function isWaterBiome(b: string) { return /sea|ocean|lake|water/.test(b); }
 
-export function generateMacroDeposits(salt: string, x: number, y: number, hex: MacroHexInput): Deposit[] {
+/** Gold vein score of a rocky tile; mountains richer than hills. Plains/forest never qualify. */
+export function goldScore(salt: string, x: number, y: number, biome: string) {
+  if (!/mountain|hill/.test(biome)) return 0;
+  return cluster(salt, "gold", x, y, 7) * 0.6 + hash(`${salt}:gold:${x}:${y}`) * 0.4;
+}
+/**
+ * World-level gold veins (needs every macro tile): mountains above a high score; hills only the
+ * top ~1.5% of hills (at least one when the world has hills) — rare, but never a goldless world.
+ */
+export function goldVeinCells(salt: string, hexes: { x: number; y: number; biome_family: string }[]) {
+  const out = new Set<string>();
+  const hills = hexes.filter(h => /hill/.test(h.biome_family) && !/mountain/.test(h.biome_family))
+    .map(h => ({ k: `${h.x},${h.y}`, s: goldScore(salt, h.x, h.y, h.biome_family) })).sort((a, b) => b.s - a.s || a.k.localeCompare(b.k));
+  hills.slice(0, Math.max(hills.length ? 1 : 0, Math.floor(hills.length * 0.015))).forEach(h => out.add(h.k));
+  for (const h of hexes) if (/mountain/.test(h.biome_family) && goldScore(salt, h.x, h.y, h.biome_family) > 0.78) out.add(`${h.x},${h.y}`);
+  return out;
+}
+
+export function generateMacroDeposits(salt: string, x: number, y: number, hex: MacroHexInput, goldVeins?: Set<string>): Deposit[] {
   const b = hex.biome_family || "";
   if (isWaterBiome(b) || hex.is_passable === false && !/mountain/.test(b)) return [];
   const out: Deposit[] = [];
@@ -44,20 +68,19 @@ export function generateMacroDeposits(salt: string, x: number, y: number, hex: M
     if (iron > (mountain ? .58 : .66)) add("iron", grade(iron), Math.round(150 + iron * 450));
     const copper = cluster(salt, "copper", x, y, 6);
     if (copper > .7) add("copper", grade(copper), Math.round(100 + copper * 300));
-    const gold = cluster(salt, "gold", x, y, 7);
-    if (mountain && gold > .82 && r("gold") > .9) add("gold", grade(gold), Math.round(20 + gold * 60));
+    if (goldVeins?.has(`${x},${y}`)) { const g = goldScore(salt, x, y, b); add("gold", mountain ? grade(g) : g > .9 ? 2 : 1, Math.round((mountain ? 40 : 15) + g * (mountain ? 60 : 25))); }
   }
   if (/forest|jungle|taiga|wood/.test(b)) {
     const q = r("timber"); const species = q > .8 ? "cedr" : q > .45 ? "dub" : "buk";
     add("timber", grade(q), Math.round(600 + q * 600), true, species);
     if (r("herbs") > .7) add("herbs", 1, null, true);
   }
-  if (/plain|grass|meadow|steppe|savanna|flood/.test(b) || (hex.has_river && !rocky)) {
+  const plain = /plain|grass|meadow|steppe|savanna|flood/.test(b);
+  if (plain || (hex.has_river && !rocky)) {
     add("fertile_soil", grade(r("soil") + (hex.has_river ? .25 : 0)), null, true);
-    const warm = !/tundra|taiga|snow|steppe/.test(b) && (hex.mean_height ?? 0) < 0.6;
-    if (warm && cluster(salt, "grapes", x, y, 3) > .72) add("wild_grapes", grade(r("grapes")), null, true);
     if (r("herbs") > .8) add("herbs", 1, null, true);
   }
+  if ((plain || /hill/.test(b)) && grapeClimate(hex) && cluster(salt, "grapes", x, y, 3) > .6) add("wild_grapes", grade(r("grapes")), null, true);
   return out;
 }
 
