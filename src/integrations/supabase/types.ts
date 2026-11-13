@@ -5564,6 +5564,24 @@ export type Database = {
           },
         ]
       }
+      geology_seeds: {
+        Row: {
+          created_at: string
+          salt: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          salt?: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          salt?: string
+          session_id?: string
+        }
+        Relationships: []
+      }
       gladiator_records: {
         Row: {
           academy_id: string
@@ -6610,6 +6628,30 @@ export type Database = {
           },
         ]
       }
+      macro_deposits: {
+        Row: {
+          deposits: Json
+          generated_at: string
+          grid_x: number
+          grid_y: number
+          session_id: string
+        }
+        Insert: {
+          deposits?: Json
+          generated_at?: string
+          grid_x: number
+          grid_y: number
+          session_id: string
+        }
+        Update: {
+          deposits?: Json
+          generated_at?: string
+          grid_x?: number
+          grid_y?: number
+          session_id?: string
+        }
+        Relationships: []
+      }
       macro_regions: {
         Row: {
           climate_band: number
@@ -6650,6 +6692,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      macro_surveys: {
+        Row: {
+          findings: Json
+          grid_x: number
+          grid_y: number
+          id: string
+          landmark_name: string | null
+          level: number
+          player_name: string
+          session_id: string
+          surveyed_turn: number
+        }
+        Insert: {
+          findings?: Json
+          grid_x: number
+          grid_y: number
+          id?: string
+          landmark_name?: string | null
+          level?: number
+          player_name: string
+          session_id: string
+          surveyed_turn?: number
+        }
+        Update: {
+          findings?: Json
+          grid_x?: number
+          grid_y?: number
+          id?: string
+          landmark_name?: string | null
+          level?: number
+          player_name?: string
+          session_id?: string
+          surveyed_turn?: number
+        }
+        Relationships: []
       }
       map_gen_feedback: {
         Row: {
@@ -12613,6 +12691,16 @@ export type Database = {
         }
         Returns: Json
       }
+      assign_macro_province: {
+        Args: {
+          p_player: string
+          p_province: string
+          p_session: string
+          p_x: number
+          p_y: number
+        }
+        Returns: Json
+      }
       begin_turn_resolution: {
         Args: { p_session: string; p_turn: number }
         Returns: string
@@ -12624,6 +12712,16 @@ export type Database = {
           p_player: string
           p_session: string
           p_turn: number
+        }
+        Returns: Json
+      }
+      claim_macro_tile: {
+        Args: {
+          p_player: string
+          p_session: string
+          p_turn: number
+          p_x: number
+          p_y: number
         }
         Returns: Json
       }
@@ -12687,6 +12785,19 @@ export type Database = {
       }
       read_economy_management: {
         Args: { p_player: string; p_session: string; p_turn: number }
+        Returns: Json
+      }
+      record_macro_survey: {
+        Args: {
+          p_cost: number
+          p_findings: Json
+          p_level: number
+          p_player: string
+          p_session: string
+          p_turn: number
+          p_x: number
+          p_y: number
+        }
         Returns: Json
       }
       replace_goods_economy_projection: {
