@@ -11,11 +11,16 @@ describe("geology", () => {
     expect(scan("a", "sea")).toEqual([]);
     expect(scan("a", "plains").some(d => ["gold", "iron", "copper"].includes(d.kind))).toBe(false);
   });
-  it("gold is rare and finite, only in mountains", () => {
-    const m = scan("a", "mountains"); const gold = m.filter(d => d.kind === "gold");
-    expect(gold.length).toBeLessThan(961 * 0.05);
-    expect(gold.every(d => d.reserve! > 0 && !d.regenerates && !d.implemented && d.good === null)).toBe(true);
+  it("gold exists only at a world-ranked vein and is a finite implemented ore", () => {
+    expect(scan("a", "mountains").some(d => d.kind === "gold")).toBe(false);
     expect(scan("a", "hills").some(d => d.kind === "gold")).toBe(false);
+    const mountain = generateMacroDeposits("a", 4, 7, { biome_family: "mountains" }, new Set(["4,7"]));
+    const gold = mountain.filter(d => d.kind === "gold");
+    expect(gold).toHaveLength(1);
+    expect(gold[0].reserve!).toBeGreaterThan(0);
+    expect(gold[0].regenerates).toBe(false);
+    expect(gold[0].implemented).toBe(true);
+    expect(gold[0].good).toBe("gold_ore");
   });
   it("hint survey hides grade and reserve", () => {
     const f = surveyFindings(generateMacroDeposits("a", 1, 1, { biome_family: "hills" }), 1);

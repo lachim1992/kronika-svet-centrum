@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { dispatchCommand } from "@/lib/commands";
 import { DEPOSIT_LABEL, macroClaimCost, SURVEY_COST, type DepositKind } from "../../../supabase/functions/_shared/geology";
 
+export type MacroSurveySnapshot = { level: number; findings: Finding[] };
 interface Props { sessionId: string; playerName: string; currentTurn: number; gridX: number; gridY: number;
-  owner: string | null; provinceId: string | null; passable: boolean; biome: string; ownedTiles: number; adjacentOwned: boolean; onChanged: () => void }
+  owner: string | null; provinceId: string | null; passable: boolean; biome: string; ownedTiles: number; adjacentOwned: boolean;
+  onChanged: () => void; onSurveyChange?: (survey: MacroSurveySnapshot | null) => void }
 type Finding = { kind: DepositKind; hint?: boolean; grade?: number; reserve?: number | null; implemented?: boolean; tag?: string; regenerates?: boolean };
 
 /** Macro tile: per-player survey knowledge, claim and province assignment. Inspect only — nothing happens without a click. */
