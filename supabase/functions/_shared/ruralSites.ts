@@ -5,8 +5,9 @@
  */
 export const RURAL_RECIPES = new Set(["fell_timber", "quarry_stone", "mine_iron", "harvest_wheat", "harvest_barley",
   "herd_cattle", "harvest_grapes", "cut_peat", "catch_fish", "harvest_rice"]);
-/** Bulk goods that must be hauled to market; food/water/fuel keep subsistence grace. */
-export const FREIGHT_RECIPES = new Set(["fell_timber", "quarry_stone", "mine_iron", "harvest_grapes"]);
+/** Every rural output (crops, cattle, fish, grapes, timber, stone, ore, peat) must be hauled to the city market.
+ * Subsistence grace comes only from the city's own macro cell (factor 1 "local"); river water is not freight. */
+export const FREIGHT_RECIPES = new Set(RURAL_RECIPES);
 /** Deposit (from a detailed survey) a recipe needs before it may run at all. */
 export const DEPOSIT_REQUIRED: Record<string, string> = { mine_iron: "iron" };
 /** Lv1 site capacity per recipe (output units/turn before staffing). */

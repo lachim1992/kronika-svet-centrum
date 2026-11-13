@@ -15,6 +15,7 @@ export default function MacroTerritoryPanel(p: Props) {
   const [survey, setSurvey] = useState<{ level: number; findings: Finding[] } | null>(null);
   const [provinces, setProvinces] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [rename, setRename] = useState("");
   const load = useCallback(async () => {
     const [{ data: s }, { data: pr }] = await Promise.all([
       supabase.from("macro_surveys").select("level, findings").eq("session_id", p.sessionId).eq("player_name", p.playerName).eq("grid_x", p.gridX).eq("grid_y", p.gridY).maybeSingle(),
@@ -61,5 +62,11 @@ export default function MacroTerritoryPanel(p: Props) {
         {!p.provinceId && <option value="">— bez provincie —</option>}
         {provinces.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
       </select></label>}
+    {p.owner === p.playerName && p.provinceId && provinces.some(pr => pr.id === p.provinceId) && <div className="mt-2 flex gap-1">
+      <input className="flex-1 border border-border bg-background p-1 text-xs" maxLength={48} placeholder="Nový název provincie"
+        value={rename} onChange={e => setRename(e.target.value)} />
+      <Button size="sm" variant="outline" disabled={!!busy || rename.trim().length < 2}
+        onClick={() => void run("rename", "RENAME_PROVINCE", { provinceId: p.provinceId, name: rename.trim() }, "Provincie přejmenována").then(() => setRename(""))}>Přejmenovat</Button>
+    </div>}
   </section>;
 }

@@ -563,6 +563,15 @@ async function executeCommand(
       return { events: [], result: data } as any;
     }
 
+    case "RENAME_PROVINCE": {
+      const name = sanitizeRegionName(payload.name);
+      if (!name) return { events: [], error: "Název musí mít 2–48 znaků (písmena, čísla, mezera, - ' .)" };
+      const { data, error } = await supabase.rpc("rename_province", { p_session: sessionId, p_player: actor.name,
+        p_province: String(payload.provinceId || ""), p_name: name });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: data } as any;
+    }
+
     case "CLAIM_WORKED_PARCEL": {
       const { data, error } = await supabase.rpc("claim_worked_parcel", { p_session: sessionId, p_city: String(payload.cityId || ""),
         p_player: actor.name, p_parcel: String(payload.parcelId || ""), p_turn: turnNumber });
