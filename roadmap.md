@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## Integrační dokončovací průchod map-first — 2026-11-13
+- [ ] Audit aktivní mapy → command-dispatch → fyzická produkce/doprava; zachovat existující systémy a data TEST02/JV72O7.
+- [ ] Opravit prokázané chybějící články UI/server/DB bez nové paralelní ekonomiky a bez herního tahu.
+- [ ] Doplnit cílené testy invariantů, spustit regresi a kontrolu typů; bezpečně nasadit dotčené funkce a UI.
+- [ ] Zdokumentovat skutečné výsledky, nasazení a zbývající defekty; poměr 1 urban : 1 worked neměnit bez samostatného návrhu.
+
 ## HexNode audit + guild specialization continuation — 2026-11-10
 - [x] Versioned code evidence in hexNodeAudit.ts (2026-11-10.2), 28 items: 17 implemented / 5 partial / 2 missing / 2 planned / 2 unverified. LIVE catalogue/session counts separate and unavailable errors explicit. Corrected causal links, planned grouping and Layer A capacity vs physical Layer B/fiscal aliases. No claim that reviewed items are live validated.
 - [x] guildSpecialization.ts accrues actual canonical node producer diagnostics by good, owner/guild-role validated, max +2 experience/turn, 1% decay, per-node cap 100; existing progression thresholds 10/30/60/100. process-turn buffers scores, level and last-turn marker in existing apply_goods_fiscal_plan. Additive migration 0014 applied and column verified; no seeded scores or existing game row changes.
