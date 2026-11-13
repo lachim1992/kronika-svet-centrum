@@ -45,7 +45,7 @@ export function generateMacroDeposits(salt: string, x: number, y: number, hex: M
     const copper = cluster(salt, "copper", x, y, 6);
     if (copper > .7) add("copper", grade(copper), Math.round(100 + copper * 300));
     const gold = cluster(salt, "gold", x, y, 7);
-    if (mountain && gold > .82 && r("gold") > .8) add("gold", grade(gold), Math.round(20 + gold * 60));
+    if (mountain && gold > .82 && r("gold") > .9) add("gold", grade(gold), Math.round(20 + gold * 60));
   }
   if (/forest|jungle|taiga|wood/.test(b)) {
     const q = r("timber"); const species = q > .8 ? "cedr" : q > .45 ? "dub" : "buk";
