@@ -9,7 +9,7 @@ export const RURAL_RECIPES = new Set(["fell_timber", "quarry_stone", "mine_iron"
  * Subsistence grace comes only from the city's own macro cell (factor 1 "local"); river water is not freight. */
 export const FREIGHT_RECIPES = new Set(RURAL_RECIPES);
 /** Deposit (from a detailed survey) a recipe needs before it may run at all. */
-export const DEPOSIT_REQUIRED: Record<string, string> = { mine_iron: "iron", mine_gold: "gold", quarry_stone: "stone" };
+export const DEPOSIT_REQUIRED: Record<string, string> = { mine_iron: "iron", mine_gold: "gold" };
 /** Nonrenewable recipes whose total extraction is capped by the TRUE shared macro deposit reserve. */
 export const MACRO_RESERVE_RECIPES: Record<string, string> = { mine_iron: "iron", mine_gold: "gold" };
 /** Lv1 site capacity per recipe (output units/turn before staffing). */
