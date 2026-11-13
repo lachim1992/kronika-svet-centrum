@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { dispatchCommand } from "@/lib/commands";
 import { DEPOSIT_LABEL, macroClaimCost, SURVEY_COST, type DepositKind } from "../../../supabase/functions/_shared/geology";
 
+export type MacroSurveySnapshot = { level: number; findings: Finding[] };
 interface Props { sessionId: string; playerName: string; currentTurn: number; gridX: number; gridY: number;
-  owner: string | null; provinceId: string | null; passable: boolean; biome: string; ownedTiles: number; adjacentOwned: boolean; onChanged: () => void }
+  owner: string | null; provinceId: string | null; passable: boolean; biome: string; ownedTiles: number; adjacentOwned: boolean;
+  onChanged: () => void; onSurveyChange?: (survey: MacroSurveySnapshot | null) => void }
 type Finding = { kind: DepositKind; hint?: boolean; grade?: number; reserve?: number | null; implemented?: boolean; tag?: string; regenerates?: boolean };
 
 /** Macro tile: per-player survey knowledge, claim and province assignment. Inspect only — nothing happens without a click. */
@@ -21,9 +23,11 @@ export default function MacroTerritoryPanel(p: Props) {
       supabase.from("macro_surveys").select("level, findings").eq("session_id", p.sessionId).eq("player_name", p.playerName).eq("grid_x", p.gridX).eq("grid_y", p.gridY).maybeSingle(),
       supabase.from("provinces").select("id, name").eq("session_id", p.sessionId).eq("owner_player", p.playerName),
     ]);
-    setSurvey(s ? { level: s.level, findings: (s.findings as unknown as Finding[]) || [] } : null);
+    const next = s ? { level: s.level, findings: (s.findings as unknown as Finding[]) || [] } : null;
+    setSurvey(next);
+    p.onSurveyChange?.(next);
     setProvinces(pr || []);
-  }, [p.sessionId, p.playerName, p.gridX, p.gridY]);
+  }, [p.sessionId, p.playerName, p.gridX, p.gridY, p.onSurveyChange]);
   useEffect(() => { void load(); }, [load]);
 
   const run = async (key: string, commandType: string, payload: Record<string, unknown>, ok: string) => {

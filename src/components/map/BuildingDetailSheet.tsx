@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { ArrowUp, Building2, Clock, Coins, Hammer, Loader2, Sparkles, Users } from "lucide-react";
 import { DEMAND_BASKETS, getBasketMeta, inspectBasketOutputs, scaledBasketOutputs } from "@/lib/goodsCatalog";
 import { useManagementReport } from "@/hooks/useManagementReport";
+import { buildingOperationLines } from "@/lib/parcelActual";
 
 /** Honest reasons a structure makes nothing this turn. */
 const BLOCKED_REASON: Record<string, string> = {
@@ -158,12 +159,14 @@ const BuildingDetailSheet = ({
   const { data: reportData } = useManagementReport(sessionId, playerName, currentTurn);
   const operation = useMemo(() => {
     const report = (reportData?.report as any);
-    const lines = (report?.producers || []).filter((p: any) => String(p.producer).split(":")[0] === target?.id);
+    const recipeKeys = Object.keys({ ...(template?.effects?.recipe_keys || {}), ...(entity?.effects?.recipe_keys || {}) });
+    const lines = buildingOperationLines(report?.producers || [], { id: target?.id || "", parcelId: entity?.parcel_id, recipeKeys });
     if (!lines.length) return null;
     const row = { goods: [] as string[], jobs: 0, employed: 0, realized: 0, potential: 0,
       inputs: [] as any[], suppliers: [] as string[], reasons: [] as string[],
       byGood: [] as { good: string; realized: number; potential: number }[],
       factors: null as null | { staffing: number; stability: number; tools: number; logistics: number },
+      transport: [] as { mode: string; factor: number }[],
       foodEquiv: 0, feeds: null as null | number };
     // Canonical goods metadata from the same management report: which outputs are edible
     // (staple_food, final use). All edible goods carry functional_value 1 — one physical unit
@@ -179,6 +182,8 @@ const BuildingDetailSheet = ({
       if (!row.factors && p.factors) row.factors = {
         staffing: num(p.staffing_ratio ?? p.factors.staffing), stability: num(p.factors.stability),
         tools: num(p.factors.tools), logistics: num(p.factors.logistics) };
+      if (p.parcel?.transport && !row.transport.some(t => t.mode === p.parcel.transport.mode))
+        row.transport.push({ mode: p.parcel.transport.mode, factor: num(p.parcel.transport.factor) });
       if (edible(p.good)) row.foodEquiv += num(p.realized);
       for (const i of p.inputs || []) {
         const found = row.inputs.find((x: any) => x.good === i.good);
@@ -337,6 +342,9 @@ const BuildingDetailSheet = ({
               {operation.feeds != null && <> — uživí přibližně {fmt(operation.feeds)} obyvatel (při současném výkonu a lokální potřebě)</>}.
             </p>}
             <p className="text-[11px] text-muted-foreground">Pracuje {Math.round(operation.employed)} z {Math.round(operation.jobs)} lidí.</p>
+            {operation.transport.length > 0 && <p className="text-[11px] text-muted-foreground">
+              Doprava do města: {operation.transport.map(t => `${{ local: "lokální", road: "dokončená cesta", footpath: "pěšina", no_road: "bez cesty" }[t.mode] || t.mode} · ${Math.round(t.factor * 100)} %`).join(" · ")}
+            </p>}
             {operation.factors && <p className="text-[11px] text-muted-foreground">
               Obsazenost {Math.round(operation.factors.staffing * 100)} % · stabilita {Math.round(operation.factors.stability * 100)} % · nástroje {Math.round(operation.factors.tools * 100)} % · logistika {Math.round(operation.factors.logistics * 100)} %
             </p>}

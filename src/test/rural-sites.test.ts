@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parcelProducers, type EconomicParcel } from '../../supabase/functions/_shared/parcelEconomy';
-import { templateSiteRole, parcelTransport, depositKey, FOOTPATH_FACTOR, siteCapacity } from '../../supabase/functions/_shared/ruralSites';
+import { templateSiteRole, parcelTransport, depositKey, FOOTPATH_FACTOR, siteCapacity, availableMacroReserve, depositSurveyReason } from '../../supabase/functions/_shared/ruralSites';
 import { RECIPES } from '../../supabase/functions/_shared/productionCatalog';
 
 const recipes = new Map(RECIPES.map(r => [r.key, { recipe_key:r.key, output_good_key:r.output, output_quantity:r.qty, labor_cost:1, input_items:[] }]));
@@ -70,5 +70,21 @@ describe('freight uses only own-realm roads', () => {
     const roads = [{ from: '3,5', to: '4,5', owner: 'B' }, { from: '4,5', to: '5,5', owner: 'B' }];
     expect(PT('5,5', '3,5', roads, 'A').factor).toBe(0);
     expect(PT('5,5', '3,5', roads, 'B').factor).toBe(1);
+  });
+});
+
+describe('deposit access and depletion', () => {
+  it('a survey and a new building never restore a committed exhausted gold reserve', () => {
+    expect(availableMacroReserve(100, 0)).toBe(0);
+    expect(availableMacroReserve(100, 17.5)).toBe(17.5);
+    expect(availableMacroReserve(100, undefined)).toBe(100);
+    expect(availableMacroReserve(100, 'not-a-number')).toBe(0);
+  });
+  it('gold mine UI requires detailed personal knowledge and a confirmed vein', () => {
+    expect(depositSurveyReason(['mine_gold'], null)).toContain('podrobný průzkum');
+    expect(depositSurveyReason(['mine_gold'], { level: 1, findings: [{ kind: 'gold' }] })).toContain('podrobný průzkum');
+    expect(depositSurveyReason(['mine_gold'], { level: 2, findings: [] })).toContain('zlatou žílu');
+    expect(depositSurveyReason(['mine_gold'], { level: 2, findings: [{ kind: 'gold' }] })).toBeNull();
+    expect(depositSurveyReason(['harvest_wheat'], null)).toBeNull();
   });
 });

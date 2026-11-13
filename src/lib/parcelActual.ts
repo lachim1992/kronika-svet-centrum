@@ -24,6 +24,18 @@ export function indexParcelProducers(producers: any[] | undefined | null): Map<s
   return out;
 }
 
+/** Live operation for a structure. Rural sites run as their parcel producer, not under the building id. */
+export function buildingOperationLines(producers: any[] | undefined | null, target: { id: string; parcelId?: string | null; recipeKeys?: string[] }): any[] {
+  const recipes = new Set((target.recipeKeys || []).map(String));
+  return (producers || []).filter(p => {
+    const producer = String(p?.producer || "");
+    if (producer.startsWith(`${target.id}:`)) return true;
+    if (!target.parcelId) return false;
+    const id = parcelIdOf(producer);
+    return id?.parcel === target.parcelId && recipes.has(id.recipe);
+  });
+}
+
 /** Why a parcel yields nothing autonomously, or null if the ledger is the answer. */
 export function parcelZeroReason(p: ParcelRow, actual: ParcelActual[] | undefined, hasReport: boolean): string | null {
   if (!p.city_id || !p.owner_player || p.status === "wild") return "nevlastněný dílek — nic neprodukuje";

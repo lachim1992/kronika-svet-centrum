@@ -45,6 +45,25 @@ export interface RuralSite { parcelId: string; recipeKeys: string[]; level: numb
 /** True (private) macro deposit, key `${x},${y}|${kind}` from service-only macro_deposits. */
 export interface MacroReserve { reserve: number; grade: number }
 export const macroReserveKey = (x: number, y: number, kind: string) => `macro:${x},${y}:${kind}`;
+/** Committed ecology can only reduce a finite deposit; a survey never replenishes it. */
+export function availableMacroReserve(trueReserve: unknown, committedRemaining: unknown): number {
+  const original = Math.max(0, Number(trueReserve) || 0);
+  if (committedRemaining === null || committedRemaining === undefined) return original;
+  const committed = Number(committedRemaining);
+  return Number.isFinite(committed) ? Math.min(original, Math.max(0, committed)) : 0;
+}
+export interface DepositSurveyKnowledge { level?: number; findings?: Array<{ kind?: string }> | null }
+/** UI hint only: the server repeats this check against the player's own survey row. */
+export function depositSurveyReason(recipeKeys: string[], survey: DepositSurveyKnowledge | null | undefined): string | null {
+  const required = [...new Set(recipeKeys.flatMap(key => DEPOSIT_REQUIRED[key] ? [DEPOSIT_REQUIRED[key]] : []))];
+  if (!required.length) return null;
+  if ((survey?.level ?? 0) < 2) return "Nejdřív proveď podrobný průzkum tohoto makropole.";
+  const known = new Set((survey?.findings || []).map(f => f.kind));
+  const missing = required.filter(kind => !known.has(kind));
+  if (!missing.length) return null;
+  const labels: Record<string, string> = { iron: "železnou rudu", gold: "zlatou žílu" };
+  return `Na tomto makropoli není potvrzená ${missing.map(kind => labels[kind] || kind).join(" ani ")}.`;
+}
 export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve> }
 
 /** Merge natural specs with the parcel's rural site; enforce deposits. Returns specs + reasons for blocked recipes. */

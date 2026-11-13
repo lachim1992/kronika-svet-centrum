@@ -29,8 +29,8 @@ import ArmyMarker from "@/components/map/ArmyMarker";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
-import { templateSiteRole } from "../../../supabase/functions/_shared/ruralSites";
-import MacroTerritoryPanel from "@/components/map/MacroTerritoryPanel";
+import { templateSiteRole, depositSurveyReason } from "../../../supabase/functions/_shared/ruralSites";
+import MacroTerritoryPanel, { type MacroSurveySnapshot } from "@/components/map/MacroTerritoryPanel";
 import { parcelPotential } from "../../../supabase/functions/_shared/parcelEconomy";
 import { terrainReason } from "../../../supabase/functions/_shared/terrainSuitability";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
@@ -406,6 +406,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
+  const [selectedMacroSurvey, setSelectedMacroSurvey] = useState<MacroSurveySnapshot | null>(null);
   const [infrastructure, setInfrastructure] = useState<TileInfrastructure[]>([]);
   const [roadSegments, setRoadSegments] = useState<RoadSegment[]>([]);
   const [roadProjects, setRoadProjects] = useState<RoadProject[]>([]);
@@ -967,6 +968,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
+  // Worked and urban parcels on neighbouring cells retain their owning city: they are not cityless.
+  const parcelBuildCity = selectedParcel?.city_id ? cityById.get(selectedParcel.city_id) : selectedCity;
   /** A neighbouring city of yours that may buy parcels on this cell. */
   const foreignOwner = selected?.owner_player && selected.owner_player !== playerName ? selected.owner_player : null;
   /** A road is allowed wherever you already have a foothold: parcel, city seat or sub-node on the tile. */
@@ -1196,7 +1199,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".6" pointerEvents="none" />;
       })}
 
-      {parcelsBackToFront(tileParcels.filter(parcel => parcel.status === "occupied")).map((parcel, index) => {
+      {parcelsBackToFront(tileParcels.filter(parcel => parcel.status === "occupied" || (parcel.claim_kind === "worked" && parcelContents.some(item => item.parcel_id === parcel.id && item.entity_type === "building")))).map((parcel, index) => {
         const entity = constructionByParcel.get(parcel.id);
         const progress = entity?.status === "building"
           ? Math.max(8, Math.min(92, Math.round(((currentTurn - entity.build_started_turn) / Math.max(1, entity.build_duration)) * 100)))
@@ -1207,7 +1210,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   };
 
   const buildOnParcel = async (template: BuildingTemplate) => {
-    if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
+    if (!selectedParcel || !parcelBuildCity || parcelBuildCity.owner_player !== playerName) return;
     if (selectedParcel.status === "wild") { toast.error("Nejprve parcelu zaber"); return; }
     const needGold = Number(template.cost_wealth || 0);
     const needProd = Number(template.cost_wood || 0) + Number(template.cost_stone || 0) + Number(template.cost_iron || 0);
@@ -1215,7 +1218,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     if (!isSandboxMode() && treasury.production < needProd) { toast.error(`Nedostatek produkce (potřeba ${needProd}, máš ${Math.floor(treasury.production)})`); return; }
     setBuildingAction(`building-${template.id}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_BUILDING", commandPayload: {
-      cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id,
+      cityId: parcelBuildCity.id, cityName: parcelBuildCity.name, parcelId: selectedParcel.id,
       building: { template_id: template.id, name: template.name, category: template.category, description: template.description,
         cost_wealth: template.cost_wealth, cost_wood: template.cost_wood, cost_stone: template.cost_stone, cost_iron: template.cost_iron,
         build_duration: template.build_turns, effects: template.effects, max_level: template.max_level, level_data: template.level_data },
@@ -1230,11 +1233,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   /** Residential districts raise the city's housing capacity, so they get their own action. */
   /** Housing staffs workshops: this is the labour budget of the selected city. */
   const labour = useMemo(() => {
-    const own = districts.filter(d => d.city_id === selectedCity?.id && d.status === "completed");
+    const own = districts.filter(d => d.city_id === parcelBuildCity?.id && d.status === "completed");
     const housing = own.filter(d => d.district_type === "residential").length;
     const production = own.filter(d => d.district_type === "production");
     return { housing, slots: housing * PRODUCTION_PER_RESIDENTIAL, production, free: housing * PRODUCTION_PER_RESIDENTIAL - production.length };
-  }, [districts, selectedCity?.id]);
+  }, [districts, parcelBuildCity?.id]);
 
   /** Subnodes attached to the selected city — they feed the same markets as its districts. */
   const citySubnodes = useMemo(() => {
@@ -1250,10 +1253,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const buildDistrict = async (district: DistrictBlueprint, basketKey?: string) => {
 
-    if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
+    if (!selectedParcel || !parcelBuildCity || parcelBuildCity.owner_player !== playerName) return;
     setBuildingAction(`district-${district.key}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_DISTRICT", commandPayload: {
-      cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id, district, basketKey,
+      cityId: parcelBuildCity.id, cityName: parcelBuildCity.name, parcelId: selectedParcel.id, district, basketKey,
     }});
     setBuildingAction(null);
     if (!result.ok) { toast.error(result.error || "Čtvrť se nepodařilo založit"); return; }
@@ -2005,7 +2008,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           gridX={selectedCell.a} gridY={selectedCell.b} owner={selected.owner_player || null} provinceId={(selected as any).province_id || null}
           passable={selected.is_passable !== false} biome={selected.biome_family} ownedTiles={tiles.filter(t => t.owner_player === playerName).length}
           adjacentOwned={tiles.some(t => t.owner_player === playerName && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)}
-          onChanged={() => void load()} />}
+          onChanged={() => void load()} onSurveyChange={setSelectedMacroSurvey} />}
         <section className="mt-4 border border-border/70 bg-muted/20 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -2043,7 +2046,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild" && affordable;
                 return <button key={parcel.id} type="button" disabled={claimingParcel !== null}
                   onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); openStructureOnParcel(parcel.id); }}
-                  title={`${parcel.region_name ? parcel.region_name + " · " : ""}${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.claim_kind === "worked" ? "využívaná půda, bez staveb" : `${parcel.capacity_slots} stavebních slotů`} · kupní cena ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
+                  title={`${parcel.region_name ? parcel.region_name + " · " : ""}${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.claim_kind === "worked" ? "využívaná půda · jedna venkovská stavba" : `${parcel.capacity_slots} stavebních slotů`} · kupní cena ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
                   className={`aspect-square border text-[8px] leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
                     parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
                     : parcel.status === "claimed" && parcel.claim_kind === "worked" ? "border-emerald-500/70 bg-emerald-800/30"
@@ -2144,7 +2147,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {selectedParcel.region_name && <p className="text-[11px] text-muted-foreground">{SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</p>}
               <p className="text-[11px] text-muted-foreground">{selectedParcel.claim_kind === "worked" ? "Využívané hospodářské území" : selectedParcel.status === "wild" ? "Volná půda" : "Stavební parcela"}</p>
             </div>
-            <span className="text-xs text-muted-foreground">{selectedParcel.claim_kind === "worked" ? "bez staveb" : `${selectedParcelUsed}/${selectedParcel.capacity_slots} slotů`}</span>
+            <span className="text-xs text-muted-foreground">{selectedParcel.claim_kind === "worked" ? `${selectedParcelUsed}/1 venkovská stavba` : `${selectedParcelUsed}/${selectedParcel.capacity_slots} slotů`}</span>
           </div>
           {(() => {
             const potential = parcelPotential(selectedParcel as any, tiles as any, currentTurn);
@@ -2200,7 +2203,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 onClick={() => void workParcel(selectedParcel)}>
                 Využívat bez koupě · zbývá {Math.max(0, claimedForCity - workedForCity)} nároků
               </Button>}
-              <p className="text-[10px] text-muted-foreground">Využívaná parcela umožňuje těžbu a sběr, ale nesmí se zastavět. Každá koupená stavební parcela odemkne právě jeden takový nárok.</p>
+              <p className="text-[10px] text-muted-foreground">Využívaná parcela umožňuje jednu venkovskou farmu, důl, lom nebo tábor; městské zpracování na ni nepatří. Každá koupená stavební parcela odemkne právě jeden takový nárok.</p>
             </div>}
           {selectedParcel.claim_kind === "worked" && selectedParcel.city_id && (() => {
             const city = cityById.get(selectedParcel.city_id!); if (!city) return null;
@@ -2265,8 +2268,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               : buildingAction}
 
             parcelBlock={parcelBlock}
-            ownCity={!!selectedCity && selectedCity.owner_player === playerName}
-            cityName={selectedCity?.name}
+            ownCity={!!parcelBuildCity && parcelBuildCity.owner_player === playerName}
+            cityName={parcelBuildCity?.name}
             freeDistrictSlots={labour.free}
             hasWater={!!selected?.has_river || !!selected?.coastal}
             treasury={{ gold: treasury.gold, production: treasury.production }}
@@ -2275,6 +2278,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               const rural = item.kind === "building" && templateSiteRole(item.recipes.map(recipe => recipe.key)) === "rural";
               if (selectedParcel?.claim_kind === "worked" && !rural) return "Na využívané půdě lze stavět jen farmy, doly, lomy, tábory a rybářství — zpracování patří do města";
               if (selectedParcel?.claim_kind !== "worked" && rural) return "Těžební stavba patří na využívanou parcelu za městem — vyber ji nebo ji zdarma zaber";
+              if (rural) return depositSurveyReason(item.recipes.map(recipe => recipe.key), selectedMacroSurvey);
               return null;
             }}
             terrainBlockReason={item => terrainReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome)}

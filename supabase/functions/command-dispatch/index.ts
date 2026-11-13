@@ -38,9 +38,10 @@ import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
-import { templateSiteRole, DEPOSIT_REQUIRED, type SiteRole } from "../_shared/ruralSites.ts";
+import { templateSiteRole, DEPOSIT_REQUIRED, availableMacroReserve, macroReserveKey, type SiteRole } from "../_shared/ruralSites.ts";
 import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
+import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
 
 /** The 12 canonical demand baskets a production district may be pointed at. */
 const CANONICAL_BASKETS = new Set([
@@ -103,29 +104,19 @@ Deno.serve(async (req) => {
     if(session.resolving_turn != null && actor?.type !== 'ai_faction' && actor?.type !== 'system')
       return json({error:'Tah se právě uzavírá. Nejprve dokončete jeho zpracování.'},409);
 
-    // ── Resolve actor.name to canonical realm player_name ──
-    // Keep the authenticated caller separate from client-supplied actor data.
+    // Human authority is the verified JWT's own seat, never a body-supplied realm name.
     let authenticatedUserId: string | null = null;
     if (actor?.type !== "system" && actor?.type !== "ai_faction") {
       try {
         const authHeader = req.headers.get("authorization") || "";
-        const jwt = authHeader.replace(/^Bearer\s+/i, "");
-        if (jwt) {
-          const { data: userData } = await supabase.auth.getUser(jwt);
-          const userId = userData?.user?.id;
-          if (userId) {
-            authenticatedUserId = userId;
-            actor.id = userId;
-          }
-        }
-
-        const canonicalName = await resolveCanonicalPlayerName(supabase, sessionId, actor);
-        if (canonicalName && canonicalName !== actor.name) {
-          console.log(`[command-dispatch] Resolved actor "${actor.name}" → "${canonicalName}"`);
-          actor.name = canonicalName;
-        }
+        const jwt = authHeader.replace(/^Bearer\s+/i, "").trim() || null;
+        const seated = await requirePlayerSeat(supabase, sessionId, actor, jwt);
+        authenticatedUserId = seated.id || null;
+        actor.id = seated.id;
+        actor.name = seated.name;
       } catch (e) {
-        console.warn("[command-dispatch] actor resolution failed:", (e as Error).message);
+        if (e instanceof PlayerIdentityError) return json({ error: e.message }, e.status);
+        throw e;
       }
     }
 
@@ -3516,16 +3507,26 @@ async function executeBuildBuilding(
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
   if (siteRole === "rural" && !targetParcel) return { events: [], error: "Město nemá volnou využívanou parcelu s vhodným terénem — nejdřív zaber okolní půdu" };
   if (targetParcel && siteRole === "rural") {
-    for (const k of recipeKeys || []) {
-      const need = DEPOSIT_REQUIRED[k]; if (!need) continue;
-      const { data: sv } = await supabase.from("macro_surveys").select("level, findings").eq("session_id", sessionId).eq("player_name", actor.name)
-        .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle();
-      if (!sv || sv.level < 2 || !(sv.findings || []).some((f: any) => f.kind === need))
-        return { events: [], error: `Nedostupné: důl potřebuje potvrzené ložisko (${need}) — proveďte podrobný průzkum pole` };
-      const { data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId)
-        .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle();
-      if (!((truth as any)?.deposits || []).some((d: any) => d.kind === need && Number(d.reserve) > 0))
-        return { events: [], error: `Ložisko (${need}) na tomto poli není k dispozici` };
+    const needs = [...new Set((recipeKeys || []).map(k => DEPOSIT_REQUIRED[k]).filter(Boolean))];
+    if (needs.length) {
+      const [{ data: sv, error: surveyError }, { data: truth, error: truthError }, { data: previous, error: previousError }] = await Promise.all([
+        supabase.from("macro_surveys").select("level, findings").eq("session_id", sessionId).eq("player_name", actor.name)
+          .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle(),
+        supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId)
+          .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle(),
+        supabase.from("economy_turn_ledgers").select("parcelEcology:committed_result->parcelEcology").eq("session_id", sessionId)
+          .lt("turn_number", turnNumber).eq("committed", true).order("turn_number", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      if (surveyError || truthError || previousError) return { events: [], error: "Stav ložiska se nepodařilo ověřit" };
+      const deposits = (truth as any)?.deposits || [];
+      const committedEcology = previous?.parcelEcology || {};
+      for (const need of needs) {
+        if (!sv || sv.level < 2 || !(sv.findings || []).some((f: any) => f.kind === need))
+          return { events: [], error: `Nedostupné: důl potřebuje potvrzené ložisko (${need}) — proveďte podrobný průzkum pole` };
+        const deposit = deposits.find((d: any) => d.kind === need);
+        const remaining = availableMacroReserve(deposit?.reserve, committedEcology[macroReserveKey(targetParcel.grid_x, targetParcel.grid_y, need)]);
+        if (remaining <= 0) return { events: [], error: deposit ? `Ložisko (${need}) je vyčerpané` : `Ložisko (${need}) na tomto poli není k dispozici` };
+      }
     }
   }
   if (!parcelId && !targetParcel && recipeKeys?.length && terrainReason(recipeKeys, null)) {
