@@ -33,6 +33,8 @@ interface Props {
   subnodeBlockReason: (key: string) => string | null;
   /** Canonical terrain/deposit restrictions for selected purchased microparcel. */
   terrainBlockReason?: (item: CatalogItem) => string | null;
+  /** Rural (worked land) vs urban site rule; checked before terrain. */
+  siteBlockReason?: (item: CatalogItem) => string | null;
   basketOptions: (districtKey: string) => { key: string; label: string }[];
   spriteFor: (item: CatalogItem) => string;
   devMode?: boolean;
@@ -64,6 +66,8 @@ export function BuildCatalogPanel(props: Props) {
     if (item.kind === "subnode") return props.subnodeBlockReason(item.refId);
     if (props.parcelBlock) return props.parcelBlock;
     if (!props.ownCity) return "Nedostupné: stavět lze jen na parcele vlastního města";
+    const site = props.siteBlockReason?.(item);
+    if (site) return site;
     if (item.kind === "building") {
       const mismatch = props.terrainBlockReason?.(item);
       if (mismatch) return mismatch;

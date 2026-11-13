@@ -28,6 +28,7 @@ import ArmyMarker from "@/components/map/ArmyMarker";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
+import { templateSiteRole } from "../../../supabase/functions/_shared/ruralSites";
 import MacroTerritoryPanel from "@/components/map/MacroTerritoryPanel";
 import { parcelPotential } from "../../../supabase/functions/_shared/parcelEconomy";
 import { terrainReason } from "../../../supabase/functions/_shared/terrainSuitability";
@@ -1172,7 +1173,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const buildOnParcel = async (template: BuildingTemplate) => {
     if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
-    if (selectedParcel.claim_kind === "worked" || selectedParcel.status === "wild") { toast.error("Nejprve kup stavební parcelu"); return; }
+    if (selectedParcel.status === "wild") { toast.error("Nejprve parcelu zaber"); return; }
     const needGold = Number(template.cost_wealth || 0);
     const needProd = Number(template.cost_wood || 0) + Number(template.cost_stone || 0) + Number(template.cost_iron || 0);
     if (!isSandboxMode() && treasury.gold < needGold) { toast.error(`Nedostatek zlata (potřeba ${needGold}, máš ${Math.floor(treasury.gold)})`); return; }
@@ -1245,7 +1246,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const parcelBlock = useMemo(() => {
     if (!selectedParcel) return null;
     if (!selectedParcel.buildable) return "Tato parcela je nezastavitelná (voda, skála nebo prudký sráz).";
-    if (selectedParcel.claim_kind === "worked") return "Využívaná krajina — můžeš z ní těžit, ale stavět až po koupi stavebního práva.";
+    if (selectedParcel.claim_kind === "worked") return selectedParcel.owner_player !== playerName ? `Parcelu drží ${selectedParcel.owner_player}.`
+      : selectedParcelUsed >= 1 ? "Na využívané parcele už stojí venkovská stavba." : null;
     if (selectedParcel.owner_player !== playerName) {
       return selectedParcel.owner_player
         ? `Parcelu drží ${selectedParcel.owner_player}.`
@@ -2175,6 +2177,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             hasWater={!!selected?.has_river || !!selected?.coastal}
             treasury={{ gold: treasury.gold, production: treasury.production }}
             subnodeBlockReason={key => subnodeBlockReason({ key } as SubnodeOption)}
+            siteBlockReason={item => {
+              const rural = item.kind === "building" && templateSiteRole(item.recipes.map(recipe => recipe.key)) === "rural";
+              if (selectedParcel?.claim_kind === "worked" && !rural) return "Na využívané půdě lze stavět jen farmy, doly, lomy, tábory a rybářství — zpracování patří do města";
+              if (selectedParcel?.claim_kind !== "worked" && rural) return "Těžební stavba patří na využívanou parcelu za městem — vyber ji nebo ji zdarma zaber";
+              return null;
+            }}
             terrainBlockReason={item => terrainReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome)}
             basketOptions={districtKey => {
               const blueprint = PRODUCTION_DISTRICTS.find(d => d.key === districtKey);
