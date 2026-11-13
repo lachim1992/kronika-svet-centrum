@@ -64,7 +64,7 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
     if (!reach.has(`${p.grid_x},${p.grid_y}`)) continue;
     const site = siteByParcel.get(p.id);
     const { specs } = siteSpecs(parcelPotential(p, terrain, turn), site && site.owner === city.owner ? site : undefined, p.grid_x, p.grid_y, rural.deposits);
-    const transport = rural.roads ? parcelTransport(`${p.grid_x},${p.grid_y}`, city.cell, rural.roads) : { factor: 1, mode: 'local' as const };
+    const transport = rural.roads ? parcelTransport(`${p.grid_x},${p.grid_y}`, city.cell, rural.roads, city.owner) : { factor: 1, mode: 'local' as const };
     for (const raw of specs) {
       // Freight applies at the point of entry: only what can be hauled is harvested (no phantom stock).
       const factor = FREIGHT_RECIPES.has(raw.recipe) ? transport.factor : 1;

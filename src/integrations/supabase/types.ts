@@ -10433,6 +10433,87 @@ export type Database = {
           },
         ]
       }
+      territory_district_parcels: {
+        Row: {
+          district_id: string
+          parcel_id: string
+          session_id: string
+        }
+        Insert: {
+          district_id: string
+          parcel_id: string
+          session_id: string
+        }
+        Update: {
+          district_id?: string
+          parcel_id?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "territory_district_parcels_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "territory_districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "territory_district_parcels_parcel_id_fkey"
+            columns: ["parcel_id"]
+            isOneToOne: true
+            referencedRelation: "tile_parcels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      territory_districts: {
+        Row: {
+          city_id: string
+          created_at: string
+          created_turn: number
+          id: string
+          kind: string
+          name: string
+          owner_player: string
+          session_id: string
+        }
+        Insert: {
+          city_id: string
+          created_at?: string
+          created_turn?: number
+          id?: string
+          kind?: string
+          name: string
+          owner_player: string
+          session_id: string
+        }
+        Update: {
+          city_id?: string
+          created_at?: string
+          created_turn?: number
+          id?: string
+          kind?: string
+          name?: string
+          owner_player?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "territory_districts_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "territory_districts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tile_infrastructure: {
         Row: {
           completed_turn: number | null
@@ -12635,6 +12716,15 @@ export type Database = {
         Args: { p_session: string; p_turn: number }
         Returns: boolean
       }
+      add_parcel_to_district: {
+        Args: {
+          p_district: string
+          p_parcel: string
+          p_player: string
+          p_session: string
+        }
+        Returns: Json
+      }
       apply_atomic_turn_phase: {
         Args: {
           p_phase: string
@@ -12753,6 +12843,51 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_territory_district: {
+        Args: {
+          p_kind: string
+          p_name: string
+          p_parcel: string
+          p_player: string
+          p_session: string
+          p_turn: number
+        }
+        Returns: Json
+      }
+      district_parcel_check: {
+        Args: { p_parcel: string; p_player: string; p_session: string }
+        Returns: {
+          build_cost_multiplier: number
+          buildable: boolean
+          building_id: string | null
+          capacity_slots: number
+          city_id: string | null
+          claim_kind: string | null
+          claimed_turn: number | null
+          created_at: string
+          district_id: string | null
+          elevation: number
+          grid_x: number
+          grid_y: number
+          id: string
+          land_use: string
+          owner_player: string | null
+          parcel_index: number
+          parcel_x: number
+          parcel_y: number
+          region_name: string | null
+          session_id: string
+          status: string
+          sub_biome: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tile_parcels"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       end_story_session: { Args: { p_session: string }; Returns: Json }
       find_session_by_room_code: {
         Args: { p_code: string }
@@ -12805,6 +12940,15 @@ export type Database = {
           p_name: string
           p_player: string
           p_province: string
+          p_session: string
+        }
+        Returns: Json
+      }
+      rename_territory_district: {
+        Args: {
+          p_district: string
+          p_name: string
+          p_player: string
           p_session: string
         }
         Returns: Json

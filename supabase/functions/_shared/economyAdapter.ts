@@ -213,7 +213,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     return {parcelId:b.parcel_id,recipeKeys:(b.effects?.recipe_keys??t?.effects?.recipe_keys??[]).map(String),level:Number(b.current_level||1),
       owner:cities.find(c=>c.id===b.city_id)?.owner||''};});
   const ruralBuildingIds=new Set(db.city_buildings.filter((b:any)=>b.parcel_id&&workedIds.has(b.parcel_id)).map((b:any)=>b.id));
-  const roadEdges=db.road_segments.filter((r:any)=>r.status==='completed').map((r:any)=>({from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`}));
+  const roadEdges=db.road_segments.filter((r:any)=>r.status==='completed').map((r:any)=>({from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`,owner:r.owner_player??null}));
   const surveys=parcelMode?await rows(sb,'macro_surveys',session):[];
   const confirmedDeposits=new Set<string>(surveys.filter((s:any)=>s.level>=2).flatMap((s:any)=>(s.findings||[]).map((f:any)=>depositKey(s.player_name,s.grid_x,s.grid_y,f.kind))));
   if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));

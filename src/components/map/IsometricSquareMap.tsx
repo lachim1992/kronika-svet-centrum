@@ -22,6 +22,7 @@ import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopolog
 import { SUB_BIOME_COLORS, parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
 import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDetour, subRoadPathBetween, tileBridgeCells, tileRoadBranches, tileRoadCells, tileRoadCost, type RoadStep, type SubRoadCell } from "@/lib/tileRoads";
+import { parcelTransport } from "../../../supabase/functions/_shared/ruralSites";
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
@@ -386,6 +387,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [showNodes, setShowNodes] = useMapLayer("nodes");
   const [showLabels, setShowLabels] = useMapLayer("labels");
   const [showSubBiomes, setShowSubBiomes] = useMapLayer("subBiomes");
+  const [showProvinces, setShowProvinces] = useMapLayer("provinces");
+  const [provinceRows, setProvinceRows] = useState<{ id: string; name: string; owner_player: string | null }[]>([]);
+  const [territoryDistricts, setTerritoryDistricts] = useState<{ id: string; city_id: string; owner_player: string; name: string; kind: string }[]>([]);
+  const [districtMembers, setDistrictMembers] = useState<Map<string, string>>(new Map());
+  const [districtDraft, setDistrictDraft] = useState({ name: "", kind: "forest" });
+  const [districtBusy, setDistrictBusy] = useState(false);
+  const loadTerritoryNames = useCallback(async () => {
+    const [pr, td, tm] = await Promise.all([
+      supabase.from("provinces").select("id, name, owner_player").eq("session_id", sessionId),
+      supabase.from("territory_districts").select("id, city_id, owner_player, name, kind").eq("session_id", sessionId),
+      supabase.from("territory_district_parcels").select("district_id, parcel_id").eq("session_id", sessionId),
+    ]);
+    setProvinceRows((pr.data || []) as any); setTerritoryDistricts((td.data || []) as any);
+    setDistrictMembers(new Map(((tm.data || []) as any[]).map(m => [m.parcel_id, m.district_id])));
+  }, [sessionId]);
+  useEffect(() => { void loadTerritoryNames(); }, [loadTerritoryNames]);
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
@@ -587,6 +604,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return segments;
   }, [tiles, tileCell, sessionId]);
 
+  const provinceLayer = useMemo(() => {
+    const byCell = new Map<string, Tile>(); tiles.forEach(t => { const c = tileCell(t); byCell.set(cellKey(c.a, c.b), t); });
+    const names = new Map(provinceRows.map(p => [p.id, p.name]));
+    const edges: { a: number; b: number; side: number; realm: boolean; own: boolean }[] = [];
+    const sums = new Map<string, { a: number; b: number; n: number }>();
+    tiles.forEach(t => {
+      if (!t.province_id) return; const c = tileCell(t);
+      const sm = sums.get(t.province_id) || { a: 0, b: 0, n: 0 }; sm.a += c.a; sm.b += c.b; sm.n++; sums.set(t.province_id, sm);
+      [[1, 0], [0, 1], [-1, 0], [0, -1]].forEach(([da, db], side) => {
+        const n = byCell.get(cellKey(c.a + da, c.b + db));
+        if (n?.province_id === t.province_id) return;
+        if (n?.province_id && side >= 2) return; // shared edge drawn once, from the + side
+        edges.push({ a: c.a, b: c.b, side, realm: (n?.owner_player || null) !== (t.owner_player || null), own: t.owner_player === playerName });
+      });
+    });
+    const labels = [...sums.entries()].filter(([id]) => names.has(id)).map(([id, m]) => ({ id, name: names.get(id)!, a: m.a / m.n, b: m.b / m.n }));
+    return { edges, labels };
+  }, [tiles, tileCell, provinceRows, playerName]);
   const tileByCell = useMemo(() => new Map(tiles.map(tile => {
     const cell = tileCell(tile); return [cellKey(cell.a, cell.b), tile] as const;
   })), [tiles, tileCell]);
@@ -1736,6 +1771,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {active && tileParcels.length > 0 && renderTileParcels(point)}
             </g>;
           })}
+          {showProvinces && !cityLayerCityId && provinceLayer.edges.length > 0 && <g pointerEvents="none">
+            {provinceLayer.edges.map(e => { const pt = at(e.a, e.b); const S = TILE_SIZE;
+              const c = [[0,0],[1,0],[1,1],[0,1]].map(([ax, ay]) => ({ x: pt.x + (ax - ay) * S, y: pt.y + (ax + ay - 1) * S / 2 }));
+              const [p1, p2] = e.side === 0 ? [c[1], c[2]] : e.side === 1 ? [c[3], c[2]] : e.side === 2 ? [c[0], c[3]] : [c[0], c[1]];
+              return <line key={`pb-${e.a}-${e.b}-${e.side}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                stroke={e.realm ? (e.own ? "var(--map-city-own)" : "var(--map-city-rival)") : "var(--map-label)"}
+                strokeWidth={e.realm ? 2.4 : 1.2} strokeDasharray={e.realm ? undefined : "3 3"} opacity={e.realm ? .85 : .6} strokeLinecap="round" />; })}
+            {zoom < 2 && provinceLayer.labels.map(l => { const pt = at(l.a, l.b); const sc = Math.max(.6, Math.min(1.6, 1 / zoom));
+              return <text key={`pl-${l.id}`} x={pt.x} y={pt.y} textAnchor="middle" fontSize={9 * sc} fontWeight="700" letterSpacing=".08em"
+                fill="var(--map-label)" stroke="var(--map-marker)" strokeWidth={2.2 * sc} paintOrder="stroke" opacity=".85">{l.name.toUpperCase()}</text>; })}
+          </g>}
           {roadCatchmentOverlay.length > 0 && <g pointerEvents="none">
             {roadCatchmentOverlay.map(cell => {
               const point = at(cell.a, cell.b);
@@ -1922,6 +1968,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <Button size="icon" variant={showNodes ? "secondary" : "ghost"} aria-label={showNodes ? "Skrýt uzly" : "Zobrazit uzly"} aria-pressed={showNodes} onClick={() => setShowNodes(value => !value)}><Landmark className={`h-4 w-4 ${showNodes ? "" : "opacity-40"}`} /></Button>
         <Button size="icon" variant={showLabels ? "secondary" : "ghost"} aria-label={showLabels ? "Skrýt názvy měst" : "Zobrazit názvy měst"} aria-pressed={showLabels} onClick={() => setShowLabels(value => !value)}><Flag className={`h-4 w-4 ${showLabels ? "" : "opacity-40"}`} /></Button>
         <Button size="icon" variant={showSubBiomes ? "secondary" : "ghost"} aria-label={showSubBiomes ? "Skrýt subbiomy" : "Zobrazit subbiomy"} aria-pressed={showSubBiomes} onClick={() => setShowSubBiomes(value => !value)}><Grid3x3 className={`h-4 w-4 ${showSubBiomes ? "" : "opacity-40"}`} /></Button>
+        <Button size="icon" variant={showProvinces ? "secondary" : "ghost"} aria-label={showProvinces ? "Skrýt hranice provincií" : "Zobrazit hranice provincií"} aria-pressed={showProvinces} onClick={() => setShowProvinces(value => !value)}><Shield className={`h-4 w-4 ${showProvinces ? "" : "opacity-40"}`} /></Button>
       </div>
       <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>Čtvercová síť · izometrické zobrazení</span></div>
       {/* rendered straight into the page body: app chrome (tabs, docks) would swallow the clicks */}
@@ -2155,6 +2202,53 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </Button>}
               <p className="text-[10px] text-muted-foreground">Využívaná parcela umožňuje těžbu a sběr, ale nesmí se zastavět. Každá koupená stavební parcela odemkne právě jeden takový nárok.</p>
             </div>}
+          {selectedParcel.claim_kind === "worked" && selectedParcel.city_id && (() => {
+            const city = cityById.get(selectedParcel.city_id!); if (!city) return null;
+            const cc = entityCell(city as any);
+            const segs = roadSegments as any[];
+            const t = parcelTransport(`${selectedParcel.grid_x},${selectedParcel.grid_y}`, `${cc.a},${cc.b}`,
+              segs.filter(r => r.status === "completed").map(r => ({ from: `${r.from_x},${r.from_y}`, to: `${r.to_x},${r.to_y}`, owner: r.owner_player })), city.owner_player);
+            const pending = segs.some(r => r.status !== "completed" && [`${r.from_x},${r.from_y}`, `${r.to_x},${r.to_y}`].includes(`${selectedParcel.grid_x},${selectedParcel.grid_y}`));
+            const label = t.mode === "local" ? "na městském poli — 100 %" : t.mode === "road" ? "hotová cesta do města — 100 %" : t.mode === "footpath" ? "pěšina k sousednímu městu — 25 %" : "bez cesty — do města se nedoveze nic (0 %)";
+            const potential = parcelPotential(selectedParcel as any, tiles as any, currentTurn).reduce((a, x) => a + x.capacity, 0);
+            return <div className="space-y-1 border border-border/60 p-2 text-[11px]" data-testid="parcel-transport">
+              <p><b>Doprava do {city.name}:</b> {label}{pending ? " · cesta se staví" : ""}</p>
+              <p className="text-muted-foreground">Přírodní potenciál {potential.toFixed(2)}/tah → doveditelné nejvýš {(potential * t.factor).toFixed(2)}/tah. Skutečnost ukazuje „Skutečný výnos“ po uzavřeném tahu.</p>
+              {t.factor < 1 && selectedParcel.owner_player === playerName && <Button size="sm" variant="outline" className="w-full" disabled={!canBuildRoadHere || parcelsLoading}
+                onClick={startRoadDraft}>Připojit k městu cestou</Button>}
+              {t.factor < 1 && <p className="text-[10px] text-muted-foreground">Vyznač trasu k městu nebo hotové cestě; přes vodu je potřeba most. Platí se až po potvrzení trasy.</p>}
+            </div>;
+          })()}
+          {selectedParcel.claim_kind === "worked" && selectedParcel.city_id && (() => {
+            const did = districtMembers.get(selectedParcel.id); const own = selectedParcel.owner_player === playerName;
+            const current = did ? territoryDistricts.find(d => d.id === did) : undefined;
+            const run = async (commandType: string, payload: Record<string, unknown>, ok: string) => {
+              setDistrictBusy(true);
+              const r = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType, commandPayload: payload });
+              setDistrictBusy(false);
+              if (!r.ok) { toast.error(r.error || "Akce se nezdařila"); return; }
+              toast.success(ok); setDistrictDraft(d => ({ ...d, name: "" })); await loadTerritoryNames();
+            };
+            const cityDistricts = territoryDistricts.filter(d => d.city_id === selectedParcel.city_id && d.owner_player === playerName);
+            const KIND: Record<string, string> = { forest: "les", meadow: "louka", mine: "doly", desert: "poušť", other: "jiné" };
+            if (current) return <div className="space-y-1 border border-border/60 p-2 text-[11px]">
+              <p><b>Distrikt:</b> {current.name} · {KIND[current.kind] || current.kind} · {[...districtMembers.values()].filter(v => v === current.id).length} dílků</p>
+              {own && <div className="flex gap-1"><Input className="h-7 text-xs" value={districtDraft.name} maxLength={48} placeholder="Nový název distriktu" onChange={e => setDistrictDraft(d => ({ ...d, name: e.target.value }))} />
+                <Button size="sm" variant="secondary" disabled={districtBusy || districtDraft.name.trim().length < 2} onClick={() => void run("RENAME_TERRITORY_DISTRICT", { districtId: current.id, name: districtDraft.name.trim() }, "Distrikt přejmenován")}>Přejmenovat</Button></div>}
+            </div>;
+            if (!own) return null;
+            return <div className="space-y-1 border border-border/60 p-2 text-[11px]">
+              <p><b>Distrikt</b> — pojmenovaná oblast souvislých využívaných dílků (bez bonusů).</p>
+              {cityDistricts.map(d => <Button key={d.id} size="sm" variant="outline" className="w-full justify-start" disabled={districtBusy}
+                onClick={() => void run("ADD_TO_TERRITORY_DISTRICT", { districtId: d.id, parcelId: selectedParcel.id }, `Dílek přidán do ${d.name}`)}>Přidat do „{d.name}“</Button>)}
+              <div className="flex gap-1">
+                <Input className="h-7 text-xs" value={districtDraft.name} maxLength={48} placeholder="Např. Temný háj" onChange={e => setDistrictDraft(d => ({ ...d, name: e.target.value }))} />
+                <select className="border border-border bg-background px-1 text-xs" value={districtDraft.kind} onChange={e => setDistrictDraft(d => ({ ...d, kind: e.target.value }))}>
+                  {Object.entries(KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+                <Button size="sm" disabled={districtBusy || districtDraft.name.trim().length < 2} onClick={() => void run("CREATE_TERRITORY_DISTRICT", { parcelId: selectedParcel.id, name: districtDraft.name.trim(), kind: districtDraft.kind }, "Distrikt vytvořen")}>Vytvořit distrikt</Button>
+              </div>
+            </div>;
+          })()}
           {selectedParcel.owner_player === playerName && selectedParcel.city_id && selectedParcel.status !== "wild" &&
             <div className="flex gap-2">
               <Input value={regionDraft} maxLength={48} placeholder="Např. Temný háj" aria-label="Název parcely"

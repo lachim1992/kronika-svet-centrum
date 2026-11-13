@@ -64,3 +64,11 @@ describe('freight covers all rural goods', () => {
     expect(FR.has('draw_river_water')).toBe(false);
   });
 });
+
+describe('freight uses only own-realm roads', () => {
+  it('foreign road gives no access, own road full', () => {
+    const roads = [{ from: '3,5', to: '4,5', owner: 'B' }, { from: '4,5', to: '5,5', owner: 'B' }];
+    expect(PT('5,5', '3,5', roads, 'A').factor).toBe(0);
+    expect(PT('5,5', '3,5', roads, 'B').factor).toBe(1);
+  });
+});
