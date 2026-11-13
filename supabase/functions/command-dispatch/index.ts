@@ -38,6 +38,7 @@ import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
+import { templateSiteRole, DEPOSIT_REQUIRED, type SiteRole } from "../_shared/ruralSites.ts";
 import { generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 
@@ -3092,12 +3093,14 @@ async function getRealmFull(supabase: any, sessionId: string, playerName: string
 }
 
 /** First claimed sub-parcel with remaining slots, optionally a specific one. */
-async function getAvailableParcel(supabase: any, cityId: string, requestedParcelId?: string, recipeKeys?: string[]) {
+async function getAvailableParcel(supabase: any, cityId: string, requestedParcelId?: string, recipeKeys?: string[], role: SiteRole = "urban") {
   let query = supabase.from("tile_parcels")
-    .select("id, city_id, grid_x, grid_y, parcel_index, status, capacity_slots, claim_kind, sub_biome")
+    .select("id, city_id, grid_x, grid_y, parcel_index, status, capacity_slots, claim_kind, sub_biome, owner_player")
     .eq("city_id", cityId)
-    .in("status", ["claimed", "occupied"])
-    .or("claim_kind.is.null,claim_kind.eq.urban")
+    .in("status", ["claimed", "occupied"]);
+  // Rural extraction sites go only on worked land; everything else only on paid urban plots.
+  query = role === "rural" ? query.eq("claim_kind", "worked") : query.or("claim_kind.is.null,claim_kind.eq.urban");
+  query = query
     .order("parcel_index")
     .limit(requestedParcelId ? 1 : 100);
   if (requestedParcelId) query = query.eq("id", requestedParcelId);
@@ -3107,12 +3110,20 @@ async function getAvailableParcel(supabase: any, cityId: string, requestedParcel
     if (!requestedParcelId && recipeKeys?.length && terrainReason(recipeKeys, parcel.sub_biome)) continue;
     const { data: contents } = await supabase.from("tile_parcel_contents").select("slots_used").eq("parcel_id", parcel.id);
     const used = (contents || []).reduce((sum: number, item: any) => sum + Number(item.slots_used || 0), 0);
-    if (used < Number(parcel.capacity_slots || 0)) return { ...parcel, used_slots: used };
+    const cap = parcel.claim_kind === "worked" ? ((contents || []).length ? 0 : 1) : Number(parcel.capacity_slots || 0);
+    if (used < cap) return { ...parcel, used_slots: used };
   }
   return null;
 }
 
-async function occupyParcel(supabase: any, sessionId: string, parcelId: string, kind: "building" | "district", entityId: string, landUse: string) {
+async function occupyParcel(supabase: any, sessionId: string, parcelId: string, kind: "building" | "district", entityId: string, landUse: string, worked = false) {
+  if (worked) {
+    // Worked land stays claimed/open; the rural site is bound through contents (DB trigger enforces rural-only, one per parcel).
+    const { error: e1 } = await supabase.from("city_buildings").update({ parcel_id: parcelId }).eq("id", entityId);
+    if (e1) return e1;
+    const { error: e2 } = await supabase.from("tile_parcel_contents").insert({ session_id: sessionId, parcel_id: parcelId, entity_type: kind, entity_id: entityId, slots_used: 1 });
+    return e2 || null;
+  }
   const update = kind === "building"
     ? { status: "occupied", land_use: landUse, building_id: entityId }
     : { status: "occupied", land_use: landUse, district_id: entityId };
@@ -3467,13 +3478,28 @@ async function executeBuildBuilding(
   }
 
   const recipeKeys: string[] | undefined = template?.effects?.recipe_keys;
-  const targetParcel = await getAvailableParcel(supabase, cityId, parcelId, recipeKeys);
+  const siteRole = templateSiteRole(recipeKeys);
+  if (parcelId) {
+    const { data: chosen } = await supabase.from("tile_parcels").select("claim_kind").eq("id", parcelId).eq("city_id", cityId).maybeSingle();
+    if (chosen && (chosen.claim_kind === "worked") !== (siteRole === "rural")) return { events: [], error: siteRole === "rural"
+      ? "Venkovskou těžební stavbu postav na využívané parcele, ne na stavební" : "Tato stavba patří do města — na využívané půdě lze stavět jen farmy, doly, lomy, tábory a rybářství" };
+  }
+  const targetParcel = await getAvailableParcel(supabase, cityId, parcelId, recipeKeys, siteRole);
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
+  if (siteRole === "rural" && !targetParcel) return { events: [], error: "Město nemá volnou využívanou parcelu s vhodným terénem — nejdřív zaber okolní půdu" };
+  if (targetParcel && siteRole === "rural") {
+    for (const k of recipeKeys || []) {
+      const need = DEPOSIT_REQUIRED[k]; if (!need) continue;
+      const { data: sv } = await supabase.from("macro_surveys").select("level, findings").eq("session_id", sessionId).eq("player_name", actor.name)
+        .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle();
+      if (!sv || sv.level < 2 || !(sv.findings || []).some((f: any) => f.kind === need))
+        return { events: [], error: `Nedostupné: důl potřebuje potvrzené ložisko (${need}) — proveďte podrobný průzkum pole` };
+    }
+  }
   if (!parcelId && !targetParcel && recipeKeys?.length && terrainReason(recipeKeys, null)) {
     return { events: [], error: terrainReason(recipeKeys, null)!.replace(/ \(parcela: .*\)$/, "") + " — město nemá volnou stavební parcelu s vhodným terénem" };
   }
   if (targetParcel) {
-    if (targetParcel.claim_kind === "worked") return { events: [], error: "Na využívané půdě nelze stavět — nejdřív ji kup jako stavební parcelu" };
     const tr = terrainReason(template?.effects?.recipe_keys, targetParcel.sub_biome);
     if (tr) return { events: [], error: tr };
   }
@@ -3536,7 +3562,7 @@ async function executeBuildBuilding(
     return { events: [], error: `Insert failed: ${insertErr.message}` };
   }
   if (targetParcel) {
-    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category));
+    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category), targetParcel.claim_kind === "worked");
     if (occupancyError) {
       await supabase.from("city_buildings").delete().eq("id", inserted.id);
       await refundReserves(reserveIO, buildCost);

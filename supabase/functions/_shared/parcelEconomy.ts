@@ -1,3 +1,4 @@
+import { parcelTransport, siteSpecs, FREIGHT_RECIPES, type RuralContext } from './ruralSites.ts';
 import type { Producer } from './goodsEconomy.ts';
 
 /** Physical potential, not output. Only the goods solver can harvest it with staffed labour. */
@@ -47,7 +48,8 @@ export function parcelPotential(p: EconomicParcel, terrain: ParcelTerrain[], tur
  * Regrowth is 10% of annual capacity; mining/peat do not regrow. */
 export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrain[],
   cities: { id: string; owner: string; cell: string }[], recipes: Map<string, any>, turn: number,
-  prior: ParcelEcology = {}): Producer[] {
+  prior: ParcelEcology = {}, rural: RuralContext = {}): Producer[] {
+  const siteByParcel = new Map((rural.sites || []).map(s => [s.parcelId, s]));
   const out: Producer[] = [], seen = new Set<string>();
   for (const p of [...parcels].sort((a,b) => a.id.localeCompare(b.id))) {
     const city = cities.find(c => c.id === p.city_id && c.owner === p.owner_player);
@@ -60,11 +62,18 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
         if (owned.has(next) && !reach.has(next)) { reach.add(next); queue.push(next); } }
     }
     if (!reach.has(`${p.grid_x},${p.grid_y}`)) continue;
-    for (const spec of parcelPotential(p, terrain, turn)) {
+    const site = siteByParcel.get(p.id);
+    const { specs } = siteSpecs(parcelPotential(p, terrain, turn), site && site.owner === city.owner ? site : undefined, p.grid_x, p.grid_y, rural.deposits);
+    const transport = rural.roads ? parcelTransport(`${p.grid_x},${p.grid_y}`, city.cell, rural.roads) : { factor: 1, mode: 'local' as const };
+    for (const raw of specs) {
+      // Freight applies at the point of entry: only what can be hauled is harvested (no phantom stock).
+      const factor = FREIGHT_RECIPES.has(raw.recipe) ? transport.factor : 1;
+      const spec = { ...raw, capacity: raw.capacity * factor };
+      if (spec.capacity <= 0) continue;
       const r = recipes.get(spec.recipe); if (!r) throw new Error(`Missing parcel recipe ${spec.recipe}`);
       const id = `parcel:${p.id}:${spec.recipe}`; if (seen.has(id)) continue; seen.add(id);
       const water = spec.recipe === 'draw_river_water';
-      const initial = spec.capacity * (spec.renewable ? 5 : 40);
+      const initial = raw.capacity * (spec.renewable ? 5 : 40);
       // Coppiced woodland replenishes faster than wild food/game; finite pressure still caps extraction.
       const regrowth = spec.recipe === 'fell_timber' ? 0.35 : 0.1;
       const remaining = water ? spec.capacity : Math.min(initial, Math.max(0, prior[id] ?? initial) + (spec.renewable ? spec.capacity * regrowth : 0));
@@ -72,7 +81,8 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
         recipe: { key: r.recipe_key, good: r.output_good_key, qty: Number(r.output_quantity), inputs: [], labor: Number(r.labor_cost), quality: 0, minQuality: 0 },
         allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: true, distinctive: false,
         parcel: { id: p.id, grid_x: p.grid_x, grid_y: p.grid_y, index: p.parcel_index, sub_biome: p.sub_biome,
-          potential: spec.capacity, reservoir: remaining, renewable: spec.renewable, water },
+          potential: raw.capacity, reservoir: remaining, renewable: spec.renewable, water,
+          transport: { ...transport, applied: factor }, site: raw.site || false } as any,
       });
     }
   }
