@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { ArrowUp, Building2, Clock, Coins, Hammer, Loader2, Sparkles, Users } from "lucide-react";
 import { DEMAND_BASKETS, getBasketMeta, inspectBasketOutputs, scaledBasketOutputs } from "@/lib/goodsCatalog";
 import { useManagementReport } from "@/hooks/useManagementReport";
+import { buildingOperationLines } from "@/lib/parcelActual";
 
 /** Honest reasons a structure makes nothing this turn. */
 const BLOCKED_REASON: Record<string, string> = {

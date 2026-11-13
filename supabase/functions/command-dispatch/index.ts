@@ -38,9 +38,10 @@ import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
-import { templateSiteRole, DEPOSIT_REQUIRED, type SiteRole } from "../_shared/ruralSites.ts";
+import { templateSiteRole, DEPOSIT_REQUIRED, availableMacroReserve, macroReserveKey, type SiteRole } from "../_shared/ruralSites.ts";
 import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
+import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
 
 /** The 12 canonical demand baskets a production district may be pointed at. */
 const CANONICAL_BASKETS = new Set([
