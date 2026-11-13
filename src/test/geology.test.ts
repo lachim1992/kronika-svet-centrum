@@ -36,7 +36,7 @@ describe("geology on the real JV72O7 macro layout (961 tiles, 28 hills, 0 mounta
       const gold = scanWorld(salt).filter(d => d.kind === "gold");
       expect(gold.length).toBeGreaterThan(0);
       expect(gold.length / 28).toBeLessThanOrEqual(0.04); // ≤1 of 28 hills
-      expect(gold.every(d => d.biome === "hills" && !d.implemented && d.good === null && !d.regenerates)).toBe(true);
+      expect(gold.every(d => d.biome === "hills" && d.implemented && d.good === "gold_ore" && !d.regenerates)).toBe(true);
     }
   });
   it("wild grapes occur on some suitable plains/hills, not all", () => {
