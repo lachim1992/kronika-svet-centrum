@@ -38,6 +38,7 @@ import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
+import { generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 
 /** The 12 canonical demand baskets a production district may be pointed at. */
@@ -520,6 +521,42 @@ async function executeCommand(
     case "ASSIGN_CITY_PARCEL":
       return await executeAssignCityParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+
+    case "SURVEY_MACRO": {
+      const x = Number(payload.gridX), y = Number(payload.gridY), level = Number(payload.level || 1) >= 2 ? 2 : 1;
+      if (!Number.isInteger(x) || !Number.isInteger(y)) return { events: [], error: "Neplatné pole" };
+      const { data: hex } = await supabase.from("province_hexes").select("biome_family, mean_height, is_passable, has_river, coastal")
+        .eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).maybeSingle();
+      if (!hex) return { events: [], error: "Pole neexistuje" };
+      await supabase.from("geology_seeds").upsert({ session_id: sessionId }, { onConflict: "session_id", ignoreDuplicates: true });
+      const { data: seed } = await supabase.from("geology_seeds").select("salt").eq("session_id", sessionId).single();
+      let { data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).maybeSingle();
+      if (!truth) {
+        const deposits = generateMacroDeposits(seed!.salt, x, y, hex as any);
+        await supabase.from("macro_deposits").upsert({ session_id: sessionId, grid_x: x, grid_y: y, deposits }, { onConflict: "session_id,grid_x,grid_y", ignoreDuplicates: true });
+        ({ data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).single());
+      }
+      const findings = surveyFindings((truth as any).deposits || [], level as 1 | 2);
+      const { data, error } = await supabase.rpc("record_macro_survey", { p_session: sessionId, p_player: actor.name, p_x: x, p_y: y,
+        p_level: level, p_findings: findings, p_cost: SURVEY_COST[level as 1 | 2], p_turn: turnNumber });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: { ...data, findings } } as any;
+    }
+
+    case "CLAIM_MACRO_TILE": {
+      const { data, error } = await supabase.rpc("claim_macro_tile", { p_session: sessionId, p_player: actor.name,
+        p_x: Number(payload.gridX), p_y: Number(payload.gridY), p_turn: turnNumber });
+      if (error) return { events: [], error: error.message };
+      return insertEvents(supabase, commandId, [{ ...base, event_type: "territory_claim", note: `${actor.name} rozšířil území o pole ${payload.gridX}, ${payload.gridY}.`,
+        importance: "minor", reference: { gridX: payload.gridX, gridY: payload.gridY, ...data } }], data);
+    }
+
+    case "ASSIGN_MACRO_PROVINCE": {
+      const { data, error } = await supabase.rpc("assign_macro_province", { p_session: sessionId, p_player: actor.name,
+        p_x: Number(payload.gridX), p_y: Number(payload.gridY), p_province: String(payload.provinceId || "") });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: data } as any;
+    }
 
     case "CLAIM_WORKED_PARCEL": {
       const { data, error } = await supabase.rpc("claim_worked_parcel", { p_session: sessionId, p_city: String(payload.cityId || ""),
