@@ -406,6 +406,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
+  const [selectedMacroSurvey, setSelectedMacroSurvey] = useState<MacroSurveySnapshot | null>(null);
   const [infrastructure, setInfrastructure] = useState<TileInfrastructure[]>([]);
   const [roadSegments, setRoadSegments] = useState<RoadSegment[]>([]);
   const [roadProjects, setRoadProjects] = useState<RoadProject[]>([]);
@@ -967,6 +968,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
+  // Worked and urban parcels on neighbouring cells retain their owning city: they are not cityless.
+  const parcelBuildCity = selectedParcel?.city_id ? cityById.get(selectedParcel.city_id) : selectedCity;
   /** A neighbouring city of yours that may buy parcels on this cell. */
   const foreignOwner = selected?.owner_player && selected.owner_player !== playerName ? selected.owner_player : null;
   /** A road is allowed wherever you already have a foothold: parcel, city seat or sub-node on the tile. */
@@ -1207,7 +1210,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   };
 
   const buildOnParcel = async (template: BuildingTemplate) => {
-    if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
+    if (!selectedParcel || !parcelBuildCity || parcelBuildCity.owner_player !== playerName) return;
     if (selectedParcel.status === "wild") { toast.error("Nejprve parcelu zaber"); return; }
     const needGold = Number(template.cost_wealth || 0);
     const needProd = Number(template.cost_wood || 0) + Number(template.cost_stone || 0) + Number(template.cost_iron || 0);
@@ -1215,7 +1218,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     if (!isSandboxMode() && treasury.production < needProd) { toast.error(`Nedostatek produkce (potřeba ${needProd}, máš ${Math.floor(treasury.production)})`); return; }
     setBuildingAction(`building-${template.id}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_BUILDING", commandPayload: {
-      cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id,
+      cityId: parcelBuildCity.id, cityName: parcelBuildCity.name, parcelId: selectedParcel.id,
       building: { template_id: template.id, name: template.name, category: template.category, description: template.description,
         cost_wealth: template.cost_wealth, cost_wood: template.cost_wood, cost_stone: template.cost_stone, cost_iron: template.cost_iron,
         build_duration: template.build_turns, effects: template.effects, max_level: template.max_level, level_data: template.level_data },
@@ -1230,11 +1233,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   /** Residential districts raise the city's housing capacity, so they get their own action. */
   /** Housing staffs workshops: this is the labour budget of the selected city. */
   const labour = useMemo(() => {
-    const own = districts.filter(d => d.city_id === selectedCity?.id && d.status === "completed");
+    const own = districts.filter(d => d.city_id === parcelBuildCity?.id && d.status === "completed");
     const housing = own.filter(d => d.district_type === "residential").length;
     const production = own.filter(d => d.district_type === "production");
     return { housing, slots: housing * PRODUCTION_PER_RESIDENTIAL, production, free: housing * PRODUCTION_PER_RESIDENTIAL - production.length };
-  }, [districts, selectedCity?.id]);
+  }, [districts, parcelBuildCity?.id]);
 
   /** Subnodes attached to the selected city — they feed the same markets as its districts. */
   const citySubnodes = useMemo(() => {
@@ -1250,10 +1253,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const buildDistrict = async (district: DistrictBlueprint, basketKey?: string) => {
 
-    if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
+    if (!selectedParcel || !parcelBuildCity || parcelBuildCity.owner_player !== playerName) return;
     setBuildingAction(`district-${district.key}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_DISTRICT", commandPayload: {
-      cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id, district, basketKey,
+      cityId: parcelBuildCity.id, cityName: parcelBuildCity.name, parcelId: selectedParcel.id, district, basketKey,
     }});
     setBuildingAction(null);
     if (!result.ok) { toast.error(result.error || "Čtvrť se nepodařilo založit"); return; }
