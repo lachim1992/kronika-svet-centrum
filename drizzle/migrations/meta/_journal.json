@@ -155,6 +155,13 @@
       "when": 1794599526695,
       "tag": "0021_gold_mining_chain",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794602951496,
+      "tag": "0022_allow_gold_mine_on_worked_parcel",
+      "breakpoints": true
     }
   ]
 }
