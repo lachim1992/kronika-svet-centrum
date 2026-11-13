@@ -113,6 +113,13 @@
       "when": 1794519197175,
       "tag": "0015_parcel_worked_claims_and_names",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794597371601,
+      "tag": "0016_macro_survey_claim_province",
+      "breakpoints": true
     }
   ]
 }
