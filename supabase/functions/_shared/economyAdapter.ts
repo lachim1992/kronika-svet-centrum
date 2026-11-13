@@ -1,3 +1,4 @@
+import { depositKey } from './ruralSites.ts';
 import { STARTER_RESERVE_GOODS } from './starterEconomy.ts';
 import { suppressStarterLandExtraction } from './starterParcelPolicy.ts';
 import { parcelProducers, parcelClosing, parcelWorkshops } from './parcelEconomy.ts';
@@ -206,7 +207,16 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   }
 
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
-  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
+  const workedIds=new Set((db.tile_parcels||[]).filter((p:any)=>p.claim_kind==='worked').map((p:any)=>p.id));
+  const ruralSites=db.city_buildings.filter((b:any)=>b.status==='completed'&&b.parcel_id&&workedIds.has(b.parcel_id)).map((b:any)=>{
+    const t=db.building_templates.find((x:any)=>x.id===b.template_id);
+    return {parcelId:b.parcel_id,recipeKeys:(b.effects?.recipe_keys??t?.effects?.recipe_keys??[]).map(String),level:Number(b.current_level||1),
+      owner:cities.find(c=>c.id===b.city_id)?.owner||''};});
+  const ruralBuildingIds=new Set(db.city_buildings.filter((b:any)=>b.parcel_id&&workedIds.has(b.parcel_id)).map((b:any)=>b.id));
+  const roadEdges=db.road_segments.filter((r:any)=>r.status==='completed').map((r:any)=>({from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`}));
+  const surveys=parcelMode?await rows(sb,'macro_surveys',session):[];
+  const confirmedDeposits=new Set<string>(surveys.filter((s:any)=>s.level>=2).flatMap((s:any)=>(s.findings||[]).map((f:any)=>depositKey(s.player_name,s.grid_x,s.grid_y,f.kind))));
+  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
   /**
    * Explicit production contract. A structure runs either an exact recipe whitelist
    * (effects.recipe_keys) or the recipes matching its declared capability tags and roles.
@@ -272,6 +282,8 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   };
   const contractNotes:{structure:string;notes:string[]}[]=[];
   for(const b of db.city_buildings.filter(b=>b.status==='completed')){
+    // Rural sites on worked parcels run as their parcel's single physical source (ruralSites.ts), never as a second structure.
+    if(ruralBuildingIds.has(b.id))continue;
     // Only wild gathering/peat are replaced by land. The installed fishery and freshwater
     // intake are staffed settlement facilities, not phantom outputs from the parcel.
     if(parcelMode && b.effects?.starter_economy && suppressStarterLandExtraction(b.effects?.recipe_keys))continue;
