@@ -3633,12 +3633,8 @@ async function executeBuildDistrict(
       return { events: [], error: `Chybí pracovní síla — postav obytnou čtvrť (${production}/${residential * PRODUCTION_PER_RESIDENTIAL} obsazeno)` };
     }
   }
-  const recipeKeys: string[] | undefined = template?.effects?.recipe_keys;
-  const targetParcel = await getAvailableParcel(supabase, cityId, parcelId, recipeKeys);
+  const targetParcel = await getAvailableParcel(supabase, cityId, parcelId);
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
-  if (!parcelId && !targetParcel && recipeKeys?.length && terrainReason(recipeKeys, null)) {
-    return { events: [], error: terrainReason(recipeKeys, null)!.replace(/ \(parcela: .*\)$/, "") + " — město nemá volnou stavební parcelu s vhodným terénem" };
-  }
 
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
