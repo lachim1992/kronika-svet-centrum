@@ -1,3 +1,4 @@
+import { authorizeSessionCaller, AuthError } from "../_shared/sessionAuth.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { loadGridKind, neighborOffsets, ringCells } from "../_shared/topology.ts";
 
@@ -13,7 +14,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { session_id, player_name, q, r } = await req.json();
+    const body = await req.json();
+    const { session_id, q, r } = body;
+    let player_name: string = body.player_name;
 
     if (!session_id || !player_name || q === undefined || r === undefined) {
       return new Response(
@@ -26,6 +29,21 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // Identity comes from the verified JWT; a body-supplied player name is only accepted from internal service calls.
+    try {
+      const caller = await authorizeSessionCaller(req, sb as any, session_id);
+      if (!caller.service) {
+        const { data: seat } = await sb.from("game_players").select("player_name").eq("session_id", session_id).eq("user_id", caller.userId!).maybeSingle();
+        if (!seat?.player_name || seat.player_name !== player_name) {
+          return new Response(JSON.stringify({ error: "Nelze průzkoumat za jiného hráče" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        player_name = seat.player_name;
+      }
+    } catch (e) {
+      if (e instanceof AuthError) return new Response(JSON.stringify({ error: e.message }), { status: e.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      throw e;
+    }
 
     const gridKind = await loadGridKind(sb, session_id);
     const NEIGHBORS = neighborOffsets(gridKind);
@@ -54,13 +72,10 @@ Deno.serve(async (req) => {
         .limit(1);
       
       if (!cityCheck || cityCheck.length === 0) {
-        // Also allow (0,0) as fallback bootstrap
-        if (q !== 0 || r !== 0) {
-          return new Response(
-            JSON.stringify({ error: "Nelze prozkoumat: nemáte žádné objevené provincie" }),
-            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
+        return new Response(
+          JSON.stringify({ error: "Nelze prozkoumat: nemáte žádné objevené provincie" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
       // Bootstrap allowed — skip adjacency check
     } else {
