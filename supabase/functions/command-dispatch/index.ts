@@ -3507,16 +3507,26 @@ async function executeBuildBuilding(
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
   if (siteRole === "rural" && !targetParcel) return { events: [], error: "Město nemá volnou využívanou parcelu s vhodným terénem — nejdřív zaber okolní půdu" };
   if (targetParcel && siteRole === "rural") {
-    for (const k of recipeKeys || []) {
-      const need = DEPOSIT_REQUIRED[k]; if (!need) continue;
-      const { data: sv } = await supabase.from("macro_surveys").select("level, findings").eq("session_id", sessionId).eq("player_name", actor.name)
-        .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle();
-      if (!sv || sv.level < 2 || !(sv.findings || []).some((f: any) => f.kind === need))
-        return { events: [], error: `Nedostupné: důl potřebuje potvrzené ložisko (${need}) — proveďte podrobný průzkum pole` };
-      const { data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId)
-        .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle();
-      if (!((truth as any)?.deposits || []).some((d: any) => d.kind === need && Number(d.reserve) > 0))
-        return { events: [], error: `Ložisko (${need}) na tomto poli není k dispozici` };
+    const needs = [...new Set((recipeKeys || []).map(k => DEPOSIT_REQUIRED[k]).filter(Boolean))];
+    if (needs.length) {
+      const [{ data: sv, error: surveyError }, { data: truth, error: truthError }, { data: previous, error: previousError }] = await Promise.all([
+        supabase.from("macro_surveys").select("level, findings").eq("session_id", sessionId).eq("player_name", actor.name)
+          .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle(),
+        supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId)
+          .eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle(),
+        supabase.from("economy_turn_ledgers").select("parcelEcology:committed_result->parcelEcology").eq("session_id", sessionId)
+          .lt("turn_number", turnNumber).eq("committed", true).order("turn_number", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      if (surveyError || truthError || previousError) return { events: [], error: "Stav ložiska se nepodařilo ověřit" };
+      const deposits = (truth as any)?.deposits || [];
+      const committedEcology = previous?.parcelEcology || {};
+      for (const need of needs) {
+        if (!sv || sv.level < 2 || !(sv.findings || []).some((f: any) => f.kind === need))
+          return { events: [], error: `Nedostupné: důl potřebuje potvrzené ložisko (${need}) — proveďte podrobný průzkum pole` };
+        const deposit = deposits.find((d: any) => d.kind === need);
+        const remaining = availableMacroReserve(deposit?.reserve, committedEcology[macroReserveKey(targetParcel.grid_x, targetParcel.grid_y, need)]);
+        if (remaining <= 0) return { events: [], error: deposit ? `Ložisko (${need}) je vyčerpané` : `Ložisko (${need}) na tomto poli není k dispozici` };
+      }
     }
   }
   if (!parcelId && !targetParcel && recipeKeys?.length && terrainReason(recipeKeys, null)) {
