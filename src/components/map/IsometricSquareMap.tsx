@@ -948,17 +948,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [siegeMapOrder, setSiegeMapOrder] = useState<{ unitKey: string; target: any; n: number } | null>(null);
   useEffect(() => { setSiegeUnitKey(null); }, [selectedArmyId]);
   // All active sieges + this turn's orders: squads stand in front of their wall (with a ram) or inside a breached city.
-  const [siegeScene, setSiegeScene] = useState<{ sieges: { id: string; city_id: string; walls: { id: number; breached: boolean }[]; attacker_player: string }[]; orders: { unit_key: string; target: any }[] }>({ sieges: [], orders: [] });
+  const [siegeScene, setSiegeScene] = useState<{ sieges: { id: string; city_id: string; walls: { id: number; breached: boolean }[]; attacker_player: string; defender_player: string; last_report: any }[]; orders: { unit_key: string; target: any }[] }>({ sieges: [], orders: [] });
   useEffect(() => {
     let off = false;
     void (async () => {
-      const { data: sg } = await supabase.from("sieges").select("id, city_id, walls, attacker_player").eq("session_id", sessionId).eq("status", "active");
+      const { data: sg } = await supabase.from("sieges").select("id, city_id, walls, attacker_player, defender_player, last_report").eq("session_id", sessionId).eq("status", "active");
       const ids = (sg || []).map((x: any) => x.id);
       const { data: o } = ids.length ? await supabase.from("siege_orders").select("unit_key, target").in("siege_id", ids).eq("turn_number", currentTurn) : { data: [] as any[] };
       if (!off) setSiegeScene({ sieges: (sg || []) as any, orders: (o || []) as any });
     })();
     return () => { off = true; };
   }, [sessionId, currentTurn, siegeView]);
+  const cityParcelPoint = (p: { x: number; y: number }, index: number) => {
+    const px = (index % 6 + .5) / 6, py = (Math.floor(index / 6) + .5) / 6;
+    return { x: p.x + (px - py) * TILE_SIZE, y: p.y + (px + py - 1) * TILE_SIZE / 2 };
+  };
   const siegeSpotRef = useRef<(lead: any, unitKey: string, order: number) => { x: number; y: number; ram: boolean } | null>(() => null);
   const siegeSpot = (lead: any, unitKey: string, order: number) => siegeSpotRef.current(lead, unitKey, order);
   useEffect(() => { setArmyMoveMode(false); clearArmyWaypoints(); }, [selectedArmyId, clearArmyWaypoints]);
@@ -2143,19 +2147,19 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </g>;
           })()}
           {(() => { siegeSpotRef.current = (lead, unitKey, order) => {
-            const sg = siegeScene.sieges.find(x => x.attacker_player === lead.player_name && (() => { const c = cities.find(cc => cc.id === x.city_id); if (!c || c.grid_x == null || c.grid_y == null) return false; const ac = entityCell(lead); return Math.max(Math.abs((lead.grid_x ?? ac.a) - c.grid_x), Math.abs((lead.grid_y ?? ac.b) - c.grid_y)) <= 1; })());
+            const sg = siegeScene.sieges.find(x => (x.attacker_player === lead.player_name || x.defender_player === lead.player_name) && (() => { const c = cities.find(cc => cc.id === x.city_id); if (!c || c.grid_x == null || c.grid_y == null) return false; const ac = entityCell(lead); return Math.max(Math.abs((lead.grid_x ?? ac.a) - c.grid_x), Math.abs((lead.grid_y ?? ac.b) - c.grid_y)) <= 1; })());
             if (!sg) return null; const city = cities.find(cc => cc.id === sg.city_id)!; const p = at(city.grid_x!, city.grid_y!);
+            // Inside the walls a squad stands on its own city micro-square (persisted by the turn resolution).
+            const inside = sg.last_report?.positions?.[unitKey];
+            if (typeof inside === "number") return { ...cityParcelPoint(p, inside), ram: false };
             const o = siegeScene.orders.find(x => x.unit_key === unitKey); const n = sg.walls.length || 4;
             const jitter = (k: number) => ({ x: ((k * 37) % 9 - 4) * 1.6, y: ((k * 53) % 7 - 3) * 1.1 });
-            const breached = sg.walls.some(w => w.breached);
             if (o?.target?.kind === "wall") { const a = -Math.PI / 2 + (o.target.segment / n) * Math.PI * 2;
               // Squads on the same wall section line up side by side along the wall (tangent direction), like a siege line.
               const mates = siegeScene.orders.filter(x => x.target?.kind === "wall" && x.target.segment === o.target.segment);
               const rank = Math.max(0, mates.findIndex(x => x.unit_key === unitKey));
               const t = (rank - (mates.length - 1) / 2) * 8; const j = jitter(order);
-              return { x: p.x + Math.cos(a) * TILE_SIZE * .95 + Math.cos(a + Math.PI / 2) * t + j.x * .3, y: p.y + Math.sin(a) * TILE_SIZE * .48 + Math.sin(a + Math.PI / 2) * t * .5 + j.y * .3, ram: true }; }
-            if (breached && (o?.target?.kind === "keep" || o?.target?.kind === "unit" || !o)) { const a = order * 2.39996; const r = 4 + (order % 6) * 2.2;
-              return { x: p.x + Math.cos(a) * r * 1.6, y: p.y + Math.sin(a) * r * .8, ram: false }; }
+              return { x: p.x + Math.cos(a) * TILE_SIZE * .95 + Math.cos(a + Math.PI / 2) * t + j.x * .3, y: p.y + Math.sin(a) * TILE_SIZE * .48 + Math.sin(a + Math.PI / 2) * t * .5 + j.y * .3, ram: !sg.walls.find(w => w.id === o.target.segment)?.breached }; }
             return null;
           }; return null; })()}
           {!cityLayerCityId && armyGroups.map(group => {
@@ -2217,6 +2221,38 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </g>
             </g>;
           })}
+          {!cityLayerCityId && siegeScene.sieges.map(sg => {
+            // Garrison squads inside the besieged city, each on its micro-square; clickable as targets for an adjacent attacker.
+            const city = cities.find(c => c.id === sg.city_id); if (!city || city.grid_x == null || city.grid_y == null) return null;
+            const p = at(city.grid_x, city.grid_y); const pos = sg.last_report?.positions || {}; const roster = sg.last_report?.roster || {};
+            const own = sg.defender_player === playerName; const banner = own ? "var(--map-city-own)" : "var(--map-city-rival)";
+            return <g key={`garr-${sg.id}`} data-siege-garrison>{Object.entries(pos).filter(([k]) => k.startsWith("garrison:"))
+              .map(([k, i]) => ({ k, i: Number(i), c: cityParcelPoint(p, Number(i)) })).sort((a, b) => a.c.y - b.c.y).map(({ k, c }) => {
+                const canHit = !!siegeView && siegeView.cityId === sg.city_id && siegeView.mySide === "attacker" && !!siegeUnitKey;
+                const pick = siegeView?.mySide === "defender" && siegeView.cityId === sg.city_id && own;
+                return <g key={k} transform={`translate(${c.x},${c.y})`} className={canHit || pick ? "cursor-crosshair" : ""}
+                  onClick={canHit ? (e) => { e.stopPropagation(); setSiegeMapOrder(o => ({ unitKey: siegeUnitKey!, target: { kind: "unit", key: k }, n: (o?.n ?? 0) + 1 })); setSiegeUnitKey(null); }
+                    : pick ? (e) => { e.stopPropagation(); setSiegeUnitKey(x => x === k ? null : k); } : undefined}>
+                  {siegeUnitKey === k && <ellipse cx="0" cy="2" rx="7" ry="3.5" fill="var(--map-focus)" fillOpacity=".35" stroke="var(--map-focus)" strokeWidth="1.2" />}
+                  <ArmySquad men={Number(roster[k] ?? 200)} kind="foot" banner={banner} active={false} />
+                  <title>{`Posádka · oddíl ${Number(k.split(":")[1]) + 1} · ${roster[k] ?? "?"} mužů`}</title>
+                </g>; })}</g>;
+          })}
+          {!cityLayerCityId && siegeView && siegeUnitKey && (() => {
+            // Squad inside the walls: click a city micro-square to advance one square per turn towards it.
+            const sg = siegeScene.sieges.find(x => x.city_id === siegeView.cityId); const city = cities.find(c => c.id === siegeView.cityId);
+            if (!sg || !city || city.grid_x == null || city.grid_y == null || typeof sg.last_report?.positions?.[siegeUnitKey] !== "number") return null;
+            const p = at(city.grid_x, city.grid_y); const occ = new Map(Object.entries(sg.last_report.positions).map(([k, i]) => [Number(i), k]));
+            return <g data-siege-squares>{Array.from({ length: 36 }, (_, i) => { const px = i % 6, py = Math.floor(i / 6);
+              const pt = (fx: number, fy: number) => { const x = (px + fx) / 6, y = (py + fy) / 6; return `${p.x + (x - y) * TILE_SIZE},${p.y + (x + y - 1) * TILE_SIZE / 2}`; };
+              const who = occ.get(i); const mine = who === siegeUnitKey;
+              return <polygon key={i} points={[pt(0, 0), pt(1, 0), pt(1, 1), pt(0, 1)].join(" ")} fill={mine ? "var(--map-focus)" : "transparent"} fillOpacity=".25"
+                stroke="var(--map-focus)" strokeOpacity=".35" strokeWidth=".5" className="cursor-pointer"
+                onClick={e => { e.stopPropagation(); if (who && who.startsWith("garrison:") === (siegeView.mySide === "attacker")) { setSiegeMapOrder(o => ({ unitKey: siegeUnitKey, target: { kind: "unit", key: who }, n: (o?.n ?? 0) + 1 })); setSiegeUnitKey(null); return; }
+                  if (who) { setSiegeUnitKey(who === siegeUnitKey ? null : who); return; }
+                  setSiegeMapOrder(o => ({ unitKey: siegeUnitKey, target: { kind: "move", parcel: i }, n: (o?.n ?? 0) + 1 })); setSiegeUnitKey(null); }}>
+                <title>{who ? (mine ? "Vybraný oddíl" : "Obsazené pole") : "Postoupit sem (1 pole za kolo)"}</title></polygon>; })}</g>;
+          })()}
           {!cityLayerCityId && siegeView && siegeView.mySide === "attacker" && siegeUnitKey && (() => {
             const city = cities.find(c => c.id === siegeView.cityId); if (!city || city.grid_x == null || city.grid_y == null) return null;
             const p = at(city.grid_x, city.grid_y); const n = siegeView.walls.length;
@@ -2224,11 +2260,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const breached = siegeView.walls.some(w => w.breached);
             return <g data-siege-targets>
               {siegeView.walls.map((w, i) => { const a = -Math.PI / 2 + (i / n) * Math.PI * 2; const x = p.x + Math.cos(a) * TILE_SIZE * .7, y = p.y + Math.sin(a) * TILE_SIZE * .35;
-                return <g key={w.id} transform={`translate(${x},${y})`} className={w.breached ? "" : "cursor-crosshair"} role="button" aria-label={`Poslat na ${w.name}`}
-                  onClick={e => { e.stopPropagation(); if (!w.breached) send({ kind: "wall", segment: w.id }); }}>
+                return <g key={w.id} transform={`translate(${x},${y})`} className="cursor-crosshair" role="button" aria-label={w.breached ? `Projít průlomem: ${w.name}` : `Poslat na ${w.name}`}
+                  onClick={e => { e.stopPropagation(); send({ kind: "wall", segment: w.id }); }}>
                   <circle r="6" fill="var(--map-marker)" stroke={w.breached ? "var(--map-city-rival)" : "var(--map-focus)"} strokeWidth="1.6" opacity=".95" />
                   <text y="2.4" textAnchor="middle" fontSize="6.5" fontWeight="700" fill="var(--map-label)">{w.breached ? "✕" : i + 1}</text>
-                  <title>{w.breached ? `${w.name} · prolomena` : `Zaútočit na ${w.name}`}</title>
+                  <title>{w.breached ? `${w.name} · prolomena — klikni a oddíl projde do města` : `Zaútočit na ${w.name}`}</title>
                 </g>; })}
               {breached && <g transform={`translate(${p.x},${p.y})`} className="cursor-crosshair" role="button" aria-label="Poslat na hlavní budovu" onClick={e => { e.stopPropagation(); send({ kind: "keep" }); }}>
                 <circle r="7" fill="var(--map-marker)" stroke="var(--map-city-rival)" strokeWidth="2" /><text y="2.6" textAnchor="middle" fontSize="7" fontWeight="700" fill="var(--map-label)">♛</text>

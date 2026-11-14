@@ -17,7 +17,7 @@ export type SiegeMapView = { cityId: string; walls: WallSegment[]; mySide: "atta
 
 const cell = (a: ArmyLite) => ({ x: a.grid_x ?? a.hex_q, y: a.grid_y ?? a.hex_r });
 const targetLabel = (t: any, walls: WallSegment[], name: (k: string) => string) =>
-  t?.kind === "wall" ? walls.find(w => w.id === t.segment)?.name ?? "hradba" : t?.kind === "unit" ? name(t.key) : t?.kind === "keep" ? "Hlavní budova" : "—";
+  t?.kind === "wall" ? walls.find(w => w.id === t.segment)?.name ?? "hradba" : t?.kind === "unit" ? name(t.key) : t?.kind === "keep" ? "Hlavní budova" : t?.kind === "move" ? `postup na pole ${t.parcel + 1}` : "—";
 
 /** Siege of an adjacent enemy city: each micro unit (≤200 men) gets one target per turn; resolved at the end of the turn. */
 export default function SiegePanel({ sessionId, currentTurn, playerName, army, cities, armies, selectedUnitKey, onSelectUnit, onSiegeChange, mapOrder }: Props) {
@@ -100,7 +100,7 @@ export default function SiegePanel({ sessionId, currentTurn, playerName, army, c
     <p className="flex items-center gap-1 font-medium"><Castle className="h-3.5 w-3.5" /> Obléhání: {city.name} · od kola {siege.started_turn}</p>
     <div className="flex flex-wrap gap-1">{siege.walls.map(w => <span key={w.id} className={`border px-1.5 py-0.5 ${w.breached ? "border-destructive text-destructive" : "border-border"}`}>{w.name}{w.breached ? " · průlom" : ""}</span>)}</div>
     <p className="text-muted-foreground">{mySide === "attacker" ? (breached ? "Hradba je prolomená — znič obránce a dobuď hlavní budovu." : "Nejdřív prolom hradbu.") : "Bráníš město."} Útočník jedná první, pak rozhoduje pořadí rozkazů. Vyhodnotí se na konci kola.</p>
-    {mySide === "attacker" && <p className="text-primary">Na mapě klikni na oddíl a pak na úsek hradby (nebo hlavní budovu).</p>}
+    {mySide === "attacker" && <p className="text-primary">Na mapě klikni na oddíl a pak na úsek hradby. Po průlomu vstoupí jen oddíly, které na průlom pošleš; uvnitř postupují o 1 pole za kolo.</p>}
     {mySide === "attacker" && !breached && siege.walls[0] && <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => void orderAll({ kind: "wall", segment: siege.walls.find(w => !w.breached)!.id })}>Všechny oddíly na {siege.walls.find(w => !w.breached)!.name}</Button>}
     <div className="max-h-64 space-y-1 overflow-y-auto">
       {myUnits.map(u => { const o = orders.find(x => x.unit_key === u.key);
