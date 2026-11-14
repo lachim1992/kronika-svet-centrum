@@ -2106,6 +2106,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <polyline points={pts.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="var(--map-focus)" strokeWidth="2" strokeDasharray="5 3" strokeLinecap="round" strokeLinejoin="round" />
               {pts.slice(1).map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="1.6" fill="var(--map-focus)" />)}
               <circle cx={end.x} cy={end.y} r="4.5" fill="none" stroke="var(--map-focus)" strokeWidth="2" />
+              {tgt && !armyMovePlan.reachedTarget && <line x1={end.x} y1={end.y} x2={tgt.x} y2={tgt.y} stroke="var(--map-city-rival)" strokeWidth="1.4" strokeDasharray="3 3" opacity=".8" />}
               {tgt && !armyMovePlan.reachedTarget && <circle cx={tgt.x} cy={tgt.y} r="3.5" fill="none" stroke="var(--map-city-rival)" strokeWidth="1.5" strokeDasharray="2 2" />}
             </g>;
           })()}
