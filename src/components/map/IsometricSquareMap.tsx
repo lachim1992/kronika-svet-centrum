@@ -8,7 +8,7 @@ import texDirt from "@/assets/map/tex-dirt.jpg";
 import sprTrees from "@/assets/map/spr-trees.png";
 import { isSandboxMode } from "@/hooks/useSandboxMode";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowUpRight, Castle, Check, Factory, Flag, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { dispatchCommand } from "@/lib/commands";
 import { rasterizeTerrain, type TerrainQuad, type TerrainSprite, type TerrainRaster } from "@/lib/terrainRaster";
 import { mapVisualVariation, polishedTerrainTint, polishedTerrainTintAlpha } from "@/lib/mapVisualPolish";
+import { mapCameraTransform, pinchMapCameraAt, zoomMapCameraAt } from "@/lib/mapCamera";
+import { completeParcelTerrain } from "@/lib/parcelTerrainFallback";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
@@ -357,9 +359,10 @@ function useMapLayer(key: string, initial = true) {
 export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange, resetSignal = 0 }: Props) {
   const isMobile = useIsMobile();
   const viewportRef = useRef<HTMLDivElement>(null);
+  const worldTransformRef = useRef<SVGGElement>(null);
   const pinchRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
-  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
+  const pinchStartRef = useRef<{ distance: number; zoom: number; pan: { x: number; y: number }; center: { x: number; y: number } } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; zoom: number; moved: boolean } | null>(null);
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -368,6 +371,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [cityParcels, setCityParcels] = useState<TileParcel[]>([]);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 40 });
+  const cameraRef = useRef({ zoom: 1, pan: { x: 0, y: 40 } });
+  const cameraFrameRef = useRef<number | null>(null);
+  const cameraCommitRef = useRef<number | null>(null);
   const [selected, setSelected] = useState<Tile | null>(null);
   const hasInitialized = useRef(false);
   const lastSelectedId = useRef<string | null>(null);
@@ -516,6 +522,38 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   // Viewing/reloading the map is read-only. Founding and explicit rollout commands
   // own city footprints; auto-seeding here caused writes and a second full reload.
 
+  /**
+   * Pointer gestures move one SVG group directly, at most once per animation frame.
+   * React receives the settled camera afterwards instead of reconciling the whole world
+   * for every pointer event. All children keep stable world coordinates and hitboxes.
+   */
+  const syncCameraTransform = useCallback(() => {
+    const camera = cameraRef.current;
+    worldTransformRef.current?.setAttribute("transform", mapCameraTransform(camera));
+  }, []);
+  useLayoutEffect(() => { syncCameraTransform(); });
+  const paintCamera = useCallback(() => {
+    cameraFrameRef.current = null;
+    syncCameraTransform();
+  }, [syncCameraTransform]);
+  const updateCamera = useCallback((next: { zoom: number; pan: { x: number; y: number } }, settle: "now" | "debounce" | "gesture") => {
+    cameraRef.current = { zoom: clampZoom(next.zoom), pan: next.pan };
+    if (cameraFrameRef.current === null) cameraFrameRef.current = window.requestAnimationFrame(paintCamera);
+    if (cameraCommitRef.current !== null) { window.clearTimeout(cameraCommitRef.current); cameraCommitRef.current = null; }
+    if (settle === "gesture") return;
+    const commit = () => {
+      cameraCommitRef.current = null;
+      setZoom(cameraRef.current.zoom);
+      setPan(cameraRef.current.pan);
+    };
+    if (settle === "now") commit();
+    else cameraCommitRef.current = window.setTimeout(commit, 90);
+  }, [paintCamera]);
+  useEffect(() => () => {
+    if (cameraFrameRef.current !== null) window.cancelAnimationFrame(cameraFrameRef.current);
+    if (cameraCommitRef.current !== null) window.clearTimeout(cameraCommitRef.current);
+  }, []);
+
   const center = useMemo(() => {
     if (!tiles.length) return { x: 0, y: 0 };
     const points = tiles.map(tile => projectCell("square4", tileCell(tile), TILE_SIZE));
@@ -523,8 +561,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [tiles, tileCell]);
   const home = useCallback(() => {
     const element = viewportRef.current; if (!element) return;
-    setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y }); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false);
-  }, [center, onDetailOpenChange]);
+    updateCamera({ zoom: 1, pan: { x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y } }, "now");
+    setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false);
+  }, [center, onDetailOpenChange, updateCamera]);
   useEffect(() => {
     if (tiles.length > 0 && !hasInitialized.current) {
       home();
@@ -653,17 +692,18 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [storedSubBiomes]);
   const subBiomesOf = useCallback((tile: Tile, a: number, b: number) => {
     const key = cellKey(a, b);
-    const stored = storedSubBiomesByCell.get(key);
-    if (stored && stored.length) return stored;
-    const cached = subBiomeCache.current.get(key);
-    if (cached) return cached;
-    const neighbours = CARDINAL_STEPS.flatMap(step => {
-      const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
-      return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
+    const stored = storedSubBiomesByCell.get(key) || [];
+    return completeParcelTerrain(stored, () => {
+      const cached = subBiomeCache.current.get(key);
+      if (cached) return cached;
+      const neighbours = CARDINAL_STEPS.flatMap(step => {
+        const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
+        return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
+      });
+      const specs = generateTileParcels(sessionId, a, b, terrainOf(tile), neighbours);
+      subBiomeCache.current.set(key, specs);
+      return specs;
     });
-    const specs = generateTileParcels(sessionId, a, b, terrainOf(tile), neighbours);
-    subBiomeCache.current.set(key, specs);
-    return specs;
   }, [storedSubBiomesByCell, tileByCell, terrainOf, sessionId]);
 
 
@@ -725,13 +765,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [roadSegments]);
 
   /** Roads live on the sub-parcel grid; legacy segments receive a deterministic fallback trace. */
-  const roadSurfaceByCell = useMemo(() => {
+  const buildRoadSurface = useCallback((draft: SubRoadCell[], draftLevel: number) => {
     const surface = new Map<string, { level: number; steps: RoadStep[]; cells: Map<string, { x: number; y: number }>; draft: boolean }>();
-    const push = (x: number, y: number, level: number, step: RoadStep | null, draft: boolean, sub?: { x: number; y: number }) => {
+    const push = (x: number, y: number, level: number, step: RoadStep | null, isDraft: boolean, sub?: { x: number; y: number }) => {
       const key = cellKey(x, y);
       const entry = surface.get(key) || { level: 0, steps: [] as RoadStep[], cells: new Map<string, { x: number; y: number }>(), draft: false };
       entry.level = Math.max(entry.level, level);
-      entry.draft = entry.draft || draft;
+      entry.draft = entry.draft || isDraft;
       if (step && !entry.steps.some(item => item.dx === step.dx && item.dy === step.dy)) entry.steps.push(step);
       if (sub) entry.cells.set(`${sub.x},${sub.y}`, sub);
       surface.set(key, entry);
@@ -753,13 +793,19 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           push(sub.gridX, sub.gridY, segment.level, null, segment.status === "building", { x: sub.parcelX, y: sub.parcelY }));
       }
     });
-    roadDraft.forEach(sub => push(sub.gridX, sub.gridY, roadDraftLevel, null, true, { x: sub.parcelX, y: sub.parcelY }));
+    draft.forEach(sub => push(sub.gridX, sub.gridY, draftLevel, null, true, { x: sub.parcelX, y: sub.parcelY }));
     return new Map([...surface.entries()].map(([key, entry]) => {
       const [x, y] = key.split(",").map(Number);
       const cells = entry.cells.size ? [...entry.cells.values()] : tileRoadCells(sessionId, x, y, entry.steps);
       return [key, { level: entry.level, draft: entry.draft, cells }];
     }));
-  }, [roadSegments, roadProjects, roadDraft, roadDraftLevel, sessionId]);
+  }, [roadSegments, roadProjects, sessionId]);
+  // The draft is a lightweight SVG overlay. It must not rebake the static world on every cell.
+  const terrainRoadSurfaceByCell = useMemo(() => buildRoadSurface([], 1), [buildRoadSurface]);
+  const roadSurfaceByCell = useMemo(
+    () => roadDraft.length ? buildRoadSurface(roadDraft, roadDraftLevel) : terrainRoadSurfaceByCell,
+    [roadDraft, roadDraftLevel, buildRoadSurface, terrainRoadSurfaceByCell],
+  );
 
 
   const roadDraftSummary = useMemo(() => {
@@ -889,37 +935,51 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const a = tileCell(left); const b = tileCell(right); return (a.a + a.b) - (b.a + b.b);
   }), [tiles, tileCell]);
 
-  /** Static terrain baked into one bitmap (world coords, no pan) — the map would otherwise draw ~100k SVG nodes. */
+  /** Static terrain baked into bitmap chunks (world coords, no pan) — no ~100k SVG terrain nodes. */
   const [terrainRaster, setTerrainRaster] = useState<TerrainRaster | null>(null);
+  const terrainRasterRef = useRef<TerrainRaster | null>(null);
+  useEffect(() => () => {
+    terrainRasterRef.current?.forEach(chunk => URL.revokeObjectURL(chunk.url));
+  }, []);
   useEffect(() => {
     if (!sortedTiles.length) return;
     let cancelled = false;
+    const controller = new AbortController();
     const handle = window.setTimeout(() => {
       const quads: TerrainQuad[] = []; const sprites: TerrainSprite[] = [];
       sortedTiles.forEach(tile => {
         const cell = tileCell(tile); const point = projectCell("square4", cell, TILE_SIZE);
         const P = (a: number, b: number): [number, number] => [point.x + (a - b) * TILE_SIZE, point.y + (a + b - 1) * TILE_SIZE / 2];
         const hasFootprint = (parcelsByCell.get(cellKey(cell.a, cell.b)) || []).length > 0;
-        const roadSubs = new Set((roadSurfaceByCell.get(cellKey(cell.a, cell.b))?.cells || []).map(sub => `${sub.x}:${sub.y}`));
+        const roadSubs = new Set((terrainRoadSurfaceByCell.get(cellKey(cell.a, cell.b))?.cells || []).map(sub => `${sub.x}:${sub.y}`));
         const peakTile = PEAK_TILES.has(tile.biome_family);
         subBiomesOf(tile, cell.a, cell.b).forEach(parcel => {
           const x0 = parcel.parcelX / TILE_PARCEL_COLS, x1 = (parcel.parcelX + 1) / TILE_PARCEL_COLS;
           const y0 = parcel.parcelY / TILE_PARCEL_ROWS, y1 = (parcel.parcelY + 1) / TILE_PARCEL_ROWS;
           const subTex = subBiomeTex(parcel.subBiome);
+          const texture = subTex || TERRAIN_TEX[tile.biome_family];
           const variation = mapVisualVariation(sessionId, cell.a, cell.b, parcel.parcelX, parcel.parcelY);
+          const tint = polishedTerrainTint(parcel.subBiome);
           quads.push({
             pts: [P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)],
-            tex: subTex || TERRAIN_TEX[tile.biome_family],
-            texFilter: (subTex || TERRAIN_TEX[tile.biome_family]) === texWater ? "saturate(.58) brightness(.78)" : undefined,
-            tint: polishedTerrainTint(parcel.subBiome),
+            tex: texture,
+            texFilter: texture === texWater
+              ? "saturate(.46) contrast(.76) brightness(.76)"
+              : texture === texGrass
+                ? "saturate(.72) contrast(.78) brightness(.94)"
+                : texture === texRock
+                  ? "saturate(.78) contrast(.9) brightness(.97)"
+                  : texture === texSand ? "saturate(.8) contrast(.84)" : undefined,
+            baseColor: tint,
+            tint,
             tintAlpha: polishedTerrainTintAlpha(parcel.subBiome, variation.tintDelta),
           });
           if (hasFootprint || roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)) return;
           const [cx, cy] = P((parcel.parcelX + .5) / TILE_PARCEL_COLS, (parcel.parcelY + .5) / TILE_PARCEL_ROWS);
           const forest = (SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)");
           if (forest) {
-            if (variation.density < .08 && parcel.subBiome !== "thick_canopy") return;
-            const w = 15 * variation.scale;
+            if (variation.density < .12 && parcel.subBiome !== "thick_canopy") return;
+            const w = 16 * variation.scale;
             sprites.push({
               href: sprTrees, x: cx - w / 2 + variation.offsetX, y: cy - w * .55 + variation.offsetY, w, h: w * .68,
               shadow: { dx: .6, dy: -.3, rx: w * .3, ry: w * .08, color: "var(--map-marker-edge)", opacity: .24 },
@@ -934,7 +994,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             });
             return;
           }
-          const rocky = MOUNTAIN_SUBS.has(parcel.subBiome) || ((subTex || TERRAIN_TEX[tile.biome_family]) === texRock && parcel.parcelX % 2 === 0 && parcel.parcelY % 2 === 0);
+          const rocky = MOUNTAIN_SUBS.has(parcel.subBiome) || (texture === texRock && parcel.parcelX % 2 === 0 && parcel.parcelY % 2 === 0);
           if (!rocky || ["desert", "sea"].includes(tile.biome_family) || subTex === texSand || subTex === texWater) return;
           const w = 13 * variation.scale;
           sprites.push({
@@ -943,13 +1003,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           });
         });
       });
-      rasterizeTerrain(quads, sprites, TILE_SIZE * .6).then(result => {
+      rasterizeTerrain(quads, sprites, TILE_SIZE * .6, 3, 1024, controller.signal).then(result => {
         if (cancelled) { result.forEach(chunk => URL.revokeObjectURL(chunk.url)); return; }
-        setTerrainRaster(previous => { if (Array.isArray(previous)) previous.forEach(chunk => URL.revokeObjectURL(chunk.url)); return result; });
-      });
+        setTerrainRaster(previous => {
+          if (Array.isArray(previous)) previous.forEach(chunk => URL.revokeObjectURL(chunk.url));
+          terrainRasterRef.current = result;
+          return result;
+        });
+      }).catch(error => { if (!cancelled) console.warn("Raster terénu se nepodařilo vytvořit", error); });
     }, 50);
-    return () => { cancelled = true; window.clearTimeout(handle); };
-  }, [sortedTiles, tileCell, subBiomesOf, parcelsByCell, roadSurfaceByCell]);
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(handle); };
+  }, [sortedTiles, tileCell, subBiomesOf, parcelsByCell, terrainRoadSurfaceByCell]);
   const selectedCell = selected ? tileCell(selected) : null;
   const selectedHexPopulation = selected ? hexPopulation.find(row => row.q === selected.q && row.r === selected.r) : undefined;
   const selectedParcel = tileParcels.find(parcel => parcel.id === selectedParcelId) || null;
@@ -1569,19 +1633,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     });
   };
 
-  const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
-  const viewRef = useRef({ zoom, pan });
-  viewRef.current = { zoom, pan };
-  const zoomBy = (factor: number, screenX?: number, screenY?: number) => {
-    const { zoom: current, pan: currentPan } = viewRef.current;
+  const at = (a: number, b: number) => projectCell("square4", { a, b }, TILE_SIZE);
+  const zoomBy = (factor: number, screenX?: number, screenY?: number, settle: "now" | "debounce" = "now") => {
+    const { zoom: current, pan: currentPan } = cameraRef.current;
     const next = clampZoom(current * factor);
     if (next === current) return;
     const element = viewportRef.current;
     const px = screenX ?? (element ? element.clientWidth / 2 : 0);
     const py = screenY ?? (element ? element.clientHeight / 2 : 0);
-    const shift = 1 / next - 1 / current;
-    setPan({ x: currentPan.x + px * shift, y: currentPan.y + py * shift });
-    setZoom(next);
+    updateCamera(zoomMapCameraAt({ zoom: current, pan: currentPan }, next, { x: px, y: py }), settle);
   };
   const zoomHandlerRef = useRef(zoomBy);
   zoomHandlerRef.current = zoomBy;
@@ -1592,7 +1652,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       event.preventDefault();
       const dy = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1);
       const rect = element.getBoundingClientRect();
-      zoomHandlerRef.current(Math.exp(-dy * 0.0018), event.clientX - rect.left, event.clientY - rect.top);
+      zoomHandlerRef.current(Math.exp(-dy * 0.0018), event.clientX - rect.left, event.clientY - rect.top, "debounce");
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);
@@ -1603,10 +1663,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const cityId = requestedCityId || cityByCell.get(cellKey(cell.a, cell.b));
     const city = cityId ? cityById.get(cityId) : undefined;
     const targetZoom = city ? 2.25 : 1.65;
-    setSelected(tile); setZoom(targetZoom);
+    setSelected(tile);
     setCityLayerCityId(city?.id || null);
     onDetailOpenChange?.(true);
-    setPan({ x: element.clientWidth * (city ? .47 : .38) / targetZoom - projected.x, y: element.clientHeight * .46 / targetZoom - projected.y });
+    updateCamera({ zoom: targetZoom, pan: { x: element.clientWidth * (city ? .47 : .38) / targetZoom - projected.x, y: element.clientHeight * .46 / targetZoom - projected.y } }, "now");
   };
 
   const startRoadDraft = () => {
@@ -1680,7 +1740,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setSelected(null);
     onDetailOpenChange?.(false);
     const element = viewportRef.current;
-    if (element) { setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * .35 - center.y }); }
+    if (element) updateCamera({ zoom: 1, pan: { x: element.clientWidth / 2 - center.x, y: element.clientHeight * .35 - center.y } }, "now");
   };
 
   /** Static settlement silhouette: houses, walls, keep — scaled by population. */
@@ -1693,32 +1753,56 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
-          pinchStartRef.current = { distance: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom };
+          const rect = event.currentTarget.getBoundingClientRect();
+          const camera = cameraRef.current;
+          pinchStartRef.current = {
+            distance: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+            zoom: camera.zoom,
+            pan: camera.pan,
+            center: { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top },
+          };
           dragRef.current = null;
           return;
         }
         // While drawing a road the primary button belongs to the route; pan with middle/right button or two fingers.
         if (roadDraft.length > 0 && event.button === 0) { dragRef.current = null; return; }
-        dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
+        const camera = cameraRef.current;
+        dragRef.current = { x: event.clientX, y: event.clientY, panX: camera.pan.x, panY: camera.pan.y, zoom: camera.zoom, moved: false };
       }}
       onPointerMove={(event) => {
-
         if (pinchRef.current.has(event.pointerId)) pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         const start = pinchStartRef.current;
         if (start && pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
+          const rect = event.currentTarget.getBoundingClientRect();
           const distance = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-          setZoom(clampZoom(start.zoom * (distance / start.distance)));
+          const nextZoom = clampZoom(start.zoom * (distance / start.distance));
+          const center = { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top };
+          updateCamera(pinchMapCameraAt({ zoom: start.zoom, pan: start.pan }, start.center, nextZoom, center), "gesture");
           return;
         }
         const drag = dragRef.current; if (!drag) return;
         const dx = event.clientX - drag.x; const dy = event.clientY - drag.y;
         if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
-        if (drag.moved) setPan({ x: drag.panX + dx / zoom, y: drag.panY + dy / zoom });
+        if (drag.moved) updateCamera({ zoom: drag.zoom, pan: { x: drag.panX + dx / drag.zoom, y: drag.panY + dy / drag.zoom } }, "gesture");
       }}
-      onPointerUp={(event) => { pinchRef.current.delete(event.pointerId); if (pinchRef.current.size < 2) pinchStartRef.current = null; window.setTimeout(() => { dragRef.current = null; }, 0); }}
-      onPointerCancel={(event) => { pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null; }}
-      onPointerLeave={(event) => { pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null; }}
+      onPointerUp={(event) => {
+        const shouldSettle = !!pinchStartRef.current || !!dragRef.current?.moved;
+        pinchRef.current.delete(event.pointerId);
+        if (pinchRef.current.size < 2) pinchStartRef.current = null;
+        if (shouldSettle) updateCamera(cameraRef.current, "now");
+        window.setTimeout(() => { dragRef.current = null; }, 0);
+      }}
+      onPointerCancel={(event) => {
+        const shouldSettle = !!pinchStartRef.current || !!dragRef.current?.moved;
+        pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null;
+        if (shouldSettle) updateCamera(cameraRef.current, "now");
+      }}
+      onPointerLeave={(event) => {
+        const shouldSettle = !!pinchStartRef.current || !!dragRef.current?.moved;
+        pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null;
+        if (shouldSettle) updateCamera(cameraRef.current, "now");
+      }}
       >
       <svg className="h-full w-full">
         <defs>
@@ -1734,13 +1818,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="var(--map-water-glint)" strokeWidth="1" opacity=".22" /></pattern>
           {Array.from(new Set([...Object.values(TERRAIN_TEX), texDirt])).map(href => (
             <pattern key={href} id={`tex-${href.split("/").pop()?.split(".")[0]}`} width={TILE_SIZE * .6} height={TILE_SIZE * .6} patternUnits="userSpaceOnUse"
-              patternTransform={`matrix(1 .5 -1 .5 ${pan.x} ${pan.y})`}>
+              patternTransform="matrix(1 .5 -1 .5 0 0)">
               <image href={href} width={TILE_SIZE * .6} height={TILE_SIZE * .6} preserveAspectRatio="none" />
             </pattern>
           ))}
         </defs>
-        <g transform={`scale(${zoom})`}>
-          {Array.isArray(terrainRaster) && terrainRaster.map(chunk => <image key={chunk.url} href={chunk.url} x={chunk.x + pan.x} y={chunk.y + pan.y} width={chunk.w + .4} height={chunk.h + .4} preserveAspectRatio="none" pointerEvents="none" />)}
+        <g ref={worldTransformRef} data-map-camera>
+          {Array.isArray(terrainRaster) && terrainRaster.map(chunk => <image key={chunk.url} href={chunk.url} x={chunk.x} y={chunk.y} width={chunk.w + .08} height={chunk.h + .08} preserveAspectRatio="none" pointerEvents="none" />)}
           {sortedTiles.map(tile => {
             const cell = tileCell(tile); const point = at(cell.a, cell.b); const colors = BIOMES[tile.biome_family] || BIOMES.plains;
             const roadSurface = roadSurfaceByCell.get(cellKey(cell.a, cell.b));
@@ -1761,7 +1845,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 1.2 : 0} />
               {cityLayerCityId && !inActiveCity && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill="var(--map-marker-edge)" opacity=".55" />}
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".8" opacity=".38" strokeDasharray="5 3" />}
-              {showSubBiomes && zoom >= 1.2 && <g pointerEvents="none" opacity={active ? .16 : .055}>
+              {showSubBiomes && zoom >= 1.2 && <g pointerEvents="none" opacity={active ? .13 : .035}>
                 {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
                   const fraction = (index + 1) / TILE_PARCEL_COLS;
                   const line = (ax: number, ay: number, bx: number, by: number) =>
@@ -1817,13 +1901,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {!cityLayerCityId && riverSegments.length > 0 && <g pointerEvents="none">
             {([["var(--map-forest-edge)", 3.2, .26], ["var(--map-water-edge)", 2.3, .55], [`url(#${texId(texWater)})`, 1.6, .82], ["var(--map-water-glint)", .35, .22]] as const).map(([stroke, width, opacity], layer) => (
               <g key={`river-layer-${layer}`} stroke={stroke} strokeWidth={width} strokeLinecap="round" opacity={opacity}>
-                {riverSegments.map(segment => <line key={segment.id} x1={segment.from.x + pan.x} y1={segment.from.y + pan.y} x2={segment.to.x + pan.x} y2={segment.to.y + pan.y} />)}
+                {riverSegments.map(segment => <line key={segment.id} x1={segment.from.x} y1={segment.from.y} x2={segment.to.x} y2={segment.to.y} />)}
               </g>
             ))}
           </g>}
           {roadNetwork.segments.map(segment => {
-            const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
-            const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
+            const from = segment.from;
+            const end = segment.to;
             const width = segment.level >= 3 ? 3.2 : segment.level === 2 ? 2.4 : 1.6;
             return <g key={segment.id} pointerEvents="none">
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 1} strokeLinecap="round" opacity=".25" />
@@ -1841,14 +1925,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             return <g key={`fp-${tile.id}`} pointerEvents="none">{renderCityFootprint(footprint, at(cell.a, cell.b), holderCity ? holderCity.owner_player === playerName : true)}</g>;
           })}
           {roadNetwork.bridges.map(bridge => {
-            const point = { x: bridge.point.x + pan.x, y: bridge.point.y + pan.y };
+            const point = bridge.point;
             return <g key={bridge.id} pointerEvents="none">
               <rect x={point.x - 5} y={point.y - 2.6} width="10" height="5.2" rx="1.4" fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".8" />
               <line x1={point.x - 5} y1={point.y - 2.6} x2={point.x + 5} y2={point.y - 2.6} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity=".8" />
             </g>;
           })}
           {!cityLayerCityId && showRoutes && routePolylines.map(route => {
-            const points = route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ");
+            const points = route.points.map(point => `${point.x},${point.y}`).join(" ");
             const corridorFlows = flowRows.filter(row => row.corridor === route.id);
             const hovered = hoverCorridor === route.id;
             // The clickable band must stay the same size on screen at every zoom level,
@@ -2028,7 +2112,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           gridX={selectedCell.a} gridY={selectedCell.b} owner={selected.owner_player || null} provinceId={(selected as any).province_id || null}
           passable={selected.is_passable !== false} biome={selected.biome_family} ownedTiles={tiles.filter(t => t.owner_player === playerName).length}
           adjacentOwned={tiles.some(t => t.owner_player === playerName && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)}
-          onChanged={() => void load()} onSurveyChange={setSelectedMacroSurvey} />}
+          hasCity={cityByCell.has(cellKey(selectedCell.a, selectedCell.b))}
+          assignableProvinceIds={[...new Set(tiles.filter(t => t.owner_player === playerName && (t as any).province_id
+            && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)
+            .map(t => String((t as any).province_id)))]}
+          onChanged={load} onSurveyChange={setSelectedMacroSurvey} />}
         <section className="mt-4 border border-border/70 bg-muted/20 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
