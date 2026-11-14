@@ -34,6 +34,7 @@ import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
 import { templateSiteRole, depositSurveyReason } from "../../../supabase/functions/_shared/ruralSites";
 import MacroTerritoryPanel, { type MacroSurveySnapshot } from "@/components/map/MacroTerritoryPanel";
+import MapDetailWindow, { type MapDetailSection } from "@/components/map/MapDetailWindow";
 import { parcelPotential } from "../../../supabase/functions/_shared/parcelEconomy";
 import { terrainReason } from "../../../supabase/functions/_shared/terrainSuitability";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
@@ -375,6 +376,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const cameraFrameRef = useRef<number | null>(null);
   const cameraCommitRef = useRef<number | null>(null);
   const [selected, setSelected] = useState<Tile | null>(null);
+  const [detailSection, setDetailSection] = useState<MapDetailSection>("overview");
   const hasInitialized = useRef(false);
   const lastSelectedId = useRef<string | null>(null);
   const [cityLayerCityId, setCityLayerCityId] = useState<string | null>(null);
@@ -1229,15 +1231,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         const quad = parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y);
         const activeParcel = parcel.id === selectedParcelId;
         return <g key={parcel.id} role="button" tabIndex={0} className="cursor-pointer"
-          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); openStructureOnParcel(parcel.id); }}
-          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); openStructureOnParcel(parcel.id); } }}>
+          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); setDetailSection("parcels"); openStructureOnParcel(parcel.id); }}
+          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); setDetailSection("parcels"); openStructureOnParcel(parcel.id); } }}>
           <polygon points={quad} fill={fill}
             stroke={activeParcel ? "var(--map-focus)" : mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
-            strokeWidth={activeParcel ? 2 : mine ? .8 : .35}
-            fillOpacity={mine ? (parcel.status === "occupied" ? .78 : .58) : parcel.buildable ? (parcel.status === "wild" ? .28 : .55) : .3}
-            strokeOpacity={activeParcel ? 1 : mine ? .7 : .28} />
-          {/* hatching marks every sub-parcel the city holds without hiding its terrain */}
-          {mine && <polygon points={quad} fill={hatchFill} opacity=".28" />}
+            strokeWidth={activeParcel ? 2.2 : mine ? 1.25 : .3}
+            fillOpacity={mine ? (parcel.status === "occupied" ? .9 : .7) : parcel.buildable ? (parcel.status === "wild" ? .2 : .48) : .26}
+            strokeOpacity={activeParcel ? 1 : mine ? .95 : .22} />
+          {/* Strong, persistent hatching distinguishes city-used land from the idle survey grid. */}
+          {mine && <polygon points={quad} fill={hatchFill} opacity={parcel.status === "occupied" ? ".32" : ".5"} pointerEvents="none" />}
           <title>{`${parcel.region_name ? parcel.region_name + " · " : ""}${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}${mine ? ` · patří ${holder?.name || "městu"}` : ""}`}</title>
           {parcel.region_name && <text x={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.x + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.x) / 2}
             y={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.y + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.y) / 2}
@@ -1664,6 +1666,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const city = cityId ? cityById.get(cityId) : undefined;
     const targetZoom = city ? 2.25 : 1.65;
     setSelected(tile);
+    setDetailSection("overview");
     setCityLayerCityId(city?.id || null);
     onDetailOpenChange?.(true);
     updateCamera({ zoom: targetZoom, pan: { x: element.clientWidth * (city ? .47 : .38) / targetZoom - projected.x, y: element.clientHeight * .46 / targetZoom - projected.y } }, "now");
