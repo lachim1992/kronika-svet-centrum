@@ -128,20 +128,25 @@ describe('Phase C active rural state',()=>{
       }
       const args=[session,'cmd-found-1',4,'p','Nová Ves',province,'Provincie',null,null,0,0,null,100];
       const first:any=await db.query('SELECT public.found_city_with_rural_settlers($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) AS result',args);
-      const result:any=(first.rows[0] as any).result;
+      const result:any=first.rows[0].result;
       expect(result.transferred).toBe(100);expect(result.idempotent).toBe(false);
-      expect((((await db.query('SELECT count(*)::int AS n FROM cities')).rows[0]) as any).n).toBe(1);
-      expect(((((await db.query("SELECT sum(hp.rural_population)::int AS n FROM hex_population hp JOIN province_hexes ph ON ph.session_id=hp.session_id AND ph.q=hp.q AND ph.r=hp.r WHERE ph.owner_player='p'")).rows[0]) as any).n).toBe(80);
-      expect((await db.query('SELECT population_total,population_peasants,population_burghers,population_clerics FROM cities')).rows[0])
-        .toEqual({population_total:100,population_peasants:80,population_burghers:15,population_clerics:5});
+      const cityCount:any=await db.query('SELECT count(*)::int AS n FROM cities');
+      expect(cityCount.rows[0].n).toBe(1);
+      const ruralAfterFounding:any=await db.query("SELECT sum(hp.rural_population)::int AS n FROM hex_population hp JOIN province_hexes ph ON ph.session_id=hp.session_id AND ph.q=hp.q AND ph.r=hp.r WHERE ph.owner_player='p'");
+      expect(ruralAfterFounding.rows[0].n).toBe(80);
+      const cityClasses:any=await db.query('SELECT population_total,population_peasants,population_burghers,population_clerics FROM cities');
+      expect(cityClasses.rows[0]).toEqual({population_total:100,population_peasants:80,population_burghers:15,population_clerics:5});
       const replay:any=await db.query('SELECT public.found_city_with_rural_settlers($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) AS result',args);
-      expect((replay.rows[0] as any).result.idempotent).toBe(true);
-      expect((replay.rows[0] as any).result.city_id).toBe(result.city_id);
-      expect((((await db.query('SELECT count(*)::int AS n FROM cities')).rows[0]) as any).n).toBe(1);
+      expect(replay.rows[0].result.idempotent).toBe(true);
+      expect(replay.rows[0].result.city_id).toBe(result.city_id);
+      const cityCountAfterReplay:any=await db.query('SELECT count(*)::int AS n FROM cities');
+      expect(cityCountAfterReplay.rows[0].n).toBe(1);
       await expect(db.query('SELECT public.found_city_with_rural_settlers($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
         [session,'cmd-found-2',4,'p','Too Few',province,'Provincie',null,null,0,0,null,100])).rejects.toThrow('INSUFFICIENT_RURAL_SETTLERS');
-      expect((((await db.query("SELECT sum(hp.rural_population)::int AS n FROM hex_population hp JOIN province_hexes ph ON ph.session_id=hp.session_id AND ph.q=hp.q AND ph.r=hp.r WHERE ph.owner_player='p'")).rows[0]) as any).n).toBe(80);
-      expect((((await db.query('SELECT count(*)::int AS n FROM cities')).rows[0]) as any).n).toBe(1);
+      const ruralAfterFailedFounding:any=await db.query("SELECT sum(hp.rural_population)::int AS n FROM hex_population hp JOIN province_hexes ph ON ph.session_id=hp.session_id AND ph.q=hp.q AND ph.r=hp.r WHERE ph.owner_player='p'");
+      expect(ruralAfterFailedFounding.rows[0].n).toBe(80);
+      const cityCountAfterFailure:any=await db.query('SELECT count(*)::int AS n FROM cities');
+      expect(cityCountAfterFailure.rows[0].n).toBe(1);
     }finally{await db.close();}
   },20000);
 });
