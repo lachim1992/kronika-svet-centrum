@@ -2142,7 +2142,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const openArmy = () => { setSelectedArmyId(lead.id); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(true); };
             return <g key={group.key} data-map-army={lead.id} role="button" tabIndex={0} aria-label={`Armáda ${lead.name}`}
               pointerEvents={roadDraft.length > 0 || armyMoveMode ? "none" : "auto"}
-              className="cursor-pointer"
+              className="cursor-pointer outline-none focus:outline-none"
               onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
               {(() => {
