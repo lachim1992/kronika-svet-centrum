@@ -8,7 +8,7 @@ import texDirt from "@/assets/map/tex-dirt.jpg";
 import sprTrees from "@/assets/map/spr-trees.png";
 import { isSandboxMode } from "@/hooks/useSandboxMode";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowUpRight, Castle, Check, Factory, Flag, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -357,9 +357,10 @@ function useMapLayer(key: string, initial = true) {
 export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange, resetSignal = 0 }: Props) {
   const isMobile = useIsMobile();
   const viewportRef = useRef<HTMLDivElement>(null);
+  const worldTransformRef = useRef<SVGGElement>(null);
   const pinchRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
-  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
+  const pinchStartRef = useRef<{ distance: number; zoom: number; pan: { x: number; y: number }; center: { x: number; y: number } } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; zoom: number; moved: boolean } | null>(null);
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -368,6 +369,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [cityParcels, setCityParcels] = useState<TileParcel[]>([]);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 40 });
+  const cameraRef = useRef({ zoom: 1, pan: { x: 0, y: 40 } });
+  const cameraFrameRef = useRef<number | null>(null);
+  const cameraCommitRef = useRef<number | null>(null);
   const [selected, setSelected] = useState<Tile | null>(null);
   const hasInitialized = useRef(false);
   const lastSelectedId = useRef<string | null>(null);
