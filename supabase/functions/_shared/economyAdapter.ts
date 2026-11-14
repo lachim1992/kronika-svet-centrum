@@ -445,7 +445,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const settledRuralWages:Record<string,number>={};
   // Owner income only when the settlement actually recorded it (older settlements predate the payout → proxy fallback).
   const settledOwnership:Record<string,number>={};
-  const settlement:Record<string,{arrears_closing:number;producer_retained:number;producer_cash_closing:number;ownership_income_paid:number}>={};
+  const settlement:Record<string,{arrears_closing:number;producer_retained:number;producer_cash_closing:number;ownership_income_paid:number;rural_arrears_closing:number}>={};
   for(const r of db.realm_resources as any[])for(const c of r?.computed_modifiers?.wage_settlement?.cities||[])if(c?.city){
     settledWages[c.city]=nonnegative(c.wages_paid);
     if(c.rural_wages_paid!=null&&Number.isFinite(Number(c.rural_wages_paid)))settledRuralWages[c.city]=nonnegative(c.rural_wages_paid);
