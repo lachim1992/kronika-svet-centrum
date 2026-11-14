@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## Province assignment runtime errors — 2026-11-14
+- [x] Canonical SQL rules remain unchanged: target province must be 4-adjacent, city tiles cannot move, and removing a tile must not split the source province. The map select previously offered every owned province without those preconditions.
+- [x] `MacroTerritoryPanel` now receives actual adjacent province IDs and city presence from `IsometricSquareMap`; it offers only the current or eligible adjacent province, disables impossible moves and defensively rejects stale invalid selections. Command/refetch failures are caught and shown as toast errors with busy state always cleared; server remains authoritative.
+- [x] New `macro-territory-province.test.tsx` covers city tiles, nonadjacent targets and a late source-contiguity rejection. Full suite 117 files passed + 1 skipped; 937 tests passed + 3 skipped.
+- [x] Signed-in read-only JV72O7 browser: Lambadagrad select disabled with only its current province, map remains visible after closing detail, zero page errors and zero blocked write attempts. No backend/schema/saved-game changes or publication.
+
 ## Map polish + performance — verified vertical slice, 2026-11-14
 - [x] Profiled the real JV72O7 renderer before editing: 6,641 SVG descendants, 9×2048² raster chunks (6.79 MB), per-pointer React pan updates and per-coordinate pan offsets. Baseline headless drag sampling averaged 56.6 ms between frames with 47 intervals over 34 ms; this is a local measurement, not a device-independent FPS claim.
 - [x] `IsometricSquareMap.tsx` + new `mapCamera.ts`: one stable world-coordinate SVG parent, direct rAF-throttled camera transforms during drag/pinch, settled React state after the gesture, anchored wheel/pinch math and midpoint movement. Roads, rivers, routes, cities, armies and 6×6 hit areas retain world geometry and handlers; route drafting keeps its existing input rules. Live MutationObserver during the same 45-step drag: 47 camera writes, zero SVG child-list mutations and zero non-camera coordinate mutations; mean sampled frame interval 16.785 ms, max 33.4 ms, no interval over 34 ms in this run.
