@@ -2148,8 +2148,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const o = siegeScene.orders.find(x => x.unit_key === unitKey); const n = sg.walls.length || 4;
             const jitter = (k: number) => ({ x: ((k * 37) % 9 - 4) * 1.6, y: ((k * 53) % 7 - 3) * 1.1 });
             const breached = sg.walls.some(w => w.breached);
-            if (o?.target?.kind === "wall") { const a = -Math.PI / 2 + (o.target.segment / n) * Math.PI * 2; const j = jitter(order);
-              return { x: p.x + Math.cos(a) * TILE_SIZE * .95 + j.x, y: p.y + Math.sin(a) * TILE_SIZE * .48 + j.y, ram: true }; }
+            if (o?.target?.kind === "wall") { const a = -Math.PI / 2 + (o.target.segment / n) * Math.PI * 2;
+              // Squads on the same wall section line up side by side along the wall (tangent direction), like a siege line.
+              const mates = siegeScene.orders.filter(x => x.target?.kind === "wall" && x.target.segment === o.target.segment);
+              const rank = Math.max(0, mates.findIndex(x => x.unit_key === unitKey));
+              const t = (rank - (mates.length - 1) / 2) * 8; const j = jitter(order);
+              return { x: p.x + Math.cos(a) * TILE_SIZE * .95 + Math.cos(a + Math.PI / 2) * t + j.x * .3, y: p.y + Math.sin(a) * TILE_SIZE * .48 + Math.sin(a + Math.PI / 2) * t * .5 + j.y * .3, ram: true }; }
             if (breached && (o?.target?.kind === "keep" || o?.target?.kind === "unit" || !o)) { const a = order * 2.39996; const r = 4 + (order % 6) * 2.2;
               return { x: p.x + Math.cos(a) * r * 1.6, y: p.y + Math.sin(a) * r * .8, ram: false }; }
             return null;
