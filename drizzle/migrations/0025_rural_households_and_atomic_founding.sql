@@ -55,7 +55,7 @@ BEGIN
   IF p_settlers < 1 OR p_settlers > 10000 THEN
     RAISE EXCEPTION 'FOUNDING_INVALID_SETTLER_COUNT';
   END IF;
-  v_request_hash := md5(concat_ws('|',p_owner_player,p_turn_number,p_city_name,p_province_id,p_q,p_r,p_settlers));
+  v_request_hash := md5(jsonb_build_object('owner_player',p_owner_player,'turn_number',p_turn_number,'city_name',p_city_name,'province_id',p_province_id,'province',p_province,'tags',p_tags,'flavor_prompt',p_flavor_prompt,'q',p_q,'r',p_r,'founded_parcel_index',p_founded_parcel_index,'settlers',p_settlers)::text);
 
   -- Reserve and lock this command key before touching rural cells. ON CONFLICT waits for a
   -- concurrent identical command; after that transaction commits, the second caller sees its city.
