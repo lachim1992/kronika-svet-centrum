@@ -394,11 +394,6 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
     const result={options,shares};productChoiceCache.set(cacheKey,result);return result;
   };
-  const subsistenceProductNeed=(c:City,basket:string,goodKey:string)=>{
-    const share=productDemandChoice(c,basket).shares.find(s=>s.good===goodKey)?.share??0;
-    const military=basket==='staple_food'?n(c.soldiers)*C.armyDemand:0;
-    return (subsistenceNeed(c,basket)+military)*share/functionalValue(goodKey,basket);
-  };
   /** One output-per-worker estimate for both subsistence priority and the perishable demand ceiling. */
   const subsistenceOutputPerJob=(p:Producer,c:City)=>{
     const jobs=jobsOf(p),g=goodByKey.get(p.recipe.good);if(jobs<=C.epsilon||!g)return 0;
