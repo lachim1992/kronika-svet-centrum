@@ -30,6 +30,7 @@ import RealmTab from "@/pages/game/RealmTab";
 import FeedTab from "@/pages/game/FeedTab";
 import ChroniclesTab from "@/pages/game/ChroniclesTab";
 import CodexTab from "@/pages/game/CodexTab";
+import AtlasTab from "@/pages/game/AtlasTab";
 import ProfileTab from "@/pages/game/ProfileTab";
 import DevTab from "@/pages/game/DevTab";
 import ChroWikiTab from "@/pages/game/ChroWikiTab";
@@ -547,6 +548,7 @@ const Dashboard = () => {
           myRole={myRole}
         />
       )}
+      {activeTab === "atlas" && <AtlasTab sessionId={session.id} currentPlayerName={myPlayerName} currentTurn={currentTurn} />}
       {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
       {activeTab === "games" && (
         <GamesTab
