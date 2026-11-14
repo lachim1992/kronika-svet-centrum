@@ -141,7 +141,17 @@ export function resolveSiegeTurn(input: { seed: string; wall: number; walls: Wal
     if (me.side !== "attacker") { ev("invalid", 0, 0, "Neplatný cíl."); continue; }
     if (!breached) { ev("blocked", 0, 0, "K hlavní budově se dostaneš jen průlomem v hradbách."); continue; }
     const mp = pos[me.key];
-    if (mp === undefined || !KEEP_PARCELS.some(k => parcelDist(mp, k) <= 1)) { ev("blocked", 0, 0, "Oddíl musí stát u hlavní budovy."); continue; }
+    if (mp === undefined) { ev("blocked", 0, 0, "Nejdřív projdi průlomem do města."); continue; }
+    if (!KEEP_PARCELS.some(k => parcelDist(mp, k) <= 1)) {
+      // Too far: march one square towards the main building instead of doing nothing.
+      const goal = KEEP_PARCELS.reduce((a, k) => parcelDist(mp, k) < parcelDist(mp, a) ? k : a, KEEP_PARCELS[0]);
+      const { x, y } = pxy(mp); let best = mp, bd = parcelDist(mp, goal);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const nx = x + dx, ny = y + dy;
+        if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= CITY_SIDE || ny >= CITY_SIDE) continue; const c = ny * CITY_SIDE + nx;
+        if (occupied(c)) continue; const d = parcelDist(c, goal); if (d < bd) { bd = d; best = c; } }
+      if (best === mp) { ev("blocked", 0, 0, "Cesta k hlavní budově je zablokovaná."); continue; }
+      pos[me.key] = best; ev("moved", 0, 0, "Oddíl postupuje k hlavní budově (o jedno pole)."); continue;
+    }
     if (KEEP_PARCELS.some(k => Object.entries(pos).some(([u, q]) => q === k && units.get(u)?.side === "defender" && (units.get(u)?.men ?? 0) > 0))) { ev("blocked", 0, 0, "Hlavní budovu ještě brání posádka."); continue; }
     captured = true; ev("captured", 0, 0, "Hlavní budova dobyta — město padlo.");
   }
