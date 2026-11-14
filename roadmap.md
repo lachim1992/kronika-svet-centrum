@@ -1,5 +1,9 @@
 # Map-first square-grid roadmap
 
+## Repeated game updates — 2026-11-14
+- [x] Signed-in read-only reproduction found map mount invokes seed-city-parcels (writes) and reloads the entire map after success; metadata effect also depends on replaced player/user objects.
+- [ ] Remove map auto-seeding and stabilize metadata dependencies; verify idle game and tab switches without writes or repeated requests.
+
 ## Parcel placement array error — 2026-11-14
 - [x] Live trigger still assigns JSON recipe arrays directly to text[]; existing repair SQL is absent from the migration journal.
 - [x] Reproduced weave_basic failure with the old trigger in isolated PostgreSQL; identical placement passes after repair. Related tests 11/11 passed twice.

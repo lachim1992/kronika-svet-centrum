@@ -38,3 +38,4 @@
 - Nonrenewable mines in `ruralSites.MACRO_RESERVE_RECIPES` draw one shared budget per macro deposit: opening = committed `parcelEcology['macro:x,y:kind']` (else true `macro_deposits` reserve), allocated in parcel-id order, closed by `parcelClosing` — so several mines can never multiply a finite deposit and refresh never depletes it.
 
 - Rural baseline growth and local migration are planned by ruralGameplay.ts only in commit-turn atomic world phase; economy uses one shared cell-local rural labor pool, never urban population inflation — prevents replay/catch-up and double staffing.
+- Map mount/refetch must never seed city parcels; founding and explicit rollout own footprints — viewing a world must not cause writes and cascading reloads.

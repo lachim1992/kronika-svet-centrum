@@ -513,15 +513,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setRoadDraft([]);
     setBuildingAction(null);
   }, [resetSignal]);
-  // Every city must own a footprint on the 32-parcel grid; this tops up anything missing.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { error } = await supabase.functions.invoke("seed-city-parcels", { body: { session_id: sessionId } });
-      if (!cancelled && !error) await load();
-    })();
-    return () => { cancelled = true; };
-  }, [sessionId, load]);
+  // Viewing/reloading the map is read-only. Founding and explicit rollout commands
+  // own city footprints; auto-seeding here caused writes and a second full reload.
 
   const center = useMemo(() => {
     if (!tiles.length) return { x: 0, y: 0 };

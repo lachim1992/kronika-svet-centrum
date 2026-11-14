@@ -79,6 +79,8 @@ const Dashboard = () => {
   const [mapDetailOpen, setMapDetailOpen] = useState(false);
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const gridKind = worldFoundation?.grid_kind === "square4" ? "square4" : "hex6";
+  const userId = user?.id;
+  const fallbackPlayerName = players[0]?.player_name;
 
   const currentTurn = session?.current_turn ?? 0;
 
@@ -147,26 +149,26 @@ const Dashboard = () => {
   }, [currentTurn]);
 
   useEffect(() => {
-    if (!user || !sessionId) return;
+    if (!userId || !sessionId) return;
 
     const fetchMembership = async () => {
       const [membershipRes, globalRoleRes, sessionPlayersRes] = await Promise.all([
         supabase
           .from("game_memberships")
           .select("player_name, role")
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .eq("session_id", sessionId)
           .single(),
         supabase
           .from("user_roles")
           .select("role")
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .in("role", ["admin", "moderator"]),
         supabase
           .from("game_players")
           .select("player_name, user_id")
           .eq("session_id", sessionId)
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .maybeSingle(),
       ]);
 
@@ -190,7 +192,7 @@ const Dashboard = () => {
         setMyRole(role);
         setMyPlayerName(canonicalPlayerName);
       } else {
-        const observerPlayerName = players[0]?.player_name || localStorage.getItem("ch_playerName") || "Hráč";
+        const observerPlayerName = fallbackPlayerName || localStorage.getItem("ch_playerName") || "Hráč";
         setMyPlayerName(observerPlayerName);
         setMyRole(globalRole || "player");
       }
@@ -231,7 +233,7 @@ const Dashboard = () => {
     fetchMembership();
     fetchFoundation();
     fetchChronicle0();
-  }, [user, sessionId, players]);
+  }, [userId, sessionId, fallbackPlayerName]);
 
   if (loading) {
     return (
