@@ -6,7 +6,7 @@ export const MICRO_PER_TILE = 6;
 /** Movement points per turn, in tenths (100 = 10 road steps). */
 export const MOVE_BUDGET = 100;
 /** Maximum soldiers standing on one micro square. */
-export const MAX_MEN_PER_MICRO = 500;
+export const MAX_MEN_PER_MICRO = 200;
 
 export type Micro = { x: number; y: number };
 export type MicroTerrain = { subBiome?: string | null; macroBiome?: string | null; road?: boolean; macroPassable?: boolean | null };

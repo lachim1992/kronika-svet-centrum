@@ -484,7 +484,7 @@ export function subBiomeColor(key: string): string {
   return SUB_BIOME_COLORS[key] || "hsl(88 24% 44%)";
 }
 
-/** How many of the 36 sub-parcels an army physically camps on (max 500 men per sub-parcel). */
+/** How many of the 36 sub-parcels an army physically camps on (max 200 men per sub-parcel). */
 export const armyParcelFootprint = microFootprint;
 
 /**

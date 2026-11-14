@@ -38,7 +38,7 @@ export default function AtlasTab({ sessionId, currentPlayerName, currentTurn }: 
     {catalog.isLoading && <p className="text-sm text-muted-foreground">Načítám katalog…</p>}
     {(catalog.error || catalogIncomplete) && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">Katalog zboží nebo receptů se nenačetl úplně. Údaje mohou chybět.</p>}
     {section === "overview" && <AtlasOverview />}
-    {section === "goods" && <AtlasGoods goods={goods} market={market} onOpenChain={openChain} />}
+    {section === "goods" && <AtlasGoods goods={goods} recipes={recipes} market={market} onOpenChain={openChain} />}
     {section === "baskets" && <AtlasBaskets goods={goods} onOpenChain={openChain} />}
     {section === "chains" && <AtlasChains goods={goods} recipes={recipes} focus={focus} onFocus={setFocus} />}
     {section === "markets" && <AtlasMarkets market={market} goods={goods} report={mgmt.data?.report ?? null} reportTurn={mgmt.data?.reportTurn ?? null} />}
