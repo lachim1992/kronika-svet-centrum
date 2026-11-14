@@ -187,6 +187,7 @@ import { DEMAND_BASKETS } from "@/lib/goodsCatalog";
 import { BuildCatalogPanel } from "@/components/map/BuildCatalogPanel";
 import { useManagementReport } from "@/hooks/useManagementReport";
 import { indexParcelProducers, parcelZeroReason, macroSummary } from "@/lib/parcelActual";
+import { parcelBenefit } from "@/lib/parcelDisplay";
 
 
 
@@ -2156,16 +2157,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const mine = parcel.owner_player === playerName;
                 const affordable = treasury.gold >= cost.gold && treasury.production >= cost.production;
                 const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild" && affordable;
+                const actual = parcelActuals.get(parcel.id);
+                const benefit = parcelBenefit(parcel, actual);
                 return <button key={parcel.id} type="button" disabled={claimingParcel !== null}
-                  onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); openStructureOnParcel(parcel.id); }}
-                  title={`${parcel.region_name ? parcel.region_name + " · " : ""}${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.claim_kind === "worked" ? "využívaná půda · jedna venkovská stavba" : `${parcel.capacity_slots} stavebních slotů`} · kupní cena ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
-                  className={`aspect-square border text-[8px] leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
-                    parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
+                  aria-label={`Parcela ${parcel.parcel_index + 1}: ${benefit.label} ${benefit.detail}`}
+                  onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); setDetailSection("parcels"); openStructureOnParcel(parcel.id); }}
+                  title={`${parcel.region_name ? parcel.region_name + " · " : ""}${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${benefit.label} ${benefit.detail} · ${parcel.claim_kind === "worked" ? "využívaná půda · jedna venkovská stavba" : `${parcel.capacity_slots} stavebních slotů`} · kupní cena ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
+                  className={`aspect-square border px-0.5 py-1 text-center leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
+                    parcel.status === "occupied" ? "border-primary/70 bg-primary/25"
                     : parcel.status === "claimed" && parcel.claim_kind === "worked" ? "border-emerald-500/70 bg-emerald-800/30"
-                    : parcel.status === "claimed" ? (mine ? "border-primary/40 bg-primary/10" : "border-border bg-muted/40")
+                    : parcel.status === "claimed" ? (mine ? "border-primary/50 bg-primary/15" : "border-border bg-muted/40")
                     : !parcel.buildable ? "border-border/40 bg-muted/20 text-muted-foreground"
                     : canClaim ? "border-border bg-card hover:border-primary hover:bg-primary/10" : "border-border bg-card"}`}>
-                  {parcel.status === "occupied" ? "🏠" : parcel.claim_kind === "worked" ? "🌿" : parcel.status === "claimed" ? "▣" : !parcel.buildable ? "▲" : parcel.parcel_index + 1}
+                  <span className="flex items-center justify-center gap-1 text-[9px] font-semibold">
+                    {parcel.parcel_index + 1}{parcel.status === "occupied" ? " · ⌂" : parcel.claim_kind === "worked" ? " · ♧" : parcel.status === "claimed" ? " · ▣" : !parcel.buildable ? " · ▲" : ""}
+                  </span>
+                  <span className={`mt-1.5 block text-[10px] font-bold ${benefit.kind === "yield" ? "text-primary" : ""}`}>{benefit.label}</span>
+                  <span className="mt-1 block text-[7px] text-muted-foreground">{benefit.kind === "yield" ? "výnos / tah" : "bydlení"}</span>
                 </button>;
               })}
             </div>
