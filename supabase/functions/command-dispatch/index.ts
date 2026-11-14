@@ -42,6 +42,7 @@ import { templateSiteRole, DEPOSIT_REQUIRED, availableMacroReserve, macroReserve
 import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { generateTileParcels } from "../_shared/tileParcels.ts";
 import { MICRO_SURVEY_COST, surveyMicroSquare, microSiteReason } from "../_shared/microResources.ts";
+import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
 
@@ -539,6 +540,30 @@ async function executeCommand(
         p_level: level, p_findings: findings, p_cost: SURVEY_COST[level as 1 | 2], p_turn: turnNumber });
       if (error) return { events: [], error: error.message };
       return { events: [], result: { ...data, findings } } as any;
+    }
+
+    case "ADD_FARM_FIELD": {
+      const farmId = String(payload.farmParcelId || ""), fieldId = String(payload.fieldParcelId || "");
+      const cols = "id, grid_x, grid_y, parcel_index, sub_biome, city_id, owner_player, claim_kind";
+      const { data: pair } = await supabase.from("tile_parcels").select(cols).eq("session_id", sessionId).in("id", [farmId, fieldId]);
+      const farm = (pair || []).find((p: any) => p.id === farmId), field = (pair || []).find((p: any) => p.id === fieldId);
+      if (!farm || !field) return { events: [], error: "Políčko neexistuje" };
+      if (farm.owner_player !== actor.name) return { events: [], error: "Farma ti nepatří" };
+      const { data: farmB } = await supabase.from("city_buildings").select("template_id, effects, status").eq("parcel_id", farmId).eq("status", "completed").maybeSingle();
+      if (!farmB) return { events: [], error: "Na políčku není dokončená farma" };
+      const { data: tpl } = await supabase.from("building_templates").select("effects").eq("id", farmB.template_id).maybeSingle();
+      const recipes = ((farmB as any).effects?.recipe_keys ?? (tpl as any)?.effects?.recipe_keys ?? []).map(String);
+      const { data: rows } = await supabase.from("farm_fields").select("field_parcel_id, farm_parcel_id").eq("session_id", sessionId).or(`farm_parcel_id.eq.${farmId},field_parcel_id.eq.${fieldId}`);
+      const mine = (rows || []).filter((r: any) => r.farm_parcel_id === farmId).map((r: any) => r.field_parcel_id);
+      const { data: existing } = mine.length ? await supabase.from("tile_parcels").select(cols).in("id", mine) : { data: [] as any[] };
+      const { count: built } = await supabase.from("city_buildings").select("id", { count: "exact", head: true }).eq("parcel_id", fieldId);
+      const occupied = (built ?? 0) > 0 || (rows || []).some((r: any) => r.field_parcel_id === fieldId);
+      const { data: hex } = await supabase.from("province_hexes").select("biome_family").eq("session_id", sessionId).eq("grid_x", field.grid_x).eq("grid_y", field.grid_y).maybeSingle();
+      const reason = farmFieldReason(farm as any, recipes, field as any, (existing || []) as any, occupied, (hex as any)?.biome_family);
+      if (reason) return { events: [], error: reason };
+      const { data, error } = await supabase.rpc("add_farm_field", { p_session: sessionId, p_player: actor.name, p_farm: farmId, p_field: fieldId, p_cost: FARM_FIELD_COST, p_max: MAX_FARM_FIELDS, p_turn: turnNumber });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: data } as any;
     }
 
     case "SURVEY_MICRO": {
