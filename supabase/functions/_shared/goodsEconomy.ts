@@ -90,7 +90,7 @@ export interface Snapshot { turn: number; goods: Good[]; cities: City[]; produce
   settledRuralWages?: Record<string, number>;
   /** Ownership income actually paid last committed turn; absent for legacy settlements. */
   settledOwnership?: Record<string, number>;
-  settlement?: Record<string, { arrears_closing: number; producer_retained: number; producer_cash_closing?: number; ownership_income_paid?: number }> }
+  settlement?: Record<string, { arrears_closing: number; producer_retained: number; producer_cash_closing?: number; ownership_income_paid?: number; rural_arrears_closing?: number }> }
 export interface Balance { city: string; good: string; opening: number; produced_household: number; produced_node: number;
   produced_facility: number; produced_district: number; consumed_household: number; consumed_state: number;
   consumed_as_input: number; imported: number; exported: number; stored: number; lost_spoilage: number;
@@ -219,7 +219,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // depend on how many jobs are actually staffed. See the DEMAND PASS below.
   const demandComponents=new Map<string,Record<DemandChannel,number>>();
   const choice:any[]=[];
-  const budgetCaps=new Map<string,{planned_spend:number;budget:number|null;scale:number;funded_spend:number;constrained:boolean;mode:string}>();
+  const budgetCaps=new Map<string,{planned_spend:number;budget:number|null;scale:number;funded_spend:number;constrained:boolean;mode:string;rural_planned_spend?:number;rural_budget?:number|null;rural_funded_spend?:number;rural_scale?:number;urban_planned_spend?:number;urban_budget?:number|null;urban_funded_spend?:number;urban_scale?:number}>();
   const componentsOf=(city:string,good:string)=>{const k=key(city,good);let c=demandComponents.get(k);
     if(!c){c=emptyChannels();demandComponents.set(k,c);}return c;};
   const addChannel=(city:string,good:string,channel:DemandChannel,qty:number)=>{
@@ -1093,7 +1093,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       prosperity:prosperity.index,prosperity_parts:prosperity.parts,discretionary_cap:budgetCaps.get(c.id)??null,capital_stock:n(c.capitalStock),capital_candidate:capital,
       // Imputed producer payroll (sum of margin.payroll); household labour income uses SETTLED wages
       // (snapshot.settledWages) when present. UI labels: src/lib/economyFieldContract.ts.
-      producer_payroll:producerPayroll(c.id),producer_operating_surplus:producerSurplus(c.id),wage_rate:lab?.wage_rate??null,
+      producer_payroll:producerPayroll(c.id),rural_producer_payroll:ruralProducerPayroll(c.id),
+      producer_operating_surplus:producerSurplus(c.id),wage_rate:lab?.wage_rate??null,
       // Echo of the last COMMITTED process-turn settlement (read-only; never recomputed here).
       settled_wage_arrears:snapshot.settlement?.[c.id]?.arrears_closing??null,
       settled_producer_retained:snapshot.settlement?.[c.id]?.producer_retained??null,
