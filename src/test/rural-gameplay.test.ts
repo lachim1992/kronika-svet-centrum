@@ -142,6 +142,8 @@ describe('Phase C active rural state',()=>{
       const cityCountAfterReplay:any=await db.query('SELECT count(*)::int AS n FROM cities');
       expect(cityCountAfterReplay.rows[0].n).toBe(1);
       await expect(db.query('SELECT public.found_city_with_rural_settlers($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+        [session,'cmd-found-occupied',4,'p','Duplicate Seat',province,'Provincie',null,null,0,0,null,100])).rejects.toThrow('FOUNDING_TARGET_OCCUPIED');
+      await expect(db.query('SELECT public.found_city_with_rural_settlers($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
         [session,'cmd-found-2',4,'p','Too Few',province,'Provincie',null,null,1,0,null,100])).rejects.toThrow('INSUFFICIENT_RURAL_SETTLERS');
       const ruralAfterFailedFounding:any=await db.query("SELECT sum(hp.rural_population)::int AS n FROM hex_population hp JOIN province_hexes ph ON ph.session_id=hp.session_id AND ph.q=hp.q AND ph.r=hp.r WHERE ph.owner_player='p'");
       expect(ruralAfterFailedFounding.rows[0].n).toBe(80);
