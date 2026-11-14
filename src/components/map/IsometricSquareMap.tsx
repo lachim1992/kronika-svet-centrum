@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { dispatchCommand } from "@/lib/commands";
 import { rasterizeTerrain, type TerrainQuad, type TerrainSprite, type TerrainRaster } from "@/lib/terrainRaster";
 import { mapVisualVariation, polishedTerrainTint, polishedTerrainTintAlpha } from "@/lib/mapVisualPolish";
+import { mapCameraTransform, pinchMapCameraAt, zoomMapCameraAt } from "@/lib/mapCamera";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
@@ -527,10 +528,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
    */
   const syncCameraTransform = useCallback(() => {
     const camera = cameraRef.current;
-    worldTransformRef.current?.setAttribute(
-      "transform",
-      `translate(${camera.pan.x * camera.zoom} ${camera.pan.y * camera.zoom}) scale(${camera.zoom})`,
-    );
+    worldTransformRef.current?.setAttribute("transform", mapCameraTransform(camera));
   }, []);
   useLayoutEffect(() => { syncCameraTransform(); });
   const paintCamera = useCallback(() => {
@@ -1641,8 +1639,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const element = viewportRef.current;
     const px = screenX ?? (element ? element.clientWidth / 2 : 0);
     const py = screenY ?? (element ? element.clientHeight / 2 : 0);
-    const shift = 1 / next - 1 / current;
-    updateCamera({ zoom: next, pan: { x: currentPan.x + px * shift, y: currentPan.y + py * shift } }, settle);
+    updateCamera(zoomMapCameraAt({ zoom: current, pan: currentPan }, next, { x: px, y: py }), settle);
   };
   const zoomHandlerRef = useRef(zoomBy);
   zoomHandlerRef.current = zoomBy;
@@ -1779,10 +1776,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           const distance = Math.hypot(a.x - b.x, a.y - b.y) || 1;
           const nextZoom = clampZoom(start.zoom * (distance / start.distance));
           const center = { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top };
-          updateCamera({ zoom: nextZoom, pan: {
-            x: start.pan.x + center.x / nextZoom - start.center.x / start.zoom,
-            y: start.pan.y + center.y / nextZoom - start.center.y / start.zoom,
-          } }, "gesture");
+          updateCamera(pinchMapCameraAt({ zoom: start.zoom, pan: start.pan }, start.center, nextZoom, center), "gesture");
           return;
         }
         const drag = dragRef.current; if (!drag) return;
