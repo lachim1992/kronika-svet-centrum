@@ -39,4 +39,3 @@
 
 - Rural baseline growth and local migration are planned by ruralGameplay.ts only in commit-turn atomic world phase; economy uses one shared cell-local rural labor pool, never urban population inflation — prevents replay/catch-up and double staffing.
 - Map mount/refetch must never seed city parcels; founding and explicit rollout own footprints — viewing a world must not cause writes and cascading reloads.
-- Atlas (`src/pages/game/AtlasTab.tsx`, `src/components/atlas/`, `src/lib/atlas/`) is strictly read-only: canonical economy contracts come only through the `src/lib/atlas/canon.ts` re-export (parity-tested), personal numbers only via `useManagementReport`, and `src/test/atlas.test.ts` forbids writes, invokes and hidden-geology names — so the encyclopedia can never drift from or mutate the engine.
