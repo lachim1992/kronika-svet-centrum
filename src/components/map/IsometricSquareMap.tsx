@@ -28,8 +28,8 @@ import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDeto
 import { parcelTransport } from "../../../supabase/functions/_shared/ruralSites";
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
-import ArmyMarker from "@/components/map/ArmyMarker";
-import { MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroPath, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
+import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
+import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroPath, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
@@ -2105,13 +2105,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
               {/* the cell the army stands on */}
-              <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill="none" stroke={active ? "var(--map-focus)" : banner} strokeWidth={active ? 2.4 : 1.4} strokeDasharray="4 3" opacity=".85" />
-              {/* occupied sub-parcels */}
-              {camp.map(index => <polygon key={index} points={parcelQuad(point, index % TILE_PARCEL_COLS, Math.floor(index / TILE_PARCEL_COLS))}
-                fill={banner} opacity={active ? .38 : .26} stroke={banner} strokeWidth=".6" />)}
-              <g transform={`translate(${point.x + seat.x},${point.y + seat.y - 12})`} filter="url(#iso-shadow)">
-                <ArmyMarker army={lead} own={own} active={active} />
-                {stacked > 1 && <g transform="translate(15,-19)">
+              <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill="none" stroke={active ? "var(--map-focus)" : banner} strokeWidth={active ? 1.8 : .8} strokeDasharray="3 4" opacity={active ? .85 : .45} />
+              {/* occupied sub-parcels: faint trampled ground, then painted squads back-to-front, max 500 men each */}
+              {camp.map(index => <polygon key={`g${index}`} points={parcelQuad(point, index % TILE_PARCEL_COLS, Math.floor(index / TILE_PARCEL_COLS))}
+                fill={banner} opacity={active ? .22 : .12} stroke={banner} strokeWidth=".4" strokeOpacity=".5" />)}
+              {(() => {
+                const total = group.list.reduce((sum, army) => sum + army.soldiers, 0);
+                const kind = squadKind(lead.formation_type);
+                return camp.map((index, order) => ({ index, men: Math.min(MAX_MEN_PER_MICRO, Math.max(0, total - order * MAX_MEN_PER_MICRO)), c: centreOf(index) }))
+                  .sort((a, b) => a.c.y - b.c.y)
+                  .map(({ index, men, c }) => <g key={`s${index}`} transform={`translate(${point.x + c.x},${point.y + c.y})`}>
+                    <ArmySquad men={men} kind={kind} banner={banner} active={active} />
+                  </g>);
+              })()}
+              <g transform={`translate(${point.x + seat.x + 4},${point.y + seat.y - 2}) scale(.62)`} filter="url(#iso-shadow)">
+                <ArmyStandard name={lead.name} soldiers={group.list.reduce((sum, army) => sum + army.soldiers, 0)} unitCount={lead.unit_count} morale={lead.morale} banner={banner} active={active} />
+                {stacked > 1 && <g transform="translate(11,-18) scale(.75)">
                   <circle r="7" fill="var(--map-marker)" stroke={banner} strokeWidth="1.2" />
                   <text textAnchor="middle" y="2.6" fontSize="7.5" fontWeight="700" fill="var(--map-label)">{stacked}</text>
                 </g>}

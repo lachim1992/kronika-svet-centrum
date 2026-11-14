@@ -521,3 +521,8 @@ Plán: `.lovable/plan/atlas.md` (původní `.lovable/plan.md` obnoven z 166e9b1d
 - Neověřeno v prohlížeči: v aktuální hře nejsou nasazené armády a skutečný přesun by zapsal do hry.
 - Omezení: AI se zatím pohybuje po velkých polích; srážky armád na trase nejsou.
 - Další krok: etapa 2 — malované figurky vojáků s praporem rozložené po obsazených mikropolíčkách.
+
+## Vojenství — etapa 2: vzhled (2026-11-14)
+- Hotovo: `src/components/map/ArmySquad.tsx` — malované skupinky (pěchota/jízda/obléhací stroje) na každém obsazeném mikropolíčku (max 500 mužů, 1 figurka ≈ 125 mužů, max 4), prapor v barvě říše s morálkou; starý `ArmyMarker.tsx` odstraněn.
+- Ověřeno: typecheck čistý, 976 testů prošlo; prohlížeč IJ8BQ5 jen čtením — 12 armád vykresleno, žádné chyby, žádné zápisy.
+- Další krok: etapa 3 — tábor s palisádou podle počtu vojáků.
