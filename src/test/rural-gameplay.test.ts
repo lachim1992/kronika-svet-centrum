@@ -51,10 +51,10 @@ describe('Phase C active rural state',()=>{
     expect(connected.rows[0].rural_population+connected.immigration.a).toBe(503);
   });
   it('assigns each controlled contiguous cell once with stable nearest-city ties; no foreign catchment',()=>{
-    const cells=[cell,{...cell,q:1},{...cell,q:2},{...cell,q:3,owner_player:'enemy'},{...cell,q:4}];
+    const cells=[cell,{...cell,q:1},{...cell,q:1,r:-1,grid_x:1,grid_y:-1},{...cell,q:2},{...cell,q:3,owner_player:'enemy'},{...cell,q:4}];
     const cities=[city,{...city,id:'b',cell:'2,0'}];
     const a=ruralCatchments(cells,cities),b=ruralCatchments(cells,[...cities].reverse());
-    expect(a).toEqual(b);expect(a.get('1,0')).toBe('a');expect(a.has('4,0')).toBe(false);
+    expect(a).toEqual(b);expect(a.get('1,0')).toBe('a');expect(a.get('1,-1')).toBe('a');expect(a.has('4,0')).toBe(false);
   });
   it('recovers a legacy city catchment from its nearest owned province cell and never crosses impassable cells',()=>{
     const cells=[
