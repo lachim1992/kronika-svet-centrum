@@ -37,9 +37,10 @@ async function query<T>(label:string,run:()=>Promise<{data:T;error:any}>):Promis
 /** Fail closed: pagination and DB failures must never masquerade as an empty economy. */
 async function rows(sb:any,table:string,session?:string){
   const out:any[]=[];
-  const orderBy=table==='goods'?'key':table==='production_recipes'?'recipe_key':table==='node_production_orders'?'node_id':'id';
+  // Tables without an id column page by their natural key (macro_deposits: one row per grid cell).
+  const orderBy=table==='goods'?['key']:table==='production_recipes'?['recipe_key']:table==='node_production_orders'?['node_id']:table==='macro_deposits'?['grid_x','grid_y']:['id'];
   for(let start=0;;start+=1000){
-    const page=await query<any[]>(table,()=>{let q=sb.from(table).select('*').order(orderBy,{ascending:true}).range(start,start+999);if(session)q=q.eq('session_id',session);return q;});
+    const page=await query<any[]>(table,()=>{let q=sb.from(table).select('*');for(const col of orderBy)q=q.order(col,{ascending:true});q=q.range(start,start+999);if(session)q=q.eq('session_id',session);return q;});
     out.push(...page);if(page.length<1000)return out;}
 }
 /**
