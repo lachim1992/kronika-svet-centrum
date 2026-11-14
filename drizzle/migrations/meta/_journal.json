@@ -218,6 +218,13 @@
       "when": 1794687892463,
       "tag": "0030_stack_controller_player",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794688393348,
+      "tag": "0031_sieges",
+      "breakpoints": true
     }
   ]
 }

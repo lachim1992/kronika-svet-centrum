@@ -31,6 +31,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
+import SiegePanel from "@/components/map/SiegePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
@@ -2661,6 +2662,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                   </div>
                 </div>}
         </div>}
+        {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) &&
+          <SiegePanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName} army={selectedArmy} cities={cities} armies={armies} />}
         {selectedArmyStack.length > 1 && <div className="mt-4">
           <h3 className="text-sm">Na stejném poli ({selectedArmyStack.length})</h3>
           <div className="mt-2 space-y-1">

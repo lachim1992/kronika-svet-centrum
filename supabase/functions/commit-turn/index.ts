@@ -26,6 +26,8 @@ import { advanceTurnProgress } from "../_shared/turnProgress.ts";
 import { derivedChainSteps } from "../_shared/derivedChain.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { constructionStep, notAdvancedIn } from "./constructionProgress.ts";
+import { resolveSiegeTurn, wallStrength } from "../_shared/siege.ts";
+import { loadSiegeUnits } from "../_shared/siegeState.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -210,6 +212,34 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.error("Auto-resolve lobbies error:", e);
       results.autoResolvedLobbies = { error: (e as Error).message };
+    }
+
+    // 2c. MICRO SIEGES — one action per micro unit, attacker first then issue order; settled atomically and idempotently.
+    try {
+      const { data: sieges } = await supabase.from("sieges").select("*").eq("session_id", sessionId).eq("status", "active");
+      const siegeResults: any[] = [];
+      for (const sg of sieges || []) {
+        if (sg.last_resolved_turn !== null && sg.last_resolved_turn >= turnNumber) continue;
+        const { data: city } = await supabase.from("cities").select("id, name, grid_x, grid_y, military_garrison, settlement_level, owner_player").eq("id", sg.city_id).single();
+        const units = await loadSiegeUnits(supabase, sg, city);
+        if (!units.some(u => u.side === "attacker")) {
+          await supabase.from("sieges").update({ status: "lifted", last_resolved_turn: turnNumber, last_report: { turn: turnNumber, lifted: true, events: [] } }).eq("id", sg.id).eq("status", "active");
+          siegeResults.push({ id: sg.id, lifted: true }); continue;
+        }
+        const { data: orderRows } = await supabase.from("siege_orders").select("seq, side, unit_key, target").eq("siege_id", sg.id).eq("turn_number", turnNumber);
+        const out = resolveSiegeTurn({ seed: `${sg.id}:${turnNumber}`, wall: wallStrength(city.settlement_level), walls: sg.walls || [], units,
+          orders: (orderRows || []).map((o: any) => ({ seq: Number(o.seq), side: o.side, unitKey: o.unit_key, target: o.target })) });
+        const report = { turn: turnNumber, events: out.events, captured: out.captured, losses: out.losses };
+        const { error: applyErr } = await supabase.rpc("apply_siege_turn", { p_siege: sg.id, p_turn: turnNumber, p_walls: out.walls, p_losses: out.losses, p_captured: out.captured, p_report: report });
+        if (applyErr) throw applyErr;
+        if (out.captured) await supabase.from("game_events").insert({ session_id: sessionId, player: sg.attacker_player, event_type: "city_occupied", turn_number: turnNumber,
+          confirmed: true, truth_state: "canon", importance: "critical", note: `Obléhání skončilo: ${city.name} padlo, hlavní budova je dobyta.` });
+        siegeResults.push({ id: sg.id, events: out.events.length, captured: out.captured });
+      }
+      results.sieges = siegeResults;
+    } catch (e) {
+      console.error("Siege resolution error:", e);
+      results.sieges = { error: (e as Error).message };
     }
 
     // ═══════════════════════════════════════════

@@ -43,6 +43,8 @@ import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } fro
 import { generateTileParcels } from "../_shared/tileParcels.ts";
 import { MICRO_SURVEY_COST, surveyMicroSquare, microSiteReason } from "../_shared/microResources.ts";
 import { PLANT_COST, plantReason } from "../_shared/cropSpread.ts";
+import { initialWalls, siegeInRange } from "../_shared/siege.ts";
+import { loadSiegeUnits } from "../_shared/siegeState.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
@@ -788,6 +790,53 @@ async function executeCommand(
         importance: "normal",
         reference: payload,
       }], payload.chronicleText);
+
+    case "START_SIEGE": {
+      const { stackId, cityId } = payload || {};
+      const { data: st } = await supabase.from("military_stacks").select("id, name, player_name, controller_player, grid_x, grid_y, hex_q, hex_r, is_active, is_deployed, soldiers")
+        .eq("id", stackId).eq("session_id", sessionId).maybeSingle();
+      if (!st || !st.is_active || !st.is_deployed) return { events: [], error: "Armáda není v poli" };
+      if (st.player_name !== actor.name && st.controller_player !== actor.name) return { events: [], error: "Tato armáda není tvoje" };
+      const { data: city } = await supabase.from("cities").select("id, name, owner_player, grid_x, grid_y, settlement_level, occupied_by").eq("id", cityId).eq("session_id", sessionId).maybeSingle();
+      if (!city) return { events: [], error: "Město neexistuje" };
+      if (city.owner_player === st.player_name) return { events: [], error: "Vlastní město nelze obléhat" };
+      if (city.occupied_by) return { events: [], error: "Město už je obsazené" };
+      if (!siegeInRange({ x: st.grid_x ?? st.hex_q, y: st.grid_y ?? st.hex_r }, { x: city.grid_x, y: city.grid_y })) return { events: [], error: "Armáda musí stát na čtverci sousedícím s městem" };
+      const { data: war } = await supabase.from("war_declarations").select("id").eq("session_id", sessionId).eq("status", "active")
+        .or(`and(declaring_player.eq."${st.player_name}",target_player.eq."${city.owner_player}"),and(declaring_player.eq."${city.owner_player}",target_player.eq."${st.player_name}")`).limit(1);
+      if (!war?.length) return { events: [], error: "Obléhat lze jen město nepřítele, se kterým jsi ve válce" };
+      const { data: siege, error: sErr } = await supabase.from("sieges").insert({ session_id: sessionId, city_id: city.id, attacker_player: st.player_name, defender_player: city.owner_player,
+        attacker_stack_id: st.id, started_turn: turnNumber, walls: initialWalls(city.settlement_level) }).select("id").single();
+      if (sErr) return { events: [], error: sErr.code === "23505" ? "Město už je obléháno" : sErr.message };
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base, event_type: "military", player: st.player_name, note: `${st.name} zahájila obléhání města ${city.name}.`, importance: "critical",
+        reference: { siegeId: siege.id, cityId: city.id, stackId: st.id },
+      }], payload.chronicleText);
+    }
+
+    case "SIEGE_ORDER": {
+      const { siegeId, unitKey, target } = payload || {};
+      const { data: siege } = await supabase.from("sieges").select("*").eq("id", siegeId).eq("session_id", sessionId).eq("status", "active").maybeSingle();
+      if (!siege) return { events: [], error: "Obléhání neběží" };
+      const { data: city } = await supabase.from("cities").select("id, grid_x, grid_y, military_garrison, owner_player").eq("id", siege.city_id).single();
+      const units = await loadSiegeUnits(supabase, siege, city);
+      const unit = units.find(u => u.key === unitKey);
+      if (!unit) return { events: [], error: "Tato jednotka se obléhání neúčastní" };
+      if (unit.stackId) {
+        const { data: st } = await supabase.from("military_stacks").select("player_name, controller_player").eq("id", unit.stackId).single();
+        if (st.player_name !== actor.name && st.controller_player !== actor.name) return { events: [], error: "Tuto jednotku neovládáš" };
+      } else if (city.owner_player !== actor.name) return { events: [], error: "Posádku ovládá jen vlastník města" };
+      const kind = target?.kind;
+      const ok = (kind === "wall" && unit.side === "attacker" && (siege.walls || []).some((w: any) => w.id === Number(target.segment)))
+        || (kind === "unit" && units.some(u => u.key === target.key && u.side !== unit.side))
+        || (kind === "keep" && unit.side === "attacker");
+      if (!ok) return { events: [], error: "Neplatný cíl" };
+      const clean = kind === "wall" ? { kind, segment: Number(target.segment) } : kind === "unit" ? { kind, key: String(target.key) } : { kind };
+      await supabase.from("siege_orders").delete().eq("siege_id", siegeId).eq("turn_number", turnNumber).eq("unit_key", unitKey);
+      const { data: row, error } = await supabase.from("siege_orders").insert({ siege_id: siegeId, session_id: sessionId, turn_number: turnNumber, side: unit.side, issued_by: actor.name, unit_key: unitKey, target: clean }).select("seq").single();
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: { seq: row.seq } } as any;
+    }
 
     case "SET_BATTLE_FORMATION": {
       const allowed = ["line", "wedge", "square", "column", "skirmish"];

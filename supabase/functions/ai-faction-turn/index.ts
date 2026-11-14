@@ -209,7 +209,9 @@ Deno.serve(async (req) => {
       supabase.from("realm_resources").select("*")
         .eq("session_id", sessionId).eq("player_name", factionName).maybeSingle(),
       supabase.from("military_stacks").select("id, name, formation_type, morale, power, is_deployed, player_name, hex_q, hex_r, moved_this_turn")
-        .eq("session_id", sessionId).eq("player_name", factionName).eq("is_active", true),
+        .eq("session_id", sessionId).eq("player_name", factionName).eq("is_active", true)
+        // Stacks handed to a human controller are commanded only by that player, never by the AI.
+        .is("controller_player", null),
       supabase.from("military_stacks").select("id, name, power, player_name, is_deployed, hex_q, hex_r")
         .eq("session_id", sessionId).neq("player_name", factionName).eq("is_active", true).eq("is_deployed", true),
       supabase.from("game_events").select("event_type, player, turn_number, note, result, location")

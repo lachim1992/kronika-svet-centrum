@@ -10242,6 +10242,95 @@ export type Database = {
           },
         ]
       }
+      siege_orders: {
+        Row: {
+          created_at: string
+          issued_by: string
+          seq: number
+          session_id: string
+          side: string
+          siege_id: string
+          target: Json
+          turn_number: number
+          unit_key: string
+        }
+        Insert: {
+          created_at?: string
+          issued_by: string
+          seq?: number
+          session_id: string
+          side: string
+          siege_id: string
+          target: Json
+          turn_number: number
+          unit_key: string
+        }
+        Update: {
+          created_at?: string
+          issued_by?: string
+          seq?: number
+          session_id?: string
+          side?: string
+          siege_id?: string
+          target?: Json
+          turn_number?: number
+          unit_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "siege_orders_siege_id_fkey"
+            columns: ["siege_id"]
+            isOneToOne: false
+            referencedRelation: "sieges"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sieges: {
+        Row: {
+          attacker_player: string
+          attacker_stack_id: string
+          city_id: string
+          created_at: string
+          defender_player: string
+          id: string
+          last_report: Json | null
+          last_resolved_turn: number | null
+          session_id: string
+          started_turn: number
+          status: string
+          walls: Json
+        }
+        Insert: {
+          attacker_player: string
+          attacker_stack_id: string
+          city_id: string
+          created_at?: string
+          defender_player: string
+          id?: string
+          last_report?: Json | null
+          last_resolved_turn?: number | null
+          session_id: string
+          started_turn: number
+          status?: string
+          walls?: Json
+        }
+        Update: {
+          attacker_player?: string
+          attacker_stack_id?: string
+          city_id?: string
+          created_at?: string
+          defender_player?: string
+          id?: string
+          last_report?: Json | null
+          last_resolved_turn?: number | null
+          session_id?: string
+          started_turn?: number
+          status?: string
+          walls?: Json
+        }
+        Relationships: []
+      }
       simulation_log: {
         Row: {
           created_at: string
@@ -12941,6 +13030,17 @@ export type Database = {
           p_seats: Json
           p_session: string
           p_turn: number
+        }
+        Returns: Json
+      }
+      apply_siege_turn: {
+        Args: {
+          p_captured: boolean
+          p_losses: Json
+          p_report: Json
+          p_siege: string
+          p_turn: number
+          p_walls: Json
         }
         Returns: Json
       }
