@@ -85,19 +85,19 @@
 
     /* Isometric tactical map */
     --map-background: 194 61% 7%;
-    --map-water: hsl(188 76% 36%);
-    --map-water-edge: hsl(191 82% 24%);
-    --map-water-glint: hsl(179 56% 65%);
-    --map-plains: hsl(84 41% 40%);
-    --map-plains-edge: hsl(96 41% 29%);
-    --map-forest: hsl(115 38% 29%);
-    --map-forest-edge: hsl(142 40% 19%);
-    --map-hills: hsl(41 33% 41%);
-    --map-hills-edge: hsl(35 32% 28%);
-    --map-mountain: hsl(120 2% 47%);
-    --map-mountain-edge: hsl(180 3% 29%);
-    --map-desert: hsl(43 50% 57%);
-    --map-desert-edge: hsl(37 42% 42%);
+    --map-water: hsl(202 48% 29%);
+    --map-water-edge: hsl(187 38% 37%);
+    --map-water-glint: hsl(183 30% 66%);
+    --map-plains: hsl(82 32% 39%);
+    --map-plains-edge: hsl(93 30% 29%);
+    --map-forest: hsl(123 30% 27%);
+    --map-forest-edge: hsl(139 32% 18%);
+    --map-hills: hsl(41 28% 41%);
+    --map-hills-edge: hsl(35 27% 28%);
+    --map-mountain: hsl(32 6% 47%);
+    --map-mountain-edge: hsl(28 7% 30%);
+    --map-desert: hsl(42 38% 58%);
+    --map-desert-edge: hsl(37 32% 43%);
     --map-swamp: hsl(143 18% 34%);
     --map-swamp-edge: hsl(157 28% 22%);
     --map-tundra: hsl(176 10% 59%);

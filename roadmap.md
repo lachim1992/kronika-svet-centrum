@@ -1,5 +1,12 @@
 # Map-first square-grid roadmap
 
+## Visual Map Polish 2.0 — first verified slice, 2026-11-14
+- [x] Audited Dashboard → WorldMapTab → IsometricSquareMap: raster terrain/vegetation plus SVG interaction and infrastructure; preserved square coordinates, 6×6 parcels, hitboxes and game data.
+- [x] Reused existing painted assets with deterministic tree/hill/mountain scale and anchor variation, sparse forest variation and baked contact shadows; softened parcel tint contrast and deeply muted water through a cached filtered texture.
+- [x] Narrowed road rendering, softened city/node foundations, subdued inactive province/ownership borders and idle microgrid; selected/active overlays remain prominent.
+- [x] Same-session before/after capture at the same zoom; city selection, all 36 survey parcels, parcel selection and zoom verified with zero page errors and zero command dispatches. Targeted 39/39 and full suite 924 passed / 3 skipped; automatic preview build OK. No backend/schema/game-data changes or publish.
+- [ ] Next visual slice: neighbour-aware coast/biome transition masks and additional hand-painted vegetation variants only if existing assets prove insufficient; no invented rivers, routes or geography.
+
 ## Phase C rural gameplay — 2026-11-14
 - [ ] Activate one-step rural growth + conservative local city migration in atomic world phase; preserve all existing baselines.
 - [ ] Separate cell-local rural workforce from urban workforce, and show canonical rural totals.
