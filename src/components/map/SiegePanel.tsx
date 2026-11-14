@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Castle, Loader2, Swords } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -43,8 +43,10 @@ export default function SiegePanel({ sessionId, currentTurn, playerName, army, c
     onSiegeChange?.(siege ? { cityId: siege.city_id, walls: siege.walls, mySide: siege.attacker_player === army.player_name ? "attacker" : "defender", orders } : null);
   }, [siege, orders, army.player_name, onSiegeChange]);
   useEffect(() => () => onSiegeChange?.(null), [onSiegeChange]);
+  const lastMapOrder = useRef(mapOrder?.n ?? 0);
   useEffect(() => {
-    if (!mapOrder || !siege) return;
+    if (!mapOrder || !siege || mapOrder.n === lastMapOrder.current) return;
+    lastMapOrder.current = mapOrder.n;
     void (async () => {
       setBusy(true);
       const res = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "SIEGE_ORDER", commandPayload: { siegeId: siege.id, unitKey: mapOrder.unitKey, target: mapOrder.target } });
