@@ -2100,7 +2100,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const seat = camp.reduce((sum, index) => { const c = centreOf(index); return { x: sum.x + c.x / camp.length, y: sum.y + c.y / camp.length }; }, { x: 0, y: 0 });
             const openArmy = () => { setSelectedArmyId(lead.id); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(true); };
             return <g key={group.key} data-map-army={lead.id} role="button" tabIndex={0} aria-label={`Armáda ${lead.name}`}
-              pointerEvents={roadDraft.length > 0 ? "none" : "auto"}
+              pointerEvents={roadDraft.length > 0 || armyMoveMode ? "none" : "auto"}
               className="cursor-pointer"
               onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
