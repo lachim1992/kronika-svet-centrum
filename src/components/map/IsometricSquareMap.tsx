@@ -1822,13 +1822,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="var(--map-water-glint)" strokeWidth="1" opacity=".22" /></pattern>
           {Array.from(new Set([...Object.values(TERRAIN_TEX), texDirt])).map(href => (
             <pattern key={href} id={`tex-${href.split("/").pop()?.split(".")[0]}`} width={TILE_SIZE * .6} height={TILE_SIZE * .6} patternUnits="userSpaceOnUse"
-              patternTransform={`matrix(1 .5 -1 .5 ${pan.x} ${pan.y})`}>
+              patternTransform="matrix(1 .5 -1 .5 0 0)">
               <image href={href} width={TILE_SIZE * .6} height={TILE_SIZE * .6} preserveAspectRatio="none" />
             </pattern>
           ))}
         </defs>
-        <g transform={`scale(${zoom})`}>
-          {Array.isArray(terrainRaster) && terrainRaster.map(chunk => <image key={chunk.url} href={chunk.url} x={chunk.x + pan.x} y={chunk.y + pan.y} width={chunk.w + .4} height={chunk.h + .4} preserveAspectRatio="none" pointerEvents="none" />)}
+        <g ref={worldTransformRef} data-map-camera>
+          {Array.isArray(terrainRaster) && terrainRaster.map(chunk => <image key={chunk.url} href={chunk.url} x={chunk.x} y={chunk.y} width={chunk.w + .08} height={chunk.h + .08} preserveAspectRatio="none" pointerEvents="none" />)}
           {sortedTiles.map(tile => {
             const cell = tileCell(tile); const point = at(cell.a, cell.b); const colors = BIOMES[tile.biome_family] || BIOMES.plains;
             const roadSurface = roadSurfaceByCell.get(cellKey(cell.a, cell.b));
@@ -1849,7 +1849,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 1.2 : 0} />
               {cityLayerCityId && !inActiveCity && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill="var(--map-marker-edge)" opacity=".55" />}
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".8" opacity=".38" strokeDasharray="5 3" />}
-              {showSubBiomes && zoom >= 1.2 && <g pointerEvents="none" opacity={active ? .16 : .055}>
+              {showSubBiomes && zoom >= 1.2 && <g pointerEvents="none" opacity={active ? .13 : .035}>
                 {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
                   const fraction = (index + 1) / TILE_PARCEL_COLS;
                   const line = (ax: number, ay: number, bx: number, by: number) =>
@@ -1905,13 +1905,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {!cityLayerCityId && riverSegments.length > 0 && <g pointerEvents="none">
             {([["var(--map-forest-edge)", 3.2, .26], ["var(--map-water-edge)", 2.3, .55], [`url(#${texId(texWater)})`, 1.6, .82], ["var(--map-water-glint)", .35, .22]] as const).map(([stroke, width, opacity], layer) => (
               <g key={`river-layer-${layer}`} stroke={stroke} strokeWidth={width} strokeLinecap="round" opacity={opacity}>
-                {riverSegments.map(segment => <line key={segment.id} x1={segment.from.x + pan.x} y1={segment.from.y + pan.y} x2={segment.to.x + pan.x} y2={segment.to.y + pan.y} />)}
+                {riverSegments.map(segment => <line key={segment.id} x1={segment.from.x} y1={segment.from.y} x2={segment.to.x} y2={segment.to.y} />)}
               </g>
             ))}
           </g>}
           {roadNetwork.segments.map(segment => {
-            const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
-            const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
+            const from = segment.from;
+            const end = segment.to;
             const width = segment.level >= 3 ? 3.2 : segment.level === 2 ? 2.4 : 1.6;
             return <g key={segment.id} pointerEvents="none">
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 1} strokeLinecap="round" opacity=".25" />
@@ -1929,14 +1929,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             return <g key={`fp-${tile.id}`} pointerEvents="none">{renderCityFootprint(footprint, at(cell.a, cell.b), holderCity ? holderCity.owner_player === playerName : true)}</g>;
           })}
           {roadNetwork.bridges.map(bridge => {
-            const point = { x: bridge.point.x + pan.x, y: bridge.point.y + pan.y };
+            const point = bridge.point;
             return <g key={bridge.id} pointerEvents="none">
               <rect x={point.x - 5} y={point.y - 2.6} width="10" height="5.2" rx="1.4" fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".8" />
               <line x1={point.x - 5} y1={point.y - 2.6} x2={point.x + 5} y2={point.y - 2.6} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity=".8" />
             </g>;
           })}
           {!cityLayerCityId && showRoutes && routePolylines.map(route => {
-            const points = route.points.map(point => `${point.x + pan.x},${point.y + pan.y}`).join(" ");
+            const points = route.points.map(point => `${point.x},${point.y}`).join(" ");
             const corridorFlows = flowRows.filter(row => row.corridor === route.id);
             const hovered = hoverCorridor === route.id;
             // The clickable band must stay the same size on screen at every zoom level,
