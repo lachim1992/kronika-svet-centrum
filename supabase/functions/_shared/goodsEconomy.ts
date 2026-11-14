@@ -379,6 +379,26 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const subsistenceNeed=(c:City,basket:string)=>{
     const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
     return basketDemandChannels(basket,{weightedPop,populationRate:C.populationDemand} as DemandInput).household_need||0;};
+  const referencePrice=(c:City,g:Good)=>snapshot.priorPrices?.[key(c.id,g.key)]??g.price*(1+stock(c.id,g.key).quality*C.qualityPremium);
+  /** One product-choice calculation, shared by household demand and the perishable labour ceiling. */
+  const productChoiceCache=new Map<string,{options:Good[];shares:ReturnType<typeof demandShares>}>();
+  const productDemandChoice=(c:City,basket:string)=>{
+    const cacheKey=key(c.id,basket),cached=productChoiceCache.get(cacheKey);if(cached)return cached;
+    const options=goods.filter(g=>g.basket===basket&&(g.finalUse??g.stage!=='intermediate'));
+    const budget=snapshot.budget?.[c.id],afford=budget?clamp(budget.affordability):1;
+    const offer=options.map(g=>stock(c.id,g.key).opening+producers.filter(p=>p.city===c.id&&p.recipe.good===g.key).reduce((s,p)=>s+n(p.capacity)*clamp(p.allocation),0));
+    const offerTotal=offer.reduce((a,b)=>a+b,0),avgPrice=options.length?options.reduce((a,g)=>a+referencePrice(c,g),0)/options.length:0;
+    const shares=demandShares(options.map((g,i)=>({good:g.key,basket,referencePrice:referencePrice(c,g),basketAveragePrice:avgPrice,
+      quality:stock(c.id,g.key).quality,fame:bestFame(c,g).fame,
+      familiarity:snapshot.familiarity?.[c.id]?.[g.key]??0,prevalence:offerTotal>0?offer[i]/offerTotal:1/options.length,
+      coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
+    const result={options,shares};productChoiceCache.set(cacheKey,result);return result;
+  };
+  const subsistenceProductNeed=(c:City,basket:string,goodKey:string)=>{
+    const share=productDemandChoice(c,basket).shares.find(s=>s.good===goodKey)?.share??0;
+    const military=basket==='staple_food'?n(c.soldiers)*C.armyDemand:0;
+    return (subsistenceNeed(c,basket)+military)*share/functionalValue(goodKey,basket);
+  };
   /** One output-per-worker estimate for both subsistence priority and the perishable demand ceiling. */
   const subsistenceOutputPerJob=(p:Producer,c:City)=>{
     const jobs=jobsOf(p),g=goodByKey.get(p.recipe.good);if(jobs<=C.epsilon||!g)return 0;
@@ -451,12 +471,16 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       // other producers in the SAME sector. Capacity, jobs and output per worker stay unchanged.
       const perishableCaps=new Map<string,number>();
       for(const tier of SUBSISTENCE_TIERS)for(const basket of tier.baskets){
-        let target=subsistenceNeed(c,basket)*tier.share*(1+C.reserveTurns);
-        const cands=r.own.filter(p=>p.source&&goodByKey.get(p.recipe.good)?.basket===basket&&goodByKey.get(p.recipe.good)?.storable===false&&jobsOf(p)>C.epsilon)
-          .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
-          .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
-        for(const {p,per} of cands){const cap=Math.min(jobsOf(p),Math.max(0,target)/per);
-          perishableCaps.set(p.id,cap);target-=cap*per;}
+        const perishable=r.own.filter(p=>p.source&&goodByKey.get(p.recipe.good)?.basket===basket&&goodByKey.get(p.recipe.good)?.storable===false&&jobsOf(p)>C.epsilon);
+        const goodKeys=[...new Set(perishable.map(p=>p.recipe.good))].sort();
+        for(const goodKey of goodKeys){
+          let target=subsistenceProductNeed(c,basket,goodKey)*tier.share*(1+C.reserveTurns);
+          const cands=perishable.filter(p=>p.recipe.good===goodKey)
+            .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
+            .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
+          for(const {p,per} of cands){const cap=Math.min(jobsOf(p),Math.max(0,target)/per);
+            perishableCaps.set(p.id,cap);target-=cap*per;}
+        }
       }
       const employmentJobs=(p:Producer)=>Math.max(0,Math.min(jobsOf(p),perishableCaps.get(p.id)??jobsOf(p)));
       for(const p of r.own)if(perishableCaps.has(p.id))perishableLimited+=Math.max(0,jobsOf(p)-employmentJobs(p));
@@ -545,16 +569,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const spec=basketSpec(basket)!;
       // Industrial intermediates receive demand from downstream recipes only.
       if(spec.class==='intermediate_only')continue;
-      const options=goods.filter(g=>g.basket===basket&&(g.finalUse??g.stage!=='intermediate'));if(!options.length)continue;
+      const {options,shares}=productDemandChoice(c,basket);if(!options.length)continue;
       // PRODUCT CHOICE: preference, region, familiarity, novelty, quality, fame and PREVIOUS
       // COMMITTED local price (bootstrap: base × quality). Shares split the functional need only.
-      const offer=options.map(g=>stock(c.id,g.key).opening+producers.filter(p=>p.city===c.id&&p.recipe.good===g.key).reduce((s,p)=>s+n(p.capacity)*clamp(p.allocation),0));
-      const offerTotal=offer.reduce((a,b)=>a+b,0);
-      const avgPrice=options.reduce((a,g)=>a+refPrice(g),0)/options.length;
-      const shares=demandShares(options.map((g,i)=>({good:g.key,basket,referencePrice:refPrice(g),basketAveragePrice:avgPrice,
-        quality:stock(c.id,g.key).quality,fame:bestFame(c,g).fame,
-        familiarity:snapshot.familiarity?.[c.id]?.[g.key]??0,prevalence:offerTotal>0?offer[i]/offerTotal:1/options.length,
-        coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
       for(const s of shares)choice.push({city:c.id,basket,...s,fame_origin:bestFame(c,goodByKey.get(s.good)!).origin,reference_price:refPrice(goodByKey.get(s.good)!),functional_value:functionalValue(s.good,basket)});
       const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
       plans.push({basket,spec,options,shareOf:new Map(shares.map(s=>[s.good,s.share])),channels:basketDemandChannels(basket,{...input,weightedPop})});
