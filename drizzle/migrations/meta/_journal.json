@@ -176,6 +176,13 @@
       "when": 1794655041567,
       "tag": "0024_fix_rural_site_recipe_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794660000000,
+      "tag": "0025_rural_households_and_atomic_founding",
+      "breakpoints": true
     }
   ]
 }
