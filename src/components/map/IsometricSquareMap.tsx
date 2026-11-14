@@ -935,37 +935,51 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const a = tileCell(left); const b = tileCell(right); return (a.a + a.b) - (b.a + b.b);
   }), [tiles, tileCell]);
 
-  /** Static terrain baked into one bitmap (world coords, no pan) — the map would otherwise draw ~100k SVG nodes. */
+  /** Static terrain baked into bitmap chunks (world coords, no pan) — no ~100k SVG terrain nodes. */
   const [terrainRaster, setTerrainRaster] = useState<TerrainRaster | null>(null);
+  const terrainRasterRef = useRef<TerrainRaster | null>(null);
+  useEffect(() => () => {
+    terrainRasterRef.current?.forEach(chunk => URL.revokeObjectURL(chunk.url));
+  }, []);
   useEffect(() => {
     if (!sortedTiles.length) return;
     let cancelled = false;
+    const controller = new AbortController();
     const handle = window.setTimeout(() => {
       const quads: TerrainQuad[] = []; const sprites: TerrainSprite[] = [];
       sortedTiles.forEach(tile => {
         const cell = tileCell(tile); const point = projectCell("square4", cell, TILE_SIZE);
         const P = (a: number, b: number): [number, number] => [point.x + (a - b) * TILE_SIZE, point.y + (a + b - 1) * TILE_SIZE / 2];
         const hasFootprint = (parcelsByCell.get(cellKey(cell.a, cell.b)) || []).length > 0;
-        const roadSubs = new Set((roadSurfaceByCell.get(cellKey(cell.a, cell.b))?.cells || []).map(sub => `${sub.x}:${sub.y}`));
+        const roadSubs = new Set((terrainRoadSurfaceByCell.get(cellKey(cell.a, cell.b))?.cells || []).map(sub => `${sub.x}:${sub.y}`));
         const peakTile = PEAK_TILES.has(tile.biome_family);
         subBiomesOf(tile, cell.a, cell.b).forEach(parcel => {
           const x0 = parcel.parcelX / TILE_PARCEL_COLS, x1 = (parcel.parcelX + 1) / TILE_PARCEL_COLS;
           const y0 = parcel.parcelY / TILE_PARCEL_ROWS, y1 = (parcel.parcelY + 1) / TILE_PARCEL_ROWS;
           const subTex = subBiomeTex(parcel.subBiome);
+          const texture = subTex || TERRAIN_TEX[tile.biome_family];
           const variation = mapVisualVariation(sessionId, cell.a, cell.b, parcel.parcelX, parcel.parcelY);
+          const tint = polishedTerrainTint(parcel.subBiome);
           quads.push({
             pts: [P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)],
-            tex: subTex || TERRAIN_TEX[tile.biome_family],
-            texFilter: (subTex || TERRAIN_TEX[tile.biome_family]) === texWater ? "saturate(.58) brightness(.78)" : undefined,
-            tint: polishedTerrainTint(parcel.subBiome),
+            tex: texture,
+            texFilter: texture === texWater
+              ? "saturate(.46) contrast(.76) brightness(.76)"
+              : texture === texGrass
+                ? "saturate(.72) contrast(.78) brightness(.94)"
+                : texture === texRock
+                  ? "saturate(.78) contrast(.9) brightness(.97)"
+                  : texture === texSand ? "saturate(.8) contrast(.84)" : undefined,
+            baseColor: tint,
+            tint,
             tintAlpha: polishedTerrainTintAlpha(parcel.subBiome, variation.tintDelta),
           });
           if (hasFootprint || roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)) return;
           const [cx, cy] = P((parcel.parcelX + .5) / TILE_PARCEL_COLS, (parcel.parcelY + .5) / TILE_PARCEL_ROWS);
           const forest = (SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)");
           if (forest) {
-            if (variation.density < .08 && parcel.subBiome !== "thick_canopy") return;
-            const w = 15 * variation.scale;
+            if (variation.density < .12 && parcel.subBiome !== "thick_canopy") return;
+            const w = 16 * variation.scale;
             sprites.push({
               href: sprTrees, x: cx - w / 2 + variation.offsetX, y: cy - w * .55 + variation.offsetY, w, h: w * .68,
               shadow: { dx: .6, dy: -.3, rx: w * .3, ry: w * .08, color: "var(--map-marker-edge)", opacity: .24 },
@@ -980,7 +994,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             });
             return;
           }
-          const rocky = MOUNTAIN_SUBS.has(parcel.subBiome) || ((subTex || TERRAIN_TEX[tile.biome_family]) === texRock && parcel.parcelX % 2 === 0 && parcel.parcelY % 2 === 0);
+          const rocky = MOUNTAIN_SUBS.has(parcel.subBiome) || (texture === texRock && parcel.parcelX % 2 === 0 && parcel.parcelY % 2 === 0);
           if (!rocky || ["desert", "sea"].includes(tile.biome_family) || subTex === texSand || subTex === texWater) return;
           const w = 13 * variation.scale;
           sprites.push({
@@ -989,13 +1003,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           });
         });
       });
-      rasterizeTerrain(quads, sprites, TILE_SIZE * .6).then(result => {
+      rasterizeTerrain(quads, sprites, TILE_SIZE * .6, 3, 1024, controller.signal).then(result => {
         if (cancelled) { result.forEach(chunk => URL.revokeObjectURL(chunk.url)); return; }
-        setTerrainRaster(previous => { if (Array.isArray(previous)) previous.forEach(chunk => URL.revokeObjectURL(chunk.url)); return result; });
-      });
+        setTerrainRaster(previous => {
+          if (Array.isArray(previous)) previous.forEach(chunk => URL.revokeObjectURL(chunk.url));
+          terrainRasterRef.current = result;
+          return result;
+        });
+      }).catch(error => { if (!cancelled) console.warn("Raster terénu se nepodařilo vytvořit", error); });
     }, 50);
-    return () => { cancelled = true; window.clearTimeout(handle); };
-  }, [sortedTiles, tileCell, subBiomesOf, parcelsByCell, roadSurfaceByCell]);
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(handle); };
+  }, [sortedTiles, tileCell, subBiomesOf, parcelsByCell, terrainRoadSurfaceByCell]);
   const selectedCell = selected ? tileCell(selected) : null;
   const selectedHexPopulation = selected ? hexPopulation.find(row => row.q === selected.q && row.r === selected.r) : undefined;
   const selectedParcel = tileParcels.find(parcel => parcel.id === selectedParcelId) || null;
