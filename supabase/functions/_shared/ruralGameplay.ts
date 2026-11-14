@@ -118,7 +118,7 @@ export function ruralTurn(seed: string, cells: (RuralCell & ControlledCell)[], e
     const access=clamp01(terrain?.access_score ?? 1);
     const movementPenalty=1/Math.sqrt(Math.max(1,integer(terrain?.movement_cost ?? 1)));
     const routeMap=roadDistances.get(cityId);
-    const roadConnected=roads.length===0 || routeMap?.has(key(x,y))===true;
+    const roadConnected=routeMap?.has(key(x,y))===true;
     const transport=clamp01(access*movementPenalty*(roadConnected?1:0.65/(1+directDistance*0.03)));
     const vacancyPull=0.55+0.45*clamp01(destination.vacancies/Math.max(1,destination.population*0.1));
     const people=Math.min(row.mobile_population,Math.floor(row.rural_population*0.03*transport*vacancyPull),room.get(cityId)||0);
