@@ -21,6 +21,7 @@ import IsometricSquareMap from "@/components/map/IsometricSquareMap";
 
 describe("read-only map updates", () => {
   it("never invokes seeding on mount, player changes, turn changes or remount", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -35,6 +36,7 @@ describe("read-only map updates", () => {
     } finally {
       await act(async () => root.unmount());
       container.remove();
+      vi.unstubAllGlobals();
     }
   });
 });

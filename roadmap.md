@@ -2,7 +2,8 @@
 
 ## Repeated game updates — 2026-11-14
 - [x] Signed-in read-only reproduction found map mount invokes seed-city-parcels (writes) and reloads the entire map after success; metadata effect also depends on replaced player/user objects.
-- [ ] Remove map auto-seeding and stabilize metadata dependencies; verify idle game and tab switches without writes or repeated requests.
+- [x] Removed map auto-seeding; metadata now depends on stable user ID/fallback name rather than replaced objects. Component regression and visual tests 4/4 passed; automatic build OK.
+- [x] Signed-in JV72O7 at turn 7: zero idle requests during 15-second observation, zero seed/turn/refresh invocations, zero page errors; Map→Realm→Map retains visible terrain. All verification writes intercepted; no saved-game changes or publication.
 
 ## Parcel placement array error — 2026-11-14
 - [x] Live trigger still assigns JSON recipe arrays directly to text[]; existing repair SQL is absent from the migration journal.
