@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## Production/trade flow diagnosis — 2026-11-14
+- [x] Traced canonical production → stocks/reserves → demand → physical trade gates → freight paths → projections; basket endpoint is compatibility-only, not a second solver. No turn/refresh/command or game-data write.
+- [x] JV72O7 turn 7: 85.428 output but only 0.2286 exported (one raw-timber shipment); 54.429 unmet = 35.634 source_empty + 18.785 route_unreachable. Ledger/committed/current projections agree at one flow.
+- [x] All five player cities are connected by ten completed road segments. All five lack the same charcoal/peat/textile/tools/storage; none produces textile/tools/storage, while AI fuel stocks are disconnected. Fish use ~60% of recorded labour and ~30% spoils; uniform production/demand multipliers would preserve city symmetry and worsen waste or shortages.
+- [ ] Confirm desired trade behaviour with the user before changing formulas; then use isolated simulation, starting with specialization/missing producers and only afterwards bounded volume calibration.
+
 ## Visual Map Polish 2.0 — first verified slice, 2026-11-14
 - [x] Audited Dashboard → WorldMapTab → IsometricSquareMap: raster terrain/vegetation plus SVG interaction and infrastructure; preserved square coordinates, 6×6 parcels, hitboxes and game data.
 - [x] Reused existing painted assets with deterministic tree/hill/mountain scale and anchor variation, sparse forest variation and baked contact shadows; softened parcel tint contrast and deeply muted water through a cached filtered texture.
