@@ -1024,8 +1024,8 @@ async function executeFoundCity(
       supabase.from("hex_population").select("q,r,rural_population").eq("session_id", sessionId),
     ]);
     const occupied = new Set((occupiedCities || []).map((c:any)=>`${c.province_q},${c.province_r}`));
-    const hexByKey = new Map((ownedHexes || []).map((h:any)=>[`${h.q},${h.r}`,h]));
-    const ruralByKey = new Map((ruralRows || []).map((h:any)=>[`${h.q},${h.r}`,Number(h.rural_population)||0]));
+    const hexByKey = new Map<string, any>((ownedHexes || []).map((h:any):[string,any]=>[`${h.q},${h.r}`,h]));
+    const ruralByKey = new Map<string, number>((ruralRows || []).map((h:any):[string,number]=>[`${h.q},${h.r}`,Number(h.rural_population)||0]));
     const candidates = (ownedHexes || []).filter((h:any)=>
       !occupied.has(`${h.q},${h.r}`) && ["plains","hills","forest","swamp"].includes(h.biome_family)
     ).map((h:any)=>{
