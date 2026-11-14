@@ -4146,6 +4146,36 @@ export type Database = {
           },
         ]
       }
+      farm_fields: {
+        Row: {
+          created_at: string
+          created_turn: number
+          farm_parcel_id: string
+          field_parcel_id: string
+          id: string
+          owner_player: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_turn?: number
+          farm_parcel_id: string
+          field_parcel_id: string
+          id?: string
+          owner_player: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          created_turn?: number
+          farm_parcel_id?: string
+          field_parcel_id?: string
+          id?: string
+          owner_player?: string
+          session_id?: string
+        }
+        Relationships: []
+      }
       feed_comments: {
         Row: {
           comment_text: string
@@ -12810,6 +12840,18 @@ export type Database = {
       acquire_turn_execution: {
         Args: { p_session: string; p_turn: number }
         Returns: boolean
+      }
+      add_farm_field: {
+        Args: {
+          p_cost: number
+          p_farm: string
+          p_field: string
+          p_max: number
+          p_player: string
+          p_session: string
+          p_turn: number
+        }
+        Returns: Json
       }
       add_parcel_to_district: {
         Args: {
