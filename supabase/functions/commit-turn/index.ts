@@ -1796,7 +1796,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
   if(priorError)throw priorError;
   const local = ruralTurn(String(ruralSession?.world_seed??sessionId),ruralCells,ruralExisting,(cities||[]).map((c:any)=>{
     const i=growthInfo[c.id];
-    return {id:c.id,owner:c.owner_player,cell:`${c.grid_x??c.province_q},${c.grid_y??c.province_r}`,
+    return {id:c.id,owner:c.owner_player,cell:`${c.grid_x??c.province_q},${c.grid_y??c.province_r}`,province_id:c.province_id??null,
       population:i.afterGrowth-(migration.emigration[c.id]||0)+(migration.immigration[c.id]||0),housing:i.housing,
       stability:i.stability,food:needsByCity[c.id]?.food??0,
       vacancies:Number(priorEconomy?.labor?.find((l:any)=>l.city===c.id)?.vacancies_total||0)};
@@ -1845,7 +1845,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     const changed = finalPop !== info.beforePop
       || info.stability !== (city.city_stability || 70)
       || info.legitimacy !== (city.legitimacy || 50)
-      || emigration > 0 || immigration > 0;
+      || emigration > 0 || immigration > 0 || (local.immigration[city.id] || 0) > 0;
     if (!changed) continue;
 
     const localIn=local.immigration[city.id]||0;
