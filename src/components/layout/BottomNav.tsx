@@ -1,6 +1,6 @@
-import { Home, Globe, Shield, Newspaper, BookOpen, Crown, Swords, BarChart3, Timer, Wrench, Map, Zap, Trophy } from "lucide-react";
+import { Home, Globe, Shield, Newspaper, BookOpen, Crown, Swords, BarChart3, Timer, Wrench, Map, Zap, Trophy, BookMarked } from "lucide-react";
 
-export type TabId = "home" | "world" | "worldmap" | "realm" | "army" | "economy" | "chronicles" | "feed" | "codex" | "wiki" | "council" | "engine" | "games" | "persistent" | "dev" | "ailab";
+export type TabId = "home" | "world" | "worldmap" | "realm" | "army" | "economy" | "chronicles" | "feed" | "codex" | "atlas" | "wiki" | "council" | "engine" | "games" | "persistent" | "dev" | "ailab";
 
 interface Props {
   activeTab: TabId;
@@ -15,6 +15,7 @@ const allTabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "worldmap", label: "Mapa", icon: Map },
   { id: "realm", label: "Správa", icon: Shield },
   { id: "army", label: "Armáda", icon: Swords },
+  { id: "atlas", label: "Atlas", icon: BookMarked },
   
   { id: "engine", label: "Engine", icon: Zap },
   { id: "council", label: "Rada", icon: Crown },
