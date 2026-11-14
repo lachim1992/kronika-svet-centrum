@@ -514,3 +514,10 @@ Plán: `.lovable/plan/atlas.md` (původní `.lovable/plan.md` obnoven z 166e9b1d
 - Prohlížeč (JV72O7, přihlášen, jen čtení, desktop 1280 + mobil 390): všech 6 sekcí, 0 chyb stránky, 0 zápisů/volání funkcí. Žádný tah, refresh, seed ani claim.
 - Limity: city_buildings se samostatně nečtou (budovy jen přes parcel building_id a hlášení); příležitosti jen z import_blockers; zisk jen z margin výrobce, jinak „nelze spolehlivě vyčíslit“; biomová nápověda je obecná; světová cena chybí u zboží bez poptávky.
 - Další krok: přidat do Moje území vlastní budovy z city_buildings (jen select vybraných sloupců) s vazbou na recepty a jejich skutečný provoz.
+
+## Vojenství na mikropolíčkách — etapa 1: pohyb (2026-11-14)
+- Hotovo: `_shared/microMovement.ts` (silnice 1, rovina 1,5, les/kopce 2, hory/bažiny 3, voda a řeka bez mostu neprůchodné; 10 bodů/kolo; 500 mužů/mikropolíčko), `applyStackMicroMove` v `stackMovementCommand.ts`, MOVE_STACK s `microPath` v command-dispatch, tlačítko „Přesunout armádu“ + náhled trasy v `IsometricSquareMap.tsx`, tábor podle 500 mužů v `src/lib/tileParcels.ts`.
+- Testy: `src/test/micro-movement.test.ts` 8/8; celá sada 976 passed / 3 skipped; typecheck a deno check čisté. Nasazeno: command-dispatch, ai-faction-turn.
+- Neověřeno v prohlížeči: v aktuální hře nejsou nasazené armády a skutečný přesun by zapsal do hry.
+- Omezení: AI se zatím pohybuje po velkých polích; srážky armád na trase nejsou.
+- Další krok: etapa 2 — malované figurky vojáků s praporem rozložené po obsazených mikropolíčkách.
