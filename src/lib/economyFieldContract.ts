@@ -68,6 +68,7 @@ export const CITY_ACCOUNT_UNMAPPED_OK = new Set([
   "city", "city_gdp", "basic_basket_cost", "price_index", "nominal_gdp", "price_level", "income_unit_factor",
   "discretionary_budget", "discretionary_wish", "discretionary_funded", "discretionary_ratio", "physical_need_coverage",
   "affordability_gap", "affordability", "diversity", "proxy", "private_wealth",
+  "rural_population", "urban_household_income", "urban_affordability", "rural_discretionary_wish", "rural_discretionary_funded", "urban_discretionary_funded",
   // goodsEconomy extras rendered in the main table / drilldown text
   "goods_value_added", "service_value_added", "trade_services", "prosperity", "prosperity_parts", "discretionary_cap",
   "capital_stock", "capital_candidate",
