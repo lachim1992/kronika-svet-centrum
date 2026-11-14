@@ -183,6 +183,13 @@
       "when": 1794660000000,
       "tag": "0025_rural_households_and_atomic_founding",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794683821685,
+      "tag": "0026_micro_surveys",
+      "breakpoints": true
     }
   ]
 }

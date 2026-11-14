@@ -6976,6 +6976,47 @@ export type Database = {
           },
         ]
       }
+      micro_surveys: {
+        Row: {
+          created_at: string
+          findings: Json
+          id: string
+          micro_x: number
+          micro_y: number
+          player_name: string
+          session_id: string
+          surveyed_turn: number
+        }
+        Insert: {
+          created_at?: string
+          findings?: Json
+          id?: string
+          micro_x: number
+          micro_y: number
+          player_name: string
+          session_id: string
+          surveyed_turn?: number
+        }
+        Update: {
+          created_at?: string
+          findings?: Json
+          id?: string
+          micro_x?: number
+          micro_y?: number
+          player_name?: string
+          session_id?: string
+          surveyed_turn?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "micro_surveys_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       military_capacity: {
         Row: {
           army_name: string
@@ -12996,6 +13037,18 @@ export type Database = {
           p_cost: number
           p_findings: Json
           p_level: number
+          p_player: string
+          p_session: string
+          p_turn: number
+          p_x: number
+          p_y: number
+        }
+        Returns: Json
+      }
+      record_micro_survey: {
+        Args: {
+          p_cost: number
+          p_findings: Json
           p_player: string
           p_session: string
           p_turn: number
