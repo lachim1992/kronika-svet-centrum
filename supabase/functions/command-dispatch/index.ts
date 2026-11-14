@@ -1070,8 +1070,10 @@ async function executeFoundCity(
       ? "V okolí není dost venkovských obyvatel. Osada potřebuje 100 skutečných osadníků z vlastního území."
       : message.includes("FOUNDING_TARGET_ENEMY_CONTROLLED")
         ? "Na cílovém hexu je nepřátelská kontrola; zvol neutrální nebo vlastní území s dostatkem místních osadníků."
-        : message.includes("FOUNDING_TARGET_NOT_SETTLEABLE")
-          ? "Na tomto typu terénu nelze založit osadu."
+        : message.includes("FOUNDING_TARGET_OCCUPIED")
+          ? "Na tomto poli už stojí město nebo osada."
+          : message.includes("FOUNDING_TARGET_NOT_SETTLEABLE")
+            ? "Na tomto typu terénu nelze založit osadu."
           : message.includes("FOUNDING_TARGET_PROVINCE_MISMATCH")
             ? "Cílové pole nepatří do vybrané provincie."
             : message.includes("FOUNDING_TARGET_HEX_NOT_FOUND")
