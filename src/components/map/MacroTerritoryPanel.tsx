@@ -70,12 +70,25 @@ export default function MacroTerritoryPanel(p: Props) {
         {busy === "claim" && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Nárokovat makropole · {macroClaimCost(p.ownedTiles)} zlata</Button>}
     </div>
     {claimBlock && p.owner !== p.playerName && <p className="mt-1 text-[11px] text-muted-foreground">{claimBlock}</p>}
-    {p.owner === p.playerName && provinces.length > 0 && <label className="mt-3 block text-xs">Provincie
-      <select className="mt-1 w-full border border-border bg-background p-1 text-xs" value={p.provinceId || ""} disabled={!!busy}
-        onChange={e => void run("prov", "ASSIGN_MACRO_PROVINCE", { provinceId: e.target.value }, "Pole přiděleno provincii")}>
-        {!p.provinceId && <option value="">— bez provincie —</option>}
-        {provinces.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
-      </select></label>}
+    {p.owner === p.playerName && provinces.length > 0 && (() => {
+      const options = provinces.filter(pr => pr.id === p.provinceId || (!p.hasCity && p.assignableProvinceIds.includes(pr.id)));
+      const blockedReason = p.hasCity ? "Pole s městem zůstává ve své provincii."
+        : options.some(pr => pr.id !== p.provinceId) ? null : "Do provincie lze přidat jen pole sousedící s jejím územím.";
+      return <label className="mt-3 block text-xs">Provincie
+        <select className="mt-1 w-full border border-border bg-background p-1 text-xs" value={p.provinceId || ""} disabled={!!busy || !!blockedReason}
+          onChange={e => {
+            const provinceId = e.target.value;
+            if (provinceId === p.provinceId) return;
+            if (p.hasCity) { toast.error("Pole s městem nelze přesunout do jiné provincie"); return; }
+            if (!p.assignableProvinceIds.includes(provinceId)) { toast.error("Provincie musí být souvislá — pole nesousedí s provincií"); return; }
+            void run("prov", "ASSIGN_MACRO_PROVINCE", { provinceId }, "Pole přiděleno provincii");
+          }}>
+          {!p.provinceId && <option value="">— bez provincie —</option>}
+          {options.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
+        </select>
+        {blockedReason && <span className="mt-1 block text-[11px] text-muted-foreground">{blockedReason}</span>}
+      </label>;
+    })()}
     {p.owner === p.playerName && p.provinceId && provinces.some(pr => pr.id === p.provinceId) && <div className="mt-2 flex gap-1">
       <input className="flex-1 border border-border bg-background p-1 text-xs" maxLength={48} placeholder="Nový název provincie"
         value={rename} onChange={e => setRename(e.target.value)} />
