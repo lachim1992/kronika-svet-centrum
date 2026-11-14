@@ -65,7 +65,7 @@ export function depositSurveyReason(recipeKeys: string[], survey: DepositSurveyK
   const labels: Record<string, string> = { iron: "železnou rudu", gold: "zlatou žílu" };
   return `Na tomto makropoli není potvrzená ${missing.map(kind => labels[kind] || kind).join(" ani ")}.`;
 }
-export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve>; fieldParcels?: Set<string> }
+export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve>; fieldParcels?: Set<string>; immature?: Set<string> }
 
 /** Merge natural specs with the parcel's rural site; enforce deposits. Returns specs + reasons for blocked recipes. */
 export function siteSpecs(natural: { recipe: string; capacity: number; jobs: number; renewable: boolean }[], site: RuralSite | undefined,
