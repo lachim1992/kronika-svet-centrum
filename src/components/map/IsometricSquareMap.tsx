@@ -2236,16 +2236,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                     return <g key={`s${index}`} transform={`translate(${sx},${sy})`} style={{ transition: "transform .6s ease" }}
                       onClick={pickable ? (e) => { e.stopPropagation(); if (!dragRef.current?.moved) setSiegeUnitKey(k => k === unitKey ? null : unitKey); } : undefined}>
                       {pickable && <ellipse cx="0" cy="2" rx="7" ry="3.5" fill={picked ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={picked ? "var(--map-focus)" : hasOrder ? "var(--map-city-own)" : "transparent"} strokeWidth="1.2" />}
-                      {spot?.ram && <g transform="translate(5,-7) scale(.8)" pointerEvents="none">
-                        {/* trebuchet: A-frame, throwing arm, counterweight — drawn behind the squad */}
-                        <path d="M-2.6 1 L0 -5.5 L2.6 1" fill="none" stroke="var(--map-road-edge, #5b3b1f)" strokeWidth=".9" strokeLinecap="round" />
-                        <line x1="-1.7" y1="-2.2" x2="1.7" y2="-2.2" stroke="var(--map-road-edge, #5b3b1f)" strokeWidth=".6" />
-                        <line x1="-2.2" y1="-6.6" x2="2.8" y2="-4.4" stroke="var(--map-road, #8a5a2b)" strokeWidth=".8" strokeLinecap="round" />
-                        <rect x="-3.4" y="-7.6" width="2.2" height="2" rx=".3" fill="var(--map-label-edge, #333)" />
-                        <line x1="2.8" y1="-4.4" x2="3.6" y2="-3.2" stroke="var(--map-road, #8a5a2b)" strokeWidth=".4" />
-                        <circle cx="3.8" cy="-3" r=".55" fill="var(--map-marker)" />
-                        <circle cx="-2.2" cy="1.2" r=".8" fill="var(--map-marker)" /><circle cx="2.2" cy="1.2" r=".8" fill="var(--map-marker)" />
-                      </g>}
                       <ArmySquad men={men} kind={kind} banner={banner} active={active} formation={lead.battle_formation} />
                     </g>; });
               })()}
