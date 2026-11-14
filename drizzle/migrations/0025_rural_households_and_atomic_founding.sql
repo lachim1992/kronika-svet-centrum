@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS public.city_founding_transfers (
   session_id uuid NOT NULL REFERENCES public.game_sessions(id) ON DELETE CASCADE,
   command_id text NOT NULL,
-  city_id uuid NOT NULL UNIQUE REFERENCES public.cities(id) ON DELETE CASCADE,
+  city_id uuid UNIQUE REFERENCES public.cities(id) ON DELETE CASCADE,
   owner_player text NOT NULL,
   turn_number integer NOT NULL,
   settlers integer NOT NULL CHECK (settlers > 0),
@@ -54,17 +54,28 @@ BEGIN
     RAISE EXCEPTION 'FOUNDING_INVALID_SETTLER_COUNT';
   END IF;
 
-  -- Serialize retries of the same command. A duplicate returns the original city and never
-  -- subtracts the same settlers twice.
-  PERFORM pg_advisory_xact_lock(hashtextextended(p_session_id::text || ':' || p_command_id, 0));
+  -- Reserve and lock this command key before touching rural cells. ON CONFLICT waits for a
+  -- concurrent identical command; after that transaction commits, the second caller sees its city.
+  INSERT INTO public.city_founding_transfers(
+    session_id,command_id,owner_player,turn_number,settlers,source_cells
+  ) VALUES(p_session_id,p_command_id,p_owner_player,p_turn_number,p_settlers,'[]'::jsonb)
+  ON CONFLICT(session_id,command_id) DO NOTHING;
   SELECT * INTO v_transfer
   FROM public.city_founding_transfers
-  WHERE session_id = p_session_id AND command_id = p_command_id;
-  IF FOUND THEN
+  WHERE session_id = p_session_id AND command_id = p_command_id
+  FOR UPDATE;
+  IF v_transfer.city_id IS NOT NULL THEN
+    IF v_transfer.owner_player IS DISTINCT FROM p_owner_player THEN
+      RAISE EXCEPTION 'FOUNDING_COMMAND_OWNER_CONFLICT';
+    END IF;
     RETURN jsonb_build_object(
       'city_id', v_transfer.city_id, 'transferred', v_transfer.settlers,
       'source_cells', v_transfer.source_cells, 'idempotent', true
     );
+  END IF;
+  IF v_transfer.owner_player IS DISTINCT FROM p_owner_player
+     OR v_transfer.turn_number <> p_turn_number OR v_transfer.settlers <> p_settlers THEN
+    RAISE EXCEPTION 'FOUNDING_COMMAND_CONFLICT';
   END IF;
 
   SELECT * INTO v_target
@@ -138,11 +149,9 @@ BEGIN
     p_founded_parcel_index, p_settlers, v_peasants, v_burghers, v_clerics, 0, 70, 0, 0
   ) RETURNING id INTO v_city_id;
 
-  INSERT INTO public.city_founding_transfers (
-    session_id, command_id, city_id, owner_player, turn_number, settlers, source_cells
-  ) VALUES (
-    p_session_id, p_command_id, v_city_id, p_owner_player, p_turn_number, v_transferred, v_sources
-  );
+  UPDATE public.city_founding_transfers
+  SET city_id = v_city_id, settlers = v_transferred, source_cells = v_sources
+  WHERE session_id = p_session_id AND command_id = p_command_id;
 
   RETURN jsonb_build_object(
     'city_id', v_city_id, 'transferred', v_transferred,
