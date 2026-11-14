@@ -52,6 +52,7 @@ export interface Producer { id: string; city: string; node?: string; cell?: stri
 /** Canonical labour-market readout of one city. Derived, never a second population writer. */
 export interface CityLabor { city: string; population: number; urban_population?: number; rural_population?: number; economically_active: number; available_workforce: number;
   employed_total: number; unemployed_total: number; jobs_capacity: number; vacancies_total: number;
+  rural_available_workforce?: number; rural_employed?: number; rural_unemployed?: number; rural_jobs_capacity?: number; rural_vacancies?: number; rural_employment_rate?: number;
   employment_rate: number; unemployment_rate: number;
   /** Local wage per employed worker (productMarket.localWage). */
   wage_rate?: number;
@@ -78,16 +79,18 @@ export interface Snapshot { turn: number; goods: Good[]; cities: City[]; produce
   /** Last COMMITTED turn's consumption share per city × good (read-only history, never written by refresh). */
   familiarity?: Record<string, Record<string, number>>;
   /** Last COMMITTED turn's city budget ratios; absent → bootstrap (unconstrained, flagged). */
-  budget?: Record<string, { discretionary_ratio: number; affordability: number; discretionary_budget?: number }>;
+  budget?: Record<string, { discretionary_ratio: number; affordability: number; discretionary_budget?: number; rural_discretionary_budget?: number; urban_discretionary_budget?: number; rural_affordability?: number }>;
   /** Last COMMITTED local prices per `city::good` (product choice + budget reference; never same pass). */
   priorPrices?: Record<string, number>;
   /** Household tax wedge per owner (realm tax rates), for city accounts only. */
   householdTaxRate?: Record<string, number>;
   /** Wages paid per city in the last COMMITTED turn (wage_settlement); diagnostic only. */
   settledWages?: Record<string, number>;
+  /** Rural subset of last committed wages, paid to rural crews in the city's catchment. */
+  settledRuralWages?: Record<string, number>;
   /** Ownership income actually paid last committed turn; absent for legacy settlements. */
   settledOwnership?: Record<string, number>;
-  settlement?: Record<string, { arrears_closing: number; producer_retained: number; producer_cash_closing?: number; ownership_income_paid?: number }> }
+  settlement?: Record<string, { arrears_closing: number; producer_retained: number; producer_cash_closing?: number; ownership_income_paid?: number; rural_arrears_closing?: number }> }
 export interface Balance { city: string; good: string; opening: number; produced_household: number; produced_node: number;
   produced_facility: number; produced_district: number; consumed_household: number; consumed_state: number;
   consumed_as_input: number; imported: number; exported: number; stored: number; lost_spoilage: number;
@@ -216,7 +219,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // depend on how many jobs are actually staffed. See the DEMAND PASS below.
   const demandComponents=new Map<string,Record<DemandChannel,number>>();
   const choice:any[]=[];
-  const budgetCaps=new Map<string,{planned_spend:number;budget:number|null;scale:number;funded_spend:number;constrained:boolean;mode:string}>();
+  const budgetCaps=new Map<string,{planned_spend:number;budget:number|null;scale:number;funded_spend:number;constrained:boolean;mode:string;rural_planned_spend?:number;rural_budget?:number|null;rural_funded_spend?:number;rural_scale?:number;urban_planned_spend?:number;urban_budget?:number|null;urban_funded_spend?:number;urban_scale?:number}>();
   const componentsOf=(city:string,good:string)=>{const k=key(city,good);let c=demandComponents.get(k);
     if(!c){c=emptyChannels();demandComponents.set(k,c);}return c;};
   const addChannel=(city:string,good:string,channel:DemandChannel,qty:number)=>{
@@ -404,6 +407,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const ruralEmployed=allocateRuralLabor(new Map(ruralProducers.map(p=>[p.ruralLabor?.cell||'',p.ruralLabor?.population||0])),
     ruralProducers.map(p=>({id:p.id,cell:p.ruralLabor?.cell||'',jobs:jobsOf(p)})));
   const employed=new Map<string,number>(ruralEmployed);
+  const ruralLaborByCity=new Map<string,{available:number;employed:number;jobs:number;cells:Set<string>}>();
+  for(const p of ruralProducers){
+    const stat=ruralLaborByCity.get(p.city)||{available:0,employed:0,jobs:0,cells:new Set<string>()};
+    const cell=p.ruralLabor!.cell;
+    if(!stat.cells.has(cell)){stat.cells.add(cell);stat.available+=Math.floor(n(p.ruralLabor!.population)*RURAL_WORKFORCE_SHARE);}
+    stat.employed+=ruralEmployed.get(p.id)||0; stat.jobs+=jobsOf(p);
+    ruralLaborByCity.set(p.city,stat);
+  }
   const laborMetrics:CityLabor[]=[];
   const serviceLabor=new Map<string,{infrastructure:number;jobs:number;employed:number;staffing:number}>();
   /**
@@ -511,9 +522,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     // Intentional perishable overcapacity is not labour-market demand: it must neither
     // masquerade as structural mismatch nor suppress the local wage through false vacancies.
     const marketVacancies=Math.max(0,vacancies-perishableLimited);
+    const ruralStat=ruralLaborByCity.get(c.id)||{available:0,employed:0,jobs:0,cells:new Set<string>()};
+    const ruralVacancies=Math.max(0,ruralStat.jobs-ruralStat.employed);
     laborMetrics.push({city:c.id,population:c.population,urban_population:c.urbanPopulation??c.population,rural_population:c.ruralPopulation??0,economically_active:active,
       available_workforce:workforce.get(c.id)!.workforce,employed_total:employedTotal,
       unemployed_total:unemployed,jobs_capacity:jobsTotal,vacancies_total:vacancies,
+      rural_available_workforce:ruralStat.available,rural_employed:ruralStat.employed,
+      rural_unemployed:Math.max(0,ruralStat.available-ruralStat.employed),rural_jobs_capacity:ruralStat.jobs,
+      rural_vacancies:ruralVacancies,rural_employment_rate:ruralStat.available>0?ruralStat.employed/ruralStat.available:0,
       labor_mobility:mobility,retrained:moved+critMoved,
       // People idle while jobs stand empty: the mismatch itself, not a general labour shortage.
       structural_unemployed:Math.min(unemployed,marketVacancies),
@@ -571,14 +587,31 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       plans.push({basket,spec,options,shareOf:new Map(shares.map(s=>[s.good,s.share])),channels:basketDemandChannels(basket,{...input,weightedPop})});
     }
     // PASS 2 — one hard monetary cap for household_discretionary + fame at reference prices.
-    let planned=0;
-    for(const pl of plans)for(const g of pl.options)planned+=pl.channels.household_discretionary*(pl.shareOf.get(g.key)??0)/functionalValue(g.key,pl.basket)*refPrice(g);
+    let householdPlanned=0;
+    for(const pl of plans)for(const g of pl.options)householdPlanned+=pl.channels.household_discretionary*(pl.shareOf.get(g.key)??0)/functionalValue(g.key,pl.basket)*refPrice(g);
+    let famePlanned=0;
     if(c.market>0)for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0&&f.city!==c.id)){const g=goodByKey.get(f.good);if(!g||!cityById.has(f.city)||!fameReachable(f,c,g))continue;
-      planned+=c.population*C.fameDemand*f.fame/100*refPrice(g)*(1+C.famePremium*f.fame/100);}
-    const cap=discretionaryBudgetScale(planned,budget?.discretionary_budget);
-    budgetCaps.set(c.id,{planned_spend:planned,budget:budget?.discretionary_budget??null,scale:cap.scale,funded_spend:planned*cap.scale,constrained:cap.constrained,mode:cap.mode});
+      famePlanned+=c.population*C.fameDemand*f.fame/100*refPrice(g)*(1+C.famePremium*f.fame/100);}
+    const planned=householdPlanned+famePlanned;
+    const ruralShare=c.population>0?clamp((c.ruralPopulation??0)/c.population):0;
+    const ruralPlanned=householdPlanned*ruralShare;
+    const urbanHouseholdPlanned=householdPlanned-ruralPlanned;
+    const ruralBudget=budget?.rural_discretionary_budget??(budget?.discretionary_budget==null?null:budget.discretionary_budget*ruralShare);
+    const urbanBudget=budget?.urban_discretionary_budget??(budget?.discretionary_budget==null?null:budget.discretionary_budget*(1-ruralShare));
+    const ruralCap=discretionaryBudgetScale(ruralPlanned,ruralBudget);
+    const urbanPlanned=urbanHouseholdPlanned+famePlanned;
+    const urbanCap=discretionaryBudgetScale(urbanPlanned,urbanBudget);
+    const householdScale=householdPlanned>0
+      ? (ruralPlanned*ruralCap.scale+urbanHouseholdPlanned*urbanCap.scale)/householdPlanned : 1;
+    const funded=ruralPlanned*ruralCap.scale+urbanPlanned*urbanCap.scale;
+    const combinedBudget=ruralBudget==null||urbanBudget==null?budget?.discretionary_budget??null:ruralBudget+urbanBudget;
+    const budgetMode=ruralPlanned<=0?urbanCap.mode:urbanPlanned<=0?ruralCap.mode:ruralCap.mode===urbanCap.mode?ruralCap.mode:'split_household_budgets';
+    budgetCaps.set(c.id,{planned_spend:planned,budget:combinedBudget,scale:planned>0?funded/planned:1,
+      funded_spend:funded,constrained:(ruralPlanned>0&&ruralCap.constrained)||(urbanPlanned>0&&urbanCap.constrained),mode:budgetMode,
+      rural_planned_spend:ruralPlanned,rural_budget:ruralBudget,rural_funded_spend:ruralPlanned*ruralCap.scale,rural_scale:ruralCap.scale,
+      urban_planned_spend:urbanPlanned,urban_budget:urbanBudget,urban_funded_spend:urbanPlanned*urbanCap.scale,urban_scale:urbanCap.scale});
     for(const {basket,spec,options,shareOf,channels} of plans){
-      channels.household_discretionary*=cap.scale;
+      channels.household_discretionary*=householdScale;
       const total=channelTotal(channels);
       if(total<=0)continue;
       // Non-household channels (industry, institutions, construction, army) are state-side
@@ -1028,8 +1061,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     (d as any).margin={...m,...account,unit_output_price:outPrice,unit_input_cost:d.realized>0?m.cost/d.realized:0,inputs:lines,
       diagnostic_version:3,order:p.order||'auto',loss_warning:m.margin<0,auto_flag:p.autoFlag??null,expected_margin_proxy:p.expectedMarginProxy??null};}
   // CITY ACCOUNTS (derived flows; no private wealth stock, no fiscal writes).
-  const marginOf=(cid:string)=>diagnostics.filter(d=>recipeOf.get(d.producer)?.city===cid).map(d=>(d as any).margin).filter(Boolean);
+  const producerById=new Map(producers.map(p=>[p.id,p]));
+  const marginRowsOf=(cid:string)=>diagnostics.filter(d=>recipeOf.get(d.producer)?.city===cid&&(d as any).margin);
+  const marginOf=(cid:string)=>marginRowsOf(cid).map(d=>(d as any).margin);
   const producerPayroll=(cid:string)=>marginOf(cid).reduce((t:number,m:any)=>t+n(m.payroll),0);
+  const ruralProducerPayroll=(cid:string)=>marginRowsOf(cid).reduce((t:number,d:any)=>producerById.get(d.producer)?.ruralLabor?t+n(d.margin.payroll):t,0);
   const producerSurplus=(cid:string)=>marginOf(cid).reduce((t:number,m:any)=>t+n(m.operating_surplus),0);
   const accounts=cities.map(c=>{const own=goods.map(g=>({g,b:stock(c.id,g.key)}));
     const comp=(g:Good)=>componentsOf(c.id,g.key);
@@ -1044,7 +1080,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const services=metrics.find(m=>m.city===c.id)!.trade_services;
     const taxRate=snapshot.householdTaxRate?.[c.owner]??0.1;
     const acc=cityAccounts({city:c.id,valueAdded:goodsVA+services.service_value_added,
-      householdTaxRate:taxRate,needs,discretionaryWish:wish,basketConsumption,settledWageIncome:snapshot.settledWages?.[c.id]??null,settledOwnershipIncome:snapshot.settledOwnership?.[c.id]??null});
+      householdTaxRate:taxRate,needs,discretionaryWish:wish,basketConsumption,
+      population:c.population,ruralPopulation:c.ruralPopulation??0,producerPayroll:producerPayroll(c.id),
+      ruralProducerPayroll:ruralProducerPayroll(c.id),settledWageIncome:snapshot.settledWages?.[c.id]??null,
+      settledRuralWageIncome:snapshot.settledRuralWages?.[c.id]??null,settledOwnershipIncome:snapshot.settledOwnership?.[c.id]??null});
     const lab=laborMetrics.find(l=>l.city===c.id);
     const prosperity=prosperityIndex({realPurchasingPowerPerCapita:c.population>0?acc.real_purchasing_power/c.population:0,
       employment:lab?lab.employment_rate:1,needCoverage:acc.physical_need_coverage,housingHeadroom:c.housingHeadroom??0.5,
@@ -1056,7 +1095,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       prosperity:prosperity.index,prosperity_parts:prosperity.parts,discretionary_cap:budgetCaps.get(c.id)??null,capital_stock:n(c.capitalStock),capital_candidate:capital,
       // Imputed producer payroll (sum of margin.payroll); household labour income uses SETTLED wages
       // (snapshot.settledWages) when present. UI labels: src/lib/economyFieldContract.ts.
-      producer_payroll:producerPayroll(c.id),producer_operating_surplus:producerSurplus(c.id),wage_rate:lab?.wage_rate??null,
+      producer_payroll:producerPayroll(c.id),rural_producer_payroll:ruralProducerPayroll(c.id),
+      producer_operating_surplus:producerSurplus(c.id),wage_rate:lab?.wage_rate??null,
       // Echo of the last COMMITTED process-turn settlement (read-only; never recomputed here).
       settled_wage_arrears:snapshot.settlement?.[c.id]?.arrears_closing??null,
       settled_producer_retained:snapshot.settlement?.[c.id]?.producer_retained??null,

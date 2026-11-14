@@ -32,7 +32,7 @@ import {
 } from "../_shared/citySeat.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
-import { foundingHamletPopulation, FOUNDING_HAMLET_POPULATION } from "../_shared/foundingPopulation.ts";
+import { FOUNDING_HAMLET_POPULATION } from "../_shared/foundingPopulation.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
 import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
@@ -1017,62 +1017,75 @@ async function executeFoundCity(
   let freeR = provinceR ?? 0;
 
   if (provinceQ === undefined || provinceR === undefined) {
-    const { data: occupiedCities } = await supabase
-      .from("cities")
-      .select("province_q, province_r")
-      .eq("session_id", sessionId);
-
-    const occupied = new Set(
-      (occupiedCities || []).map((c: any) => `${c.province_q},${c.province_r}`)
-    );
-
-    let found = false;
-    const directions = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-    if (!occupied.has("0,0")) { freeQ = 0; freeR = 0; found = true; }
-    else {
-      outer:
-      for (let ring = 1; ring <= 20; ring++) {
-        let q = 0, r = -ring;
-        for (let d = 0; d < 6; d++) {
-          for (let step = 0; step < ring; step++) {
-            if (!occupied.has(`${q},${r}`)) { freeQ = q; freeR = r; found = true; break outer; }
-            q += directions[d][0]; r += directions[d][1];
-          }
-        }
+    const [{ data: occupiedCities }, { data: ownedHexes }, { data: ruralRows }] = await Promise.all([
+      supabase.from("cities").select("province_q, province_r").eq("session_id", sessionId),
+      supabase.from("province_hexes").select("q,r,province_id,biome_family,is_passable,owner_player")
+        .eq("session_id", sessionId).eq("owner_player", actor.name).eq("is_passable", true),
+      supabase.from("hex_population").select("q,r,rural_population").eq("session_id", sessionId),
+    ]);
+    const occupied = new Set((occupiedCities || []).map((c:any)=>`${c.province_q},${c.province_r}`));
+    const hexByKey = new Map<string, any>((ownedHexes || []).map((h:any):[string,any]=>[`${h.q},${h.r}`,h]));
+    const ruralByKey = new Map<string, number>((ruralRows || []).map((h:any):[string,number]=>[`${h.q},${h.r}`,Number(h.rural_population)||0]));
+    const candidates = (ownedHexes || []).filter((h:any)=>
+      !occupied.has(`${h.q},${h.r}`) && ["plains","hills","forest","swamp"].includes(h.biome_family)
+    ).map((h:any)=>{
+      let localPopulation=0;
+      // A radius-two axial hex neighbourhood has only 19 cells; use direct keyed lookups
+      // instead of scanning every rural row for every candidate tile.
+      for(let dq=-2;dq<=2;dq++)for(let dr=-2;dr<=2;dr++){
+        if(Math.max(Math.abs(dq),Math.abs(dr),Math.abs(dq+dr))>2)continue;
+        const cell=`${h.q+dq},${h.r+dr}`;
+        const source=hexByKey.get(cell) as any;
+        if(source && source.province_id===h.province_id)localPopulation+=ruralByKey.get(cell)||0;
       }
-    }
-    if (!found) { freeQ = Math.floor(Math.random() * 100) + 20; freeR = Math.floor(Math.random() * 100) + 20; }
+      return {...h,localPopulation};
+    }).filter((h:any)=>h.localPopulation>=FOUNDING_HAMLET_POPULATION)
+      .sort((a:any,b:any)=>b.localPopulation-a.localPopulation||a.q-b.q||a.r-b.r);
+    if(!candidates.length) return {events:[],error:"Na vlastním kontrolovaném území není volné místo s alespoň 100 místními venkovskými obyvateli."};
+    freeQ=candidates[0].q; freeR=candidates[0].r;
   }
 
-  // ── 1. Create city ──
-  const { data: cityData, error: cityErr } = await supabase.from("cities").insert({
-    session_id: sessionId,
-    owner_player: actor.name,
-    name: cityName.trim(),
-    province_id: provinceId || null,
-    province: provinceName || "",
-    level: "Osada",
-    settlement_level: "HAMLET",
-    tags: tags?.length > 0 ? tags : null,
-    founded_round: turnNumber,
-    flavor_prompt: flavorPrompt?.trim() || null,
-    province_q: freeQ,
-    province_r: freeR,
-    grid_x: freeQ,
-    grid_y: freeR,
-    founded_parcel_index: foundedParcelIndex,
-    // PHASE C TODO (do not remove): founding must transfer these inhabitants
-    // atomically out of the rural population pool of the surrounding cells
-    // instead of creating them ex nihilo. INVARIANT 2 becomes active then.
-    // Guarded by src/test/population-ownership.test.ts.
-    ...foundingHamletPopulation(),
-    city_stability: 70,
-    local_grain_reserve: 0,
-    local_granary_capacity: 0,
-  }).select("id").single();
-
-  if (cityErr) return { events: [], error: `City creation failed: ${cityErr.message}` };
-  const cityId = cityData.id;
+  // ── 1. Atomic city founding + rural population transfer ──
+  // One SECURITY DEFINER RPC locks the local rural rows, subtracts settlers and inserts the
+  // city in the same database transaction. A repeated command_id returns the same city without
+  // deducting residents twice; insufficient local population rolls back everything.
+  const { data: foundingData, error: foundingErr } = await supabase.rpc("found_city_with_rural_settlers", {
+    p_session_id: sessionId,
+    p_command_id: String(base.command_id),
+    p_turn_number: turnNumber,
+    p_owner_player: actor.name,
+    p_city_name: cityName.trim(),
+    p_province_id: provinceId || null,
+    p_province: provinceName || "",
+    p_tags: tags?.length > 0 ? tags : null,
+    p_flavor_prompt: flavorPrompt?.trim() || null,
+    p_q: freeQ,
+    p_r: freeR,
+    p_founded_parcel_index: foundedParcelIndex,
+    p_settlers: FOUNDING_HAMLET_POPULATION,
+  });
+  if (foundingErr) {
+    const message = foundingErr.message || "Neznámá chyba převodu osadníků";
+    const userMessage = message.includes("INSUFFICIENT_RURAL_SETTLERS")
+      ? "V okolí není dost venkovských obyvatel. Osada potřebuje 100 skutečných osadníků z vlastního území."
+      : message.includes("FOUNDING_TARGET_ENEMY_CONTROLLED")
+        ? "Na cílovém hexu je nepřátelská kontrola; zvol neutrální nebo vlastní území s dostatkem místních osadníků."
+        : message.includes("FOUNDING_TARGET_OCCUPIED")
+          ? "Na tomto poli už stojí město nebo osada."
+          : message.includes("FOUNDING_TARGET_NOT_SETTLEABLE")
+            ? "Na tomto typu terénu nelze založit osadu."
+          : message.includes("FOUNDING_TARGET_PROVINCE_MISMATCH")
+            ? "Cílové pole nepatří do vybrané provincie."
+            : message.includes("FOUNDING_TARGET_HEX_NOT_FOUND")
+              ? "Cílové pole na mapě neexistuje."
+              : `Založení osady selhalo: ${message}`;
+    return { events: [], error: userMessage };
+  }
+  const cityId = foundingData?.city_id;
+  const settlersTransferred = Number(foundingData?.transferred || 0);
+  if (!cityId || settlersTransferred !== FOUNDING_HAMLET_POPULATION) {
+    return { events: [], error: "Atomické založení nevrátilo úplný převod 100 osadníků." };
+  }
 
   // ── 1b. Physical footprint on the 32 sub-parcel grid of the founding cell ──
   const seatResult = await seatCityOnParcels(supabase, {
@@ -1086,6 +1099,18 @@ async function executeFoundCity(
 
   // ── 1c. Settlement node in the physical graph (structural, idempotent) ──
   await ensureCitySettlementNodes(supabase, sessionId);
+  const foundingReason = `Založení osady: ${cityName.trim()} [${String(base.command_id)}]`;
+  const { data: foundingNode } = await supabase.from("province_nodes")
+    .select("id").eq("session_id", sessionId).eq("city_id", cityId)
+    .eq("node_subtype", "city").maybeSingle();
+  if (foundingNode?.id) {
+    const { data: priorFoundingFlow } = await supabase.from("node_migrations")
+      .select("id").eq("session_id", sessionId).eq("reason", foundingReason).maybeSingle();
+    if (!priorFoundingFlow) await safeInsert(supabase.from("node_migrations").insert({
+      session_id: sessionId, turn_number: turnNumber, from_node: null, to_node: foundingNode.id,
+      population_delta: settlersTransferred, reason: foundingReason,
+    }));
+  }
 
   // ── 1d. Starter production bundle: a settlement subsists on real structures,
   // never on population emitting goods out of nothing (idempotent).
@@ -1122,7 +1147,7 @@ async function executeFoundCity(
     session_id: sessionId,
     turn_number: turnNumber,
     feed_type: "gossip",
-    text: `V provincii ${provinceName || ""} byla založena nová osada ${cityName.trim()}.`,
+    text: `V provincii ${provinceName || ""} byla založena nová osada ${cityName.trim()} a z okolního venkova se do ní přestěhovalo ${settlersTransferred} obyvatel.`,
     player_source: actor.name,
     related_entity_type: "city",
     related_entity_id: cityId,
@@ -1131,7 +1156,7 @@ async function executeFoundCity(
   // ── 4. Chronicle entry ──
   const chronicleText = legend?.trim()
     ? `V roce ${turnNumber} byla založena osada **${cityName.trim()}** v provincii ${provinceName || ""}, pod vládou ${actor.name}. ${legend.trim()}`
-    : `V roce ${turnNumber} byla založena osada **${cityName.trim()}** v provincii ${provinceName || ""}, pod vládou ${actor.name}. Nová osada se rodí z prachu a naděje.`;
+    : `V roce ${turnNumber} byla založena osada **${cityName.trim()}** v provincii ${provinceName || ""}, pod vládou ${actor.name}. Nová osada se rodí z okolního venkova: ${settlersTransferred} obyvatel opustilo své dosavadní domovy a přestěhovalo se do ní.`;
 
   await safeInsert(supabase.from("chronicle_entries").insert({
     session_id: sessionId,
@@ -1221,12 +1246,13 @@ async function executeFoundCity(
     event_type: "founding",
     location: cityName.trim(),
     city_id: cityId,
-    note: payload.note || `${actor.name} založil město ${cityName.trim()}.`,
+    note: payload.note || `${actor.name} založil město ${cityName.trim()} a přivedl do něj ${settlersTransferred} osadníků z okolního venkova.`,
     importance: "critical",
     reference: {
       cityName: cityName.trim(), cityId, provinceId, provinceName,
       flavorPrompt: flavorPrompt?.trim(), legend: legend?.trim(),
-      tags, provinceQ: freeQ, provinceR: freeR,
+      tags, provinceQ: freeQ, provinceR: freeR, settlersTransferred,
+      ruralSourceCells: foundingData?.source_cells || [], populationSource: "rural_transfer",
     },
   }];
 

@@ -471,6 +471,10 @@ export interface CityAccountsInput {
   basketConsumption: Record<string, number[]>;
   /** Wages actually paid last COMMITTED turn (wage_settlement). Reported only; income basis stays the proxy. */
   settledWageIncome?: number | null;
+  /** Rural wage cash actually settled in the prior committed turn. */
+  settledRuralWageIncome?: number | null;
+  /** Population and payroll decomposition for the rural catchment sub-account. */
+  population?: number; ruralPopulation?: number; producerPayroll?: number; ruralProducerPayroll?: number;
   /** Owner income actually paid last COMMITTED turn out of producer cash; null = legacy proxy. */
   settledOwnershipIncome?: number | null;
 }
@@ -502,15 +506,40 @@ export function cityAccounts(i: CityAccountsInput) {
   const disposable = grossIncome - taxes;
   const purchasingPower = disposable * M.propensityToConsume;
   const realPurchasingPower = purchasingPower / priceLevel;
-  const discretionaryBudget = Math.max(0, purchasingPower - basicCost);
   const needQty = i.needs.reduce((s, n) => s + pos(n.qty), 0);
   const consumed = i.needs.reduce((s, n) => s + Math.min(pos(n.qty), pos(n.consumed)), 0);
   const physicalCoverage = needQty > 0 ? consumed / needQty : 1;
-  /** Money shortfall for the basic basket even if every unit were physically available. */
   const affordabilityGap = Math.max(0, basicCost - purchasingPower);
   const affordability = basicCost > 0 ? clamp01(purchasingPower / basicCost) : 1;
-  /** Discretionary demand is hard budget-constrained. */
-  const discretionaryFunded = Math.min(pos(i.discretionaryWish), discretionaryBudget);
+
+  // Rural households are a separate income-and-budget account inside the attached city market.
+  // Their wages are a subset of total settled wages, never added on top. Legacy settlements without
+  // a rural split are decomposed by rural share of producer payroll; before settlement, use imputed
+  // rural producer payroll. Capital/ownership income remains with the urban owner account.
+  const ruralPopulation = pos(i.ruralPopulation);
+  const ruralShare = i.population && i.population > 0 ? clamp01(ruralPopulation / i.population) : 0;
+  const ruralPayroll = pos(i.ruralProducerPayroll), totalPayroll = pos(i.producerPayroll);
+  const ruralWageCash = i.settledRuralWageIncome != null ? pos(i.settledRuralWageIncome)
+    : settled != null ? pos(settled) * (totalPayroll > 0 ? clamp01(ruralPayroll / totalPayroll) : 0)
+    : ruralPayroll;
+  const ruralLaborIncome = Math.min(laborIncome, ruralWageCash * M.incomeUnitFactor);
+  const ruralHouseholdIncome = ruralLaborIncome;
+  const ruralTaxes = ruralHouseholdIncome * clamp01(i.householdTaxRate);
+  const ruralDisposableIncome = ruralHouseholdIncome - ruralTaxes;
+  const ruralPurchasingPower = ruralDisposableIncome * M.propensityToConsume;
+  const ruralBasicBasketCost = basicCost * ruralShare;
+  const urbanBasicBasketCost = Math.max(0, basicCost - ruralBasicBasketCost);
+  const urbanPurchasingPower = Math.max(0, purchasingPower - ruralPurchasingPower);
+  const ruralAffordability = ruralBasicBasketCost > 0 ? clamp01(ruralPurchasingPower / ruralBasicBasketCost) : 1;
+  const urbanAffordability = urbanBasicBasketCost > 0 ? clamp01(urbanPurchasingPower / urbanBasicBasketCost) : 1;
+  const ruralDiscretionaryBudget = Math.max(0, ruralPurchasingPower - ruralBasicBasketCost);
+  const urbanDiscretionaryBudget = Math.max(0, urbanPurchasingPower - urbanBasicBasketCost);
+  const discretionaryBudget = ruralDiscretionaryBudget + urbanDiscretionaryBudget;
+  const ruralDiscretionaryWish = pos(i.discretionaryWish) * ruralShare;
+  const urbanDiscretionaryWish = Math.max(0, pos(i.discretionaryWish) - ruralDiscretionaryWish);
+  const ruralDiscretionaryFunded = Math.min(ruralDiscretionaryWish, ruralDiscretionaryBudget);
+  const urbanDiscretionaryFunded = Math.min(urbanDiscretionaryWish, urbanDiscretionaryBudget);
+  const discretionaryFunded = ruralDiscretionaryFunded + urbanDiscretionaryFunded;
   const discretionaryRatio = i.discretionaryWish > 0 ? discretionaryFunded / i.discretionaryWish : 1;
   const diversity = Object.fromEntries(Object.entries(i.basketConsumption).map(([b, q]) => [b, diversityIndex(q)]));
   return {
@@ -520,6 +549,18 @@ export function cityAccounts(i: CityAccountsInput) {
     /** Informative only: city_gdp × local price level. Not used for income. */
     nominal_gdp: gdp * priceLevel, price_level: priceLevel, income_unit_factor: M.incomeUnitFactor,
     real_purchasing_power: realPurchasingPower, discretionary_budget: discretionaryBudget,
+    urban_discretionary_budget: urbanDiscretionaryBudget, rural_discretionary_budget: ruralDiscretionaryBudget,
+    rural_population: ruralPopulation, rural_wage_income: ruralLaborIncome,
+    rural_household_income: ruralHouseholdIncome, urban_household_income: Math.max(0,grossIncome-ruralHouseholdIncome),
+    rural_wage_income_per_capita: ruralPopulation>0?ruralHouseholdIncome/ruralPopulation:0,
+    rural_wage_income_basis: ruralPopulation<=0?'no_rural_population':i.settledRuralWageIncome!=null?'settled_rural_wages':settled!=null?'allocated_legacy_settlement':'imputed_rural_payroll',
+    rural_household_taxes: ruralTaxes, rural_disposable_income: ruralDisposableIncome,
+    rural_purchasing_power: ruralPurchasingPower, rural_basic_basket_cost: ruralBasicBasketCost,
+    rural_affordability: ruralAffordability, urban_affordability: urbanAffordability,
+    rural_affordability_gap: Math.max(0,ruralBasicBasketCost-ruralPurchasingPower),
+    rural_physical_need_coverage: ruralPopulation>0?physicalCoverage:1,
+    rural_discretionary_wish: ruralDiscretionaryWish, rural_discretionary_funded: ruralDiscretionaryFunded,
+    urban_discretionary_funded: urbanDiscretionaryFunded,
     discretionary_wish: pos(i.discretionaryWish), discretionary_funded: discretionaryFunded,
     discretionary_ratio: discretionaryRatio, physical_need_coverage: physicalCoverage,
     affordability_gap: affordabilityGap, affordability, diversity,

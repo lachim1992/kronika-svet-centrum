@@ -9,7 +9,7 @@ import { PRODUCT_MARKET } from './productMarket.ts';
  * realm_resources.computed_modifiers.wage_settlement through apply_goods_fiscal_plan, whose turn guard
  * makes a retry a no-op. refresh-economy never calls this.
  */
-export interface WageCityInput { city: string; producer_payroll?: number; goods_value_added?: number;
+export interface WageCityInput { city: string; producer_payroll?: number; rural_producer_payroll?: number; goods_value_added?: number;
   /** Imputed proxy labour income from cityAccounts (GDP share). Diagnostic only — never paid. */
   labor_income?: number;
   /** Imputed proxy ownership income from cityAccounts (capital share of GDP). Settled as a REAL
@@ -22,6 +22,8 @@ const OWNER_SHARE = PRODUCT_MARKET.localCapitalShare;
 export interface WageCitySettlement {
   city: string; payroll_due: number; arrears_opening: number; producer_cash_pool: number;
   wages_paid: number; household_wage_income: number; arrears_closing: number; producer_retained: number;
+  rural_payroll_due: number; rural_arrears_opening: number; rural_wages_paid: number; rural_arrears_closing: number;
+  urban_wages_paid: number; urban_arrears_closing: number;
   /** Persistent producer cash stock: opening (prior closing) + pool − wages − ownership = closing, never negative. */
   producer_cash_opening: number; producer_cash_closing: number;
   /** Ownership (profit) payout: due = imputed capital income, paid out of cash left after wages. */
@@ -39,30 +41,43 @@ export function settleWages(turn: number, accounts: WageCityInput[], prior?: { t
   return build(turn, accounts, prior);
 }
 function build(turn: number, accounts: WageCityInput[], prior?: { cities?: WageCitySettlement[] } | null) {
-  const carried = new Map((prior?.cities || []).map(c => [c.city, pos(c.arrears_closing)]));
+  const priorByCity = new Map((prior?.cities || []).map(c => [c.city, c]));
   const cash = new Map((prior?.cities || []).map(c => [c.city, pos(c.producer_cash_closing)]));
   const cities: WageCitySettlement[] = accounts.map(a => {
-    const due = pos(a.producer_payroll), open = carried.get(a.city) || 0, pool = pos(a.goods_value_added);
-    const cashOpen = cash.get(a.city) || 0;
-    const paid = Math.min(due + open, pool + cashOpen);
-    // Ownership income is paid only from cash left after wages; unpaid part is NOT carried as
-    // arrears (profit is residual, not a debt) — it simply stays in producer cash.
-    // Due = owners' share of this turn's REAL after-wage profit, in cash units (never unit-converted income,
-    // which previously double-applied incomeUnitFactor once spent).
+    const prev = priorByCity.get(a.city);
+    const due = pos(a.producer_payroll), ruralDue = Math.min(due, pos(a.rural_producer_payroll));
+    const urbanDue = Math.max(0, due-ruralDue), open = pos(prev?.arrears_closing), pool = pos(a.goods_value_added);
+    // Legacy arrears without a rural split are carried as urban; new arrears keep their origin.
+    const ruralOpen = pos(prev?.rural_arrears_closing);
+    const urbanOpen = prev?.urban_arrears_closing == null ? Math.max(0,open-ruralOpen) : pos(prev.urban_arrears_closing);
+    const ruralDueTotal = ruralDue+ruralOpen, urbanDueTotal = urbanDue+urbanOpen;
+    const totalDue = ruralDueTotal+urbanDueTotal, cashOpen = cash.get(a.city)||0;
+    const paid = Math.min(totalDue,pool+cashOpen);
+    // Pro-rata settlement preserves the same aggregate cash/wage invariant while making the
+    // rural share explicit. Both arrears pools remain separately traceable on the next turn.
+    const ruralPaid = totalDue>0 ? r(paid*ruralDueTotal/totalDue) : 0;
+    const urbanPaid = r(Math.max(0,paid-ruralPaid));
+    const paidTotal = r(ruralPaid+urbanPaid);
+    const ruralArrears = r(Math.max(0,ruralDueTotal-ruralPaid));
+    const urbanArrears = r(Math.max(0,urbanDueTotal-urbanPaid));
+    // Ownership income is paid only from cash left after wages; unpaid profit is not debt.
     const ownershipDue = OWNER_SHARE * Math.max(0, pool - due);
-    const ownershipPaid = Math.min(ownershipDue, cashOpen + pool - paid);
+    const ownershipPaid = Math.min(ownershipDue, cashOpen + pool - paidTotal);
     return { city: a.city, payroll_due: r(due), arrears_opening: r(open), producer_cash_pool: r(pool),
-      wages_paid: r(paid), household_wage_income: r(paid), arrears_closing: r(due + open - paid), producer_retained: r(Math.max(0, pool - paid)),
-      producer_cash_opening: r(cashOpen), producer_cash_closing: r(cashOpen + pool - paid - ownershipPaid),
+      wages_paid: paidTotal, household_wage_income: paidTotal, arrears_closing: r(ruralArrears+urbanArrears), producer_retained: r(Math.max(0, pool - paidTotal)),
+      rural_payroll_due: r(ruralDue), rural_arrears_opening: r(ruralOpen), rural_wages_paid: ruralPaid,
+      rural_arrears_closing: ruralArrears, urban_wages_paid: urbanPaid, urban_arrears_closing: urbanArrears,
+      producer_cash_opening: r(cashOpen), producer_cash_closing: r(cashOpen + pool - paidTotal - ownershipPaid),
       ownership_income_due: r(ownershipDue), ownership_income_paid: r(ownershipPaid), ownership_unpaid: r(ownershipDue - ownershipPaid),
-      ...recon(pos(a.labor_income), paid) };
+      ...recon(pos(a.labor_income), paidTotal) };
   });
   const sum = (k: keyof WageCitySettlement) => r(cities.reduce((t, c) => t + (c[k] as number), 0));
   return { turn, basis: 'settled' as const, treasury_effect: 0, cities,
     totals: { payroll_due: sum('payroll_due'), wages_paid: sum('wages_paid'), household_wage_income: sum('household_wage_income'),
       arrears_closing: sum('arrears_closing'), producer_retained: sum('producer_retained'), producer_cash_pool: sum('producer_cash_pool'), producer_cash_closing: sum('producer_cash_closing'),
       ownership_income_due: sum('ownership_income_due'), ownership_income_paid: sum('ownership_income_paid'), ownership_unpaid: sum('ownership_unpaid'),
-      imputed_labor_income: sum('imputed_labor_income'), imputed_minus_settled: sum('imputed_minus_settled') },
+      imputed_labor_income: sum('imputed_labor_income'), imputed_minus_settled: sum('imputed_minus_settled'),
+      rural_payroll_due: sum('rural_payroll_due'), rural_wages_paid: sum('rural_wages_paid'), rural_arrears_closing: sum('rural_arrears_closing') },
     /** Next turn's purchasing power uses these settled wages/ownership per city; proxy only where absent (legacy). */
     household_income_basis: 'settled_when_available' as const,
     /** Ownership payout is a real cash transfer out of producer cash and funds next turn's household income. */
