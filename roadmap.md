@@ -1,5 +1,9 @@
 # Map-first square-grid roadmap
 
+## Parcel placement array error — 2026-11-14
+- [x] Live trigger still assigns JSON recipe arrays directly to text[]; existing repair SQL is absent from the migration journal.
+- [ ] Reproduce weave_basic failure in isolated PostgreSQL, apply the existing repair, and verify live definition without changing saved games.
+
 ## Production/trade flow diagnosis — 2026-11-14
 - [x] Traced canonical production → stocks/reserves → demand → physical trade gates → freight paths → projections; basket endpoint is compatibility-only, not a second solver. No turn/refresh/command or game-data write.
 - [x] JV72O7 turn 7: 85.428 output but only 0.2286 exported (one raw-timber shipment); 54.429 unmet = 35.634 source_empty + 18.785 route_unreachable. Ledger/committed/current projections agree at one flow.
