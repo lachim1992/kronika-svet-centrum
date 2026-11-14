@@ -120,7 +120,7 @@ BEGIN
     IF v_take <= 0 THEN CONTINUE; END IF;
     UPDATE public.hex_population
     SET rural_population = rural_population - v_take,
-        mobile_population = greatest(0, mobile_population - least(mobile_population, v_take)),
+        mobile_population = least(greatest(0, rural_population - v_take), greatest(0, mobile_population - least(mobile_population, v_take))),
         updated_at = now()
     WHERE id = v_cell.id;
     v_remaining := v_remaining - v_take;
