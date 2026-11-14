@@ -50,6 +50,7 @@ async function rows(sb:any,table:string,session?:string){
  * factories still cannot create goods from nothing — the recipe itself must be a zero-input source.
  */
 export { normalizeStructureRoles, normalizeProductionContract, auditProductionContracts } from './productionContract.ts';
+import { CROP_RECIPE, isMature } from './cropSpread.ts';
 import { normalizeStructureRoles, normalizeProductionContract } from './productionContract.ts';
 const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clothing',ritual:'luxury_clothing',prestige:'luxury_clothing'};
 const basket=(v:string)=>remap[v]||v;

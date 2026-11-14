@@ -30,6 +30,7 @@ import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import FarmFieldPanel from "@/components/map/FarmFieldPanel";
+import CropPlantPanel from "@/components/map/CropPlantPanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
@@ -1084,8 +1085,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setSelectedMicroFindings(null);
     if (selMx === null || selMy === null) return;
     let live = true;
-    void supabase.from("micro_surveys").select("findings").eq("session_id", sessionId).eq("player_name", playerName).eq("micro_x", selMx).eq("micro_y", selMy).maybeSingle()
-      .then(({ data }) => { if (live) setSelectedMicroFindings(Array.isArray(data?.findings) ? data!.findings as Array<{ kind?: string }> : null); });
+    void Promise.all([
+      supabase.from("micro_surveys").select("findings").eq("session_id", sessionId).eq("player_name", playerName).eq("micro_x", selMx).eq("micro_y", selMy).maybeSingle(),
+      supabase.from("crop_plantings").select("kind").eq("session_id", sessionId).eq("owner_player", playerName).eq("micro_x", selMx).eq("micro_y", selMy),
+    ]).then(([{ data }, { data: planted }]) => {
+      if (!live) return;
+      const found = [...(Array.isArray(data?.findings) ? data!.findings as Array<{ kind?: string }> : []), ...((planted || []) as Array<{ kind?: string }>)];
+      setSelectedMicroFindings(found.length ? found : null);
+    });
     return () => { live = false; };
   }, [sessionId, playerName, selMx, selMy]);
   useEffect(() => { setRegionDraft(selectedParcel?.region_name ?? ""); }, [selectedParcel?.id, selectedParcel?.region_name]);
@@ -2426,6 +2433,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             parcel={{ id: selectedParcel.id, grid_x: selectedCell.a, grid_y: selectedCell.b, parcel_index: selectedParcel.parcel_index, sub_biome: selectedParcel.sub_biome ?? null,
               city_id: selectedParcel.city_id ?? null, owner_player: (selectedParcel as any).owner_player ?? null, claim_kind: selectedParcel.claim_kind }}
             macroBiome={selected?.biome_family ?? null} onChanged={() => void load()} />}
+          {selectedCell && selectedParcel.id && selectedParcel.claim_kind === "worked" && <CropPlantPanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName}
+            parcel={{ id: selectedParcel.id, micro_x: selectedCell.a * 6 + (selectedParcel.parcel_index % 6), micro_y: selectedCell.b * 6 + Math.floor(selectedParcel.parcel_index / 6),
+              sub_biome: selectedParcel.sub_biome ?? null, owner_player: (selectedParcel as any).owner_player ?? null, claim_kind: selectedParcel.claim_kind }}
+            onChanged={() => void load()} />}
           {parcelBlock && <p className="border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-200">{parcelBlock}</p>}
           {!!claimHost && selectedParcel.buildable &&
             (selectedParcel.status === "wild" || (selectedParcel.claim_kind === "worked" && selectedParcel.city_id === claimHost.id)) &&
