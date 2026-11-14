@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## Visual Map Polish 2.0 — 2026-11-14
+- [ ] Audit the active renderer and assets; preserve square coordinates, 6×6 parcels, hitboxes and game data.
+- [ ] Implement a safe painterly terrain/water/vegetation/road/city integration slice using existing assets and deterministic variation.
+- [ ] Subdue non-selected borders and grids while preserving province, selection, survey and build readability.
+- [ ] Verify the same map area before/after at the same zoom, run targeted regressions and inspect preview diagnostics.
+
 ## Phase C rural gameplay — 2026-11-14
 - [ ] Activate one-step rural growth + conservative local city migration in atomic world phase; preserve all existing baselines.
 - [ ] Separate cell-local rural workforce from urban workforce, and show canonical rural totals.
