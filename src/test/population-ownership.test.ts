@@ -160,9 +160,16 @@ describe('Phase A residue — conserving transfers and guarded paths', () => {
     }
   });
 
-  it('founding still carries the explicit Phase C conservation TODO', () => {
+  it('founding creates the city and deducts local rural settlers through one atomic RPC', () => {
     const src = fn('command-dispatch/index.ts');
-    expect(src).toContain('PHASE C TODO');
-    expect(src).toMatch(/rural population/i);
+    const migration = fn('../../drizzle/migrations/0025_rural_households_and_atomic_founding.sql');
+    expect(src).toContain('found_city_with_rural_settlers');
+    expect(src).not.toContain('PHASE C TODO');
+    expect(src).not.toContain('foundingHamletPopulation()');
+    expect(src).toContain('settlersTransferred !== FOUNDING_HAMLET_POPULATION');
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION public.found_city_with_rural_settlers');
+    expect(migration).toContain('FOR UPDATE OF hp');
+    expect(migration).toContain('INSUFFICIENT_RURAL_SETTLERS');
+    expect(migration).toContain('PRIMARY KEY (session_id, command_id)');
   });
 });
