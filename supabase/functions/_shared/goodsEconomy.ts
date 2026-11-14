@@ -471,16 +471,12 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       // other producers in the SAME sector. Capacity, jobs and output per worker stay unchanged.
       const perishableCaps=new Map<string,number>();
       for(const tier of SUBSISTENCE_TIERS)for(const basket of tier.baskets){
-        const perishable=r.own.filter(p=>p.source&&goodByKey.get(p.recipe.good)?.basket===basket&&goodByKey.get(p.recipe.good)?.storable===false&&jobsOf(p)>C.epsilon);
-        const goodKeys=[...new Set(perishable.map(p=>p.recipe.good))].sort();
-        for(const goodKey of goodKeys){
-          let target=subsistenceProductNeed(c,basket,goodKey)*tier.share*(1+C.reserveTurns);
-          const cands=perishable.filter(p=>p.recipe.good===goodKey)
-            .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
-            .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
-          for(const {p,per} of cands){const cap=Math.min(jobsOf(p),Math.max(0,target)/per);
-            perishableCaps.set(p.id,cap);target-=cap*per;}
-        }
+        let target=subsistenceNeed(c,basket)*tier.share*(1+C.reserveTurns);
+        const cands=r.own.filter(p=>p.source&&goodByKey.get(p.recipe.good)?.basket===basket&&goodByKey.get(p.recipe.good)?.storable===false&&jobsOf(p)>C.epsilon)
+          .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
+          .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
+        for(const {p,per} of cands){const cap=Math.min(jobsOf(p),Math.max(0,target)/per);
+          perishableCaps.set(p.id,cap);target-=cap*per;}
       }
       const employmentJobs=(p:Producer)=>Math.max(0,Math.min(jobsOf(p),perishableCaps.get(p.id)??jobsOf(p)));
       for(const p of r.own)if(perishableCaps.has(p.id))perishableLimited+=Math.max(0,jobsOf(p)-employmentJobs(p));
