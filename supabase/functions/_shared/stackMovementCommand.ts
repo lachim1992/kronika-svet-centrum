@@ -192,12 +192,17 @@ export async function applyStackMicroMove(
     return { ok: false, error: MICRO_BLOCK_TEXT.too_short, code: "PATH_INVALID" };
   }
   const { data: stack, error: stackErr } = await supabase.from("military_stacks")
-    .select("id, player_name, grid_x, grid_y, parcel_index, moved_this_turn")
+    .select("id, player_name, grid_x, grid_y, hex_q, hex_r, parcel_index, moved_this_turn")
     .eq("id", stackId).eq("session_id", sessionId).maybeSingle();
   if (stackErr || !stack) return { ok: false, error: "Armáda nenalezena.", code: "STACK_NOT_FOUND" };
   if (stack.player_name !== actorName) return { ok: false, error: "Tato armáda není tvoje.", code: "NOT_OWNER" };
   if (stack.moved_this_turn) return { ok: false, error: "Tato armáda se už v tomto kole pohnula.", code: "ALREADY_MOVED" };
-  if (typeof stack.grid_x !== "number" || typeof stack.grid_y !== "number") return { ok: false, error: "Armáda nemá pozici na mapě.", code: "POSITION_MISSING" };
+  const legacyGrid = typeof stack.grid_x !== "number" || typeof stack.grid_y !== "number";
+  if (legacyGrid) {
+    // Armies recruited before the square grid kept only hex_q/hex_r (same as grid_x/grid_y on square maps); the UI shows them there.
+    if (typeof stack.hex_q !== "number" || typeof stack.hex_r !== "number") return { ok: false, error: "Armáda nemá pozici na mapě.", code: "POSITION_MISSING" };
+    stack.grid_x = stack.hex_q; stack.grid_y = stack.hex_r;
+  }
   const startParcel = stack.parcel_index ?? defaultArmyParcel(stack.id);
   const start = microOf(stack.grid_x, stack.grid_y, startParcel);
   if (microPath[0].x !== start.x || microPath[0].y !== start.y) return { ok: false, error: "Cesta nezačíná u armády.", code: "PATH_START_MISMATCH" };
@@ -225,7 +230,8 @@ export async function applyStackMicroMove(
   const dest = tileOfMicro(final);
   let upd = supabase.from("military_stacks")
     .update({ grid_x: dest.gridX, grid_y: dest.gridY, hex_q: dest.gridX, hex_r: dest.gridY, parcel_index: dest.parcelIndex, moved_this_turn: true })
-    .eq("id", stackId).eq("session_id", sessionId).eq("grid_x", stack.grid_x).eq("grid_y", stack.grid_y).eq("moved_this_turn", false);
+    .eq("id", stackId).eq("session_id", sessionId).eq("moved_this_turn", false);
+  upd = legacyGrid ? upd.is("grid_x", null).eq("hex_q", stack.grid_x).eq("hex_r", stack.grid_y) : upd.eq("grid_x", stack.grid_x).eq("grid_y", stack.grid_y);
   upd = stack.parcel_index === null ? upd.is("parcel_index", null) : upd.eq("parcel_index", stack.parcel_index);
   const { data: updated, error: updErr } = await upd.select("id").maybeSingle();
   if (updErr) return { ok: false, error: `Přesun selhal: ${updErr.message}`, code: "WRITE_FAILED" };

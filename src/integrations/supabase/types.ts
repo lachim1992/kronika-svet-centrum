@@ -7104,6 +7104,7 @@ export type Database = {
           assigned_route_id: string | null
           assignment: string
           battle_context: string | null
+          battle_formation: string
           blockading_route_id: string | null
           construction_progress: number
           created_at: string
@@ -7149,6 +7150,7 @@ export type Database = {
           assigned_route_id?: string | null
           assignment?: string
           battle_context?: string | null
+          battle_formation?: string
           blockading_route_id?: string | null
           construction_progress?: number
           created_at?: string
@@ -7194,6 +7196,7 @@ export type Database = {
           assigned_route_id?: string | null
           assignment?: string
           battle_context?: string | null
+          battle_formation?: string
           blockading_route_id?: string | null
           construction_progress?: number
           created_at?: string

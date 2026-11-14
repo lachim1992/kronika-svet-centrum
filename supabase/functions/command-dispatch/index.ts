@@ -744,6 +744,19 @@ async function executeCommand(
         reference: payload,
       }], payload.chronicleText);
 
+    case "SET_BATTLE_FORMATION": {
+      const allowed = ["line", "wedge", "square", "column", "skirmish"];
+      const { stackId, formation } = payload || {};
+      if (!stackId || !allowed.includes(formation)) return { events: [], error: "Neplatná formace" };
+      const { data: upd, error: updErr } = await supabase.from("military_stacks").update({ battle_formation: formation })
+        .eq("id", stackId).eq("session_id", sessionId).eq("player_name", actor.name).select("id, name");
+      if (updErr) return { events: [], error: updErr.message };
+      if (!upd || upd.length === 0) return { events: [], error: "Armáda nepatří tomuto hráči" };
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base, event_type: "military", note: `${upd[0].name} mění formaci.`, importance: "low", reference: { stackId, formation },
+      }], payload.chronicleText);
+    }
+
     case "MOVE_STACK":
       return await executeMoveStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 

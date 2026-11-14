@@ -190,6 +190,13 @@
       "when": 1794683821685,
       "tag": "0026_micro_surveys",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794684197900,
+      "tag": "0027_army_battle_formation",
+      "breakpoints": true
     }
   ]
 }
