@@ -36,3 +36,19 @@ describe("micro-square resources", () => {
     for (const table of Object.values(MICRO_CHANCES)) for (const p of Object.values(table)) expect(p).toBeGreaterThan(0), expect(p).toBeLessThanOrEqual(1);
   });
 });
+
+import { microSiteReason } from "../../supabase/functions/_shared/microResources";
+describe("stage 2: rural sites only on confirmed resources", () => {
+  it("farm allowed on arable, refused on rock without survey", () => {
+    expect(microSiteReason(["harvest_wheat"], "grassland", "plains", null)).toBeNull();
+    expect(microSiteReason(["harvest_wheat"], "hillock", "hills", null)).toMatch(/Obilí/);
+  });
+  it("mine needs a survey find of its ore", () => {
+    expect(microSiteReason(["mine_iron"], "hillock", "hills", null)).toMatch(/Železná ruda/);
+    expect(microSiteReason(["mine_iron"], "hillock", "hills", [{ kind: "iron" }])).toBeNull();
+  });
+  it("vineyard needs surveyed wild grapes", () => {
+    expect(microSiteReason(["harvest_grapes"], "terrace", "hills", [{ kind: "olives" }])).not.toBeNull();
+    expect(microSiteReason(["harvest_grapes"], "terrace", "hills", [{ kind: "wild_grapes" }])).toBeNull();
+  });
+});

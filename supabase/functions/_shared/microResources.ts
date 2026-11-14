@@ -84,3 +84,22 @@ export function surveyMicroSquare(salt: string, mx: number, my: number, subBiome
 
 /** One tenth of a full (level-2) macro survey, rounded up. */
 export const MICRO_SURVEY_COST = 2;
+
+/** Which micro resource a rural extraction recipe physically needs on its parcel. */
+export const RECIPE_MICRO_RESOURCE: Record<string, MicroResourceKind> = {
+  fell_timber: "timber", quarry_stone: "stone", mine_iron: "iron", mine_gold: "gold", harvest_wheat: "grain", harvest_barley: "grain",
+  harvest_rice: "grain", herd_cattle: "grain", harvest_grapes: "wild_grapes", cut_peat: "peat", catch_fish: "fish",
+};
+
+/**
+ * Stage 2 gate: a rural site may stand only on a micro-square where at least one of its recipes' resources is confirmed —
+ * either certain from the sub-biome, or found by this player's own micro survey. Returns a Czech reason or null.
+ */
+export function microSiteReason(recipeKeys: string[], subBiome: string | null | undefined, macroBiome: string | null | undefined,
+  surveyed: Array<{ kind?: string }> | null | undefined): string | null {
+  const needed = [...new Set(recipeKeys.map(k => RECIPE_MICRO_RESOURCE[k]).filter(Boolean))];
+  if (!needed.length) return null;
+  const confirmed = new Set<string>([...certainMicroResources(subBiome, macroBiome), ...(surveyed || []).map(f => String(f.kind))]);
+  if (needed.some(k => confirmed.has(k))) return null;
+  return `Nedostupné: na tomto políčku není potvrzená surovina (${needed.map(k => MICRO_RESOURCE_LABEL[k]).join(" / ")}) — prozkoumej políčko nebo vyber jiné`;
+}

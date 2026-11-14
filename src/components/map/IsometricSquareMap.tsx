@@ -31,6 +31,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
+import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
 import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroPath, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
@@ -396,6 +397,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [armyMoveTarget, setArmyMoveTarget] = useState<Micro | null>(null);
   const [armyMoving, setArmyMoving] = useState(false);
   const [formationSaving, setFormationSaving] = useState(false);
+  const [selectedMicroFindings, setSelectedMicroFindings] = useState<Array<{ kind?: string }> | null>(null);
   const [flowRows, setFlowRows] = useState<FlowRow[]>([]);
   const [openCorridor, setOpenCorridor] = useState<string | null>(null);
   const [hoverCorridor, setHoverCorridor] = useState<string | null>(null);
@@ -1072,6 +1074,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const selectedCell = selected ? tileCell(selected) : null;
   const selectedHexPopulation = selected ? hexPopulation.find(row => row.q === selected.q && row.r === selected.r) : undefined;
   const selectedParcel = tileParcels.find(parcel => parcel.id === selectedParcelId) || null;
+  const selMx = selectedParcel ? selectedParcel.grid_x * 6 + (selectedParcel.parcel_index % 6) : null;
+  const selMy = selectedParcel ? selectedParcel.grid_y * 6 + Math.floor(selectedParcel.parcel_index / 6) : null;
+  useEffect(() => {
+    setSelectedMicroFindings(null);
+    if (selMx === null || selMy === null) return;
+    let live = true;
+    void supabase.from("micro_surveys").select("findings").eq("session_id", sessionId).eq("player_name", playerName).eq("micro_x", selMx).eq("micro_y", selMy).maybeSingle()
+      .then(({ data }) => { if (live) setSelectedMicroFindings(Array.isArray(data?.findings) ? data!.findings as Array<{ kind?: string }> : null); });
+    return () => { live = false; };
+  }, [sessionId, playerName, selMx, selMy]);
   useEffect(() => { setRegionDraft(selectedParcel?.region_name ?? ""); }, [selectedParcel?.id, selectedParcel?.region_name]);
   const selectedParcelContents = selectedParcel ? parcelContents.filter(item => item.parcel_id === selectedParcel.id) : [];
   const selectedNode = nodes.find(node => node.id === selectedNodeId) || null;
@@ -2493,7 +2505,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               const rural = item.kind === "building" && templateSiteRole(item.recipes.map(recipe => recipe.key)) === "rural";
               if (selectedParcel?.claim_kind === "worked" && !rural) return "Na využívané půdě lze stavět jen farmy, doly, lomy, tábory a rybářství — zpracování patří do města";
               if (selectedParcel?.claim_kind !== "worked" && rural) return "Těžební stavba patří na využívanou parcelu za městem — vyber ji nebo ji zdarma zaber";
-              if (rural) return depositSurveyReason(item.recipes.map(recipe => recipe.key), selectedMacroSurvey);
+              if (rural) return microSiteReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome, selected?.biome_family, selectedMicroFindings)
+                ?? depositSurveyReason(item.recipes.map(recipe => recipe.key), selectedMacroSurvey);
               return null;
             }}
             terrainBlockReason={item => terrainReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome)}

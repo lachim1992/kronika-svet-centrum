@@ -41,7 +41,7 @@ import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
 import { templateSiteRole, DEPOSIT_REQUIRED, availableMacroReserve, macroReserveKey, type SiteRole } from "../_shared/ruralSites.ts";
 import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { generateTileParcels } from "../_shared/tileParcels.ts";
-import { MICRO_SURVEY_COST, surveyMicroSquare } from "../_shared/microResources.ts";
+import { MICRO_SURVEY_COST, surveyMicroSquare, microSiteReason } from "../_shared/microResources.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
 
@@ -3598,6 +3598,14 @@ async function executeBuildBuilding(
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
   if (siteRole === "rural" && !targetParcel) return { events: [], error: "Město nemá volnou využívanou parcelu s vhodným terénem — nejdřív zaber okolní půdu" };
   if (targetParcel && siteRole === "rural") {
+    const mx = targetParcel.grid_x * 6 + (targetParcel.parcel_index % 6), my = targetParcel.grid_y * 6 + Math.floor(targetParcel.parcel_index / 6);
+    const [{ data: microSv, error: microErr }, { data: macroTile }] = await Promise.all([
+      supabase.from("micro_surveys").select("findings").eq("session_id", sessionId).eq("player_name", actor.name).eq("micro_x", mx).eq("micro_y", my).maybeSingle(),
+      supabase.from("province_hexes").select("biome_family").eq("session_id", sessionId).eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle(),
+    ]);
+    if (microErr) return { events: [], error: "Průzkum políčka se nepodařilo ověřit" };
+    const microReason = microSiteReason(recipeKeys || [], targetParcel.sub_biome, macroTile?.biome_family, (microSv as any)?.findings);
+    if (microReason) return { events: [], error: microReason };
     const needs = [...new Set((recipeKeys || []).map(k => DEPOSIT_REQUIRED[k]).filter(Boolean))];
     if (needs.length) {
       const [{ data: sv, error: surveyError }, { data: truth, error: truthError }, { data: previous, error: previousError }] = await Promise.all([
