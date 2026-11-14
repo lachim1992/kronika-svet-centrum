@@ -228,8 +228,9 @@ Deno.serve(async (req) => {
         }
         const { data: orderRows } = await supabase.from("siege_orders").select("seq, side, unit_key, target").eq("siege_id", sg.id).eq("turn_number", turnNumber);
         const out = resolveSiegeTurn({ seed: `${sg.id}:${turnNumber}`, wall: wallStrength(city.settlement_level), walls: sg.walls || [], units,
-          orders: (orderRows || []).map((o: any) => ({ seq: Number(o.seq), side: o.side, unitKey: o.unit_key, target: o.target })) });
-        const report = { turn: turnNumber, events: out.events, captured: out.captured, losses: out.losses };
+          orders: (orderRows || []).map((o: any) => ({ seq: Number(o.seq), side: o.side, unitKey: o.unit_key, target: o.target })), positions: sg.last_report?.positions || {} });
+        // Squares inside the city persist in last_report (written atomically by apply_siege_turn).
+        const report = { turn: turnNumber, events: out.events, captured: out.captured, losses: out.losses, positions: out.positions, roster: out.roster };
         const { error: applyErr } = await supabase.rpc("apply_siege_turn", { p_siege: sg.id, p_turn: turnNumber, p_walls: out.walls, p_losses: out.losses, p_captured: out.captured, p_report: report });
         if (applyErr) throw applyErr;
         if (out.captured) await supabase.from("game_events").insert({ session_id: sessionId, player: sg.attacker_player, event_type: "city_occupied", turn_number: turnNumber,

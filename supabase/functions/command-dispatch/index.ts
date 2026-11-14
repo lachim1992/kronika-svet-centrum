@@ -829,9 +829,10 @@ async function executeCommand(
       const kind = target?.kind;
       const ok = (kind === "wall" && unit.side === "attacker" && (siege.walls || []).some((w: any) => w.id === Number(target.segment)))
         || (kind === "unit" && units.some(u => u.key === target.key && u.side !== unit.side))
-        || (kind === "keep" && unit.side === "attacker");
+        || (kind === "keep" && unit.side === "attacker")
+        || (kind === "move" && Number.isInteger(Number(target.parcel)) && Number(target.parcel) >= 0 && Number(target.parcel) < 36);
       if (!ok) return { events: [], error: "Neplatný cíl" };
-      const clean = kind === "wall" ? { kind, segment: Number(target.segment) } : kind === "unit" ? { kind, key: String(target.key) } : { kind };
+      const clean = kind === "wall" ? { kind, segment: Number(target.segment) } : kind === "unit" ? { kind, key: String(target.key) } : kind === "move" ? { kind, parcel: Number(target.parcel) } : { kind };
       await supabase.from("siege_orders").delete().eq("siege_id", siegeId).eq("turn_number", turnNumber).eq("unit_key", unitKey);
       const { data: row, error } = await supabase.from("siege_orders").insert({ siege_id: siegeId, session_id: sessionId, turn_number: turnNumber, side: unit.side, issued_by: actor.name, unit_key: unitKey, target: clean }).select("seq").single();
       if (error) return { events: [], error: error.message };
