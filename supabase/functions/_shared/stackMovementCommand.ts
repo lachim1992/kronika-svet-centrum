@@ -34,13 +34,13 @@ export async function applyStackMove(
   // Load stack
   const { data: stack, error: stackErr } = await supabase
     .from("military_stacks")
-    .select("id, player_name, hex_q, hex_r, grid_x, grid_y, moved_this_turn, is_deployed")
+    .select("id, player_name, controller_player, hex_q, hex_r, grid_x, grid_y, moved_this_turn, is_deployed")
     .eq("id", stackId)
     .eq("session_id", sessionId)
     .maybeSingle();
 
   if (stackErr || !stack) return { ok: false, error: "Stack nenalezen.", code: "STACK_NOT_FOUND" };
-  if (stack.player_name !== actorName) return { ok: false, error: "Tento stack není tvůj.", code: "NOT_OWNER" };
+  if (stack.player_name !== actorName && stack.controller_player !== actorName) return { ok: false, error: "Tento stack není tvůj.", code: "NOT_OWNER" };
   if (!bypassMovedThisTurn && stack.moved_this_turn) {
     return { ok: false, error: "Tato jednotka se již tento tah přesunula.", code: "ALREADY_MOVED" };
   }
@@ -192,10 +192,12 @@ export async function applyStackMicroMove(
     return { ok: false, error: MICRO_BLOCK_TEXT.too_short, code: "PATH_INVALID" };
   }
   const { data: stack, error: stackErr } = await supabase.from("military_stacks")
-    .select("id, player_name, grid_x, grid_y, hex_q, hex_r, parcel_index, moved_this_turn")
+    .select("id, player_name, controller_player, grid_x, grid_y, hex_q, hex_r, parcel_index, moved_this_turn")
     .eq("id", stackId).eq("session_id", sessionId).maybeSingle();
   if (stackErr || !stack) return { ok: false, error: "Armáda nenalezena.", code: "STACK_NOT_FOUND" };
-  if (stack.player_name !== actorName) return { ok: false, error: "Tato armáda není tvoje.", code: "NOT_OWNER" };
+  if (stack.player_name !== actorName && stack.controller_player !== actorName) return { ok: false, error: "Tato armáda není tvoje.", code: "NOT_OWNER" };
+  // Passage rights are the owner's, even when a controller gives the order.
+  const ownerName = stack.player_name;
   if (stack.moved_this_turn) return { ok: false, error: "Tato armáda se už v tomto kole pohnula.", code: "ALREADY_MOVED" };
   const legacyGrid = typeof stack.grid_x !== "number" || typeof stack.grid_y !== "number";
   if (legacyGrid) {
@@ -222,7 +224,7 @@ export async function applyStackMicroMove(
       loadDiplomacyState(supabase, sessionId),
       loadHexOwners(supabase, sessionId, traversed, "square4"),
     ]);
-    const access = checkTerritoryAccess(pacts, wars, actorName, owners);
+    const access = checkTerritoryAccess(pacts, wars, ownerName, owners);
     if (access.ok === false) return { ok: false, error: access.error, code: "BLOCKED_NO_PASSAGE" };
   }
 
