@@ -2860,6 +2860,42 @@ export type Database = {
           },
         ]
       }
+      crop_plantings: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          micro_x: number
+          micro_y: number
+          owner_player: string
+          parcel_id: string
+          planted_turn: number
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          micro_x: number
+          micro_y: number
+          owner_player: string
+          parcel_id: string
+          planted_turn: number
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          micro_x?: number
+          micro_y?: number
+          owner_player?: string
+          parcel_id?: string
+          planted_turn?: number
+          session_id?: string
+        }
+        Relationships: []
+      }
       cultures: {
         Row: {
           created_at: string
@@ -13072,6 +13108,19 @@ export type Database = {
       is_session_member: {
         Args: { _session_id: string; _user_id?: string }
         Returns: boolean
+      }
+      plant_crop: {
+        Args: {
+          p_cost: number
+          p_kind: string
+          p_parcel: string
+          p_player: string
+          p_session: string
+          p_turn: number
+          p_x: number
+          p_y: number
+        }
+        Returns: Json
       }
       read_economy_management: {
         Args: { p_player: string; p_session: string; p_turn: number }
