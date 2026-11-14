@@ -1,11 +1,8 @@
 /**
- * A hamlet founded on the starter parcel footprint begins as a small settlement,
- * not an instantly populated 1,000-person city. Its food/water infrastructure
- * and claimed plots are calibrated for approximately this population.
- *
- * NOTE: This reduces the legacy ex-nihilo founding bug but does NOT implement
- * the future atomic transfer of settlers from the rural-population ledger.
- * Do not claim conservation until that Phase C transfer exists.
+ * Canonical starting size and class composition for a newly founded hamlet.
+ * The 100 residents are transferred from nearby rural cells by
+ * found_city_with_rural_settlers; this helper is only a class-composition reference
+ * and must never be used to mint population directly.
  */
 export const FOUNDING_HAMLET_POPULATION = 100;
 
