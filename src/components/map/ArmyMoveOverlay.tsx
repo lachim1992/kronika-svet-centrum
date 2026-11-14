@@ -1,6 +1,6 @@
 import { memo, useRef, useState } from "react";
 import { projectCell } from "@/lib/mapTopology";
-import { MICRO_PER_TILE, planMicroPath, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
+import { MICRO_PER_TILE, planMicroRoute, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 
 const TILE_SIZE = 42;
 
@@ -14,8 +14,8 @@ export function microWorldPoint(m: Micro) {
  * Pointer capture + live route preview for army movement. Hover state lives here so
  * moving the mouse re-renders only this overlay, never the whole map.
  */
-function ArmyMoveOverlayBase({ start, terrainAt, committed, isDrag, onPick }: {
-  start: Micro; terrainAt: (m: Micro) => MicroTerrain | undefined; committed: boolean; isDrag: () => boolean; onPick: (m: Micro | null) => void;
+function ArmyMoveOverlayBase({ start, waypoints, terrainAt, committed, isDrag, onPick }: {
+  start: Micro; waypoints: Micro[]; terrainAt: (m: Micro) => MicroTerrain | undefined; committed: boolean; isDrag: () => boolean; onPick: (m: Micro | null) => void;
 }) {
   const [hover, setHover] = useState<Micro | null>(null);
   const frame = useRef<number | null>(null);
@@ -27,7 +27,7 @@ function ArmyMoveOverlayBase({ start, terrainAt, committed, isDrag, onPick }: {
     const u = loc.x / TILE_SIZE, v = 2 * loc.y / TILE_SIZE;
     return { x: Math.floor(((u + v) / 2 + .5) * MICRO_PER_TILE), y: Math.floor(((v - u) / 2 + .5) * MICRO_PER_TILE) };
   };
-  const plan = !committed && hover ? planMicroPath(start, hover, terrainAt) : null;
+  const plan = !committed && hover ? planMicroRoute(start, [...waypoints, hover], terrainAt) : null;
   const pts = plan ? plan.path.map(microWorldPoint) : [];
   const tgt = hover ? microWorldPoint(hover) : null;
   const end = pts[pts.length - 1];

@@ -1,24 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { MAX_MEN_PER_MICRO, MOVE_BUDGET, microEntryCost, microFootprint, microOf, planMicroPath, tileOfMicro, validateMicroPath, type Micro, type MicroTerrain } from "../../supabase/functions/_shared/microMovement";
+import { MAX_MEN_PER_MICRO, MOVE_BUDGET, microEntryCost, microFootprint, microOf, planMicroPath, planMicroRoute, tileOfMicro, validateMicroPath, type Micro, type MicroTerrain } from "../../supabase/functions/_shared/microMovement";
 import { armyCampParcels } from "@/lib/tileParcels";
 
 const flat = (sub = "grassland", extra: Partial<MicroTerrain> = {}) => () => ({ macroBiome: "plains", macroPassable: true, subBiome: sub, ...extra });
 const line = (n: number): Micro[] => Array.from({ length: n + 1 }, (_, i) => ({ x: i, y: 0 }));
 
 describe("micro-square army movement", () => {
-  it("allows 10 road steps and no more", () => {
+  it("allows 30 road steps and no more", () => {
     const road = flat("grassland", { road: true });
-    expect(validateMicroPath(line(10), road)).toMatchObject({ ok: true, steps: 10 });
-    expect(validateMicroPath(line(11), road)).toMatchObject({ ok: false, reason: "over_budget" });
+    expect(validateMicroPath(line(30), road)).toMatchObject({ ok: true, steps: 30 });
+    expect(validateMicroPath(line(31), road)).toMatchObject({ ok: false, reason: "over_budget" });
   });
-  it("plains allow 6 steps, forest 5, mountains 3", () => {
-    expect(validateMicroPath(line(6), flat("grassland")).ok).toBe(true);
-    expect(validateMicroPath(line(7), flat("grassland")).ok).toBe(false);
-    expect(validateMicroPath(line(5), flat("dense_forest")).ok).toBe(true);
-    expect(validateMicroPath(line(6), flat("dense_forest")).ok).toBe(false);
+  it("plains allow 10 steps, forest 7, mountains 5", () => {
+    expect(validateMicroPath(line(10), flat("grassland")).ok).toBe(true);
+    expect(validateMicroPath(line(11), flat("grassland")).ok).toBe(false);
+    expect(validateMicroPath(line(7), flat("dense_forest")).ok).toBe(true);
+    expect(validateMicroPath(line(8), flat("dense_forest")).ok).toBe(false);
     const mountain = () => ({ macroBiome: "mountains", macroPassable: true, subBiome: null });
-    expect(validateMicroPath(line(3), mountain).ok).toBe(true);
-    expect(validateMicroPath(line(4), mountain).ok).toBe(false);
+    expect(validateMicroPath(line(5), mountain).ok).toBe(true);
+    expect(validateMicroPath(line(6), mountain).ok).toBe(false);
   });
   it("water and river without bridge are impassable, a road (bridge) crosses the river", () => {
     expect(microEntryCost({ subBiome: "open_water", macroBiome: "plains" })).toBeNull();
@@ -31,10 +31,10 @@ describe("micro-square army movement", () => {
     expect(validateMicroPath([{ x: 0, y: 0 }, { x: 1, y: 1 }], flat())).toMatchObject({ ok: false, reason: "not_adjacent" });
   });
   it("planner never exceeds the budget and stops short of an unreachable target", () => {
-    const plan = planMicroPath({ x: 0, y: 0 }, { x: 20, y: 0 }, flat());
+    const plan = planMicroPath({ x: 0, y: 0 }, { x: 40, y: 0 }, flat());
     expect(plan.reachedTarget).toBe(false);
     expect(plan.spent).toBeLessThanOrEqual(MOVE_BUDGET);
-    expect(plan.path.length - 1).toBe(6);
+    expect(plan.path.length - 1).toBe(10);
     expect(validateMicroPath(plan.path, flat()).ok).toBe(true);
   });
   it("planner prefers a road detour over open fields", () => {
@@ -42,6 +42,17 @@ describe("micro-square army movement", () => {
     const plan = planMicroPath({ x: 0, y: 0 }, { x: 8, y: 0 }, terrain);
     expect(plan.reachedTarget).toBe(true);
     expect(plan.spent).toBe(100);
+  });
+  it("route follows clicked waypoints in order and shares one budget", () => {
+    const r = planMicroRoute({ x: 0, y: 0 }, [{ x: 0, y: 5 }, { x: 5, y: 5 }], flat());
+    expect(r.reachedTarget).toBe(true);
+    expect(r.path.length - 1).toBe(10);
+    expect(r.path[5]).toEqual({ x: 0, y: 5 });
+    expect(validateMicroPath(r.path, flat()).ok).toBe(true);
+    const far = planMicroRoute({ x: 0, y: 0 }, [{ x: 0, y: 8 }, { x: 8, y: 8 }], flat());
+    expect(far.reachedTarget).toBe(false);
+    expect(far.reachedWaypoints).toBe(1);
+    expect(far.spent).toBeLessThanOrEqual(MOVE_BUDGET);
   });
   it("max 200 men per micro square; bigger armies spread but stay within one tile", () => {
     expect(MAX_MEN_PER_MICRO).toBe(200);
