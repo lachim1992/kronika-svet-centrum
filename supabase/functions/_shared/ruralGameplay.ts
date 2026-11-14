@@ -47,7 +47,8 @@ export function ruralTurn(seed: string, cells: (RuralCell & ControlledCell)[], e
   const room = new Map(cities.map(c => [c.id, c.stability >= 60 && c.food >= 0.9 ? Math.min(integer(c.housing-c.population),integer(c.vacancies)) : 0]));
   const updated = [...baseline.values()].sort((a,b) => a.q-b.q || a.r-b.r).map(before => {
     if (before.last_resolved_turn >= turn) return { ...before };
-    const row = advanceRural(before,turn), city = attached.get(key(row.q,row.r));
+    const row = advanceRural(before,turn), terrain = cells.find(c=>c.q===row.q&&c.r===row.r);
+    const city = attached.get(key(terrain?.grid_x??row.q,terrain?.grid_y??row.r));
     const people = city ? Math.min(row.mobile_population, Math.floor(row.rural_population*0.03),room.get(city) || 0) : 0;
     if (city && people > 0) {
       row.rural_population -= people; row.mobile_population = Math.min(row.rural_population, Math.max(0,row.mobile_population-people));
