@@ -1,3 +1,4 @@
+import { allocateRuralLabor } from './ruralGameplay.ts';
 import { fuelGuidance } from './fuelGuidance.ts';
 import { assertPhysicalTradeJournal } from './physicalTradeJournal.ts';
 import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass, type RoutePath } from './landedRoute.ts';
@@ -35,6 +36,7 @@ export interface Recipe { key: string; good: string; qty: number; inputs: Kinded
 export interface Producer { id: string; city: string; node?: string; cell?: string; channel: Channel; capacity: number;
   parcel?: { id: string; grid_x: number; grid_y: number; index: number; sub_biome: string; potential: number; reservoir: number; renewable: boolean; water: boolean };
   recipe: Recipe; allocation: number; staffing: number; logistics: number; mastery: number; source: boolean; distinctive: boolean;
+  ruralLabor?: { cell: string; population: number };
   /** Workers this facility can employ at full capacity. Derived from capacity × recipe labour when absent. */
   jobs?: number;
   /** Explicit craftsmanship from level/master craft (productMarket.craftsmanship); falls back to city guild. */
@@ -374,7 +376,10 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
     return basketDemandChannels(basket,{weightedPop,populationRate:C.populationDemand} as DemandInput).household_need||0;};
   const laborSupply=(c:City,sector:Sector)=>workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
-  const employed=new Map<string,number>();
+  const ruralProducers=producers.filter(p=>p.ruralLabor);
+  const ruralEmployed=allocateRuralLabor(new Map(ruralProducers.map(p=>[p.ruralLabor?.cell||'',p.ruralLabor?.population||0])),
+    ruralProducers.map(p=>({id:p.id,cell:p.ruralLabor?.cell||'',jobs:jobsOf(p)})));
+  const employed=new Map<string,number>(ruralEmployed);
   const laborMetrics:CityLabor[]=[];
   const serviceLabor=new Map<string,{infrastructure:number;jobs:number;employed:number;staffing:number}>();
   /**
@@ -389,7 +394,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     // Pass 1: every sector's own labour pool and its own jobs (goods lines + trade services).
     const plan=(Object.keys(C.sectors) as Sector[]).map(sector=>{
       const supply=laborSupply(c,sector);
-      const own=producers.filter(p=>p.city===c.id&&producerSector(p)===sector);
+      const own=producers.filter(p=>p.city===c.id&&!p.ruralLabor&&producerSector(p)===sector);
       const goodsJobs=own.reduce((s,p)=>s+jobsOf(p),0);
       // TRADE SERVICES: formal market/warehouse/port capacity creates service jobs; they are filled
       // from logistics labour left after goods producers (one labour market, deterministic order).
@@ -689,7 +694,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1,tools:toolFactor(p),capital:capitalFactor(p)};
       const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
       const desired=Math.max(0,target-(realized.get(id)||0));
-      const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target};
+      const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target, ...(p.ruralLabor?{rural_population:p.ruralLabor.population,rural_workforce:Math.floor(p.ruralLabor.population*0.5),labor_origin:'rural'}:{})};
       let qty=desired;
       const inputPaths=new Map<string,Path>();
       const loadByEdge=new Map<string,number>();

@@ -26,7 +26,8 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const sessionId = body.session_id || body.sessionId;
-    const dryRun = body.dry_run === true;
+    // Retired writer: Phase C baseline can only change in the canonical world phase.
+    const dryRun = true;
     if (!sessionId) {
       return new Response(JSON.stringify({ error: "session_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -87,7 +88,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      ok: true, shadow: true, turn, cells: cells.length, rows: rows.length, written,
+      ok: true, read_only: true, turn, cells: cells.length, rows: rows.length, written,
       totals,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {

@@ -1,3 +1,4 @@
+import { ruralTurn } from '../_shared/ruralGameplay.ts';
 import { turnJournal } from '../_shared/turnJournal.ts';
 import { economyFailure, guardedFiscal } from "../_shared/economyPhaseGuard.ts";
 import { strictDatabase } from '../_shared/strictDatabase.ts';
@@ -1006,15 +1007,6 @@ Deno.serve(async (req) => {
         // POPULATION HISTORY — written only on a successful pipeline, idempotent
         // per (session, turn). Source: the canonical population writer above.
         const popLedger = ((results.worldTick as any)?.populationLedger || []) as any[];
-        if (popLedger.length > 0) {
-          await supabase.from("city_population_ledger")
-            .delete().eq("session_id", sessionId).eq("turn_number", turnNumber);
-          for (let i = 0; i < popLedger.length; i += 50) {
-            const { error: pErr } = await supabase.from("city_population_ledger")
-              .insert(popLedger.slice(i, i + 50));
-            if (pErr) console.warn("city_population_ledger insert warning:", pErr.message);
-          }
-        }
         results.populationHistory = { turn_number: turnNumber, rows: popLedger.length };
 
         results.economySnapshot = { status: "done", turn_number: historyTurn, rows: histRows.length };
@@ -1787,13 +1779,47 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
   );
   results.migrationFlows = migration.flows;
 
+  // Rural state and city transfers are buffered in the SAME atomic world phase.
+  const loadAll = async (table: string) => {
+    const out: any[] = [];
+    for (let from=0;;from+=1000) {
+      const {data,error}=await supabase.from(table).select('*').eq('session_id',sessionId).order('id').range(from,from+999);
+      if(error)throw error; out.push(...(data||[])); if((data||[]).length<1000)return out;
+    }
+  };
+  const [ruralCells,ruralExisting,settlementNodes,{data:ruralSession},{data:priorEconomy,error:priorError}] = await Promise.all([
+    loadAll('province_hexes'),loadAll('hex_population'),loadAll('province_nodes'),
+    supabase.from('game_sessions').select('world_seed').eq('id',sessionId).single(),
+    supabase.from('economy_turn_ledgers').select('labor:committed_result->labor').eq('session_id',sessionId)
+      .eq('committed',true).lt('turn_number',turnNumber).order('turn_number',{ascending:false}).limit(1).maybeSingle(),
+  ]);
+  if(priorError)throw priorError;
+  const local = ruralTurn(String(ruralSession?.world_seed??sessionId),ruralCells,ruralExisting,(cities||[]).map((c:any)=>{
+    const i=growthInfo[c.id];
+    return {id:c.id,owner:c.owner_player,cell:`${c.grid_x??c.province_q},${c.grid_y??c.province_r}`,
+      population:i.afterGrowth-(migration.emigration[c.id]||0)+(migration.immigration[c.id]||0),housing:i.housing,
+      stability:i.stability,food:needsByCity[c.id]?.food??0,
+      vacancies:Number(priorEconomy?.labor?.find((l:any)=>l.city===c.id)?.vacancies_total||0)};
+  }),turnNumber);
+  for(const row of local.rows) {
+    const old=ruralExisting.find((r:any)=>r.q===row.q&&r.r===row.r);
+    if(old?.last_resolved_turn>=turnNumber)continue;
+    await supabase.from('hex_population').upsert({session_id:sessionId,...row},{onConflict:'session_id,q,r'});
+  }
+  for(const flow of local.flows) {
+    const node=settlementNodes.filter((n:any)=>n.city_id===flow.city&&n.is_active!==false).sort((a:any,b:any)=>a.id.localeCompare(b.id))[0];
+    if(node)await supabase.from('node_migrations').insert({session_id:sessionId,turn_number:turnNumber,from_node:null,to_node:node.id,population_delta:flow.people,reason:`Venkov ${flow.q},${flow.r}`});
+    emittedEvents.push({session_id:sessionId,turn_number:turnNumber,player:'Systém',actor_type:'system',event_type:'migration',confirmed:true,truth_state:'canon',city_id:flow.city,
+      note:`${flow.people} venkovských obyvatel se přistěhovalo do města.`,reference:{...flow,source:'rural'}});
+  }
+  results.ruralPopulation={cells:local.rows.length,immigration:local.immigration};
   const populationLedger: any[] = [];
   for (const city of (cities || [])) {
     const info = growthInfo[city.id];
     if (!info) continue;
     const emigration = migration.emigration[city.id] || 0;
     const immigration = migration.immigration[city.id] || 0;
-    const finalPop = Math.max(POPULATION_FLOOR, info.afterGrowth - emigration + immigration);
+    const finalPop = Math.max(POPULATION_FLOOR, info.afterGrowth - emigration + immigration + (local.immigration[city.id]||0));
     const natural = splitNaturalChange(info.delta, {
       population_total: info.beforePop,
       city_stability: city.city_stability,
@@ -1810,7 +1836,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
       population_after: finalPop,
       births: natural.births,
       deaths: natural.deaths,
-      local_immigration: 0, // rural → city transfer is Phase C
+      local_immigration: local.immigration[city.id] || 0,
       intercity_immigration: immigration,
       emigration,
       extraordinary_losses: 0, // famine/battle losses are applied by their own paths
@@ -1822,7 +1848,9 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
       || emigration > 0 || immigration > 0;
     if (!changed) continue;
 
-    const layers = normalizePopulationClasses(finalPop, city);
+    const localIn=local.immigration[city.id]||0;
+    const layers = normalizePopulationClasses(finalPop-localIn, city);
+    layers.population_total+=localIn; layers.population_peasants+=localIn;
     cityEvents.push({
       cityId: city.id,
       updates: {
@@ -1830,7 +1858,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
         city_stability: info.stability,
         legitimacy: info.legitimacy,
         development_level: info.dev,
-        last_migration_in: immigration,
+        last_migration_in: immigration + (local.immigration[city.id]||0),
         last_migration_out: emigration,
       },
     });
@@ -1871,6 +1899,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
   results.cityEvents = cityEvents;
   results.growthCount = cityEvents.length;
   results.populationLedger = populationLedger;
+  if(populationLedger.length)await supabase.from('city_population_ledger').upsert(populationLedger,{onConflict:'session_id,city_id,turn_number'});
 
 
   // ═══ INFLUENCE → compute with trait + civ DNA modifiers ═══
