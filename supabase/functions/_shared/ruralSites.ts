@@ -3,6 +3,7 @@
  * One physical source per parcel/recipe: a rural building REPLACES the natural parcel producer
  * (same producer id parcel:{id}:{recipe}) with a bounded, levelled capacity — never stacked on top.
  */
+import { FIELD_RECIPES, fieldBonus } from './farmFields.ts';
 export const RURAL_RECIPES = new Set(["fell_timber", "quarry_stone", "mine_iron", "harvest_wheat", "harvest_barley",
   "herd_cattle", "harvest_grapes", "cut_peat", "catch_fish", "harvest_rice", "mine_gold"]);
 /** Every rural output (crops, cattle, fish, grapes, timber, stone, ore, peat) must be hauled to the city market.
@@ -41,7 +42,7 @@ export function parcelTransport(parcelCell: string, cityCell: string, roads: Roa
   return Math.abs(px - cx) + Math.abs(py - cy) === 1 ? { factor: FOOTPATH_FACTOR, mode: "footpath" } : { factor: 0, mode: "no_road" };
 }
 
-export interface RuralSite { parcelId: string; recipeKeys: string[]; level: number; owner: string }
+export interface RuralSite { parcelId: string; recipeKeys: string[]; level: number; owner: string; fields?: number }
 /** True (private) macro deposit, key `${x},${y}|${kind}` from service-only macro_deposits. */
 export interface MacroReserve { reserve: number; grade: number }
 export const macroReserveKey = (x: number, y: number, kind: string) => `macro:${x},${y}:${kind}`;
@@ -64,7 +65,7 @@ export function depositSurveyReason(recipeKeys: string[], survey: DepositSurveyK
   const labels: Record<string, string> = { iron: "železnou rudu", gold: "zlatou žílu" };
   return `Na tomto makropoli není potvrzená ${missing.map(kind => labels[kind] || kind).join(" ani ")}.`;
 }
-export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve> }
+export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve>; fieldParcels?: Set<string> }
 
 /** Merge natural specs with the parcel's rural site; enforce deposits. Returns specs + reasons for blocked recipes. */
 export function siteSpecs(natural: { recipe: string; capacity: number; jobs: number; renewable: boolean }[], site: RuralSite | undefined,
@@ -74,8 +75,9 @@ export function siteSpecs(natural: { recipe: string; capacity: number; jobs: num
   for (const recipe of (site?.recipeKeys || []).filter(k => RURAL_RECIPES.has(k))) {
     const need = DEPOSIT_REQUIRED[recipe];
     if (need && !deposits?.has(depositKey(site!.owner, x, y, need))) { blocked.push({ recipe, reason: `chybí potvrzené ložisko (${need})` }); continue; }
-    const cap = siteCapacity(recipe, site!.level), prev = specs.get(recipe);
-    specs.set(recipe, { recipe, capacity: Math.max(cap, prev?.capacity ?? 0), jobs: Math.max(6, prev?.jobs ?? 0) * Math.max(1, site!.level),
+    const bonus = FIELD_RECIPES.has(recipe) ? fieldBonus(site!.fields ?? 0) : { capacityFactor: 1, extraJobs: 0 };
+    const cap = siteCapacity(recipe, site!.level) * bonus.capacityFactor, prev = specs.get(recipe);
+    specs.set(recipe, { recipe, capacity: Math.max(cap, prev?.capacity ?? 0), jobs: Math.max(6, prev?.jobs ?? 0) * Math.max(1, site!.level) + bonus.extraJobs,
       renewable: !["mine_iron", "mine_gold", "quarry_stone", "cut_peat"].includes(recipe), site: true });
   }
   return { specs: [...specs.values()], blocked };
