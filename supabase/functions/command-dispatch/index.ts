@@ -1017,31 +1017,31 @@ async function executeFoundCity(
   let freeR = provinceR ?? 0;
 
   if (provinceQ === undefined || provinceR === undefined) {
-    const { data: occupiedCities } = await supabase
-      .from("cities")
-      .select("province_q, province_r")
-      .eq("session_id", sessionId);
-
-    const occupied = new Set(
-      (occupiedCities || []).map((c: any) => `${c.province_q},${c.province_r}`)
-    );
-
-    let found = false;
-    const directions = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-    if (!occupied.has("0,0")) { freeQ = 0; freeR = 0; found = true; }
-    else {
-      outer:
-      for (let ring = 1; ring <= 20; ring++) {
-        let q = 0, r = -ring;
-        for (let d = 0; d < 6; d++) {
-          for (let step = 0; step < ring; step++) {
-            if (!occupied.has(`${q},${r}`)) { freeQ = q; freeR = r; found = true; break outer; }
-            q += directions[d][0]; r += directions[d][1];
-          }
-        }
+    const [{ data: occupiedCities }, { data: ownedHexes }, { data: ruralRows }] = await Promise.all([
+      supabase.from("cities").select("province_q, province_r").eq("session_id", sessionId),
+      supabase.from("province_hexes").select("q,r,province_id,biome_family,is_passable,owner_player")
+        .eq("session_id", sessionId).eq("owner_player", actor.name).eq("is_passable", true),
+      supabase.from("hex_population").select("q,r,rural_population").eq("session_id", sessionId),
+    ]);
+    const occupied = new Set((occupiedCities || []).map((c:any)=>`${c.province_q},${c.province_r}`));
+    const hexByKey = new Map((ownedHexes || []).map((h:any)=>[`${h.q},${h.r}`,h]));
+    const ruralByKey = new Map((ruralRows || []).map((h:any)=>[`${h.q},${h.r}`,Number(h.rural_population)||0]));
+    const candidates = (ownedHexes || []).filter((h:any)=>
+      !occupied.has(`${h.q},${h.r}`) && ["plains","hills","forest","swamp"].includes(h.biome_family)
+    ).map((h:any)=>{
+      let localPopulation=0;
+      for(const [cell,pop] of ruralByKey){
+        const [q,r]=cell.split(",").map(Number);
+        const distance=Math.max(Math.abs(q-h.q),Math.abs(r-h.r),Math.abs((q+r)-(h.q+h.r)));
+        if(distance>2)continue;
+        const source=hexByKey.get(cell) as any;
+        if(source && source.province_id===h.province_id)localPopulation+=pop;
       }
-    }
-    if (!found) { freeQ = Math.floor(Math.random() * 100) + 20; freeR = Math.floor(Math.random() * 100) + 20; }
+      return {...h,localPopulation};
+    }).filter((h:any)=>h.localPopulation>=FOUNDING_HAMLET_POPULATION)
+      .sort((a:any,b:any)=>b.localPopulation-a.localPopulation||a.q-b.q||a.r-b.r);
+    if(!candidates.length) return {events:[],error:"Na vlastním kontrolovaném území není volné místo s alespoň 100 místními venkovskými obyvateli."};
+    freeQ=candidates[0].q; freeR=candidates[0].r;
   }
 
   // ── 1. Atomic city founding + rural population transfer ──
