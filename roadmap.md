@@ -1,10 +1,13 @@
 # Map-first square-grid roadmap
 
 ## Přehledné okno města a mikroparcely — 2026-11-14
-- [ ] Přeskládat současnou pravou lištu do přesouvatelného vyskakovacího okna s logickými sekcemi; zachovat všechny existující akce přes command-dispatch.
-- [ ] Výrazně odlišit městem využívané mikročtverce na mapě i v přehledu 6×6.
-- [ ] Samostatně uspořádat rozrůstání a uživatelem upřesněnou zprávu; na políčka doplnit skutečný číselný přínos bez vymýšlení ekonomických bonusů.
-- [ ] Ověřit desktop, ovládání mapy, výběr parcel, regresní testy a read-only chování bez tahů či herních zápisů.
+- [x] Nové `MapDetailWindow.tsx` nahrazuje současnou dlouhou pravou lištu nemodálním portálovým oknem: desktop lze přesouvat za záhlaví a drží se uvnitř viewportu, mobil používá dolní panel. Mapa zůstává aktivní; sekce Přehled / Parcely / Rozrůst / Území oddělují dosud smíšený obsah. Existující nákup, výstavba, průzkum, provincie i správa sídel nadále používají původní command-dispatch toky.
+- [x] `IsometricSquareMap.tsx` výrazně zvýrazňuje městem držené parcely trvalým šrafováním, barvou vlastníka a silnějším obrysem; neaktivní průzkumná mřížka zůstává slabá. Všechny akce a hitboxy jsou beze změny.
+- [x] Nové `parcelDisplay.ts` uvádí na každém políčku skutečný přínos: městská parcela kapacitu bydlení (`capacity_slots × 90`), obdělávaná hlavní skutečný výnos jednoho zboží z posledního uzavřeného tahu. Různé statky se nesčítají a chybějící výnos se nevymýšlí. Rozrůst má vlastní souhrn kapacity a následujícího růstu; upřesněná zpráva „ještě nebylo co počítat“ zůstává v Přehledu, dokud nejsou k dispozici data.
+- [x] Výběr parcely v mřížce i na mapě přepne do Parcel a automaticky odhalí její detail pod mřížkou; tím je na mobilu okamžitě vidět cena, využití i skutečný výnos. Neověřená dílčí data jsou dál označena jako potenciál, nikoli jako skutečná produkce.
+- [x] Regresní pokrytí: nové `map-detail-window.test.tsx` (pozice, přesun, sekce, nemodální chování) a `parcel-display.test.ts` (90 obyvatel/slot, hlavní výnos, žádná smyšlená produkce). Finální celá sada: 119 souborů passed + 1 skipped; 943 testů passed + 3 skipped. Cílená mapová sada po poslední úpravě 13/13. Automatický preview build OK.
+- [x] Přihlášená read-only akceptace JV72O7 na `/game/d379caff-8992-48e2-9084-7c9d74acceb1`: Lambadagrad, 36 parcel, Přehled/Parcely/Rozrůst/Území, výběr parcely, drag okna z 676/76 na 406/196 a funkční zoom. Mobilní Chromium 390×844: celá mřížka i navigace bez horizontálního přetečení, klik na parcelu odhalí její detail. V obou bězích nula page errors, nula zachycených pokusů o zápis a nula opakovaných idle požadavků.
+- [x] Žádný tah, refresh-economy, seed, claim, command, backend/schema zápis ani publikace. Důkazy: `/tmp/browser/city-detail-window/{result.json,run.log,screenshots/}` a `/tmp/browser/city-detail-mobile/{run.log,mobile-parcels.png,mobile-parcel-detail.png}`.
 
 ## Province assignment runtime errors — 2026-11-14
 - [x] Canonical SQL rules remain unchanged: target province must be 4-adjacent, city tiles cannot move, and removing a tile must not split the source province. The map select previously offered every owned province without those preconditions.

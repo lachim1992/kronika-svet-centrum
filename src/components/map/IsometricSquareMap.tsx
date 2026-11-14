@@ -34,6 +34,7 @@ import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
 import { templateSiteRole, depositSurveyReason } from "../../../supabase/functions/_shared/ruralSites";
 import MacroTerritoryPanel, { type MacroSurveySnapshot } from "@/components/map/MacroTerritoryPanel";
+import MapDetailWindow, { type MapDetailSection } from "@/components/map/MapDetailWindow";
 import { parcelPotential } from "../../../supabase/functions/_shared/parcelEconomy";
 import { terrainReason } from "../../../supabase/functions/_shared/terrainSuitability";
 import spriteFarmstead from "@/assets/map/node-farmstead.png";
@@ -186,6 +187,7 @@ import { DEMAND_BASKETS } from "@/lib/goodsCatalog";
 import { BuildCatalogPanel } from "@/components/map/BuildCatalogPanel";
 import { useManagementReport } from "@/hooks/useManagementReport";
 import { indexParcelProducers, parcelZeroReason, macroSummary } from "@/lib/parcelActual";
+import { parcelBenefit } from "@/lib/parcelDisplay";
 
 
 
@@ -375,6 +377,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const cameraFrameRef = useRef<number | null>(null);
   const cameraCommitRef = useRef<number | null>(null);
   const [selected, setSelected] = useState<Tile | null>(null);
+  const [detailSection, setDetailSection] = useState<MapDetailSection>("overview");
   const hasInitialized = useRef(false);
   const lastSelectedId = useRef<string | null>(null);
   const [cityLayerCityId, setCityLayerCityId] = useState<string | null>(null);
@@ -1047,6 +1050,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const content = parcelContents.find(item => item.parcel_id === parcelId && (item.entity_type === "building" || item.entity_type === "district"));
     if (content) setBuildingTarget({ type: content.entity_type as "building" | "district", id: content.entity_id });
   }, [parcelContents]);
+  const revealParcelDetail = useCallback(() => {
+    setDetailSection("parcels");
+    window.setTimeout(() => document.getElementById("map-selected-parcel")?.scrollIntoView?.({ block: "start" }), 0);
+  }, []);
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
@@ -1229,15 +1236,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         const quad = parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y);
         const activeParcel = parcel.id === selectedParcelId;
         return <g key={parcel.id} role="button" tabIndex={0} className="cursor-pointer"
-          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); openStructureOnParcel(parcel.id); }}
-          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); openStructureOnParcel(parcel.id); } }}>
+          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); revealParcelDetail(); openStructureOnParcel(parcel.id); }}
+          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); revealParcelDetail(); openStructureOnParcel(parcel.id); } }}>
           <polygon points={quad} fill={fill}
             stroke={activeParcel ? "var(--map-focus)" : mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
-            strokeWidth={activeParcel ? 2 : mine ? .8 : .35}
-            fillOpacity={mine ? (parcel.status === "occupied" ? .78 : .58) : parcel.buildable ? (parcel.status === "wild" ? .28 : .55) : .3}
-            strokeOpacity={activeParcel ? 1 : mine ? .7 : .28} />
-          {/* hatching marks every sub-parcel the city holds without hiding its terrain */}
-          {mine && <polygon points={quad} fill={hatchFill} opacity=".28" />}
+            strokeWidth={activeParcel ? 2.2 : mine ? 1.25 : .3}
+            fillOpacity={mine ? (parcel.status === "occupied" ? .9 : .7) : parcel.buildable ? (parcel.status === "wild" ? .2 : .48) : .26}
+            strokeOpacity={activeParcel ? 1 : mine ? .95 : .22} />
+          {/* Strong, persistent hatching distinguishes city-used land from the idle survey grid. */}
+          {mine && <polygon points={quad} fill={hatchFill} opacity={parcel.status === "occupied" ? ".32" : ".5"} pointerEvents="none" />}
           <title>{`${parcel.region_name ? parcel.region_name + " · " : ""}${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}${mine ? ` · patří ${holder?.name || "městu"}` : ""}`}</title>
           {parcel.region_name && <text x={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.x + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.x) / 2}
             y={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.y + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.y) / 2}
@@ -1664,6 +1671,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const city = cityId ? cityById.get(cityId) : undefined;
     const targetZoom = city ? 2.25 : 1.65;
     setSelected(tile);
+    setDetailSection("overview");
     setCityLayerCityId(city?.id || null);
     onDetailOpenChange?.(true);
     updateCamera({ zoom: targetZoom, pan: { x: element.clientWidth * (city ? .47 : .38) / targetZoom - projected.x, y: element.clientHeight * .46 / targetZoom - projected.y } }, "now");
@@ -2100,15 +2108,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       </div>, document.body)}
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
 
-      {selected && <aside className={`map-tile-detail absolute z-40 overflow-y-auto border-primary/20 bg-background/95 shadow-2xl backdrop-blur-xl ${isMobile ? "inset-x-0 bottom-0 max-h-[64vh] rounded-t-2xl border-t p-4" : "bottom-0 right-0 top-0 w-[380px] border-l p-5"}`}>
-        <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail" onClick={() => { setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false); }}><X className="h-4 w-4"/></Button>
-        <div className="pr-10">
-          <p className="text-[10px] font-semibold uppercase text-primary">Pole {selectedCell?.a}, {selectedCell?.b}</p>
-          <h2 className="mt-1 text-xl capitalize">{selected.biome_family.replace("_", " ")}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{selected.owner_player || "Neutrální území"} · {selected.is_passable === false ? "Neprůchodné" : "Průchodné"}{selected.has_river ? " · Řeka" : ""}</p>
-        </div>
-
-        {selectedCell && <MacroTerritoryPanel key={`${selectedCell.a},${selectedCell.b}`} sessionId={sessionId} playerName={playerName} currentTurn={currentTurn}
+      {selected && <MapDetailWindow
+        title={selectedCity?.name || selected.biome_family.replace("_", " ")}
+        eyebrow={`${selectedCity ? "Město" : "Pole"} · ${selectedCell?.a}, ${selectedCell?.b}`}
+        description={`${selected.owner_player || "Neutrální území"} · ${selected.is_passable === false ? "Neprůchodné" : "Průchodné"}${selected.has_river ? " · Řeka" : ""}`}
+        section={detailSection}
+        onSectionChange={setDetailSection}
+        isMobile={isMobile}
+        onClose={() => { setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false); }}
+      >
+        {detailSection === "territory" && selectedCell && <MacroTerritoryPanel key={`${selectedCell.a},${selectedCell.b}`} sessionId={sessionId} playerName={playerName} currentTurn={currentTurn}
           gridX={selectedCell.a} gridY={selectedCell.b} owner={selected.owner_player || null} provinceId={(selected as any).province_id || null}
           passable={selected.is_passable !== false} biome={selected.biome_family} ownedTiles={tiles.filter(t => t.owner_player === playerName).length}
           adjacentOwned={tiles.some(t => t.owner_player === playerName && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)}
@@ -2117,7 +2126,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)
             .map(t => String((t as any).province_id)))]}
           onChanged={load} onSurveyChange={setSelectedMacroSurvey} />}
-        <section className="mt-4 border border-border/70 bg-muted/20 p-3">
+        {detailSection === "overview" && <section className="border border-border/70 bg-muted/20 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium">Obyvatelstvo pole</h3>
@@ -2136,9 +2145,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </> : <p className="mt-3 text-xs text-muted-foreground">Pro toto pole zatím nebyla venkovská populace vypočtena.</p>}
           {selectedCity && <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2 text-xs"><span>Městská populace · {selectedCity.name}</span><span className="font-mono font-semibold">{selectedCity.population_total.toLocaleString("cs-CZ")}</span></div>}
           <p className="mt-2 text-[10px] text-muted-foreground">Venkovský odhad je zatím informativní a nesčítá se s kanonickou populací města.</p>
-        </section>
+        </section>}
 
-        <section className="mt-5 border-y border-border/70 py-4">
+        {detailSection === "parcels" && <section className="border-y border-border/70 py-4">
           <div className="mb-2 flex items-baseline justify-between">
             <h3 className="text-sm">Podparcely pole ({TILE_PARCEL_COLS}×{TILE_PARCEL_ROWS})</h3>
             <span className="text-[10px] text-muted-foreground">{claimedSlots * POPULATION_PER_SLOT} míst k bydlení</span>
@@ -2152,16 +2161,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const mine = parcel.owner_player === playerName;
                 const affordable = treasury.gold >= cost.gold && treasury.production >= cost.production;
                 const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild" && affordable;
+                const actual = parcelActuals.get(parcel.id);
+                const benefit = parcelBenefit(parcel, actual);
                 return <button key={parcel.id} type="button" disabled={claimingParcel !== null}
-                  onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); openStructureOnParcel(parcel.id); }}
-                  title={`${parcel.region_name ? parcel.region_name + " · " : ""}${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.claim_kind === "worked" ? "využívaná půda · jedna venkovská stavba" : `${parcel.capacity_slots} stavebních slotů`} · kupní cena ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
-                  className={`aspect-square border text-[8px] leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
-                    parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
+                  aria-label={`Parcela ${parcel.parcel_index + 1}: ${benefit.label} ${benefit.detail}`}
+                  onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); revealParcelDetail(); openStructureOnParcel(parcel.id); }}
+                  title={`${parcel.region_name ? parcel.region_name + " · " : ""}${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${benefit.label} ${benefit.detail} · ${parcel.claim_kind === "worked" ? "využívaná půda · jedna venkovská stavba" : `${parcel.capacity_slots} stavebních slotů`} · kupní cena ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
+                  className={`aspect-square border px-0.5 py-1 text-center leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
+                    parcel.status === "occupied" ? "border-primary/70 bg-primary/25"
                     : parcel.status === "claimed" && parcel.claim_kind === "worked" ? "border-emerald-500/70 bg-emerald-800/30"
-                    : parcel.status === "claimed" ? (mine ? "border-primary/40 bg-primary/10" : "border-border bg-muted/40")
+                    : parcel.status === "claimed" ? (mine ? "border-primary/50 bg-primary/15" : "border-border bg-muted/40")
                     : !parcel.buildable ? "border-border/40 bg-muted/20 text-muted-foreground"
                     : canClaim ? "border-border bg-card hover:border-primary hover:bg-primary/10" : "border-border bg-card"}`}>
-                  {parcel.status === "occupied" ? "🏠" : parcel.claim_kind === "worked" ? "🌿" : parcel.status === "claimed" ? "▣" : !parcel.buildable ? "▲" : parcel.parcel_index + 1}
+                  <span className="flex items-center justify-center gap-1 text-[9px] font-semibold">
+                    {parcel.parcel_index + 1}{parcel.status === "occupied" ? " · ⌂" : parcel.claim_kind === "worked" ? " · ♧" : parcel.status === "claimed" ? " · ▣" : !parcel.buildable ? " · ▲" : ""}
+                  </span>
+                  <span className={`mt-1.5 block text-[10px] font-bold ${benefit.kind === "yield" ? "text-primary" : ""}`}>{benefit.label}</span>
+                  <span className="mt-1 block text-[7px] text-muted-foreground">{benefit.kind === "yield" ? "výnos / tah" : "bydlení"}</span>
                 </button>;
               })}
             </div>
@@ -2176,9 +2192,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </p>
 
           </>}
-        </section>
+        </section>}
 
-        <section className="mt-4 border border-primary/25 bg-primary/5 p-3">
+        {detailSection === "territory" && <section className="mt-4 border border-primary/25 bg-primary/5 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium">Cesty a infrastruktura</h3>
@@ -2203,9 +2219,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {canBuildRoadHere && <p className="mt-2 text-[11px] text-muted-foreground">
              Po stisknutí kresli přes sousední podčtverce, zvol jednu ze tří úrovní a potvrď cenu. Trasa může zůstat i uvnitř tohoto pole.
           </p>}
-        </section>
+        </section>}
 
-        {selectedCity && <section className="mt-4 space-y-2 border border-border/70 p-3">
+        {detailSection === "overview" && selectedCity && <section className="mt-4 space-y-2 border border-border/70 p-3">
           <div className="flex items-baseline justify-between">
             <h3 className="text-sm">Výroba a pracovní síla · {selectedCity.name}</h3>
             <span className="text-[10px] text-muted-foreground">{labour.production.length}/{labour.slots} obsazeno</span>
@@ -2247,7 +2263,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {selectedCity.owner_player !== playerName && <p className="text-[10px] text-muted-foreground">Cizí město — výrobu tu nastavit nelze.</p>}
         </section>}
 
-        {selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
+        {detailSection === "parcels" && selectedParcel && <section id="map-selected-parcel" className="mt-4 scroll-mt-2 space-y-3 border border-primary/25 bg-primary/5 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p>
@@ -2440,37 +2456,43 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
         </section>}
 
-        {!selectedParcel && <section className="mt-4 border border-border p-3 text-[11px] text-muted-foreground">
+        {detailSection === "parcels" && !selectedParcel && <section className="mt-4 border border-border p-3 text-[11px] text-muted-foreground">
           Klikni na podčtverec v mřížce výše — všechny akce (vykoupení, čtvrti, budovy, subuzly, cesty i založení osady) se otevřou pro vybranou parcelu.
         </section>}
 
 
 
-        {selectedCity && <div className="mt-5 space-y-4">
-          <div className="border-y border-border/70 py-4">
-            <div className="flex items-start justify-between gap-3"><div><p className="font-display text-lg">{selectedCity.name}</p><p className="text-xs text-muted-foreground">{selectedCity.settlement_level} · úroveň {selectedCity.development_level}</p></div><Button size="sm" variant="outline" onClick={() => onCityClick?.(selectedCity.id)}>Otevřít město <ArrowUpRight className="ml-1 h-3.5 w-3.5"/></Button></div>
+        {detailSection === "overview" && selectedCity && <div className="mt-4 space-y-4">
+          <div className="flex items-start justify-between gap-3 border-y border-border/70 py-4">
+            <div><p className="font-display text-lg">{selectedCity.name}</p><p className="text-xs text-muted-foreground">{selectedCity.settlement_level} · úroveň {selectedCity.development_level}</p></div>
+            <Button size="sm" variant="outline" onClick={() => onCityClick?.(selectedCity.id)}>Otevřít město <ArrowUpRight className="ml-1 h-3.5 w-3.5"/></Button>
           </div>
-          <section>
-            <div className="mb-2 flex justify-between text-xs"><span>Zaplnění města</span><strong>{growthPressure} %</strong></div>
-            <Progress value={growthPressure} className="h-2"/>
-            <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
-              <div><strong className="block text-foreground">{selectedCity.population_total.toLocaleString("cs-CZ")}</strong><span className="text-muted-foreground">obyvatel</span></div>
-              <div><strong className="block text-foreground">{occupiedParcels}/{cityHeldParcels.length}</strong><span className="text-muted-foreground">zastavěných parcel</span></div>
-              <div><strong className="block text-foreground">{netGrowth >= 0 ? "+" : ""}{netGrowth}</strong><span className="text-muted-foreground">růst/kolo</span></div>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Drží {cityHeldParcels.length} podparcel na {(cityCellsById.get(selectedCity.id) || []).length || 1} polích · kapacita {cityCapacity.toLocaleString("cs-CZ")} obyvatel.</p>
-          </section>
           <CityEconomyBrief sessionId={sessionId} playerName={playerName} currentTurn={currentTurn}
             cityId={selectedCity.id} nameOf={id => cityById.get(id)?.name || ""}
             freeParcels={Math.max(0, cityHeldParcels.length - occupiedParcels)} treasury={treasury}/>
         </div>}
 
-        {!selectedCity && expansionCity && <div className="mt-6 border border-primary/30 bg-primary/5 p-4 text-sm">
-          <h3 className="text-base">Rozšířit {expansionCity.name}</h3>
-          <p className="mt-2 text-xs text-muted-foreground">Město tlačí na hranice z {growthPressure} %. Vykupuj jednotlivé podparcely v mřížce výše — každá přidá kapacitu podle svého podterénu.</p>
-        </div>}
-        {!selectedCity && !expansionCity && <div className="mt-6 border border-border p-4 text-sm text-muted-foreground"><p>Na tomto poli není město ani možný směr rozšíření.</p><p className="mt-2 text-xs">Parcely lze vykupovat z pole vašeho města nebo z pole hned vedle něj.</p></div>}
-      </aside>}
+        {detailSection === "growth" && <section className="border border-primary/25 bg-primary/5 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div><h3 className="text-base">Rozrůstání města</h3><p className="mt-1 text-xs text-muted-foreground">Kapacita, zastavěnost a další výstavba odděleně od hospodářství.</p></div>
+            {(selectedCity || expansionCity) && <Button size="sm" variant="outline" onClick={() => setDetailSection("parcels")}>Vybrat parcelu</Button>}
+          </div>
+          {selectedCity ? <>
+            <div className="mb-2 mt-5 flex justify-between text-xs"><span>Zaplnění města</span><strong>{growthPressure} %</strong></div>
+            <Progress value={growthPressure} className="h-2"/>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="border border-border/60 bg-background/50 p-3"><strong className="block text-base text-foreground">{selectedCity.population_total.toLocaleString("cs-CZ")}</strong><span className="text-muted-foreground">obyvatel</span></div>
+              <div className="border border-border/60 bg-background/50 p-3"><strong className="block text-base text-foreground">{occupiedParcels}/{cityHeldParcels.length}</strong><span className="text-muted-foreground">zastavěných parcel</span></div>
+              <div className="border border-border/60 bg-background/50 p-3"><strong className="block text-base text-foreground">{netGrowth >= 0 ? "+" : ""}{netGrowth}</strong><span className="text-muted-foreground">růst / kolo</span></div>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">Drží {cityHeldParcels.length} podparcel na {(cityCellsById.get(selectedCity.id) || []).length || 1} polích · kapacita {cityCapacity.toLocaleString("cs-CZ")} obyvatel · volno {Math.max(0, cityCapacity - selectedCity.population_total).toLocaleString("cs-CZ")}.</p>
+            <div className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">Stavební parcela přidá bydlení podle počtu slotů. Využívaná půda přidává výnos, nikoli městské bydlení.</div>
+          </> : expansionCity ? <div className="mt-4">
+            <h4 className="text-sm">Rozšířit {expansionCity.name}</h4>
+            <p className="mt-2 text-xs text-muted-foreground">Město tlačí na hranice z {growthPressure} %. V sekci Parcely vykupuj jednotlivé podčtverce — každý ukazuje přínos pro bydlení nebo skutečný výnos.</p>
+          </div> : <p className="mt-4 text-xs text-muted-foreground">Na tomto poli není město ani možný směr rozšíření. Parcely lze vykupovat z pole vašeho města nebo z pole hned vedle něj.</p>}
+        </section>}
+      </MapDetailWindow>}
 
       {selectedArmy && <aside className={`map-tile-detail absolute z-40 overflow-y-auto border-primary/20 bg-background/95 shadow-2xl backdrop-blur-xl ${isMobile ? "inset-x-0 bottom-0 max-h-[64vh] rounded-t-2xl border-t p-4" : "bottom-0 right-0 top-0 w-[380px] border-l p-5"}`}>
         <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail armády" onClick={() => { setSelectedArmyId(null); onDetailOpenChange?.(false); }}><X className="h-4 w-4"/></Button>
