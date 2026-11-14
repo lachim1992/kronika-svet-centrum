@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## Přehledné okno města a mikroparcely — 2026-11-14
+- [ ] Přeskládat současnou pravou lištu do přesouvatelného vyskakovacího okna s logickými sekcemi; zachovat všechny existující akce přes command-dispatch.
+- [ ] Výrazně odlišit městem využívané mikročtverce na mapě i v přehledu 6×6.
+- [ ] Samostatně uspořádat rozrůstání a uživatelem upřesněnou zprávu; na políčka doplnit skutečný číselný přínos bez vymýšlení ekonomických bonusů.
+- [ ] Ověřit desktop, ovládání mapy, výběr parcel, regresní testy a read-only chování bez tahů či herních zápisů.
+
 ## Province assignment runtime errors — 2026-11-14
 - [x] Canonical SQL rules remain unchanged: target province must be 4-adjacent, city tiles cannot move, and removing a tile must not split the source province. The map select previously offered every owned province without those preconditions.
 - [x] `MacroTerritoryPanel` now receives actual adjacent province IDs and city presence from `IsometricSquareMap`; it offers only the current or eligible adjacent province, disables impossible moves and defensively rejects stale invalid selections. Command/refetch failures are caught and shown as toast errors with busy state always cleared; server remains authoritative.
