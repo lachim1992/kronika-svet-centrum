@@ -1050,6 +1050,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const content = parcelContents.find(item => item.parcel_id === parcelId && (item.entity_type === "building" || item.entity_type === "district"));
     if (content) setBuildingTarget({ type: content.entity_type as "building" | "district", id: content.entity_id });
   }, [parcelContents]);
+  const revealParcelDetail = useCallback(() => {
+    setDetailSection("parcels");
+    window.setTimeout(() => document.getElementById("map-selected-parcel")?.scrollIntoView?.({ block: "start" }), 0);
+  }, []);
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
@@ -1232,8 +1236,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         const quad = parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y);
         const activeParcel = parcel.id === selectedParcelId;
         return <g key={parcel.id} role="button" tabIndex={0} className="cursor-pointer"
-          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); setDetailSection("parcels"); openStructureOnParcel(parcel.id); }}
-          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); setDetailSection("parcels"); openStructureOnParcel(parcel.id); } }}>
+          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); revealParcelDetail(); openStructureOnParcel(parcel.id); }}
+          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); revealParcelDetail(); openStructureOnParcel(parcel.id); } }}>
           <polygon points={quad} fill={fill}
             stroke={activeParcel ? "var(--map-focus)" : mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
             strokeWidth={activeParcel ? 2.2 : mine ? 1.25 : .3}
@@ -2161,7 +2165,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const benefit = parcelBenefit(parcel, actual);
                 return <button key={parcel.id} type="button" disabled={claimingParcel !== null}
                   aria-label={`Parcela ${parcel.parcel_index + 1}: ${benefit.label} ${benefit.detail}`}
-                  onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); setDetailSection("parcels"); openStructureOnParcel(parcel.id); }}
+                  onClick={() => { setSelectedParcelId(parcel.id); setSelectedNodeId(null); revealParcelDetail(); openStructureOnParcel(parcel.id); }}
                   title={`${parcel.region_name ? parcel.region_name + " · " : ""}${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${benefit.label} ${benefit.detail} · ${parcel.claim_kind === "worked" ? "využívaná půda · jedna venkovská stavba" : `${parcel.capacity_slots} stavebních slotů`} · kupní cena ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
                   className={`aspect-square border px-0.5 py-1 text-center leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
                     parcel.status === "occupied" ? "border-primary/70 bg-primary/25"
@@ -2259,7 +2263,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {selectedCity.owner_player !== playerName && <p className="text-[10px] text-muted-foreground">Cizí město — výrobu tu nastavit nelze.</p>}
         </section>}
 
-        {detailSection === "parcels" && selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
+        {detailSection === "parcels" && selectedParcel && <section id="map-selected-parcel" className="mt-4 scroll-mt-2 space-y-3 border border-primary/25 bg-primary/5 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p>
