@@ -498,3 +498,9 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] dispatchCommand never throws (network/empty reply → error message).
 - [ ] Deploy command-dispatch after authorization; verify a real build in a scratch world.
 - [ ] Early-game viability decision (cheaper farm / raw construction efficiency / starter fuel) still awaits owner.
+
+## JV72O7 testovací obchod (2026-11-14, se svolením hráče)
+- [x] Zdarma vloženo 5 zpracovatelských budov (Lambadagrad: Mlýn, Pekárna; Kwak: Mlýn, Kamenictví; Hakka: Kamenictví), každá zapsána v admin_audit_log jako `insert_free_test_building`.
+- [x] Oprava: `economyAdapter.rows()` řadil `macro_deposits` podle neexistujícího `id` → tah 7 selhal fail-closed v compute-trade-flows; nyní řadí podle grid_x, grid_y. Nasazeno compute-trade-flows, commit-turn, backfill-parcel-economy.
+- [x] Tah 7→8 proběhl: zásilky 1 → 5 (dřevo Qweo/Hakka→Kwak, obilí Kwak→Lambadagrad), objem 0,23 → 0,70.
+- [ ] Objemy jsou stále malé; další krok: kalibrace výroby/poptávky v izolované simulaci.
