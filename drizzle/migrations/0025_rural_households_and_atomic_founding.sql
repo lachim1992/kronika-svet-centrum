@@ -85,8 +85,8 @@ BEGIN
   WHERE session_id = p_session_id AND q = p_q AND r = p_r
   FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'FOUNDING_TARGET_HEX_NOT_FOUND'; END IF;
-  IF v_target.owner_player IS DISTINCT FROM p_owner_player THEN
-    RAISE EXCEPTION 'FOUNDING_TARGET_NOT_OWNED';
+  IF v_target.owner_player IS NOT NULL AND v_target.owner_player IS DISTINCT FROM p_owner_player THEN
+    RAISE EXCEPTION 'FOUNDING_TARGET_ENEMY_CONTROLLED';
   END IF;
   IF NOT v_target.is_passable OR v_target.biome_family NOT IN ('plains','hills','forest','swamp') THEN
     RAISE EXCEPTION 'FOUNDING_TARGET_NOT_SETTLEABLE';
