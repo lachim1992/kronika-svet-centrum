@@ -110,4 +110,24 @@ describe('product market layer', () => {
     expect(acc.find(a => a.city === 'b')!.settled_wage_income).toBe(7);
     expect(acc.find(a => a.city === 'a')!.settled_wage_income).toBeNull();
   });
+  it('keeps rural household wages and discretionary budgets separate without double-counting city income',()=>{
+    const input={city:'c',valueAdded:1000,householdTaxRate:0,
+      needs:[{good:'g',qty:100,localPrice:1,basePrice:1,consumed:100}],
+      discretionaryWish:100,basketConsumption:{},population:1000,ruralPopulation:400,
+      producerPayroll:1000,ruralProducerPayroll:400,settledWageIncome:1000,settledRuralWageIncome:400};
+    const acc=cityAccounts(input);
+    expect(acc.rural_population).toBe(400);
+    expect(acc.rural_wage_income).toBeCloseTo(400*PRODUCT_MARKET.incomeUnitFactor,9);
+    expect(acc.rural_household_income+acc.urban_household_income).toBeCloseTo(acc.household_income,9);
+    expect(acc.rural_basic_basket_cost).toBeCloseTo(40,9);
+    expect(acc.rural_discretionary_budget+acc.urban_discretionary_budget).toBeCloseTo(acc.discretionary_budget,9);
+    expect(acc.rural_discretionary_funded+acc.urban_discretionary_funded).toBeCloseTo(acc.discretionary_funded,9);
+    expect(acc.rural_wage_income_basis).toBe('settled_rural_wages');
+  });
+  it('decomposes legacy aggregate wage settlements by actual rural producer payroll share',()=>{
+    const acc=cityAccounts({city:'c',valueAdded:1000,householdTaxRate:0,needs:[],discretionaryWish:0,basketConsumption:{},
+      population:1000,ruralPopulation:400,producerPayroll:1000,ruralProducerPayroll:250,settledWageIncome:800});
+    expect(acc.rural_wage_income).toBeCloseTo(200*PRODUCT_MARKET.incomeUnitFactor,9);
+    expect(acc.rural_wage_income_basis).toBe('allocated_legacy_settlement');
+  });
 });
