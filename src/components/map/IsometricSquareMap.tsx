@@ -1074,6 +1074,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const selectedCell = selected ? tileCell(selected) : null;
   const selectedHexPopulation = selected ? hexPopulation.find(row => row.q === selected.q && row.r === selected.r) : undefined;
   const selectedParcel = tileParcels.find(parcel => parcel.id === selectedParcelId) || null;
+  const selMx = selectedParcel ? selectedParcel.grid_x * 6 + (selectedParcel.parcel_index % 6) : null;
+  const selMy = selectedParcel ? selectedParcel.grid_y * 6 + Math.floor(selectedParcel.parcel_index / 6) : null;
+  useEffect(() => {
+    setSelectedMicroFindings(null);
+    if (selMx === null || selMy === null) return;
+    let live = true;
+    void supabase.from("micro_surveys").select("findings").eq("session_id", sessionId).eq("player_name", playerName).eq("micro_x", selMx).eq("micro_y", selMy).maybeSingle()
+      .then(({ data }) => { if (live) setSelectedMicroFindings(Array.isArray(data?.findings) ? data!.findings as Array<{ kind?: string }> : null); });
+    return () => { live = false; };
+  }, [sessionId, playerName, selMx, selMy]);
   useEffect(() => { setRegionDraft(selectedParcel?.region_name ?? ""); }, [selectedParcel?.id, selectedParcel?.region_name]);
   const selectedParcelContents = selectedParcel ? parcelContents.filter(item => item.parcel_id === selectedParcel.id) : [];
   const selectedNode = nodes.find(node => node.id === selectedNodeId) || null;
