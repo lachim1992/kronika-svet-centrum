@@ -4,7 +4,7 @@
  * grain on arable flats). Rare ones are a chance, hidden until a paid micro survey, and only exist where the macro tile's
  * true deposits allow them — so a micro find never invents a deposit the macro geology does not hold.
  */
-import { DEPOSIT_GOOD, type Deposit, type DepositKind } from "./geology.ts";
+import { type Deposit, type DepositKind } from "./geology.ts";
 
 export type MicroResourceKind =
   | "grain" | "stone" | "timber" | "fish" | "peat" | "clay" | "fibre" | "game" | "resin"
@@ -12,7 +12,7 @@ export type MicroResourceKind =
 
 export const MICRO_RESOURCE_GOOD: Record<MicroResourceKind, string | null> = {
   grain: "raw_grain", stone: "raw_stone", timber: "raw_timber", fish: "raw_fish", peat: "peat", clay: null,
-  fibre: "raw_fibre", game: "raw_meat", resin: "resin_incense", wild_grapes: "raw_grapes", olives: "raw_olives",
+  fibre: "raw_fiber", game: "raw_meat", resin: "raw_incense", wild_grapes: "raw_grapes", olives: "raw_olives",
   iron: "raw_ore", gold: "gold_ore", copper: null, granite: null, herbs: null,
 };
 export const MICRO_RESOURCE_LABEL: Record<MicroResourceKind, string> = {
@@ -84,4 +84,3 @@ export function surveyMicroSquare(salt: string, mx: number, my: number, subBiome
 
 /** One tenth of a full (level-2) macro survey, rounded up. */
 export const MICRO_SURVEY_COST = 2;
-export const _depositGood = DEPOSIT_GOOD;
