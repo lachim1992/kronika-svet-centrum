@@ -947,6 +947,20 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [siegeUnitKey, setSiegeUnitKey] = useState<string | null>(null);
   const [siegeMapOrder, setSiegeMapOrder] = useState<{ unitKey: string; target: any; n: number } | null>(null);
   useEffect(() => { setSiegeUnitKey(null); }, [selectedArmyId]);
+  // All active sieges + this turn's orders: squads stand in front of their wall (with a ram) or inside a breached city.
+  const [siegeScene, setSiegeScene] = useState<{ sieges: { id: string; city_id: string; walls: { id: number; breached: boolean }[]; attacker_player: string }[]; orders: { unit_key: string; target: any }[] }>({ sieges: [], orders: [] });
+  useEffect(() => {
+    let off = false;
+    void (async () => {
+      const { data: sg } = await supabase.from("sieges").select("id, city_id, walls, attacker_player").eq("session_id", sessionId).eq("status", "active");
+      const ids = (sg || []).map((x: any) => x.id);
+      const { data: o } = ids.length ? await supabase.from("siege_orders").select("unit_key, target").in("siege_id", ids).eq("turn_number", currentTurn) : { data: [] as any[] };
+      if (!off) setSiegeScene({ sieges: (sg || []) as any, orders: (o || []) as any });
+    })();
+    return () => { off = true; };
+  }, [sessionId, currentTurn, siegeView]);
+  const siegeSpotRef = useRef<(lead: any, unitKey: string, order: number) => { x: number; y: number; ram: boolean } | null>(() => null);
+  const siegeSpot = (lead: any, unitKey: string, order: number) => siegeSpotRef.current(lead, unitKey, order);
   useEffect(() => { setArmyMoveMode(false); clearArmyWaypoints(); }, [selectedArmyId, clearArmyWaypoints]);
   /** Same terrain the server validates with: stored sub-squares, macro biome otherwise, completed road cells. */
   const microTerrainAt = useMemo(() => {
@@ -2128,6 +2142,18 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {tgt && !armyMovePlan.reachedTarget && <circle cx={tgt.x} cy={tgt.y} r="3.5" fill="none" stroke="var(--map-city-rival)" strokeWidth="1.5" strokeDasharray="2 2" />}
             </g>;
           })()}
+          {(() => { siegeSpotRef.current = (lead, unitKey, order) => {
+            const sg = siegeScene.sieges.find(x => x.attacker_player === lead.player_name && (() => { const c = cities.find(cc => cc.id === x.city_id); if (!c || c.grid_x == null || c.grid_y == null) return false; const ac = entityCell(lead); return Math.max(Math.abs((lead.grid_x ?? ac.a) - c.grid_x), Math.abs((lead.grid_y ?? ac.b) - c.grid_y)) <= 1; })());
+            if (!sg) return null; const city = cities.find(cc => cc.id === sg.city_id)!; const p = at(city.grid_x!, city.grid_y!);
+            const o = siegeScene.orders.find(x => x.unit_key === unitKey); const n = sg.walls.length || 4;
+            const jitter = (k: number) => ({ x: ((k * 37) % 9 - 4) * 1.6, y: ((k * 53) % 7 - 3) * 1.1 });
+            const breached = sg.walls.some(w => w.breached);
+            if (o?.target?.kind === "wall") { const a = -Math.PI / 2 + (o.target.segment / n) * Math.PI * 2; const j = jitter(order);
+              return { x: p.x + Math.cos(a) * TILE_SIZE * .95 + j.x, y: p.y + Math.sin(a) * TILE_SIZE * .48 + j.y, ram: true }; }
+            if (breached && (o?.target?.kind === "keep" || o?.target?.kind === "unit" || !o)) { const a = order * 2.39996; const r = 4 + (order % 6) * 2.2;
+              return { x: p.x + Math.cos(a) * r * 1.6, y: p.y + Math.sin(a) * r * .8, ram: false }; }
+            return null;
+          }; return null; })()}
           {!cityLayerCityId && armyGroups.map(group => {
             const point = at(group.cell.a, group.cell.b);
             const lead = group.list[0];
@@ -2159,10 +2185,18 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                     const pickable = !!siegeView && stacked === 1 && lead.id === selectedArmyId && men > 0;
                     const picked = pickable && siegeUnitKey === unitKey;
                     const hasOrder = pickable && siegeView!.orders.some(o => o.unit_key === unitKey);
-                    return <g key={`s${index}`} transform={`translate(${point.x + c.x},${point.y + c.y})`}
+                    const spot = siegeSpot(lead, unitKey, order);
+                    const sx = spot ? spot.x : point.x + c.x, sy = spot ? spot.y : point.y + c.y;
+                    return <g key={`s${index}`} transform={`translate(${sx},${sy})`} style={{ transition: "transform .6s ease" }}
                       onClick={pickable ? (e) => { e.stopPropagation(); if (!dragRef.current?.moved) setSiegeUnitKey(k => k === unitKey ? null : unitKey); } : undefined}>
                       {pickable && <ellipse cx="0" cy="2" rx="7" ry="3.5" fill={picked ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={picked ? "var(--map-focus)" : hasOrder ? "var(--map-city-own)" : "transparent"} strokeWidth="1.2" />}
                       <ArmySquad men={men} kind={kind} banner={banner} active={active} formation={lead.battle_formation} />
+                      {spot?.ram && <g transform="translate(-5,4)" pointerEvents="none">
+                        <rect x="-4" y="-3" width="8" height="3.2" rx=".6" fill="var(--map-road-edge, #5b3b1f)" stroke="var(--map-marker)" strokeWidth=".4" />
+                        <path d="M-4.5 -3 L0 -6 L4.5 -3 Z" fill="var(--map-road, #8a5a2b)" stroke="var(--map-marker)" strokeWidth=".4" />
+                        <rect x="3.6" y="-2.2" width="3" height="1.2" fill="var(--map-label-edge, #333)" />
+                        <circle cx="-2.6" cy=".6" r="1" fill="var(--map-marker)" /><circle cx="2.6" cy=".6" r="1" fill="var(--map-marker)" />
+                      </g>}
                     </g>; });
               })()}
               <g transform={`translate(${point.x + seat.x + 4},${point.y + seat.y - 2}) scale(.62)`} filter="url(#iso-shadow)">
