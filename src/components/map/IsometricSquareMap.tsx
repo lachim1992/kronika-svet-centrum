@@ -913,17 +913,40 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           const x0 = parcel.parcelX / TILE_PARCEL_COLS, x1 = (parcel.parcelX + 1) / TILE_PARCEL_COLS;
           const y0 = parcel.parcelY / TILE_PARCEL_ROWS, y1 = (parcel.parcelY + 1) / TILE_PARCEL_ROWS;
           const subTex = subBiomeTex(parcel.subBiome);
-          quads.push({ pts: [P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)], tex: subTex || TERRAIN_TEX[tile.biome_family], tint: SUB_BIOME_COLORS[parcel.subBiome] });
+          const variation = mapVisualVariation(sessionId, cell.a, cell.b, parcel.parcelX, parcel.parcelY);
+          quads.push({
+            pts: [P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)],
+            tex: subTex || TERRAIN_TEX[tile.biome_family],
+            tint: polishedTerrainTint(parcel.subBiome),
+            tintAlpha: polishedTerrainTintAlpha(parcel.subBiome, variation.tintDelta),
+          });
           if (hasFootprint || roadSubs.has(`${parcel.parcelX}:${parcel.parcelY}`)) return;
           const [cx, cy] = P((parcel.parcelX + .5) / TILE_PARCEL_COLS, (parcel.parcelY + .5) / TILE_PARCEL_ROWS);
           const forest = (SUB_BIOME_COLOR[parcel.subBiome] || "").includes("--map-forest)");
-          if (forest) { const w = 15; sprites.push({ href: sprTrees, x: cx - w / 2, y: cy - w * .55, w, h: w * .68 }); return; }
+          if (forest) {
+            if (variation.density < .08 && parcel.subBiome !== "thick_canopy") return;
+            const w = 15 * variation.scale;
+            sprites.push({
+              href: sprTrees, x: cx - w / 2 + variation.offsetX, y: cy - w * .55 + variation.offsetY, w, h: w * .68,
+              shadow: { dx: .6, dy: -.3, rx: w * .3, ry: w * .08, color: "var(--map-marker-edge)", opacity: .24 },
+            });
+            return;
+          }
           if (MOUNTAIN_SUBS.has(parcel.subBiome) && peakTile && subTex !== texSand) {
-            const w = parcel.subBiome === "crag" ? 26 : 20; sprites.push({ href: sprMountain, x: cx - w / 2, y: cy - w * .7, w, h: w * .85 }); return;
+            const w = (parcel.subBiome === "crag" ? 26 : 20) * variation.scale;
+            sprites.push({
+              href: sprMountain, x: cx - w / 2 + variation.offsetX * .5, y: cy - w * .7 + variation.offsetY * .5, w, h: w * .85,
+              shadow: { dx: .7, dy: -.4, rx: w * .3, ry: w * .075, color: "var(--map-marker-edge)", opacity: .22 },
+            });
+            return;
           }
           const rocky = MOUNTAIN_SUBS.has(parcel.subBiome) || ((subTex || TERRAIN_TEX[tile.biome_family]) === texRock && parcel.parcelX % 2 === 0 && parcel.parcelY % 2 === 0);
           if (!rocky || ["desert", "sea"].includes(tile.biome_family) || subTex === texSand || subTex === texWater) return;
-          const w = 13; sprites.push({ href: sprHill, x: cx - w / 2, y: cy - w * .55, w, h: w * .75 });
+          const w = 13 * variation.scale;
+          sprites.push({
+            href: sprHill, x: cx - w / 2 + variation.offsetX * .5, y: cy - w * .55 + variation.offsetY * .5, w, h: w * .75,
+            shadow: { dx: .5, dy: -.3, rx: w * .3, ry: w * .08, color: "var(--map-marker-edge)", opacity: .2 },
+          });
         });
       });
       rasterizeTerrain(quads, sprites, TILE_SIZE * .6).then(result => {

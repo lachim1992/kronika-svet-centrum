@@ -9,6 +9,22 @@ export interface TerrainRasterChunk { url: string; x: number; y: number; w: numb
 export type TerrainRaster = TerrainRasterChunk[];
 
 const imageCache = new Map<string, Promise<HTMLImageElement>>();
+const canvasColorCache = new Map<string, string>();
+/** Canvas cannot consume CSS custom properties directly; resolve each semantic token once. */
+const canvasColor = (color: string) => {
+  if (!color.startsWith("var(")) return color;
+  const cached = canvasColorCache.get(color);
+  if (cached) return cached;
+  const probe = document.createElement("span");
+  probe.style.color = color;
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  document.body.appendChild(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+  canvasColorCache.set(color, resolved);
+  return resolved;
+};
 const loadImage = (href: string) => {
   let p = imageCache.get(href);
   if (!p) {
