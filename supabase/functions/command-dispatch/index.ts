@@ -1067,8 +1067,8 @@ async function executeFoundCity(
     const message = foundingErr.message || "Neznámá chyba převodu osadníků";
     const userMessage = message.includes("INSUFFICIENT_RURAL_SETTLERS")
       ? "V okolí není dost venkovských obyvatel. Osada potřebuje 100 skutečných osadníků z vlastního území."
-      : message.includes("FOUNDING_TARGET_NOT_OWNED")
-        ? "Osadu lze založit pouze na vlastním kontrolovaném území."
+      : message.includes("FOUNDING_TARGET_ENEMY_CONTROLLED")
+        ? "Na cílovém hexu je nepřátelská kontrola; zvol neutrální nebo vlastní území s dostatkem místních osadníků."
         : `Založení osady selhalo: ${message}`;
     return { events: [], error: userMessage };
   }
