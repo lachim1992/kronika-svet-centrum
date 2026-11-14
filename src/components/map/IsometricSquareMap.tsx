@@ -1754,32 +1754,59 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
-          pinchStartRef.current = { distance: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom };
+          const rect = event.currentTarget.getBoundingClientRect();
+          const camera = cameraRef.current;
+          pinchStartRef.current = {
+            distance: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+            zoom: camera.zoom,
+            pan: camera.pan,
+            center: { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top },
+          };
           dragRef.current = null;
           return;
         }
         // While drawing a road the primary button belongs to the route; pan with middle/right button or two fingers.
         if (roadDraft.length > 0 && event.button === 0) { dragRef.current = null; return; }
-        dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
+        const camera = cameraRef.current;
+        dragRef.current = { x: event.clientX, y: event.clientY, panX: camera.pan.x, panY: camera.pan.y, zoom: camera.zoom, moved: false };
       }}
       onPointerMove={(event) => {
-
         if (pinchRef.current.has(event.pointerId)) pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         const start = pinchStartRef.current;
         if (start && pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
+          const rect = event.currentTarget.getBoundingClientRect();
           const distance = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-          setZoom(clampZoom(start.zoom * (distance / start.distance)));
+          const nextZoom = clampZoom(start.zoom * (distance / start.distance));
+          const center = { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top };
+          updateCamera({ zoom: nextZoom, pan: {
+            x: start.pan.x + center.x / nextZoom - start.center.x / start.zoom,
+            y: start.pan.y + center.y / nextZoom - start.center.y / start.zoom,
+          } }, "gesture");
           return;
         }
         const drag = dragRef.current; if (!drag) return;
         const dx = event.clientX - drag.x; const dy = event.clientY - drag.y;
         if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
-        if (drag.moved) setPan({ x: drag.panX + dx / zoom, y: drag.panY + dy / zoom });
+        if (drag.moved) updateCamera({ zoom: drag.zoom, pan: { x: drag.panX + dx / drag.zoom, y: drag.panY + dy / drag.zoom } }, "gesture");
       }}
-      onPointerUp={(event) => { pinchRef.current.delete(event.pointerId); if (pinchRef.current.size < 2) pinchStartRef.current = null; window.setTimeout(() => { dragRef.current = null; }, 0); }}
-      onPointerCancel={(event) => { pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null; }}
-      onPointerLeave={(event) => { pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null; }}
+      onPointerUp={(event) => {
+        const shouldSettle = !!pinchStartRef.current || !!dragRef.current?.moved;
+        pinchRef.current.delete(event.pointerId);
+        if (pinchRef.current.size < 2) pinchStartRef.current = null;
+        if (shouldSettle) updateCamera(cameraRef.current, "now");
+        window.setTimeout(() => { dragRef.current = null; }, 0);
+      }}
+      onPointerCancel={(event) => {
+        const shouldSettle = !!pinchStartRef.current || !!dragRef.current?.moved;
+        pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null;
+        if (shouldSettle) updateCamera(cameraRef.current, "now");
+      }}
+      onPointerLeave={(event) => {
+        const shouldSettle = !!pinchStartRef.current || !!dragRef.current?.moved;
+        pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null;
+        if (shouldSettle) updateCamera(cameraRef.current, "now");
+      }}
       >
       <svg className="h-full w-full">
         <defs>
