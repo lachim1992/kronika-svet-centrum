@@ -1175,10 +1175,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); openStructureOnParcel(parcel.id); } }}>
           <polygon points={quad} fill={fill}
             stroke={activeParcel ? "var(--map-focus)" : mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
-            strokeWidth={activeParcel ? 2 : mine ? 1.1 : .5}
-            opacity={mine ? 1 : parcel.buildable ? (parcel.status === "wild" ? .6 : .95) : .45} />
-          {/* hatching marks every sub-parcel the city holds */}
-          {mine && <polygon points={quad} fill={hatchFill} opacity=".55" />}
+            strokeWidth={activeParcel ? 2 : mine ? .8 : .35}
+            fillOpacity={mine ? (parcel.status === "occupied" ? .78 : .58) : parcel.buildable ? (parcel.status === "wild" ? .28 : .55) : .3}
+            strokeOpacity={activeParcel ? 1 : mine ? .7 : .28} />
+          {/* hatching marks every sub-parcel the city holds without hiding its terrain */}
+          {mine && <polygon points={quad} fill={hatchFill} opacity=".28" />}
           <title>{`${parcel.region_name ? parcel.region_name + " · " : ""}${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}${mine ? ` · patří ${holder?.name || "městu"}` : ""}`}</title>
           {parcel.region_name && <text x={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.x + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.x) / 2}
             y={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.y + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.y) / 2}
@@ -1498,7 +1499,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       {parcels.map(parcel => (
         <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
           fill={parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open) : "var(--map-parcel-open)"}
-          stroke="var(--map-marker-edge)" strokeWidth=".35" opacity={parcel.status === "occupied" ? .95 : .72} />
+          stroke="var(--map-marker-edge)" strokeWidth=".25" strokeOpacity=".45"
+          fillOpacity={parcel.status === "occupied" ? .72 : .42} />
       ))}
       {renderWallRun(edges, wallColor, 2.2, "wall")}
       {parcelsBackToFront(occupied).map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
@@ -1537,8 +1539,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return <g pointerEvents="auto">
       {parcels.map(parcel => (
         <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
-          fill={LAND_USE_COLOR[style.landUse] || LAND_USE_COLOR.open}
-          stroke={style.accent} strokeWidth=".35" opacity=".72" />
+          fill={LAND_USE_COLOR[style.landUse] || LAND_USE_COLOR.open} fillOpacity=".5"
+          stroke={style.accent} strokeWidth=".3" strokeOpacity=".55" />
       ))}
       <g transform={`translate(${center.x},${center.y})`}>{renderWorkplaceGlyph(node, spriteScale)}</g>
     </g>;
@@ -1762,10 +1764,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={Array.isArray(terrainRaster) && terrainRaster.length ? "transparent" : colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
-                strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 2 : 0} />
+                strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 1.2 : 0} />
               {cityLayerCityId && !inActiveCity && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill="var(--map-marker-edge)" opacity=".55" />}
-              {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".9" opacity=".7" strokeDasharray="5 3" />}
-              {showSubBiomes && zoom >= 1.2 && <g pointerEvents="none" opacity=".12">
+              {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".8" opacity=".38" strokeDasharray="5 3" />}
+              {showSubBiomes && zoom >= 1.2 && <g pointerEvents="none" opacity={active ? .16 : .055}>
                 {Array.from({ length: TILE_PARCEL_COLS - 1 }, (unused, index) => {
                   const fraction = (index + 1) / TILE_PARCEL_COLS;
                   const line = (ax: number, ay: number, bx: number, by: number) =>
@@ -1783,15 +1785,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 {/* outline pass: dark border shows only on the road's outer edge, so it reads raised */}
                 {roadSurface.cells.map(sub => (
                   <polygon key={`road-edge-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
-                    fill="var(--map-marker-edge)" stroke="var(--map-marker-edge)" strokeWidth="2.2" strokeLinejoin="round" opacity=".45" />
+                    fill="var(--map-marker-edge)" stroke="var(--map-marker-edge)" strokeWidth="1.2" strokeLinejoin="round" opacity=".28" />
                 ))}
                 {roadSurface.cells.map(sub => (
                   <polygon key={`road-sub-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
                     fill={`url(#${texId(texDirt)})`} stroke="none"
-                    opacity={roadSurface.draft ? .7 : 1} />
+                    opacity={roadSurface.draft ? .55 : .82} />
                 ))}
                 {visibleRoadLevel >= 2 && roadSurface.cells.map(sub => (
-                  <polygon key={`road-tint-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)} fill={roadFill} opacity=".35" />
+                  <polygon key={`road-tint-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)} fill={roadFill} opacity=".25" />
                 ))}
               </g>}
 
@@ -1804,7 +1806,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               const [p1, p2] = e.side === 0 ? [c[1], c[2]] : e.side === 1 ? [c[3], c[2]] : e.side === 2 ? [c[0], c[3]] : [c[0], c[1]];
               return <line key={`pb-${e.a}-${e.b}-${e.side}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                 stroke={e.realm ? (e.own ? "var(--map-city-own)" : "var(--map-city-rival)") : "var(--map-label)"}
-                strokeWidth={e.realm ? 2.4 : 1.2} strokeDasharray={e.realm ? undefined : "3 3"} opacity={e.realm ? .85 : .6} strokeLinecap="round" />; })}
+                strokeWidth={e.realm ? 1.7 : 1} strokeDasharray={e.realm ? undefined : "3 3"} opacity={e.realm ? .58 : .32} strokeLinecap="round" />; })}
             {zoom < 2 && provinceLayer.labels.map(l => { const pt = at(l.a, l.b); const sc = Math.max(.6, Math.min(1.6, 1 / zoom));
               return <text key={`pl-${l.id}`} x={pt.x} y={pt.y} textAnchor="middle" fontSize={9 * sc} fontWeight="700" letterSpacing=".08em"
                 fill="var(--map-label)" stroke="var(--map-marker)" strokeWidth={2.2 * sc} paintOrder="stroke" opacity=".85">{l.name.toUpperCase()}</text>; })}
@@ -1819,7 +1821,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </g>}
           {selected && tileParcels.length > 0 && renderSelectedCellSubnodes(at(selectedCell?.a ?? 0, selectedCell?.b ?? 0))}
           {!cityLayerCityId && riverSegments.length > 0 && <g pointerEvents="none">
-            {([["var(--map-forest-edge)", 3.6, .35], ["var(--map-water-edge)", 2.6, .7], [`url(#${texId(texWater)})`, 1.8, .9], ["var(--map-water-glint)", .4, .35]] as const).map(([stroke, width, opacity], layer) => (
+            {([["var(--map-forest-edge)", 3.2, .26], ["var(--map-water-edge)", 2.3, .55], [`url(#${texId(texWater)})`, 1.6, .82], ["var(--map-water-glint)", .35, .22]] as const).map(([stroke, width, opacity], layer) => (
               <g key={`river-layer-${layer}`} stroke={stroke} strokeWidth={width} strokeLinecap="round" opacity={opacity}>
                 {riverSegments.map(segment => <line key={segment.id} x1={segment.from.x + pan.x} y1={segment.from.y + pan.y} x2={segment.to.x + pan.x} y2={segment.to.y + pan.y} />)}
               </g>
@@ -1828,11 +1830,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {roadNetwork.segments.map(segment => {
             const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
             const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
-            const width = segment.level >= 3 ? 4.4 : segment.level === 2 ? 3.4 : 2.4;
+            const width = segment.level >= 3 ? 3.2 : segment.level === 2 ? 2.4 : 1.6;
             return <g key={segment.id} pointerEvents="none">
-              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 1.4} strokeLinecap="round" opacity=".35" />
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 1} strokeLinecap="round" opacity=".25" />
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke={`url(#${texId(texDirt)})`} strokeWidth={width} strokeLinecap="round"
-                strokeDasharray={segment.building || segment.level === 1 ? "4 3" : undefined} opacity=".95" />
+                strokeDasharray={segment.building || segment.level === 1 ? "4 3" : undefined} opacity=".9" />
             </g>;
           })}
           {/* settlements sit above rivers and roads */}

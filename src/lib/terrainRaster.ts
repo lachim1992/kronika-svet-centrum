@@ -66,10 +66,27 @@ export async function rasterizeTerrain(quads: TerrainQuad[], sprites: TerrainSpr
       const path = (q: TerrainQuad) => { ctx.beginPath(); q.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); };
       ctx.lineWidth = .6; ctx.lineJoin = "round"; ctx.globalAlpha = 1;
       qs.forEach(q => { const pattern = q.tex ? patterns.get(q.tex) : undefined; if (!pattern) return; path(q); ctx.fillStyle = pattern; ctx.strokeStyle = pattern; ctx.fill(); ctx.stroke(); });
-      ctx.globalAlpha = .3;
-      qs.forEach(q => { if (!q.tint) return; path(q); ctx.fillStyle = q.tint; ctx.fill(); });
+      qs.forEach(q => {
+        if (!q.tint) return;
+        path(q);
+        ctx.globalAlpha = q.tintAlpha ?? .3;
+        ctx.fillStyle = q.tint;
+        ctx.fill();
+      });
       ctx.globalAlpha = 1;
-      ss.forEach(s => { const img = images.get(s.href); if (img) ctx.drawImage(img, s.x, s.y, s.w, s.h); });
+      ss.forEach(s => {
+        if (s.shadow) {
+          ctx.save();
+          ctx.globalAlpha = s.shadow.opacity;
+          ctx.fillStyle = canvasColor(s.shadow.color);
+          ctx.beginPath();
+          ctx.ellipse(s.x + s.w / 2 + s.shadow.dx, s.y + s.h + s.shadow.dy, s.shadow.rx, s.shadow.ry, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+        const img = images.get(s.href);
+        if (img) ctx.drawImage(img, s.x, s.y, s.w, s.h);
+      });
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/webp", .92));
       if (blob) out.push({ url: URL.createObjectURL(blob), x: cx, y: cy, w: chunkWorld, h: chunkWorld });
       await new Promise(resolve => setTimeout(resolve, 0));
