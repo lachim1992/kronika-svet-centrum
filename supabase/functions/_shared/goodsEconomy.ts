@@ -19,7 +19,7 @@ export interface Good {
   finalUse?: boolean; household?: boolean;
 }
 export interface City {
-  id: string; owner: string; name: string; cell: string; population: number;
+  id: string; owner: string; name: string; cell: string; province_id?: string | null; population: number;
   /** Market-catchment population; persisted urban population remains separate. */
   urbanPopulation?: number; ruralPopulation?: number; urbanClasses?: Record<string, number>;
   classes: Record<string, number>; soldiers: number; stability: number; irrigation: number;
