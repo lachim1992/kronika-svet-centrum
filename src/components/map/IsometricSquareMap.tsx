@@ -2458,31 +2458,37 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
 
 
-        {selectedCity && <div className="mt-5 space-y-4">
-          <div className="border-y border-border/70 py-4">
-            <div className="flex items-start justify-between gap-3"><div><p className="font-display text-lg">{selectedCity.name}</p><p className="text-xs text-muted-foreground">{selectedCity.settlement_level} · úroveň {selectedCity.development_level}</p></div><Button size="sm" variant="outline" onClick={() => onCityClick?.(selectedCity.id)}>Otevřít město <ArrowUpRight className="ml-1 h-3.5 w-3.5"/></Button></div>
+        {detailSection === "overview" && selectedCity && <div className="mt-4 space-y-4">
+          <div className="flex items-start justify-between gap-3 border-y border-border/70 py-4">
+            <div><p className="font-display text-lg">{selectedCity.name}</p><p className="text-xs text-muted-foreground">{selectedCity.settlement_level} · úroveň {selectedCity.development_level}</p></div>
+            <Button size="sm" variant="outline" onClick={() => onCityClick?.(selectedCity.id)}>Otevřít město <ArrowUpRight className="ml-1 h-3.5 w-3.5"/></Button>
           </div>
-          <section>
-            <div className="mb-2 flex justify-between text-xs"><span>Zaplnění města</span><strong>{growthPressure} %</strong></div>
-            <Progress value={growthPressure} className="h-2"/>
-            <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
-              <div><strong className="block text-foreground">{selectedCity.population_total.toLocaleString("cs-CZ")}</strong><span className="text-muted-foreground">obyvatel</span></div>
-              <div><strong className="block text-foreground">{occupiedParcels}/{cityHeldParcels.length}</strong><span className="text-muted-foreground">zastavěných parcel</span></div>
-              <div><strong className="block text-foreground">{netGrowth >= 0 ? "+" : ""}{netGrowth}</strong><span className="text-muted-foreground">růst/kolo</span></div>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Drží {cityHeldParcels.length} podparcel na {(cityCellsById.get(selectedCity.id) || []).length || 1} polích · kapacita {cityCapacity.toLocaleString("cs-CZ")} obyvatel.</p>
-          </section>
           <CityEconomyBrief sessionId={sessionId} playerName={playerName} currentTurn={currentTurn}
             cityId={selectedCity.id} nameOf={id => cityById.get(id)?.name || ""}
             freeParcels={Math.max(0, cityHeldParcels.length - occupiedParcels)} treasury={treasury}/>
         </div>}
 
-        {!selectedCity && expansionCity && <div className="mt-6 border border-primary/30 bg-primary/5 p-4 text-sm">
-          <h3 className="text-base">Rozšířit {expansionCity.name}</h3>
-          <p className="mt-2 text-xs text-muted-foreground">Město tlačí na hranice z {growthPressure} %. Vykupuj jednotlivé podparcely v mřížce výše — každá přidá kapacitu podle svého podterénu.</p>
-        </div>}
-        {!selectedCity && !expansionCity && <div className="mt-6 border border-border p-4 text-sm text-muted-foreground"><p>Na tomto poli není město ani možný směr rozšíření.</p><p className="mt-2 text-xs">Parcely lze vykupovat z pole vašeho města nebo z pole hned vedle něj.</p></div>}
-      </aside>}
+        {detailSection === "growth" && <section className="border border-primary/25 bg-primary/5 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div><h3 className="text-base">Rozrůstání města</h3><p className="mt-1 text-xs text-muted-foreground">Kapacita, zastavěnost a další výstavba odděleně od hospodářství.</p></div>
+            {(selectedCity || expansionCity) && <Button size="sm" variant="outline" onClick={() => setDetailSection("parcels")}>Vybrat parcelu</Button>}
+          </div>
+          {selectedCity ? <>
+            <div className="mb-2 mt-5 flex justify-between text-xs"><span>Zaplnění města</span><strong>{growthPressure} %</strong></div>
+            <Progress value={growthPressure} className="h-2"/>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="border border-border/60 bg-background/50 p-3"><strong className="block text-base text-foreground">{selectedCity.population_total.toLocaleString("cs-CZ")}</strong><span className="text-muted-foreground">obyvatel</span></div>
+              <div className="border border-border/60 bg-background/50 p-3"><strong className="block text-base text-foreground">{occupiedParcels}/{cityHeldParcels.length}</strong><span className="text-muted-foreground">zastavěných parcel</span></div>
+              <div className="border border-border/60 bg-background/50 p-3"><strong className="block text-base text-foreground">{netGrowth >= 0 ? "+" : ""}{netGrowth}</strong><span className="text-muted-foreground">růst / kolo</span></div>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">Drží {cityHeldParcels.length} podparcel na {(cityCellsById.get(selectedCity.id) || []).length || 1} polích · kapacita {cityCapacity.toLocaleString("cs-CZ")} obyvatel · volno {Math.max(0, cityCapacity - selectedCity.population_total).toLocaleString("cs-CZ")}.</p>
+            <div className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">Stavební parcela přidá bydlení podle počtu slotů. Využívaná půda přidává výnos, nikoli městské bydlení.</div>
+          </> : expansionCity ? <div className="mt-4">
+            <h4 className="text-sm">Rozšířit {expansionCity.name}</h4>
+            <p className="mt-2 text-xs text-muted-foreground">Město tlačí na hranice z {growthPressure} %. V sekci Parcely vykupuj jednotlivé podčtverce — každý ukazuje přínos pro bydlení nebo skutečný výnos.</p>
+          </div> : <p className="mt-4 text-xs text-muted-foreground">Na tomto poli není město ani možný směr rozšíření. Parcely lze vykupovat z pole vašeho města nebo z pole hned vedle něj.</p>}
+        </section>}
+      </MapDetailWindow>}
 
       {selectedArmy && <aside className={`map-tile-detail absolute z-40 overflow-y-auto border-primary/20 bg-background/95 shadow-2xl backdrop-blur-xl ${isMobile ? "inset-x-0 bottom-0 max-h-[64vh] rounded-t-2xl border-t p-4" : "bottom-0 right-0 top-0 w-[380px] border-l p-5"}`}>
         <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail armády" onClick={() => { setSelectedArmyId(null); onDetailOpenChange?.(false); }}><X className="h-4 w-4"/></Button>
