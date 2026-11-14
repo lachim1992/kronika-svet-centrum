@@ -66,11 +66,11 @@ const RuralPopulationShadowPanel = ({ sessionId }: Props) => {
     setRunning(true);
     try {
       const { data, error } = await supabase.functions.invoke("compute-rural-population", {
-        body: { session_id: sessionId },
+        body: { session_id: sessionId, dry_run: true },
       });
       if (error) throw error;
       if (data?.ok === false) throw new Error(data.error || "výpočet selhal");
-      toast.success("Venkovská populace přepočítána", {
+      toast.success("Odhad výchozího osídlení", {
         description: `${data.rows} polí · ${Math.round(data.totals?.rural ?? 0).toLocaleString("cs-CZ")} lidí`,
       });
       await load();
@@ -89,14 +89,13 @@ const RuralPopulationShadowPanel = ({ sessionId }: Props) => {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Sprout className="h-4 w-4 text-primary" />
-          Venkovská populace (stínový výpočet)
-          <Badge variant="outline" className="ml-auto text-[10px]">Fáze B · bez vlivu na hru</Badge>
+          Venkovská populace
+          <Badge variant="outline" className="ml-auto text-[10px]">Fáze C · aktivní stav</Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-xs text-muted-foreground">
-          Deterministický odhad, kolik lidí uživí každé průchodné pole světa. Zatím jen informativní —
-          neovlivňuje města, pokladnici, obchod ani poptávku.
+          Venkovští obyvatelé a místní pracovní síla, odděleně od populace měst.
         </p>
 
         {totals ? (
@@ -137,7 +136,7 @@ const RuralPopulationShadowPanel = ({ sessionId }: Props) => {
         <div className="flex gap-2">
           <Button size="sm" onClick={recompute} disabled={running || !sessionId}>
             {running ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-2 h-3 w-3" />}
-            Přepočítat
+            Odhad bez zápisu
           </Button>
           <Button size="sm" variant="outline" onClick={load} disabled={loading}>
             Načíst znovu
