@@ -2105,7 +2105,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
               {/* the cell the army stands on */}
-              <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill="none" stroke={active ? "var(--map-focus)" : banner} strokeWidth={active ? 2.4 : 1.4} strokeDasharray="4 3" opacity=".85" />
+              <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill="none" stroke={active ? "var(--map-focus)" : banner} strokeWidth={active ? 1.8 : .8} strokeDasharray="3 4" opacity={active ? .85 : .45} />
               {/* occupied sub-parcels: faint trampled ground, then painted squads back-to-front, max 500 men each */}
               {camp.map(index => <polygon key={`g${index}`} points={parcelQuad(point, index % TILE_PARCEL_COLS, Math.floor(index / TILE_PARCEL_COLS))}
                 fill={banner} opacity={active ? .22 : .12} stroke={banner} strokeWidth=".4" strokeOpacity=".5" />)}
@@ -2118,7 +2118,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                     <ArmySquad men={men} kind={kind} banner={banner} active={active} />
                   </g>);
               })()}
-              <g transform={`translate(${point.x + seat.x + 4},${point.y + seat.y - 2})`} filter="url(#iso-shadow)">
+              <g transform={`translate(${point.x + seat.x + 4},${point.y + seat.y - 2}) scale(.62)`} filter="url(#iso-shadow)">
                 <ArmyStandard name={lead.name} soldiers={group.list.reduce((sum, army) => sum + army.soldiers, 0)} unitCount={lead.unit_count} morale={lead.morale} banner={banner} active={active} />
                 {stacked > 1 && <g transform="translate(11,-18) scale(.75)">
                   <circle r="7" fill="var(--map-marker)" stroke={banner} strokeWidth="1.2" />
