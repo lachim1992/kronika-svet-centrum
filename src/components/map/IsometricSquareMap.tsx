@@ -2103,15 +2103,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       </div>, document.body)}
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
 
-      {selected && <aside className={`map-tile-detail absolute z-40 overflow-y-auto border-primary/20 bg-background/95 shadow-2xl backdrop-blur-xl ${isMobile ? "inset-x-0 bottom-0 max-h-[64vh] rounded-t-2xl border-t p-4" : "bottom-0 right-0 top-0 w-[380px] border-l p-5"}`}>
-        <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail" onClick={() => { setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false); }}><X className="h-4 w-4"/></Button>
-        <div className="pr-10">
-          <p className="text-[10px] font-semibold uppercase text-primary">Pole {selectedCell?.a}, {selectedCell?.b}</p>
-          <h2 className="mt-1 text-xl capitalize">{selected.biome_family.replace("_", " ")}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{selected.owner_player || "Neutrální území"} · {selected.is_passable === false ? "Neprůchodné" : "Průchodné"}{selected.has_river ? " · Řeka" : ""}</p>
-        </div>
-
-        {selectedCell && <MacroTerritoryPanel key={`${selectedCell.a},${selectedCell.b}`} sessionId={sessionId} playerName={playerName} currentTurn={currentTurn}
+      {selected && <MapDetailWindow
+        title={selectedCity?.name || selected.biome_family.replace("_", " ")}
+        eyebrow={`${selectedCity ? "Město" : "Pole"} · ${selectedCell?.a}, ${selectedCell?.b}`}
+        description={`${selected.owner_player || "Neutrální území"} · ${selected.is_passable === false ? "Neprůchodné" : "Průchodné"}${selected.has_river ? " · Řeka" : ""}`}
+        section={detailSection}
+        onSectionChange={setDetailSection}
+        isMobile={isMobile}
+        onClose={() => { setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false); }}
+      >
+        {detailSection === "territory" && selectedCell && <MacroTerritoryPanel key={`${selectedCell.a},${selectedCell.b}`} sessionId={sessionId} playerName={playerName} currentTurn={currentTurn}
           gridX={selectedCell.a} gridY={selectedCell.b} owner={selected.owner_player || null} provinceId={(selected as any).province_id || null}
           passable={selected.is_passable !== false} biome={selected.biome_family} ownedTiles={tiles.filter(t => t.owner_player === playerName).length}
           adjacentOwned={tiles.some(t => t.owner_player === playerName && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)}
