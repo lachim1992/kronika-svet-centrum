@@ -2121,7 +2121,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)
             .map(t => String((t as any).province_id)))]}
           onChanged={load} onSurveyChange={setSelectedMacroSurvey} />}
-        <section className="mt-4 border border-border/70 bg-muted/20 p-3">
+        {detailSection === "overview" && <section className="border border-border/70 bg-muted/20 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium">Obyvatelstvo pole</h3>
@@ -2140,9 +2140,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </> : <p className="mt-3 text-xs text-muted-foreground">Pro toto pole zatím nebyla venkovská populace vypočtena.</p>}
           {selectedCity && <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2 text-xs"><span>Městská populace · {selectedCity.name}</span><span className="font-mono font-semibold">{selectedCity.population_total.toLocaleString("cs-CZ")}</span></div>}
           <p className="mt-2 text-[10px] text-muted-foreground">Venkovský odhad je zatím informativní a nesčítá se s kanonickou populací města.</p>
-        </section>
+        </section>}
 
-        <section className="mt-5 border-y border-border/70 py-4">
+        {detailSection === "parcels" && <section className="border-y border-border/70 py-4">
           <div className="mb-2 flex items-baseline justify-between">
             <h3 className="text-sm">Podparcely pole ({TILE_PARCEL_COLS}×{TILE_PARCEL_ROWS})</h3>
             <span className="text-[10px] text-muted-foreground">{claimedSlots * POPULATION_PER_SLOT} míst k bydlení</span>
@@ -2180,9 +2180,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </p>
 
           </>}
-        </section>
+        </section>}
 
-        <section className="mt-4 border border-primary/25 bg-primary/5 p-3">
+        {detailSection === "territory" && <section className="mt-4 border border-primary/25 bg-primary/5 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium">Cesty a infrastruktura</h3>
@@ -2207,9 +2207,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {canBuildRoadHere && <p className="mt-2 text-[11px] text-muted-foreground">
              Po stisknutí kresli přes sousední podčtverce, zvol jednu ze tří úrovní a potvrď cenu. Trasa může zůstat i uvnitř tohoto pole.
           </p>}
-        </section>
+        </section>}
 
-        {selectedCity && <section className="mt-4 space-y-2 border border-border/70 p-3">
+        {detailSection === "overview" && selectedCity && <section className="mt-4 space-y-2 border border-border/70 p-3">
           <div className="flex items-baseline justify-between">
             <h3 className="text-sm">Výroba a pracovní síla · {selectedCity.name}</h3>
             <span className="text-[10px] text-muted-foreground">{labour.production.length}/{labour.slots} obsazeno</span>
@@ -2251,7 +2251,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {selectedCity.owner_player !== playerName && <p className="text-[10px] text-muted-foreground">Cizí město — výrobu tu nastavit nelze.</p>}
         </section>}
 
-        {selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
+        {detailSection === "parcels" && selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p>
@@ -2444,7 +2444,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
         </section>}
 
-        {!selectedParcel && <section className="mt-4 border border-border p-3 text-[11px] text-muted-foreground">
+        {detailSection === "parcels" && !selectedParcel && <section className="mt-4 border border-border p-3 text-[11px] text-muted-foreground">
           Klikni na podčtverec v mřížce výše — všechny akce (vykoupení, čtvrti, budovy, subuzly, cesty i založení osady) se otevřou pro vybranou parcelu.
         </section>}
 
