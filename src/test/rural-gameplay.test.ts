@@ -131,7 +131,7 @@ describe('Phase C active rural state',()=>{
       const result=first.rows[0].result;
       expect(result.transferred).toBe(100);expect(result.idempotent).toBe(false);
       expect((await db.query('SELECT count(*)::int AS n FROM cities')).rows[0].n).toBe(1);
-      expect((await db.query('SELECT sum(rural_population)::int AS n FROM hex_population')).rows[0].n).toBe(80);
+      expect((await db.query('SELECT sum(hp.rural_population)::int AS n FROM hex_population hp JOIN province_hexes ph ON ph.session_id=hp.session_id AND ph.q=hp.q AND ph.r=hp.r WHERE ph.owner_player='p'')).rows[0].n).toBe(80);
       expect((await db.query('SELECT population_total,population_peasants,population_burghers,population_clerics FROM cities')).rows[0])
         .toEqual({population_total:100,population_peasants:80,population_burghers:15,population_clerics:5});
       const replay=await db.query('SELECT public.found_city_with_rural_settlers($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) AS result',args);
