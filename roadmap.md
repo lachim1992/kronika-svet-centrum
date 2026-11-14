@@ -4,7 +4,10 @@
 - [x] Traced canonical production → stocks/reserves → demand → physical trade gates → freight paths → projections; basket endpoint is compatibility-only, not a second solver. No turn/refresh/command or game-data write.
 - [x] JV72O7 turn 7: 85.428 output but only 0.2286 exported (one raw-timber shipment); 54.429 unmet = 35.634 source_empty + 18.785 route_unreachable. Ledger/committed/current projections agree at one flow.
 - [x] All five player cities are connected by ten completed road segments. All five lack the same charcoal/peat/textile/tools/storage; none produces textile/tools/storage, while AI fuel stocks are disconnected. Fish use ~60% of recorded labour and ~30% spoils; uniform production/demand multipliers would preserve city symmetry and worsen waste or shortages.
-- [ ] Confirm desired trade behaviour with the user before changing formulas; then use isolated simulation, starting with specialization/missing producers and only afterwards bounded volume calibration.
+- [x] User chose both sequentially: real specialization/missing producers first, then bounded volume calibration.
+- [ ] Isolated first slice: test demand-aware perishable source allocation so fish overproduction/spoilage does not consume labour needed by feasible local processors; preserve physical conservation, subsistence priority and all protected saves.
+- [ ] Measure whether freed labour activates the existing mill/bakery chain and creates genuine raw-grain shipments over existing roads; only then propose bounded production/demand coefficients.
+- [ ] Add canonical Economy + Dev diagnostics for any changed rule, run targeted/full regressions, and report deployment separately from code/tests.
 
 ## Visual Map Polish 2.0 — first verified slice, 2026-11-14
 - [x] Audited Dashboard → WorldMapTab → IsometricSquareMap: raster terrain/vegetation plus SVG interaction and infrastructure; preserved square coordinates, 6×6 parcels, hitboxes and game data.
