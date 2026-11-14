@@ -4,6 +4,7 @@
 - [x] Live trigger still assigns JSON recipe arrays directly to text[]; existing repair SQL is absent from the migration journal.
 - [x] Reproduced weave_basic failure with the old trigger in isolated PostgreSQL; identical placement passes after repair. Related tests 11/11 passed twice.
 - [x] Registered/applied existing repair verbatim as migration 0024; live explicit array conversion, session guards and all-recipes check verified. Preview build OK. No saved-game writes, turn/refresh or publication; gameplay retry not executed to preserve protected worlds.
+- [x] Follow-up verifies both weave_basic and build_granary against registered migration 0024 (11/11 tests); live trigger still fixed, public auth preview nonblank with zero page errors. Protected gameplay not mutated.
 
 ## Production/trade flow diagnosis — 2026-11-14
 - [x] Traced canonical production → stocks/reserves → demand → physical trade gates → freight paths → projections; basket endpoint is compatibility-only, not a second solver. No turn/refresh/command or game-data write.

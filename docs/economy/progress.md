@@ -8,6 +8,7 @@
 - Tests actually run twice: rural-site SQL integration + rural-sites, **11/11 passed**. Automatic preview build OK.
 - Changed files: registered migration, regenerated client types, regression test, roadmap and this report. No saved games, turns, resources, production coefficients or refreshes changed; no publication. Hosted gameplay placement was not retried because protected worlds must not be mutated.
 - Next precise task for this fix: retry the original weaving-building placement through the UI when the player chooses to do so; unrelated production/trade calibration remains deferred.
+- Follow-up crash check: regression now reproduces both `weave_basic` and `build_granary` failures on the old trigger and verifies both placements against applied migration 0024. Tests 11/11 passed again; live trigger remains fixed. Public auth page renders with zero page errors; signed-in gameplay placement remains intentionally unexecuted to avoid saved-world writes.
 
 ## 2026-11-14 — demand-aware labour for non-storable subsistence sources
 
