@@ -31,3 +31,13 @@ describe("spreading crops", () => {
     expect(run(new Set(["p:harvest_grapes"]))).toBe(false);
   });
 });
+
+describe("stage 5: existing saves keep their production", () => {
+  it("a vineyard already standing on an unsurveyed square keeps producing (gate applies to new builds only)", () => {
+    const parcel = { id: "old", grid_x: 0, grid_y: 0, parcel_index: 0, sub_biome: "grassland", buildable: true, status: "claimed", city_id: "c", owner_player: "A", land_use: "open", capacity_slots: 2 };
+    const recipes = new Map(["harvest_grapes", "fell_timber", "gather_wild_seeds", "hunt_game"].map(k => [k, { recipe_key: k, output_good_key: k, output_quantity: 1, labor_cost: 1 }]));
+    const out = parcelProducers([parcel], [{ q: 0, r: 0, grid_x: 0, grid_y: 0, is_passable: true, biome_family: "plains" }], [{ id: "c", owner: "A", cell: "0,0" }], recipes, 1, {},
+      { sites: [{ parcelId: "old", recipeKeys: ["harvest_grapes"], level: 1, owner: "A" }] });
+    expect(out.some(p => p.id === "parcel:old:harvest_grapes")).toBe(true);
+  });
+});
