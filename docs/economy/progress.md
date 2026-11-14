@@ -1,5 +1,14 @@
 # Economy implementation progress
 
+## 2026-11-14 — parcel placement recipe-array repair
+
+- Root cause: live `guard_worked_parcel_content` still used the 0022 JSON-to-text[] assignment; existing `0023_fix_rural_site_recipe_guard.sql` was not registered in the migration journal.
+- Applied that SQL byte-for-byte through the migration tool as `drizzle/migrations/0024_fix_rural_site_recipe_guard.sql`. Live read-back confirms explicit JSON array expansion, session validation and all-recipes rural classification. No edge-function change/redeployment needed.
+- Updated `src/test/rural-site-guard-sql.test.ts` to reproduce the reported `weave_basic` malformed-array error with the old trigger, apply the fix, then repeat the same placement successfully; urban weaving remains rejected on worked parcels.
+- Tests actually run twice: rural-site SQL integration + rural-sites, **11/11 passed**. Automatic preview build OK.
+- Changed files: registered migration, regenerated client types, regression test, roadmap and this report. No saved games, turns, resources, production coefficients or refreshes changed; no publication. Hosted gameplay placement was not retried because protected worlds must not be mutated.
+- Next precise task for this fix: retry the original weaving-building placement through the UI when the player chooses to do so; unrelated production/trade calibration remains deferred.
+
 ## 2026-11-14 — demand-aware labour for non-storable subsistence sources
 
 ### Scope and changed files
