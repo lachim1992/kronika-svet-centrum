@@ -21,10 +21,12 @@ describe('new town founding matches physical parcel economy', () => {
     const end = source.indexOf('async function ', start + 12);
     expect(start).toBeGreaterThan(0);
     const founding = source.slice(start, end > start ? end : undefined);
-    expect(founding).toContain('...foundingHamletPopulation()');
-    expect(founding).toContain('population: FOUNDING_HAMLET_POPULATION');
+    expect(founding).toContain('found_city_with_rural_settlers');
+    expect(founding).toContain('p_settlers: FOUNDING_HAMLET_POPULATION');
+    expect(founding).toContain('settlersTransferred !== FOUNDING_HAMLET_POPULATION');
+    expect(founding).toContain('populationSource: "rural_transfer"');
+    expect(founding).not.toContain('foundingHamletPopulation()');
+    expect(founding).not.toContain('PHASE C TODO');
     expect(founding).not.toMatch(/population_total:\\s*1000|population:\\s*1000/);
-    // The rural-population transfer is still a separate incomplete invariant.
-    expect(founding).toContain('PHASE C TODO');
   });
 });
