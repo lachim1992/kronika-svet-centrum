@@ -42,6 +42,7 @@ import { templateSiteRole, DEPOSIT_REQUIRED, availableMacroReserve, macroReserve
 import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { generateTileParcels } from "../_shared/tileParcels.ts";
 import { MICRO_SURVEY_COST, surveyMicroSquare, microSiteReason } from "../_shared/microResources.ts";
+import { PLANT_COST, plantReason } from "../_shared/cropSpread.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
@@ -540,6 +541,25 @@ async function executeCommand(
         p_level: level, p_findings: findings, p_cost: SURVEY_COST[level as 1 | 2], p_turn: turnNumber });
       if (error) return { events: [], error: error.message };
       return { events: [], result: { ...data, findings } } as any;
+    }
+
+    case "PLANT_CROP": {
+      const parcelId = String(payload.parcelId || ""), kind = String(payload.kind || "") as any;
+      const { data: p } = await supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, sub_biome, owner_player, claim_kind").eq("session_id", sessionId).eq("id", parcelId).maybeSingle();
+      if (!p) return { events: [], error: "Políčko neexistuje" };
+      const mx = p.grid_x * 6 + (p.parcel_index % 6), my = p.grid_y * 6 + Math.floor(p.parcel_index / 6);
+      const [{ data: surveys }, { data: plants }] = await Promise.all([
+        supabase.from("micro_surveys").select("micro_x, micro_y, findings").eq("session_id", sessionId).eq("player_name", actor.name),
+        supabase.from("crop_plantings").select("micro_x, micro_y, kind, planted_turn").eq("session_id", sessionId).eq("owner_player", actor.name).eq("kind", kind),
+      ]);
+      const has = (r: any) => (r.findings || []).some((f: any) => f.kind === kind);
+      const hasSource = (surveys || []).some(has) || (plants || []).some((c: any) => turnNumber - c.planted_turn >= 3);
+      const here = (surveys || []).some((r: any) => r.micro_x === mx && r.micro_y === my && has(r)) || (plants || []).some((c: any) => c.micro_x === mx && c.micro_y === my);
+      const reason = plantReason(kind, p as any, actor.name, hasSource, here);
+      if (reason) return { events: [], error: reason };
+      const { data, error } = await supabase.rpc("plant_crop", { p_session: sessionId, p_player: actor.name, p_parcel: parcelId, p_x: mx, p_y: my, p_kind: kind, p_cost: PLANT_COST, p_turn: turnNumber });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: data } as any;
     }
 
     case "ADD_FARM_FIELD": {
@@ -3624,12 +3644,13 @@ async function executeBuildBuilding(
   if (siteRole === "rural" && !targetParcel) return { events: [], error: "Město nemá volnou využívanou parcelu s vhodným terénem — nejdřív zaber okolní půdu" };
   if (targetParcel && siteRole === "rural") {
     const mx = targetParcel.grid_x * 6 + (targetParcel.parcel_index % 6), my = targetParcel.grid_y * 6 + Math.floor(targetParcel.parcel_index / 6);
-    const [{ data: microSv, error: microErr }, { data: macroTile }] = await Promise.all([
+    const [{ data: microSv, error: microErr }, { data: macroTile }, { data: planted }] = await Promise.all([
       supabase.from("micro_surveys").select("findings").eq("session_id", sessionId).eq("player_name", actor.name).eq("micro_x", mx).eq("micro_y", my).maybeSingle(),
       supabase.from("province_hexes").select("biome_family").eq("session_id", sessionId).eq("grid_x", targetParcel.grid_x).eq("grid_y", targetParcel.grid_y).maybeSingle(),
+      supabase.from("crop_plantings").select("kind").eq("session_id", sessionId).eq("owner_player", actor.name).eq("micro_x", mx).eq("micro_y", my),
     ]);
     if (microErr) return { events: [], error: "Průzkum políčka se nepodařilo ověřit" };
-    const microReason = microSiteReason(recipeKeys || [], targetParcel.sub_biome, macroTile?.biome_family, (microSv as any)?.findings);
+    const microReason = microSiteReason(recipeKeys || [], targetParcel.sub_biome, macroTile?.biome_family, [...(((microSv as any)?.findings) || []), ...(planted || [])]);
     if (microReason) return { events: [], error: microReason };
     const needs = [...new Set((recipeKeys || []).map(k => DEPOSIT_REQUIRED[k]).filter(Boolean))];
     if (needs.length) {

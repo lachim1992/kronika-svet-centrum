@@ -73,7 +73,7 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
       // Freight applies at the point of entry: only what can be hauled is harvested (no phantom stock).
       const factor = FREIGHT_RECIPES.has(raw.recipe) ? transport.factor : 1;
       const spec = { ...raw, capacity: raw.capacity * factor };
-      if (spec.capacity <= 0) continue;
+      if (spec.capacity <= 0 || rural.immature?.has(`${p.id}:${spec.recipe}`)) continue;
       const r = recipes.get(spec.recipe); if (!r) throw new Error(`Missing parcel recipe ${spec.recipe}`);
       const id = `parcel:${p.id}:${spec.recipe}`; if (seen.has(id)) continue; seen.add(id);
       const water = spec.recipe === 'draw_river_water';

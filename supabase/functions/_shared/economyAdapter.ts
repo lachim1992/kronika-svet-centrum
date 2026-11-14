@@ -50,6 +50,7 @@ async function rows(sb:any,table:string,session?:string){
  * factories still cannot create goods from nothing — the recipe itself must be a zero-input source.
  */
 export { normalizeStructureRoles, normalizeProductionContract, auditProductionContracts } from './productionContract.ts';
+import { CROP_RECIPE, isMature } from './cropSpread.ts';
 import { normalizeStructureRoles, normalizeProductionContract } from './productionContract.ts';
 const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clothing',ritual:'luxury_clothing',prestige:'luxury_clothing'};
 const basket=(v:string)=>remap[v]||v;
@@ -215,6 +216,9 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const parcelById=new Map((db.tile_parcels||[]).map((p:any)=>[p.id,p]));
   const liveFields=farmFieldRows.filter((f:any)=>{const a:any=parcelById.get(f.farm_parcel_id),b:any=parcelById.get(f.field_parcel_id);return a&&b&&workedIds.has(b.id)&&a.city_id===b.city_id&&a.owner_player===b.owner_player;});
   const fieldCount=new Map<string,number>();for(const f of liveFields)fieldCount.set(f.farm_parcel_id,(fieldCount.get(f.farm_parcel_id)||0)+1);
+  // Planted crops yield only after they mature (MATURE_TURNS); until then their recipe on that parcel runs at zero.
+  const plantings=parcelMode?await rows(sb,'crop_plantings',session):[];
+  const immature=new Set<string>(plantings.filter((c:any)=>!isMature(Number(c.planted_turn),turn)&&CROP_RECIPE[c.kind as keyof typeof CROP_RECIPE]).map((c:any)=>`${c.parcel_id}:${CROP_RECIPE[c.kind as keyof typeof CROP_RECIPE]}`));
   const fieldParcels=new Set<string>(liveFields.map((f:any)=>f.field_parcel_id));
   const ruralSites=db.city_buildings.filter((b:any)=>b.status==='completed'&&b.parcel_id&&workedIds.has(b.parcel_id)).map((b:any)=>{
     const t=db.building_templates.find((x:any)=>x.id===b.template_id);
@@ -228,7 +232,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const macroTruth=parcelMode?await rows(sb,'macro_deposits',session):[];
   const reserves=new Map<string,{reserve:number;grade:number}>();
   for(const m of macroTruth as any[])for(const d of (m.deposits||[]))if(d.reserve!=null)reserves.set(`${m.grid_x},${m.grid_y}|${d.kind}`,{reserve:Number(d.reserve)||0,grade:Number(d.grade)||1});
-  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves,fieldParcels}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
+  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves,fieldParcels,immature}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
   const ruralAttached=ruralCatchments(db.province_hexes,cities);
   const ruralByCell=new Map<string,number>();
   for(const r of db.hex_population) {

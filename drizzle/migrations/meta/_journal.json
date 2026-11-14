@@ -204,6 +204,13 @@
       "when": 1794685507618,
       "tag": "0028_farm_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794687057094,
+      "tag": "0029_crop_plantings",
+      "breakpoints": true
     }
   ]
 }
