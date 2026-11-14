@@ -1090,7 +1090,7 @@ async function executeFoundCity(
 
   // ── 1c. Settlement node in the physical graph (structural, idempotent) ──
   await ensureCitySettlementNodes(supabase, sessionId);
-  const foundingReason = `FOUND_CITY:${String(base.command_id)}`;
+  const foundingReason = `Založení osady: ${cityName.trim()} [${String(base.command_id)}]`;
   const { data: foundingNode } = await supabase.from("province_nodes")
     .select("id").eq("session_id", sessionId).eq("city_id", cityId)
     .eq("node_subtype", "city").maybeSingle();
