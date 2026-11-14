@@ -2154,7 +2154,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             if (typeof inside === "number") return { ...cityParcelPoint(p, inside), ram: false };
             const o = siegeScene.orders.find(x => x.unit_key === unitKey); const n = sg.walls.length || 4;
             const jitter = (k: number) => ({ x: ((k * 37) % 9 - 4) * 1.6, y: ((k * 53) % 7 - 3) * 1.1 });
-            if (o?.target?.kind === "wall") { const a = -Math.PI / 2 + (o.target.segment / n) * Math.PI * 2;
+            if (o?.target?.kind === "wall") { const a = -Math.PI / 4 + (o.target.segment / n) * Math.PI * 2;
               // Squads on the same wall section line up side by side along the wall (tangent direction), like a siege line.
               const mates = siegeScene.orders.filter(x => x.target?.kind === "wall" && x.target.segment === o.target.segment);
               const rank = Math.max(0, mates.findIndex(x => x.unit_key === unitKey));
@@ -2259,7 +2259,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const send = (target: any) => { setSiegeMapOrder(o => ({ unitKey: siegeUnitKey, target, n: (o?.n ?? 0) + 1 })); setSiegeUnitKey(null); };
             const breached = siegeView.walls.some(w => w.breached);
             return <g data-siege-targets>
-              {siegeView.walls.map((w, i) => { const a = -Math.PI / 2 + (i / n) * Math.PI * 2; const x = p.x + Math.cos(a) * TILE_SIZE * .7, y = p.y + Math.sin(a) * TILE_SIZE * .35;
+              {siegeView.walls.map((w, i) => { const a = -Math.PI / 4 + (i / n) * Math.PI * 2; const x = p.x + Math.cos(a) * TILE_SIZE * .7, y = p.y + Math.sin(a) * TILE_SIZE * .35;
                 return <g key={w.id} transform={`translate(${x},${y})`} className="cursor-crosshair" role="button" aria-label={w.breached ? `Projít průlomem: ${w.name}` : `Poslat na ${w.name}`}
                   onClick={e => { e.stopPropagation(); send({ kind: "wall", segment: w.id }); }}>
                   <circle r="6" fill="var(--map-marker)" stroke={w.breached ? "var(--map-city-rival)" : "var(--map-focus)"} strokeWidth="1.6" opacity=".95" />
