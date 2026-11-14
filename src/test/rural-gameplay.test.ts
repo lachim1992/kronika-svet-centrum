@@ -112,11 +112,11 @@ describe('Phase C active rural state',()=>{
           population_total int NOT NULL,population_peasants int NOT NULL,population_burghers int NOT NULL,
           population_clerics int NOT NULL,population_warriors int,city_stability int,local_grain_reserve int,local_granary_capacity int);
         CREATE TABLE province_hexes(
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),session_id uuid NOT NULL,q int NOT NULL,r int NOT NULL,
+          id uuid DEFAULT gen_random_uuid(),session_id uuid NOT NULL,q int NOT NULL,r int NOT NULL,
           owner_player text,province_id uuid,is_passable boolean NOT NULL,biome_family text NOT NULL,
           PRIMARY KEY(session_id,q,r));
         CREATE TABLE hex_population(
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),session_id uuid NOT NULL,q int NOT NULL,r int NOT NULL,
+          id uuid DEFAULT gen_random_uuid(),session_id uuid NOT NULL,q int NOT NULL,r int NOT NULL,
           rural_population int NOT NULL,mobile_population int NOT NULL,updated_at timestamptz DEFAULT now(),
           PRIMARY KEY(session_id,q,r));`);
       await db.exec(readFileSync('drizzle/migrations/0025_rural_households_and_atomic_founding.sql','utf8'));
@@ -131,7 +131,6 @@ describe('Phase C active rural state',()=>{
       const result=first.rows[0].result;
       expect(result.transferred).toBe(100);expect(result.idempotent).toBe(false);
       expect((await db.query('SELECT count(*)::int AS n FROM cities')).rows[0].n).toBe(1);
-      expect((await db.query('SELECT sum(rural_population)::int AS n FROM hex_population WHERE owner_player IS NULL')).rows[0]?.n).toBeUndefined();
       expect((await db.query('SELECT sum(rural_population)::int AS n FROM hex_population')).rows[0].n).toBe(80);
       expect((await db.query('SELECT population_total,population_peasants,population_burghers,population_clerics FROM cities')).rows[0])
         .toEqual({population_total:100,population_peasants:80,population_burghers:15,population_clerics:5});
