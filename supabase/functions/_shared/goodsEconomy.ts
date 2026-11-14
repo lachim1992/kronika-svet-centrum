@@ -1,4 +1,4 @@
-import { allocateRuralLabor } from './ruralGameplay.ts';
+import { allocateRuralLabor, RURAL_WORKFORCE_SHARE } from './ruralGameplay.ts';
 import { fuelGuidance } from './fuelGuidance.ts';
 import { assertPhysicalTradeJournal } from './physicalTradeJournal.ts';
 import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass, type RoutePath } from './landedRoute.ts';
@@ -19,7 +19,9 @@ export interface Good {
   finalUse?: boolean; household?: boolean;
 }
 export interface City {
-  id: string; owner: string; name: string; cell: string; population: number;
+  id: string; owner: string; name: string; cell: string; province_id?: string | null; population: number;
+  /** Market-catchment population; persisted urban population remains separate. */
+  urbanPopulation?: number; ruralPopulation?: number; urbanClasses?: Record<string, number>;
   classes: Record<string, number>; soldiers: number; stability: number; irrigation: number;
   labor: Partial<Record<Sector, number>>; market: number; storage: number; admin: number;
   security: number; guild: number; /** Active building sites / projects: the only driver of construction demand. */
@@ -48,7 +50,7 @@ export interface Producer { id: string; city: string; node?: string; cell?: stri
   /** Player production order mode for this structure (loss warnings only; never changes it). */
   order?: 'auto'|'prefer'|'lock' }
 /** Canonical labour-market readout of one city. Derived, never a second population writer. */
-export interface CityLabor { city: string; population: number; economically_active: number; available_workforce: number;
+export interface CityLabor { city: string; population: number; urban_population?: number; rural_population?: number; economically_active: number; available_workforce: number;
   employed_total: number; unemployed_total: number; jobs_capacity: number; vacancies_total: number;
   employment_rate: number; unemployment_rate: number;
   /** Local wage per employed worker (productMarket.localWage). */
@@ -199,9 +201,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(ol.length&&Math.abs(olq-n(o.qty))<=1e-6*Math.max(1,n(o.qty)))for(const x of ol){const q=n(x.qty)*n(o.qty)/olq;pushLot(b,q,n(x.quality),x.origin||o.city);b.opening+=q;}
     else{pushLot(b,n(o.qty),n(o.quality),o.city);b.opening+=n(o.qty);}
     const decay=n(o.qty)*clamp(g.storageLoss/(1+cityById.get(o.city)!.storage));b.lost_spoilage+=decay;b.lost_decay+=decay;}
-  const workforce=new Map(cities.map(c=>[c.id,computeWorkforceBreakdown([{
-    population_peasants:c.classes.peasants,population_burghers:c.classes.burghers,
-    population_clerics:c.classes.clerics,population_warriors:c.classes.warriors}],0.1,c.activePopModifier??0,c.maxMobModifier??0,c.soldiers)]));
+  const workforce=new Map(cities.map(c=>{const urban=c.urbanClasses??c.classes;return [c.id,computeWorkforceBreakdown([{
+    population_peasants:urban.peasants,population_burghers:urban.burghers,
+    population_clerics:urban.clerics,population_warriors:urban.warriors}],0.1,c.activePopModifier??0,c.maxMobModifier??0,c.soldiers)];}));
   const sectorFactor=(c:City,sector:Sector)=>{
     const raw={...C.sectors,...c.labor};const sum=Object.values(raw).reduce((a,b)=>a+n(b),0);
     return sum>0 ? n(raw[sector])/Math.max(1,sum)/C.sectors[sector] : 0;
@@ -469,7 +471,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     }
     const active=workforce.get(c.id)!.effectiveActivePop;
     const unemployed=Math.max(0,supplyTotal-employedTotal),vacancies=Math.max(0,jobsTotal-employedTotal);
-    laborMetrics.push({city:c.id,population:c.population,economically_active:active,
+    laborMetrics.push({city:c.id,population:c.population,urban_population:c.urbanPopulation??c.population,rural_population:c.ruralPopulation??0,economically_active:active,
       available_workforce:workforce.get(c.id)!.workforce,employed_total:employedTotal,
       unemployed_total:unemployed,jobs_capacity:jobsTotal,vacancies_total:vacancies,
       labor_mobility:mobility,retrained:moved+critMoved,
@@ -559,7 +561,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       // household emission stays behind an explicit flag for regression comparisons.
       if(C.householdProduction&&(C.householdBaskets as readonly string[]).includes(basket)){
         const baseline=options.find(g=>g.household===true)||options.find(g=>g.household===undefined&&g.stage==='household');
-        if(baseline){let qty=c.population*C.householdRate*spec.intensity*workforce.get(c.id)!.workforceRatio*
+        if(baseline){let qty=(c.urbanPopulation??c.population)*C.householdRate*spec.intensity*workforce.get(c.id)!.workforceRatio*
           sectorFactor(c,BASKET_SECTOR[basket]||'crafting')*clamp(c.stability)*
           (BASKET_SECTOR[basket]==='farming'?1+c.irrigation*C.irrigationGain:1);
           const sector=BASKET_SECTOR[basket]||'crafting',lk=key(c.id,sector);
@@ -694,7 +696,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1,tools:toolFactor(p),capital:capitalFactor(p)};
       const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
       const desired=Math.max(0,target-(realized.get(id)||0));
-      const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target, ...(p.ruralLabor?{rural_population:p.ruralLabor.population,rural_workforce:Math.floor(p.ruralLabor.population*0.5),labor_origin:'rural'}:{})};
+      const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target, ...(p.ruralLabor?{rural_population:p.ruralLabor.population,rural_workforce:Math.floor(p.ruralLabor.population*RURAL_WORKFORCE_SHARE),rural_workforce_employed:employed.get(p.id)||0,labor_origin:'rural'}:{})};
       let qty=desired;
       const inputPaths=new Map<string,Path>();
       const loadByEdge=new Map<string,number>();

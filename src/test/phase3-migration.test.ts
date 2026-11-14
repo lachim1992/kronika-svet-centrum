@@ -126,12 +126,12 @@ describe("phase 3: commit-turn ownership contract", () => {
     expect(COMMIT).toMatch(/last_migration_out: emigration/);
   });
 
-  it("writes the population ledger only in the successful history phase", () => {
-    const histIdx = COMMIT.indexOf("POPULATION HISTORY");
-    expect(histIdx).toBeGreaterThan(0);
-    // inside the snapshot success branch (after the stale guard)
-    expect(COMMIT.indexOf("economy snapshot skipped")).toBeLessThan(histIdx);
-    expect(COMMIT).toMatch(/from\("city_population_ledger"\)\s*\n?\s*\.delete\(\)/);
+  it("commits the population ledger with rural and city population in the atomic world phase", () => {
+    expect(COMMIT).toContain("journal.atomic('world'");
+    expect(COMMIT).toContain("runWorldTickEvents(db");
+    expect(COMMIT).toContain("hex_population");
+    expect(COMMIT).toContain("city_population_ledger");
+    expect(COMMIT).toContain("results.populationLedger = populationLedger");
   });
 
   it("reuses the stored ledger on replay instead of recomputing", () => {
@@ -139,7 +139,9 @@ describe("phase 3: commit-turn ownership contract", () => {
     expect(COMMIT).toContain('return existingTick.results;');
   });
 
-  it("leaves rural transfer to Phase C", () => {
-    expect(COMMIT).toMatch(/local_immigration: 0, \/\/ rural → city transfer is Phase C/);
+  it("records rural-to-city migration in the canonical city ledger", () => {
+    expect(COMMIT).toContain("ruralTurn(");
+    expect(COMMIT).toMatch(/local_immigration:\s*local\.immigration\[city\.id\]\s*\|\|\s*0/);
+    expect(COMMIT).toMatch(/last_migration_in:\s*immigration\s*\+\s*\(local\.immigration/);
   });
 });
