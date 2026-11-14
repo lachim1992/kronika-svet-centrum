@@ -32,7 +32,7 @@ import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
-import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroPath, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
+import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroPath, planMicroRoute, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
@@ -394,7 +394,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [treasury, setTreasury] = useState({ gold: 0, production: 0 });
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
   const [armyMoveMode, setArmyMoveMode] = useState(false);
-  const [armyMoveTarget, setArmyMoveTarget] = useState<Micro | null>(null);
+  const [armyWaypoints, setArmyWaypoints] = useState<Micro[]>([]);
+  const armyMoveTarget = armyWaypoints.length ? armyWaypoints[armyWaypoints.length - 1] : null;
+  const setArmyMoveTarget = useCallback((m: Micro | null) => setArmyWaypoints(prev => m ? [...prev, m] : prev.slice(0, -1)), []);
+  const clearArmyWaypoints = useCallback(() => setArmyWaypoints([]), []);
   const [armyMoving, setArmyMoving] = useState(false);
   const [formationSaving, setFormationSaving] = useState(false);
   const [selectedMicroFindings, setSelectedMicroFindings] = useState<Array<{ kind?: string }> | null>(null);
@@ -937,7 +940,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     }));
   }, [armies, entityCell]);
   const selectedArmy = useMemo(() => armies.find(army => army.id === selectedArmyId) || null, [armies, selectedArmyId]);
-  useEffect(() => { setArmyMoveMode(false); setArmyMoveTarget(null); }, [selectedArmyId]);
+  useEffect(() => { setArmyMoveMode(false); clearArmyWaypoints(); }, [selectedArmyId, clearArmyWaypoints]);
   /** Same terrain the server validates with: stored sub-squares, macro biome otherwise, completed road cells. */
   const microTerrainAt = useMemo(() => {
     const macro = new Map<string, Tile>();
@@ -962,7 +965,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [selectedArmy, entityCell]);
   const armyPlanTarget = armyMoveTarget;
   const armyMovePlan = useMemo(() => (armyMoveMode && selectedArmyMicro && armyPlanTarget)
-    ? planMicroPath(selectedArmyMicro, armyPlanTarget, microTerrainAt) : null, [armyMoveMode, selectedArmyMicro, armyPlanTarget, microTerrainAt]);
+    ? planMicroRoute(selectedArmyMicro, armyWaypoints, microTerrainAt) : null, [armyMoveMode, selectedArmyMicro, armyPlanTarget, armyWaypoints, microTerrainAt]);
   const setBattleFormation = async (formation: string) => {
     if (!selectedArmy || formationSaving) return;
     setFormationSaving(true);
@@ -980,7 +983,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setArmyMoving(false);
     if (!result.ok) { toast.error(result.error || "Přesun se nepodařil"); return; }
     toast.success(`${selectedArmy.name} vyrazila o ${armyMovePlan.path.length - 1} políček`);
-    setArmyMoveMode(false); setArmyMoveTarget(null); await load();
+    setArmyMoveMode(false); clearArmyWaypoints(); await load();
   };
   const selectedArmyStack = useMemo(() => {
     if (!selectedArmy) return [];
@@ -2091,7 +2094,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {city.population_total > city.housing_capacity && <path d="M-27 -11 L-22 -20 L-17 -11 Z" fill="var(--map-focus)"><title>Tlak na růst</title></path>}
             </g>;
           })}
-          {armyMoveMode && selectedArmy && selectedArmyMicro && <ArmyMoveOverlay start={selectedArmyMicro} terrainAt={microTerrainAt} committed={!!armyMoveTarget}
+          {armyMoveMode && selectedArmy && selectedArmyMicro && <ArmyMoveOverlay start={selectedArmyMicro} terrainAt={microTerrainAt} waypoints={armyWaypoints} committed={false}
             isDrag={() => !!dragRef.current?.moved} onPick={setArmyMoveTarget} />}
           {armyMovePlan && armyMovePlan.path.length > 0 && (() => {
             const microPoint = (m: Micro) => {
@@ -2106,6 +2109,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <polyline points={pts.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="var(--map-marker)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".7" />
               <polyline points={pts.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="var(--map-focus)" strokeWidth="2" strokeDasharray="5 3" strokeLinecap="round" strokeLinejoin="round" />
               {pts.slice(1).map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="1.6" fill="var(--map-focus)" />)}
+              {armyWaypoints.slice(0, -1).map((w, i) => { const p = microPoint(w); return <g key={`wp${i}`}><circle cx={p.x} cy={p.y} r="4" fill="var(--map-label-edge)" stroke="var(--map-focus)" strokeWidth="1.5" /><text x={p.x} y={p.y + 2.5} textAnchor="middle" fontSize="6" fontWeight="700" fill="var(--map-focus)">{i + 1}</text></g>; })}
               <circle cx={end.x} cy={end.y} r="4.5" fill="none" stroke="var(--map-focus)" strokeWidth="2" />
               {tgt && !armyMovePlan.reachedTarget && <line x1={end.x} y1={end.y} x2={tgt.x} y2={tgt.y} stroke="var(--map-city-rival)" strokeWidth="1.4" strokeDasharray="3 3" opacity=".8" />}
               {tgt && !armyMovePlan.reachedTarget && <circle cx={tgt.x} cy={tgt.y} r="3.5" fill="none" stroke="var(--map-city-rival)" strokeWidth="1.5" strokeDasharray="2 2" />}
@@ -2618,7 +2622,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <div className="mt-4 flex items-center gap-2">
           <Shield className="h-4 w-4 text-primary"/>
           <Flag className="h-4 w-4 text-primary"/>
-          <span className="text-xs text-muted-foreground">Pohyb: až {MOVE_BUDGET / 10} bodů za kolo — silnice 1, rovina 1,5, les a kopce 2, hory a bažiny 3; voda a řeka bez mostu neprůchodné.</span>
+          <span className="text-xs text-muted-foreground">Pohyb: až {MOVE_BUDGET / 10} bodů za kolo — silnice 1 (až 30 políček), rovina 3 (10 políček), les a kopce 4, hory a bažiny 6; voda a řeka bez mostu neprůchodné.</span>
         </div>
         {selectedArmy.player_name === playerName && <div className="mt-4">
           <p className="mb-1.5 text-xs font-semibold">Bojová formace</p>
@@ -2632,12 +2636,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {selectedArmy.moved_this_turn
             ? <p className="text-xs text-muted-foreground">Armáda se v tomto kole už pohnula.</p>
             : !armyMoveMode
-              ? <Button size="sm" className="w-full" onClick={() => { setArmyMoveMode(true); setArmyMoveTarget(null); }}>Přesunout armádu</Button>
+              ? <Button size="sm" className="w-full" onClick={() => { setArmyMoveMode(true); clearArmyWaypoints(); }}>Přesunout armádu</Button>
               : <div className="space-y-2 border border-primary/30 p-2 text-xs">
-                  <p>{armyMovePlan ? `Trasa: ${armyMovePlan.path.length - 1} políček · ${(armyMovePlan.spent / 10).toLocaleString("cs-CZ")} / ${MOVE_BUDGET / 10} bodů${armyMovePlan.reachedTarget ? "" : " · cíl je dál, armáda dojde jen sem"}` : "Najeď myší na cíl a klikni. Pravým tlačítkem cíl zrušíš."}</p>
+                  <p>{armyMovePlan ? `Trasa: ${armyMovePlan.path.length - 1} políček · ${(armyMovePlan.spent / 10).toLocaleString("cs-CZ")} / ${MOVE_BUDGET / 10} bodů${armyMovePlan.reachedTarget ? "" : " · cíl je dál, armáda dojde jen sem"}` : "Klikáním přidáváš mezibody trasy (např. podél silnice), poslední je cíl. Pravým tlačítkem odebereš poslední bod."}</p>
                   <div className="flex gap-2">
                     <Button size="sm" className="flex-1" disabled={!armyMovePlan || armyMovePlan.path.length < 2 || armyMoving} onClick={() => void confirmArmyMove()}>{armyMoving ? "Přesouvám…" : "Potvrdit pohyb"}</Button>
-                    <Button size="sm" variant="outline" onClick={() => { setArmyMoveMode(false); setArmyMoveTarget(null); }}>Zrušit</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setArmyMoveMode(false); clearArmyWaypoints(); }}>Zrušit</Button>
                   </div>
                 </div>}
         </div>}
