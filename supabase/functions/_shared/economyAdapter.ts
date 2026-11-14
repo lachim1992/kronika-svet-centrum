@@ -111,7 +111,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     const soldiers=actualSoldiers(db.military_stacks.filter(s=>(s.owner_player??s.player_name)===c.owner_player));
     const buildings=db.city_buildings.filter(b=>b.city_id===c.id&&b.status==='completed');
     const effects=buildings.map(b=>({...db.building_templates.find(t=>t.id===b.template_id)?.effects,...b.effects}));
-    return {id:c.id,name:c.name,owner:c.owner_player,cell:`${c.grid_x??c.province_q},${c.grid_y??c.province_r}`,population:nonnegative(c.population_total),
+    return {id:c.id,name:c.name,owner:c.owner_player,cell:`${c.grid_x??c.province_q},${c.grid_y??c.province_r}`,province_id:c.province_id??null,population:nonnegative(c.population_total),
       activePopModifier:lawModifiers.active,maxMobModifier:lawModifiers.maxMobilization,
       classes:{peasants:nonnegative(c.population_peasants),burghers:nonnegative(c.population_burghers),clerics:nonnegative(c.population_clerics),warriors:nonnegative(c.population_warriors)},
       soldiers:population?soldiers*nonnegative(c.population_total)/population:0,stability:nonnegative(c.city_stability??50)/100,
