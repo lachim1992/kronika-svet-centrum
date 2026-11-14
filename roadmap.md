@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## Production/trade flow diagnosis — 2026-11-14
+- [ ] Trace canonical production → stocks/surplus → demand → trade allocation → freight paths → fiscal reporting without advancing turns or mutating JV72O7/TEST02.
+- [ ] Inspect current JV72O7 read-only ledgers and quantify where shipment candidates become zero.
+- [ ] Separate data/geometry/allocation defects from genuine scale problems; propose bounded production/demand coefficient experiments only after the cause is known.
+- [ ] Confirm the desired trade behaviour with the user before changing formulas.
+
 ## Visual Map Polish 2.0 — first verified slice, 2026-11-14
 - [x] Audited Dashboard → WorldMapTab → IsometricSquareMap: raster terrain/vegetation plus SVG interaction and infrastructure; preserved square coordinates, 6×6 parcels, hitboxes and game data.
 - [x] Reused existing painted assets with deterministic tree/hill/mountain scale and anchor variation, sparse forest variation and baked contact shadows; softened parcel tint contrast and deeply muted water through a cached filtered texture.
