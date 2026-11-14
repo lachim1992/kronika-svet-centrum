@@ -101,7 +101,7 @@ export const PRODUCER_COST_FIELDS: EconomyField[] = [
 export const PRODUCER_COST_UNMAPPED_OK = new Set(["payroll", "capital_wear", "value_added"]);
 export type ProducerCostRecord = Record<string, unknown>;
 
-export const BASIS_LABEL: Record<string, string> = { settled_wages: "vyplacené mzdy", imputed_proxy: "odhad z HDP", imputed: "odhad, nikoli výplata", settled_ownership: "vyplacený podíl na zisku" };
+export const BASIS_LABEL: Record<string, string> = { settled_wages: "vyplacené mzdy", imputed_proxy: "odhad z HDP", imputed: "odhad, nikoli výplata", settled_ownership: "vyplacený podíl na zisku", settled_rural_wages: "vyplacené venkovské mzdy", allocated_legacy_settlement: "rozdělené starší vyúčtování", imputed_rural_payroll: "odhad mezd venkovských producentů", no_rural_population: "bez venkovské populace" };
 
 /** null/undefined = field missing (older ledger or not yet settled) — never shown as 0. */
 export function formatField(field: EconomyField, row: Record<string, unknown> | null | undefined): { text: string; missing: boolean } {
