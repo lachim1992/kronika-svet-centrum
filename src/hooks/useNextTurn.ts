@@ -43,6 +43,12 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
           }
         } catch { /* ignore */ }
 
+        const status = (error.context as Response | undefined)?.status;
+        if (status === 409) {
+          // Stale view: the server already moved on. Reload state (onComplete) instead of reporting a failed turn.
+          toast.info("Hra mezitím pokročila do dalšího kola. Stav byl obnoven — zkontrolujte ho a ukončete kolo znovu.");
+          return;
+        }
         const msg = body?.error || error.message || "Neznámá chyba";
         console.error("commit-turn error:", msg);
         toast.error(`Chyba při uzavírání kola: ${msg}`);
