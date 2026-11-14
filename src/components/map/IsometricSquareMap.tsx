@@ -765,13 +765,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [roadSegments]);
 
   /** Roads live on the sub-parcel grid; legacy segments receive a deterministic fallback trace. */
-  const roadSurfaceByCell = useMemo(() => {
+  const buildRoadSurface = useCallback((draft: SubRoadCell[], draftLevel: number) => {
     const surface = new Map<string, { level: number; steps: RoadStep[]; cells: Map<string, { x: number; y: number }>; draft: boolean }>();
-    const push = (x: number, y: number, level: number, step: RoadStep | null, draft: boolean, sub?: { x: number; y: number }) => {
+    const push = (x: number, y: number, level: number, step: RoadStep | null, isDraft: boolean, sub?: { x: number; y: number }) => {
       const key = cellKey(x, y);
       const entry = surface.get(key) || { level: 0, steps: [] as RoadStep[], cells: new Map<string, { x: number; y: number }>(), draft: false };
       entry.level = Math.max(entry.level, level);
-      entry.draft = entry.draft || draft;
+      entry.draft = entry.draft || isDraft;
       if (step && !entry.steps.some(item => item.dx === step.dx && item.dy === step.dy)) entry.steps.push(step);
       if (sub) entry.cells.set(`${sub.x},${sub.y}`, sub);
       surface.set(key, entry);
@@ -793,13 +793,19 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           push(sub.gridX, sub.gridY, segment.level, null, segment.status === "building", { x: sub.parcelX, y: sub.parcelY }));
       }
     });
-    roadDraft.forEach(sub => push(sub.gridX, sub.gridY, roadDraftLevel, null, true, { x: sub.parcelX, y: sub.parcelY }));
+    draft.forEach(sub => push(sub.gridX, sub.gridY, draftLevel, null, true, { x: sub.parcelX, y: sub.parcelY }));
     return new Map([...surface.entries()].map(([key, entry]) => {
       const [x, y] = key.split(",").map(Number);
       const cells = entry.cells.size ? [...entry.cells.values()] : tileRoadCells(sessionId, x, y, entry.steps);
       return [key, { level: entry.level, draft: entry.draft, cells }];
     }));
-  }, [roadSegments, roadProjects, roadDraft, roadDraftLevel, sessionId]);
+  }, [roadSegments, roadProjects, sessionId]);
+  // The draft is a lightweight SVG overlay. It must not rebake the static world on every cell.
+  const terrainRoadSurfaceByCell = useMemo(() => buildRoadSurface([], 1), [buildRoadSurface]);
+  const roadSurfaceByCell = useMemo(
+    () => roadDraft.length ? buildRoadSurface(roadDraft, roadDraftLevel) : terrainRoadSurfaceByCell,
+    [roadDraft, roadDraftLevel, buildRoadSurface, terrainRoadSurfaceByCell],
+  );
 
 
   const roadDraftSummary = useMemo(() => {
