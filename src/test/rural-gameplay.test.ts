@@ -2,7 +2,7 @@
 import { describe,it,expect } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
-import { advanceRural,ruralTurn,ruralCatchments,allocateRuralLabor,foundingTransfer } from '../../supabase/functions/_shared/ruralGameplay';
+import { advanceRural,ruralTurn,ruralCatchments,allocateRuralLabor,foundingTransfer,aggregateRuralPopulationByCity } from '../../supabase/functions/_shared/ruralGameplay';
 import { type RuralCell } from '../../supabase/functions/_shared/ruralPopulation';
 const row={q:0,r:0,carrying_capacity:1000,rural_population:500,mobile_population:40,last_resolved_turn:19};
 const cell={q:0,r:0,seed:'x',is_passable:true,biome_family:'plains',moisture_band:2,temp_band:2,mean_height:0.2,forest_density:0,coastal:false,has_river:false,movement_cost:1,access_score:1,owner_player:'p',province_id:'province'} satisfies RuralCell & {owner_player:string;province_id:string};
@@ -34,6 +34,24 @@ describe('Phase C active rural state',()=>{
     const cities=[city,{...city,id:'b',cell:'2,0'}];
     const a=ruralCatchments(cells,cities),b=ruralCatchments(cells,[...cities].reverse());
     expect(a).toEqual(b);expect(a.get('1,0')).toBe('a');expect(a.has('4,0')).toBe(false);
+  });
+  it('recovers a legacy city catchment from its nearest owned province cell and never crosses impassable cells',()=>{
+    const cells=[
+      {...cell,q:10,r:10,grid_x:10,grid_y:10},
+      {...cell,q:11,r:10,grid_x:11,grid_y:10},
+      {...cell,q:12,r:10,grid_x:12,grid_y:10,is_passable:false},
+      {...cell,q:10,r:11,grid_x:10,grid_y:11,province_id:'other'},
+    ];
+    const catchments=ruralCatchments(cells,[{...city,cell:'0,0',province_id:'province'}]);
+    expect(catchments.get('10,10')).toBe('a');
+    expect(catchments.get('11,10')).toBe('a');
+    expect(catchments.has('12,10')).toBe(false);
+    expect(catchments.has('10,11')).toBe(false);
+  });
+  it('aggregates rural households once into their single city market catchment',()=>{
+    const catchments=new Map([['0,0','a'],['1,0','a'],['2,0','b']]);
+    const population=new Map([['0,0',100],['1,0',50],['2,0',25],['3,0',999]]);
+    expect([...aggregateRuralPopulationByCity(catchments,population)].sort()).toEqual([['a',150],['b',25]]);
   });
   it('founding planning conserves 100 people and refuses insufficient population',()=>{
     const out=foundingTransfer([row]);expect(out[0].rural_population).toBe(400);
