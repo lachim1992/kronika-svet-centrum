@@ -58,6 +58,7 @@ describe("demand-aware labour for non-storable subsistence sources", () => {
     expect(result.cityAccounts[0].physical_need_coverage).toBeCloseTo(1, 7);
     expect(fish.realized / fish.employed!).toBeCloseTo(30 * 0.75 / 300, 7);
     expect(result.labor[0].employed_total).toBeLessThanOrEqual(result.labor[0].available_workforce + 1e-7);
+    expect(result.labor[0].perishable_demand_limited_jobs).toBeGreaterThan(0);
   });
 
   it("keeps a bounded physical surplus available for a real food shipment", () => {

@@ -484,7 +484,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       labor_mobility:mobility,retrained:moved+critMoved,
       // People idle while jobs stand empty: the mismatch itself, not a general labour shortage.
       structural_unemployed:Math.min(unemployed,vacancies),
-      critical_priority_employed:priorityEmployed,
+      critical_priority_employed:priorityEmployed,perishable_demand_limited_jobs:perishableLimited,
       employment_rate:supplyTotal>C.epsilon?employedTotal/supplyTotal:0,
       unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors,
       wage_rate:localWage({supply:supplyTotal,vacancies,unemployed}),service:serviceLabor.get(c.id)});
