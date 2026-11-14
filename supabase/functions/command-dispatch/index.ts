@@ -40,6 +40,8 @@ import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
 import { templateSiteRole, DEPOSIT_REQUIRED, availableMacroReserve, macroReserveKey, type SiteRole } from "../_shared/ruralSites.ts";
 import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
+import { generateTileParcels } from "../_shared/tileParcels.ts";
+import { MICRO_SURVEY_COST, surveyMicroSquare } from "../_shared/microResources.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
 
@@ -535,6 +537,43 @@ async function executeCommand(
       const findings = surveyFindings((truth as any).deposits || [], level as 1 | 2);
       const { data, error } = await supabase.rpc("record_macro_survey", { p_session: sessionId, p_player: actor.name, p_x: x, p_y: y,
         p_level: level, p_findings: findings, p_cost: SURVEY_COST[level as 1 | 2], p_turn: turnNumber });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: { ...data, findings } } as any;
+    }
+
+    case "SURVEY_MICRO": {
+      // Paid survey of one 6x6 sub-square. Sub-biome: stored parcel, else the same deterministic layout the map shows.
+      const x = Number(payload.gridX), y = Number(payload.gridY), pi = Number(payload.parcelIndex);
+      if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(pi) || pi < 0 || pi > 35) return { events: [], error: "Neplatné políčko" };
+      const { data: patch } = await supabase.from("province_hexes")
+        .select("grid_x, grid_y, biome_family, mean_height, has_river, river_direction, coastal, is_passable, temp_band, moisture_band")
+        .eq("session_id", sessionId).gte("grid_x", x - 1).lte("grid_x", x + 1).gte("grid_y", y - 1).lte("grid_y", y + 1);
+      const hex = (patch || []).find((h: any) => h.grid_x === x && h.grid_y === y);
+      if (!hex) return { events: [], error: "Pole neexistuje" };
+      const asTerrain = (row: any) => ({ biome_family: row.biome_family, elevation: row.mean_height, has_river: row.has_river, river_direction: row.river_direction, is_coastal: row.coastal, is_passable: row.is_passable });
+      const { data: stored } = await supabase.from("tile_parcels").select("sub_biome").eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).eq("parcel_index", pi).maybeSingle();
+      let subBiome: string | null = stored?.sub_biome ?? null;
+      if (!subBiome) {
+        const neighbours = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => {
+          const row = (patch || []).find((r: any) => r.grid_x === x + dx && r.grid_y === y + dy);
+          return row ? { dx, dy, terrain: asTerrain(row) } : null;
+        }).filter(Boolean) as any[];
+        subBiome = generateTileParcels(sessionId, x, y, asTerrain(hex), neighbours).find(spec => spec.parcelIndex === pi)?.subBiome ?? null;
+      }
+      await supabase.from("geology_seeds").upsert({ session_id: sessionId }, { onConflict: "session_id", ignoreDuplicates: true });
+      const { data: seed } = await supabase.from("geology_seeds").select("salt").eq("session_id", sessionId).single();
+      let { data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).maybeSingle();
+      if (!truth) {
+        const { data: rocky } = await supabase.from("province_hexes").select("grid_x, grid_y, biome_family")
+          .eq("session_id", sessionId).or("biome_family.ilike.%hill%,biome_family.ilike.%mountain%").limit(5000);
+        const veins = goldVeinCells(seed!.salt, (rocky || []).map((h: any) => ({ x: h.grid_x, y: h.grid_y, biome_family: h.biome_family })));
+        await supabase.from("macro_deposits").upsert({ session_id: sessionId, grid_x: x, grid_y: y, deposits: generateMacroDeposits(seed!.salt, x, y, hex as any, veins) }, { onConflict: "session_id,grid_x,grid_y", ignoreDuplicates: true });
+        ({ data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).single());
+      }
+      const mx = x * 6 + (pi % 6), my = y * 6 + Math.floor(pi / 6);
+      const findings = surveyMicroSquare(seed!.salt, mx, my, subBiome, hex.biome_family, (truth as any)?.deposits || []);
+      const { data, error } = await supabase.rpc("record_micro_survey", { p_session: sessionId, p_player: actor.name, p_x: mx, p_y: my,
+        p_findings: findings, p_cost: MICRO_SURVEY_COST, p_turn: turnNumber });
       if (error) return { events: [], error: error.message };
       return { events: [], result: { ...data, findings } } as any;
     }

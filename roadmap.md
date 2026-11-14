@@ -526,3 +526,9 @@ Plán: `.lovable/plan/atlas.md` (původní `.lovable/plan.md` obnoven z 166e9b1d
 - Hotovo: `src/components/map/ArmySquad.tsx` — malované skupinky (pěchota/jízda/obléhací stroje) na každém obsazeném mikropolíčku (max 500 mužů, 1 figurka ≈ 125 mužů, max 4), prapor v barvě říše s morálkou; starý `ArmyMarker.tsx` odstraněn.
 - Ověřeno: typecheck čistý, 976 testů prošlo; prohlížeč IJ8BQ5 jen čtením — 12 armád vykresleno, žádné chyby, žádné zápisy.
 - Další krok: etapa 3 — tábor s palisádou podle počtu vojáků.
+
+## Suroviny z mikropolíček — etapa 1: šance a průzkum (2026-11-14)
+- Hotovo: `_shared/microResources.ts` (jisté suroviny podle podterénu: obilí na orné půdě, kámen v kopcích/horách, dřevo v lese, ryby u vody, rašelina v bažině; skryté šance pro réva, olivy, len, zvěř, pryskyřici, rudy, zlato — rudy a zlato jen tam, kde je skutečně má velké pole), tabulka `micro_surveys` + `record_micro_survey` (migrace 0026), příkaz SURVEY_MICRO (2 zlata = desetina plného průzkumu), panel „Suroviny políčka“ v okně parcely (`MicroResourcePanel.tsx`).
+- Testy: `micro-resources.test.ts` 5/5; celá sada viz poslední běh. Nasazeno: command-dispatch.
+- Neověřeno: placený průzkum v živé hře (zapsal by do hry).
+- Zbývá: etapa 2 stavby jen na potvrzených surovinách; 3 pole u farmy (max 8, sousedící); 4 množení plodin (vinice 3 kola); 5 opatrný převod uložených her.
