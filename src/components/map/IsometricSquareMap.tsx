@@ -520,6 +520,41 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   // Viewing/reloading the map is read-only. Founding and explicit rollout commands
   // own city footprints; auto-seeding here caused writes and a second full reload.
 
+  /**
+   * Pointer gestures move one SVG group directly, at most once per animation frame.
+   * React receives the settled camera afterwards instead of reconciling the whole world
+   * for every pointer event. All children keep stable world coordinates and hitboxes.
+   */
+  const syncCameraTransform = useCallback(() => {
+    const camera = cameraRef.current;
+    worldTransformRef.current?.setAttribute(
+      "transform",
+      `translate(${camera.pan.x * camera.zoom} ${camera.pan.y * camera.zoom}) scale(${camera.zoom})`,
+    );
+  }, []);
+  useLayoutEffect(() => { syncCameraTransform(); });
+  const paintCamera = useCallback(() => {
+    cameraFrameRef.current = null;
+    syncCameraTransform();
+  }, [syncCameraTransform]);
+  const updateCamera = useCallback((next: { zoom: number; pan: { x: number; y: number } }, settle: "now" | "debounce" | "gesture") => {
+    cameraRef.current = { zoom: clampZoom(next.zoom), pan: next.pan };
+    if (cameraFrameRef.current === null) cameraFrameRef.current = window.requestAnimationFrame(paintCamera);
+    if (cameraCommitRef.current !== null) { window.clearTimeout(cameraCommitRef.current); cameraCommitRef.current = null; }
+    if (settle === "gesture") return;
+    const commit = () => {
+      cameraCommitRef.current = null;
+      setZoom(cameraRef.current.zoom);
+      setPan(cameraRef.current.pan);
+    };
+    if (settle === "now") commit();
+    else cameraCommitRef.current = window.setTimeout(commit, 90);
+  }, [paintCamera]);
+  useEffect(() => () => {
+    if (cameraFrameRef.current !== null) window.cancelAnimationFrame(cameraFrameRef.current);
+    if (cameraCommitRef.current !== null) window.clearTimeout(cameraCommitRef.current);
+  }, []);
+
   const center = useMemo(() => {
     if (!tiles.length) return { x: 0, y: 0 };
     const points = tiles.map(tile => projectCell("square4", tileCell(tile), TILE_SIZE));
