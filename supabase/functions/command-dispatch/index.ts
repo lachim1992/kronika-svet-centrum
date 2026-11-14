@@ -1237,12 +1237,13 @@ async function executeFoundCity(
     event_type: "founding",
     location: cityName.trim(),
     city_id: cityId,
-    note: payload.note || `${actor.name} založil město ${cityName.trim()}.`,
+    note: payload.note || `${actor.name} založil město ${cityName.trim()} a přivedl do něj ${settlersTransferred} osadníků z okolního venkova.`,
     importance: "critical",
     reference: {
       cityName: cityName.trim(), cityId, provinceId, provinceName,
       flavorPrompt: flavorPrompt?.trim(), legend: legend?.trim(),
-      tags, provinceQ: freeQ, provinceR: freeR,
+      tags, provinceQ: freeQ, provinceR: freeR, settlersTransferred,
+      ruralSourceCells: foundingData?.source_cells || [], populationSource: "rural_transfer",
     },
   }];
 
