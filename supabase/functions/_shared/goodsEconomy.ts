@@ -599,15 +599,17 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const ruralBudget=budget?.rural_discretionary_budget??(budget?.discretionary_budget==null?null:budget.discretionary_budget*ruralShare);
     const urbanBudget=budget?.urban_discretionary_budget??(budget?.discretionary_budget==null?null:budget.discretionary_budget*(1-ruralShare));
     const ruralCap=discretionaryBudgetScale(ruralPlanned,ruralBudget);
-    const urbanCap=discretionaryBudgetScale(urbanHouseholdPlanned+famePlanned,urbanBudget);
+    const urbanPlanned=urbanHouseholdPlanned+famePlanned;
+    const urbanCap=discretionaryBudgetScale(urbanPlanned,urbanBudget);
     const householdScale=householdPlanned>0
       ? (ruralPlanned*ruralCap.scale+urbanHouseholdPlanned*urbanCap.scale)/householdPlanned : 1;
-    const funded=ruralPlanned*ruralCap.scale+(urbanHouseholdPlanned+famePlanned)*urbanCap.scale;
+    const funded=ruralPlanned*ruralCap.scale+urbanPlanned*urbanCap.scale;
     const combinedBudget=ruralBudget==null||urbanBudget==null?budget?.discretionary_budget??null:ruralBudget+urbanBudget;
+    const budgetMode=ruralPlanned<=0?urbanCap.mode:urbanPlanned<=0?ruralCap.mode:ruralCap.mode===urbanCap.mode?ruralCap.mode:'split_household_budgets';
     budgetCaps.set(c.id,{planned_spend:planned,budget:combinedBudget,scale:planned>0?funded/planned:1,
-      funded_spend:funded,constrained:ruralCap.constrained||urbanCap.constrained,mode:ruralCap.mode===urbanCap.mode?ruralCap.mode:'split_household_budgets',
+      funded_spend:funded,constrained:(ruralPlanned>0&&ruralCap.constrained)||(urbanPlanned>0&&urbanCap.constrained),mode:budgetMode,
       rural_planned_spend:ruralPlanned,rural_budget:ruralBudget,rural_funded_spend:ruralPlanned*ruralCap.scale,rural_scale:ruralCap.scale,
-      urban_planned_spend:urbanHouseholdPlanned+famePlanned,urban_budget:urbanBudget,urban_funded_spend:(urbanHouseholdPlanned+famePlanned)*urbanCap.scale,urban_scale:urbanCap.scale});
+      urban_planned_spend:urbanPlanned,urban_budget:urbanBudget,urban_funded_spend:urbanPlanned*urbanCap.scale,urban_scale:urbanCap.scale});
     for(const {basket,spec,options,shareOf,channels} of plans){
       channels.household_discretionary*=householdScale;
       const total=channelTotal(channels);
