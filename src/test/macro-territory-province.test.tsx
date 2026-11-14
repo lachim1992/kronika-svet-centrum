@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import MacroTerritoryPanel from "@/components/map/MacroTerritoryPanel";
 import { dispatchCommand } from "@/lib/commands";
 import { toast } from "sonner";
@@ -28,32 +28,40 @@ const props = {
   adjacentOwned: true, hasCity: false, assignableProvinceIds: ["p2"], onChanged: vi.fn(),
 };
 
+async function renderPanel(overrides: Record<string, unknown> = {}): Promise<ReactTestRenderer> {
+  let renderer!: ReactTestRenderer;
+  await act(async () => {
+    renderer = create(<MacroTerritoryPanel {...props} {...overrides} />);
+    await Promise.resolve();
+  });
+  return renderer;
+}
+
 describe("macro province assignment guards", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
   it("does not offer or dispatch a city move to another province", async () => {
-    render(<MacroTerritoryPanel {...props} hasCity />);
-    const select = await screen.findByLabelText("Provincie");
-    await waitFor(() => expect(select).toBeDisabled());
-    fireEvent.change(select, { target: { value: "p2" } });
+    const renderer = await renderPanel({ hasCity: true });
+    const select = renderer.root.findByType("select");
+    expect(select.props.disabled).toBe(true);
+    await act(async () => select.props.onChange({ target: { value: "p2" } }));
     expect(dispatchCommand).not.toHaveBeenCalled();
   });
 
   it("does not offer a province with no adjacent tile", async () => {
-    render(<MacroTerritoryPanel {...props} assignableProvinceIds={[]} />);
-    const select = await screen.findByLabelText("Provincie");
-    await waitFor(() => expect(select).toBeDisabled());
-    expect(screen.queryByRole("option", { name: "Druhá" })).not.toBeInTheDocument();
+    const renderer = await renderPanel({ assignableProvinceIds: [] });
+    expect(renderer.root.findByType("select").props.disabled).toBe(true);
+    expect(renderer.root.findAllByType("option").some(option => option.props.value === "p2")).toBe(false);
     expect(dispatchCommand).not.toHaveBeenCalled();
   });
 
   it("turns a server-side rule rejection into a toast, not an unhandled error", async () => {
     vi.mocked(dispatchCommand).mockResolvedValue({ ok: false, idempotent: false, events: [], error: "Přesun by rozdělil původní provincii na nesouvislé části" });
-    render(<MacroTerritoryPanel {...props} />);
-    const select = await screen.findByLabelText("Provincie");
-    await waitFor(() => expect(select).toBeEnabled());
-    fireEvent.change(select, { target: { value: "p2" } });
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Přesun by rozdělil původní provincii na nesouvislé části"));
+    const renderer = await renderPanel();
+    const select = renderer.root.findByType("select");
+    expect(select.props.disabled).toBe(false);
+    await act(async () => select.props.onChange({ target: { value: "p2" } }));
+    expect(toast.error).toHaveBeenCalledWith("Přesun by rozdělil původní provincii na nesouvislé části");
     expect(dispatchCommand).toHaveBeenCalledTimes(1);
   });
 });
