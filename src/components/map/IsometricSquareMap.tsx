@@ -31,6 +31,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
+import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
 import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroPath, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
@@ -396,6 +397,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [armyMoveTarget, setArmyMoveTarget] = useState<Micro | null>(null);
   const [armyMoving, setArmyMoving] = useState(false);
   const [formationSaving, setFormationSaving] = useState(false);
+  const [selectedMicroFindings, setSelectedMicroFindings] = useState<Array<{ kind?: string }> | null>(null);
   const [flowRows, setFlowRows] = useState<FlowRow[]>([]);
   const [openCorridor, setOpenCorridor] = useState<string | null>(null);
   const [hoverCorridor, setHoverCorridor] = useState<string | null>(null);
@@ -2493,7 +2495,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               const rural = item.kind === "building" && templateSiteRole(item.recipes.map(recipe => recipe.key)) === "rural";
               if (selectedParcel?.claim_kind === "worked" && !rural) return "Na využívané půdě lze stavět jen farmy, doly, lomy, tábory a rybářství — zpracování patří do města";
               if (selectedParcel?.claim_kind !== "worked" && rural) return "Těžební stavba patří na využívanou parcelu za městem — vyber ji nebo ji zdarma zaber";
-              if (rural) return depositSurveyReason(item.recipes.map(recipe => recipe.key), selectedMacroSurvey);
+              if (rural) return microSiteReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome, selected?.biome_family, selectedMicroFindings)
+                ?? depositSurveyReason(item.recipes.map(recipe => recipe.key), selectedMacroSurvey);
               return null;
             }}
             terrainBlockReason={item => terrainReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome)}
