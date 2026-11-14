@@ -3,8 +3,8 @@ import type { DbRecipe } from "./chains";
 export type Opportunity = { good: string; city: string; reason: string; blocker: string; certainty: "doloženo reportem" | "odvozeno"; unmet: number | null; localPrice: number | null; basePrice: number | null; hasRecipe: boolean; ownPotential: boolean; margin: number | null };
 
 /**
- * Deterministic: only goods the owner-scoped report shows as unmet (import_blockers) or as an
- * 'opportunity' alert. Prices come from report.prices; margin only if a producer of that good reports one.
+ * Deterministic: only goods the owner-scoped report shows as unmet (import_blockers).
+ * Prices come from report.prices; margin only if a producer of that good reports one.
  */
 export function deriveOpportunities(report: any, recipes: DbRecipe[], potentialRecipes: Set<string>): Opportunity[] {
   if (!report) return [];
@@ -21,6 +21,5 @@ export function deriveOpportunities(report: any, recipes: DbRecipe[], potentialR
     out.push({ good, city: cityName(city), reason, blocker, certainty, unmet, localPrice: pr?.local_price ?? null, basePrice: pr?.base_price ?? null, hasRecipe: makers.length > 0, ownPotential, margin: prod ? prod.margin.margin : null });
   };
   for (const b of report.import_blockers || []) push(b.city, b.good, typeof b.unmet === "number" ? b.unmet : null, `Neuspokojená poptávka; dovoz blokován: ${b.reason}`, "doloženo reportem");
-  for (const a of report.alerts || []) if (a.severity === "opportunity" && a.entity_type === "good") push(a.entity_id.split(":")[0] || "", a.metric, null, a.reason, "doloženo reportem");
   return out.sort((a, b) => (b.unmet ?? 0) - (a.unmet ?? 0));
 }
