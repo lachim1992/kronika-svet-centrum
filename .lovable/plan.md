@@ -1,108 +1,59 @@
-# Plan: stop the starter-town collapse (food / water / fuel) and fix worker allocation
+# Atlas — read-only encyklopedie herní reality
 
-This is a plan only. No code, data, migration or deploy changes have been made. JV72O7 and every other saved game stay untouched.
+## 1. Ověřený stav (HEAD v repu)
+- `TabId` je v `BottomNav.tsx`; obsahuje `codex`, ale `AppSidebar` ani `BottomNav` ho nenabízí. `Dashboard.tsx` renderuje `CodexTab` (lore/world foundation).
+- `BASKET_DEMAND` v `_shared/demandModel.ts` má 13 košů: staple_food, drinking_water, fuel, basic_clothing, tools, storage_logistics, admin_supplies, construction, military_supply, variety, feast, luxury_clothing, metalwork (intermediate_only).
+- Kanonické exporty existují: `PRODUCT_META`, `substitutionEfficiency` (productMarket.ts), `PRODUCTION_BUILDINGS`, `producersOfRecipe` (productionCatalog.ts), `parcelPotential` (parcelEconomy.ts).
+- `city_market_summary`: city_node_id, good_key, supply_volume, demand_volume, price_numeric, price_band, avg_quality, domestic/import_share, turn_number.
+- `macro_surveys`: session_id, player_name, grid_x/y, level, findings, surveyed_turn.
+- `useManagementReport` hook existuje (owner-scoped `read_economy_management`).
 
-## 0. Verified findings (corrected)
-- **Jobs at JV72O7 turn 2.** Effective building jobs are fishery 30 and well 25, so 55. The starter storage (`build_granary`, which needs 2 lumber) does not run. The player also has a completed Farm with 100 jobs, so the player has 155 building jobs plus 500 node jobs (5 nodes × 100 at Lv1). AI1 has 55 jobs and no nodes; AI2 has 55 + 600. With 52 workers, even 55 is already over capacity.
-- **Worker sharing (confirmed in the code and in diagnostics).** `producerSector()` in `goodsEconomy.ts` puts fishery, well and food in the farming sector, together with most resource nodes. Inside a sector, every producer gets the same `fill = goodsUsed/goodsJobs`, which is why fishery staffing is 7.57%. Workers move between sectors only through `laborMobility`. What is left to do is measure the improvement after prioritisation.
-- **Node jobs** come from `economyAdapter.ts`: `structureJobsBase × levelScale`, so Lv1 = 100. The nodes' own `population=0` is not used.
-- **Water penalty** is banded (`waterShortageImpact`: 0/0/2/4/8 stability, deaths only in `critical`). Famine turns on at a 5% deficit, with deaths `pop·0.05·ratio`.
-- **Storage.** `economyAdapter.ts` reads storage from `effects.storage_capacity`/`warehouse_level` + baseline. The starter "Osadní sklad" has only `basket_outputs.storage_logistics` and `build_granary`, with no `storage_capacity` effect.
-- **Storability** (from the goods catalogue in the database): `well_water` and `raw_fish` cannot be stored; `raw_grain`, `peat` and `charcoal` can. Step 1 re-confirms this into a JSON fixture with read-only queries.
+## 2. Volba: nový `atlas` TabId + `AtlasTab`
+Codex zůstává lore. Atlas je jiný účel (mechaniky + osobní analýza); rozšíření Codexu by míchalo narativ a čísla a porušilo Founder Safe Mode. Položka „Atlas“ se přidá do `AppSidebar` (skupina hra) i `BottomNav`.
 
-## 1. Read-only verification (no writes to any game)
-- List the code paths actually used: adapter → `producerSector` → labour pass → `foodShortage`/`waterShortageImpact`.
-- Use SELECT queries for the goods catalogue status (storable, perishability, substitution).
-- **AI1 example:** produced 2.654 `raw_fish`, used 1.05, threw away 1.604, because fish cannot be stored. At the same time Lambadagrad has famine, the ledger shows `importBlockers route_unreachable`, and there are 0 trade flows. So besides low local output, the problem is transport access, not general scarcity.
-  - Planned next step (P1): a connectivity test for trade between starting towns, with physical transport only, no goods moving without a route.
-- Export the JV72O7 turn-2 inputs into `src/test/fixtures/jv72o7_t2.json`. Nothing is written to the database.
+## 3. Rozvržení (6 podzáložek, česky, vyhledávání + filtry)
+1. **Jak funguje svět** — statický text cyklu, legenda stavů: Potvrzeno / Skutečný provoz / Potenciál / Odvozeno / Nedostupná data; slovník (výstup vs. kapacita vs. potenciál vs. zásoba vs. příjem vs. přidaná hodnota).
+2. **Suroviny a zboží** — tabulka/karty z `goods`, filtr fáze/koš/kategorie, základní cena vs. aktuální cena (se zdrojem a tahem, jinak „nedostupné“).
+3. **Spotřební koše** — 13 karet z `BASKET_DEMAND`: třída, drivers, shortage, basic need; napojené produkty (goods.demand_basket + PRODUCT_META) s účinností přes `substitutionEfficiency` (nutritionOnly pro kritické jídlo).
+4. **Výrobní řetězce** — vybrané zboží → strom vstupů/receptů/budov (DB `production_recipes` čísla, `producersOfRecipe` mapování); zdroje bez vstupů, alternativy; nesoulad DB vs. katalog označen.
+5. **Světové trhy** — agregace posledního snapshotu `city_market_summary`: poptávkou vážená cena, Σ nabídka/poptávka, počet trhů, tah a stáří. Osobní ceny/marže/toky z management reportu.
+6. **Moje území** — moje makropole, parcely, budovy, cesty; potvrzené suroviny jen z vlastních `macro_surveys`; biom jako „Odvozeno (inference)“; `parcelPotential` jako „Potenciál“; skutečný výnos z `report.producers`. Příležitosti: deterministické pravidlo (vysoká lokální cena + neuspokojená poptávka z reportu + existující řetězec + dostupný potenciál), s důvodem, překážkou a jistotou.
 
-## 2. P0: put basic needs first when assigning workers, keep mobility
-- In `goodsEconomy.ts`, sort the producers *inside each sector* into tiers:
-  - tier 0: food and drinking water, up to subsistence demand;
-  - tier 1: a fuel minimum;
-  - tier 2: everything else (nodes, industry, exports).
-- Fill the tiers in order from that sector's own workers. Unmet tier-0/1 vacancies then draw only on the workers already moved through the existing `laborMobility` (bounded retraining). There is no free city-wide pool.
-- Each worker is counted once, and employed ≤ workforce. Above subsistence, tier-0 producers compete normally, so market choices and trade stay.
-- Report `critical_priority_employed` and `industrial_output_forgone`, mapped in `economyFieldContract.ts`.
-- **Node jobs stay as declared in P0.** Lowering the job count while capacity stays the same would raise output per worker by 20× or more, which creates goods from nothing. Nodes simply receive fewer workers through the tier order. If node size changes later, jobs and throughput must scale by the same factor, tested by an invariant on output per worker and on capacity. The alternative is for nodes to draw on documented rural workers who have their own needs.
-- Long-term: treat rural workers as node labour once a real population ledger exists (P2).
-- Review node `structureJobsBase` only after this change has been measured.
-- **AUTO allocation check (P0).** In `productMarket.ts`, `autoAllocationDetail` can set food, water or fuel producers to allocation 0 through `anyProfitable`. Worker priority cannot help a producer with zero allocation.
-  - Add a bounded subsistence floor for critical producers, limited by real physical inputs. No free goods.
-  - The test also covers the tools floor (75%) and the stability multiplier.
+## 4. Datové zdroje a read path
+| Sekce | Zdroj | Cesta |
+|---|---|---|
+| Zboží | goods | client select (RLS čtení) |
+| Recepty | production_recipes | client select |
+| Koše/meta/katalog | demandModel, productMarket, productionCatalog | import čistých konstant/funkcí do frontendu (re-export modul `src/lib/atlas/canon.ts`, bez kopírování) |
+| Trhy svět | city_market_summary + province_nodes(city_id) | session-scoped, stránkované, jen max(turn_number) |
+| Osobní ekonomika | useManagementReport | existující RPC (owner-scoped) |
+| Území | province_hexes, tile_parcels, tile_parcel_contents, city_buildings, road_segments, macro_surveys | session + owner filtry, stránkované |
+Zakázáno: economy_turn_ledgers, macro_deposits, geology_seeds, jakýkoli insert/update/rpc zápis, edge funkce kromě čtení.
 
-## 3. A playable starter settlement (new worlds only)
-- **Site check first.** Starting positions must be valid for settling: reachable water (river, lake, coast or spring) and a food tile. Otherwise move the start (`terrain.ts` `findStartPositions`). Do not add a generic production source to make a bad site work.
-- **Bundle by biome:** farm or fishery, plus a water source. Water backup is a second, independent water source, or a later explicit water-storage mechanic (cistern), never stored water from nowhere.
-- **Fuel source by geography:** forest gives wood or charcoal, bog gives peat.
-- **Starter storage:** give "Osadní sklad" a real `effects.storage_capacity`, so an already built storehouse provides storage without lumber. Keep `build_granary` as a real recipe for building new storage from lumber. Only the false dependency of the existing storage service is removed. No recipe without inputs is added.
-- **One-time opening stock,** only of goods that can be stored: 2–3 turns of `raw_grain`/`preserved_food` and `peat`/`charcoal`. It is booked in the goods ledger with provenance `bootstrap` and written once.
-- Starter jobs ≤ about 0.9 × workforce. Same rules for AI realms.
+## 5. Mezery v datech a jak je UI přizná
+- Chybí snapshot / starý tah → banner „Data z tahu N (o X tahů starší)“ nebo „Nedostupné“, nikdy 0.
+- Stránkování nedokončeno / chyba → „Neúplná data“ místo součtů.
+- Recept v DB bez budovy v katalogu (nebo opačně) → štítek „Nesoulad katalogu“.
+- Zboží bez PRODUCT_META → účinnost „nedostupná“.
+- Report nedostupný (nečlen, chyba) → osobní sekce skryje čísla.
+- Ověřit před implementací: zda frontend smí importovat `_shared` moduly (Deno importy); pokud ne, tenký re-export bez logiky, test parity.
 
-## 4. Demand and severity
-- `foodShortage.ts`: split `food_deficit_minor` (deficit 5–15%, no deaths, −1 stability) from `famine` (>15% or reserve 0 for two or more turns). Exact cut-offs to be tuned in §6.
-- Keep water on its own curve.
-- Clothing and fuel: slow stability modifier only, no deaths, and only below `minor`.
-- Tools: an operating input, never a household need. Remove them from the need coverage shown as starvation, after checking `demandModel.ts` drivers.
-- Construction and industrial demand count only when there is an active project or producer (already partly true; to be verified).
-- Shortage and its consequences stay for real mismanagement.
+## 6. Testy
+- basket coverage: všech 13 košů z BASKET_DEMAND se renderuje, každý goods.demand_basket mapuje na známý koš.
+- recipe-chain integrity: graf bez cyklů/vymyšlených uzlů; každý uzel existuje v DB fixture.
+- provenance labels: každá číselná hodnota nese stav a zdroj.
+- no hidden deposit leakage: dotazy nikdy necílí macro_deposits/geology_seeds; surveys filtrované na hráče.
+- staleness/empty: prázdný snapshot → „nedostupné“, ne 0; starý tah → štítek stáří.
+- world price aggregation: vážený průměr na fixture.
+- read-only: mock supabase klienta — žádné insert/update/delete/upsert/rpc kromě read_economy_management, žádné functions.invoke.
 
-## 5. Production chains to check
-- raw_timber → lumber → granary/storage/construction
-- peat or charcoal (from timber) → fuel
-- grain → flour → bakery, plus food substitutes
-- New catalogue test: every starter or bootstrap building has a reachable input in each biome fixture. No building may start with a blocked input.
+## 7. Pořadí (malé ověřené řezy)
+1. Kostra: TabId `atlas`, navigace, prázdný `AtlasTab` + podzáložky, read-only test strážce.
+2. Datová vrstva `src/lib/atlas/` (stránkovaný loader, provenance typy, agregace trhu) + testy.
+3. Zboží + Koše.
+4. Výrobní řetězce.
+5. Světové trhy + osobní report.
+6. Moje území + příležitosti.
+7. Browser kontrola JV72O7 jen čtením (bez tahů/refresh), roadmap.md update s dalším krokem.
 
-## 6. Tuning (only after §2–§3 are measured)
-- Production coefficients, jobs per throughput, farm levels (7/14/28 stays), household demand (`populationDemand`), wages and margins.
-- Invariants stay as they are:
-  - process-turn is the only writer of fiscal and committed state, and refresh only recomputes;
-  - goods balance (production + opening + imports = use + exports + stock + losses);
-  - exports only from physical surplus after the subsistence reserve.
-
-## 7. Acceptance tests and KPIs
-- `src/test/starter-settlement.test.ts`: a 100-person town in coastal, inland river, dry, forest and bog biomes. Over 5 turns with no player action:
-  - only on valid starting biomes;
-  - food and water ≥ 100%, fuel ≥ 80%;
-  - start stability around 60–75/100;
-  - with no outside shock, stability never falls below the safe limit or by more than 5 points in the first 5 turns (rising is fine);
-  - no deaths from hunger or thirst;
-  - employed ≤ workforce;
-  - same for an AI realm.
-- `src/test/jv72o7-fixture.test.ts`: a frozen copy of the JV72O7 turn-2 inputs (JSON fixture, never written back to the game). Expect:
-  - before the fix it reproduces 80% / 35% / 33%;
-  - after the fix, the rise in fishery and well staffing is measured, critical coverage rises and `industrial_output_forgone` is reported;
-  - nothing is produced or bought without a physical source.
-- Extend `test02-startup.test.ts` to a full bootstrap with nodes and trade.
-- 20- and 200-turn simulations, deterministic and repeatable, with exact goods balance.
-- A shock case (crop failure or a blocked route) must still create shortage.
-- Existing trade, industrial-input and food-security tests must stay green.
-
-## 8. New games versus existing games
-- New behaviour turns on with `economy_version` (or a `game_settings` flag) for new worlds only.
-- Old games: an admin-only dry-run, read-only, shows before/after for one game. The upgrade is explicit and per game, through an admin function. It is never automatic and never touches JV72O7 without approval.
-- The labour-priority change in §2 is a solver rule, so it also changes old games on their next turn. Two options:
-  - **(a)** put it behind the same version flag;
-  - **(b)** treat it as a bug fix for all games.
-  
-  This is your decision. Recommendation: (a) first, then (b) after the fixture results.
-
-## Files and order
-1. `src/test/fixtures/jv72o7_t2.json` + `src/test/jv72o7-fixture.test.ts` (forensics)
-2. `supabase/functions/_shared/goodsEconomy.ts` (labour tiers), `economyConfig` (tier and cap constants), `src/lib/economyFieldContract.ts`
-3. `supabase/functions/_shared/economyAdapter.ts` (node job cap)
-4. `supabase/functions/_shared/starterEconomy.ts`, `create-world-bootstrap`, `world-generate-init` (bundle and bootstrap stock), `productionCatalog.ts` + catalogue migration for new starter recipes
-5. `foodShortage.ts`, `demandModel.ts` (severity)
-6. Tests from §7, `roadmap.md`, `docs/architecture/economy-contract.md`
-
-Test commands: `bunx vitest run src/test/jv72o7-fixture.test.ts src/test/starter-settlement.test.ts`, then the full suite and `tsgo -b --noEmit`.
-
-## Effort and risk
-- Forensics: small.
-- Labour tiers: medium. This is the highest risk, because it changes employment, which feeds wages and GDP.
-- Starter bundle and bootstrap: medium, and needs a catalogue migration.
-- Severity: small.
-- Tests and simulations: medium.
-- In total about 5–7 small slices.
-- Main risks: changes in old games (handled by the version flag), and opening stock being read as phantom goods (handled by provenance and a one-time write).
+Rozsah: ~10–14 nových souborů (AtlasTab, 6 sekcí, lib/atlas 3–4 moduly, 5–6 testů), 3 upravené (AppSidebar, BottomNav, Dashboard). Žádná migrace, publish ani zápis do hry.
