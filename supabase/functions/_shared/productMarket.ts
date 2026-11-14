@@ -553,7 +553,7 @@ export function cityAccounts(i: CityAccountsInput) {
     rural_population: ruralPopulation, rural_wage_income: ruralLaborIncome,
     rural_household_income: ruralHouseholdIncome, urban_household_income: Math.max(0,grossIncome-ruralHouseholdIncome),
     rural_wage_income_per_capita: ruralPopulation>0?ruralHouseholdIncome/ruralPopulation:0,
-    rural_wage_income_basis: i.settledRuralWageIncome!=null?'settled_rural_wages':settled!=null?'allocated_legacy_settlement':'imputed_rural_payroll',
+    rural_wage_income_basis: ruralPopulation<=0?'no_rural_population':i.settledRuralWageIncome!=null?'settled_rural_wages':settled!=null?'allocated_legacy_settlement':'imputed_rural_payroll',
     rural_household_taxes: ruralTaxes, rural_disposable_income: ruralDisposableIncome,
     rural_purchasing_power: ruralPurchasingPower, rural_basic_basket_cost: ruralBasicBasketCost,
     rural_affordability: ruralAffordability, urban_affordability: urbanAffordability,
