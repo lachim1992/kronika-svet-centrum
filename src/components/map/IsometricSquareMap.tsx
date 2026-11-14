@@ -2112,7 +2112,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           gridX={selectedCell.a} gridY={selectedCell.b} owner={selected.owner_player || null} provinceId={(selected as any).province_id || null}
           passable={selected.is_passable !== false} biome={selected.biome_family} ownedTiles={tiles.filter(t => t.owner_player === playerName).length}
           adjacentOwned={tiles.some(t => t.owner_player === playerName && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)}
-          onChanged={() => void load()} onSurveyChange={setSelectedMacroSurvey} />}
+          hasCity={cityByCell.has(cellKey(selectedCell.a, selectedCell.b))}
+          assignableProvinceIds={[...new Set(tiles.filter(t => t.owner_player === playerName && (t as any).province_id
+            && Math.abs(tileCell(t).a - selectedCell.a) + Math.abs(tileCell(t).b - selectedCell.b) === 1)
+            .map(t => String((t as any).province_id)))]}
+          onChanged={load} onSurveyChange={setSelectedMacroSurvey} />}
         <section className="mt-4 border border-border/70 bg-muted/20 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>

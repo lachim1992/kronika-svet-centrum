@@ -9,7 +9,8 @@ import { DEPOSIT_LABEL, macroClaimCost, SURVEY_COST, type DepositKind } from "..
 export type MacroSurveySnapshot = { level: number; findings: Finding[] };
 interface Props { sessionId: string; playerName: string; currentTurn: number; gridX: number; gridY: number;
   owner: string | null; provinceId: string | null; passable: boolean; biome: string; ownedTiles: number; adjacentOwned: boolean;
-  onChanged: () => void; onSurveyChange?: (survey: MacroSurveySnapshot | null) => void }
+  hasCity: boolean; assignableProvinceIds: string[];
+  onChanged: () => void | Promise<void>; onSurveyChange?: (survey: MacroSurveySnapshot | null) => void }
 type Finding = { kind: DepositKind; hint?: boolean; grade?: number; reserve?: number | null; implemented?: boolean; tag?: string; regenerates?: boolean };
 
 /** Macro tile: per-player survey knowledge, claim and province assignment. Inspect only — nothing happens without a click. */
@@ -35,10 +36,15 @@ export default function MacroTerritoryPanel(p: Props) {
 
   const run = async (key: string, commandType: string, payload: Record<string, unknown>, ok: string) => {
     setBusy(key);
-    const r = await dispatchCommand({ sessionId: p.sessionId, turnNumber: p.currentTurn, actor: { name: p.playerName }, commandType, commandPayload: { gridX: p.gridX, gridY: p.gridY, ...payload } });
-    setBusy(null);
-    if (!r.ok) { toast.error(r.error || "Akce se nezdařila"); return; }
-    toast.success(ok); await load(); p.onChanged();
+    try {
+      const r = await dispatchCommand({ sessionId: p.sessionId, turnNumber: p.currentTurn, actor: { name: p.playerName }, commandType, commandPayload: { gridX: p.gridX, gridY: p.gridY, ...payload } });
+      if (!r.ok) { toast.error(r.error || "Akce se nezdařila"); return; }
+      toast.success(ok); await load(); await p.onChanged();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Akci se nepodařilo dokončit");
+    } finally {
+      setBusy(null);
+    }
   };
   const water = /sea|ocean|lake|water/.test(p.biome);
   const level = survey?.level || 0;
