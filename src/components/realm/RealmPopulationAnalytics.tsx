@@ -24,12 +24,23 @@ export default function RealmPopulationAnalytics({ sessionId, currentTurn, curre
   const [ledger, setLedger] = useState<PopulationLedgerRow[]>([]);
   const [migrations, setMigrations] = useState<MigrationRow[]>([]);
   const [nodes, setNodes] = useState<NodeRow[]>([]);
+  const [rural, setRural] = useState<{population:number;capacity:number;mobile:number}|null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      const {data:owned,error:ownedError}=await supabase.from('province_hexes').select('q,r').eq('session_id',sessionId).eq('owner_player',currentPlayerName);
+      const controlled=new Set((owned||[]).map(h=>`${h.q},${h.r}`));
+      const totals={population:0,capacity:0,mobile:0};let failed=!!ownedError;
+      for(let from=0;;from+=1000){
+        const {data,error}=await supabase.from('hex_population').select('q,r,rural_population,carrying_capacity,mobile_population').eq('session_id',sessionId).order('q').order('r').range(from,from+999);
+        if(error){failed=true;break;}
+        for(const h of data||[])if(controlled.has(`${h.q},${h.r}`)){totals.population+=h.rural_population;totals.capacity+=h.carrying_capacity;totals.mobile+=h.mobile_population;}
+        if((data||[]).length<1000)break;
+      }
+      if(cancelled)return;setRural(failed?null:totals);
       if (!cityIds.length) { setLedger([]); setMigrations([]); setNodes([]); setLoading(false); return; }
       const [ledgerRes, migrationRes, nodeRes] = await Promise.all([
         supabase.from("city_population_ledger").select("city_id, turn_number, population_before, population_after, births, deaths, local_immigration, intercity_immigration, emigration, extraordinary_losses")
@@ -45,7 +56,7 @@ export default function RealmPopulationAnalytics({ sessionId, currentTurn, curre
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [cityIds, sessionId]);
+  }, [cityIds, sessionId, currentTurn, currentPlayerName]);
 
   const turns = useMemo(() => aggregatePopulationTurns(ledger), [ledger]);
   const latest = turns.at(-1);
@@ -56,6 +67,10 @@ export default function RealmPopulationAnalytics({ sessionId, currentTurn, curre
 
   return <div className="space-y-4">
     <PopulationPanel cities={myCities} realm={realm} />
+    <section className="border-y border-border py-3 text-xs">
+      <h3 className="font-medium">Venkov na vlastním území</h3>
+      {rural ? <p className="mt-1 text-muted-foreground">Obyvatelé {fmt(rural.population)} · kapacita {fmt(rural.capacity)} · mobilní {fmt(rural.mobile)}</p> : <p>Údaje nejsou dostupné.</p>}
+    </section>
 
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]">
       <Card>

@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## Phase C rural gameplay — 2026-11-14
+- [ ] Activate one-step rural growth + conservative local city migration in atomic world phase; preserve all existing baselines.
+- [ ] Separate cell-local rural workforce from urban workforce, and show canonical rural totals.
+- [ ] Verify migration in isolated PostgreSQL, regressions and deploy safe functions; fingerprint TEST02 before/after.
+- [ ] Deferred if budget exhausted: atomic founding + complete rural household purchasing-power integration.
+
 ## Integrační dokončovací průchod map-first — 2026-11-13
 - [ ] Audit aktivní mapy → command-dispatch → fyzická produkce/doprava; zachovat existující systémy a data TEST02/JV72O7.
 - [ ] Opravit prokázané chybějící články UI/server/DB bez nové paralelní ekonomiky a bez herního tahu.

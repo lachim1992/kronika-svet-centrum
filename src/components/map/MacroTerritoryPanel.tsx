@@ -17,13 +17,16 @@ export default function MacroTerritoryPanel(p: Props) {
   const [survey, setSurvey] = useState<{ level: number; findings: Finding[] } | null>(null);
   const [provinces, setProvinces] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [rural, setRural] = useState<{rural_population:number;carrying_capacity:number;mobile_population:number}|null>(null);
   const [rename, setRename] = useState("");
   const load = useCallback(async () => {
-    const [{ data: s }, { data: pr }] = await Promise.all([
+    const [{ data: s }, { data: pr }, {data: population}] = await Promise.all([
       supabase.from("macro_surveys").select("level, findings").eq("session_id", p.sessionId).eq("player_name", p.playerName).eq("grid_x", p.gridX).eq("grid_y", p.gridY).maybeSingle(),
       supabase.from("provinces").select("id, name").eq("session_id", p.sessionId).eq("owner_player", p.playerName),
+      supabase.from("hex_population").select("rural_population,carrying_capacity,mobile_population").eq("session_id",p.sessionId).eq("q",p.gridX).eq("r",p.gridY).maybeSingle(),
     ]);
     const next = s ? { level: s.level, findings: (s.findings as unknown as Finding[]) || [] } : null;
+    setRural(population);
     setSurvey(next);
     p.onSurveyChange?.(next);
     setProvinces(pr || []);
@@ -43,6 +46,7 @@ export default function MacroTerritoryPanel(p: Props) {
     : !level ? "Pole nejdřív prozkoumejte" : !p.adjacentOwned ? "Pole musí sousedit s vaším územím" : null;
 
   return <section className="mt-4 border border-border/70 bg-muted/20 p-3">
+    {rural && <p className="mb-2 text-xs">Venkov: {rural.rural_population.toLocaleString("cs-CZ")} · kapacita {rural.carrying_capacity} · mobilní {rural.mobile_population}</p>}
     <h3 className="text-sm font-medium">Průzkum a území</h3>
     <p className="mt-0.5 text-[10px] text-muted-foreground">{level === 0 ? "Neprozkoumáno" : level === 1 ? "Náznaky surovin" : "Potvrzený průzkum"} · vidíte jen vy</p>
     {survey && <ul className="mt-2 space-y-1 text-xs">

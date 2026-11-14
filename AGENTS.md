@@ -36,3 +36,5 @@
 - `provinces.hex_count` is maintained only by the `trg_sync_province_hex_count` trigger on province_hexes; province reassignment must keep both source and destination provinces contiguous — counts can never drift and no province is orphaned.
 - Territory districts (`territory_districts` + unique `territory_district_parcels`) are written only by command-dispatch RPCs (create/add/rename); a parcel joins only if owned, worked, same city and 4-adjacent in global micro coords (grid*6+parcel) — names never yield output.
 - Nonrenewable mines in `ruralSites.MACRO_RESERVE_RECIPES` draw one shared budget per macro deposit: opening = committed `parcelEcology['macro:x,y:kind']` (else true `macro_deposits` reserve), allocated in parcel-id order, closed by `parcelClosing` — so several mines can never multiply a finite deposit and refresh never depletes it.
+
+- Rural baseline growth and local migration are planned by ruralGameplay.ts only in commit-turn atomic world phase; economy uses one shared cell-local rural labor pool, never urban population inflation — prevents replay/catch-up and double staffing.

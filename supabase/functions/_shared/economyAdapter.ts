@@ -1,3 +1,4 @@
+import { ruralCatchments } from './ruralGameplay.ts';
 import { depositKey } from './ruralSites.ts';
 import { STARTER_RESERVE_GOODS } from './starterEconomy.ts';
 import { suppressStarterLandExtraction } from './starterParcelPolicy.ts';
@@ -65,7 +66,7 @@ export async function finalizeManagementReports(sb:any,session:string,turn:numbe
   if(saved.error)throw saved.error;
 }
 export async function computeCanonicalEconomy(sb:any,session:string,options:{parcelPreview?:any[];readOnly?:boolean}={}){
-  const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations','node_projects'];
+  const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations','node_projects','hex_population'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
   const sess=await query<any>('game_sessions',()=>sb.from('game_sessions').select('current_turn,resolving_turn,parcel_economy_version').eq('id',session).single());
@@ -221,6 +222,19 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const reserves=new Map<string,{reserve:number;grade:number}>();
   for(const m of macroTruth as any[])for(const d of (m.deposits||[]))if(d.reserve!=null)reserves.set(`${m.grid_x},${m.grid_y}|${d.kind}`,{reserve:Number(d.reserve)||0,grade:Number(d.grade)||1});
   if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
+  const ruralAttached=ruralCatchments(db.province_hexes,cities);
+  const ruralByCell=new Map<string,number>();
+  for(const r of db.hex_population) {
+    const h=db.province_hexes.find((h:any)=>h.q===r.q&&h.r===r.r);
+    const cell=`${h?.grid_x??r.q},${h?.grid_y??r.r}`;
+    if(ruralAttached.has(cell))ruralByCell.set(cell,nonnegative(r.rural_population));
+  }
+  for(const p of producers.filter(p=>p.parcel)) {
+    const cell=`${p.parcel?.grid_x},${p.parcel?.grid_y}`;
+    // The shared cell pool may serve several city's parcels but is allocated once by the solver.
+    p.ruralLabor={cell,population:ruralByCell.get(cell)||0};
+  }
+
   /**
    * Explicit production contract. A structure runs either an exact recipe whitelist
    * (effects.recipe_keys) or the recipes matching its declared capability tags and roles.
