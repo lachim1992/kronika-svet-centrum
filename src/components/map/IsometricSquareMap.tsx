@@ -208,7 +208,7 @@ type StoredSubBiome = { grid_x: number; grid_y: number; parcel_index: number; pa
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
 type HexPopulation = { q: number; r: number; carrying_capacity: number; rural_population: number; mobile_population: number; last_resolved_turn: number };
 type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; city_id: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null; upgrade_level: number | null; infrastructure_level: number | null };
-type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
+type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; battle_formation?: string | null; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
 /** Stored paths come as "x,y" strings, [x,y] pairs or objects — all three are valid. */
 type PathCell = string | [number, number] | { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null; transport_modes?: string[] | null };
@@ -394,6 +394,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [armyMoveMode, setArmyMoveMode] = useState(false);
   const [armyMoveTarget, setArmyMoveTarget] = useState<Micro | null>(null);
   const [armyMoving, setArmyMoving] = useState(false);
+  const [armyHover, setArmyHover] = useState<Micro | null>(null);
+  const [formationSaving, setFormationSaving] = useState(false);
   const [flowRows, setFlowRows] = useState<FlowRow[]>([]);
   const [openCorridor, setOpenCorridor] = useState<string | null>(null);
   const [hoverCorridor, setHoverCorridor] = useState<string | null>(null);
@@ -458,7 +460,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("trade_flows").select("id, good_key, path_cells, transport_modes, source_city_id, target_city_id, source_player, target_player, volume_per_turn, effective_price").eq("session_id", sessionId).not("path_cells", "is", null),
       supabase.from("basket_trade_flows").select("id, basket_key, path_cells, transport_modes, source_city_id, target_city_id, source_player, target_player, volume, gross_value").eq("session_id", sessionId).eq("turn_number", currentTurn).not("path_cells", "is", null),
-      supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
+      supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, battle_formation, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
       supabase.from("tile_parcels").select("grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId).limit(40000),
       supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
@@ -955,8 +957,27 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     if (!selectedArmy || selectedArmy.grid_x === null || selectedArmy.grid_y === null) return null;
     return microOf(selectedArmy.grid_x, selectedArmy.grid_y, selectedArmy.parcel_index ?? fallbackArmyParcel(selectedArmy.id));
   }, [selectedArmy]);
-  const armyMovePlan = useMemo(() => (armyMoveMode && selectedArmyMicro && armyMoveTarget)
-    ? planMicroPath(selectedArmyMicro, armyMoveTarget, microTerrainAt) : null, [armyMoveMode, selectedArmyMicro, armyMoveTarget, microTerrainAt]);
+  const armyPlanTarget = armyMoveTarget ?? armyHover;
+  const armyMovePlan = useMemo(() => (armyMoveMode && selectedArmyMicro && armyPlanTarget)
+    ? planMicroPath(selectedArmyMicro, armyPlanTarget, microTerrainAt) : null, [armyMoveMode, selectedArmyMicro, armyPlanTarget, microTerrainAt]);
+  const microFromEvent = (event: React.PointerEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>): Micro | null => {
+    const el = event.currentTarget; const ctm = el.getScreenCTM(); const svg = el.ownerSVGElement;
+    if (!ctm || !svg) return null;
+    const pt = svg.createSVGPoint(); pt.x = event.clientX; pt.y = event.clientY;
+    const loc = pt.matrixTransform(ctm.inverse());
+    const u = loc.x / TILE_SIZE, v = 2 * loc.y / TILE_SIZE;
+    const A = (u + v) / 2, B = (v - u) / 2;
+    return { x: Math.floor((A + .5) * MICRO_PER_TILE), y: Math.floor((B + .5) * MICRO_PER_TILE) };
+  };
+  const setBattleFormation = async (formation: string) => {
+    if (!selectedArmy || formationSaving) return;
+    setFormationSaving(true);
+    const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "SET_BATTLE_FORMATION",
+      commandPayload: { stackId: selectedArmy.id, formation } });
+    setFormationSaving(false);
+    if (!result.ok) { toast.error(result.error || "Změna formace selhala"); return; }
+    toast.success("Formace změněna"); await load();
+  };
   const confirmArmyMove = async () => {
     if (!selectedArmy || !armyMovePlan || armyMovePlan.path.length < 2) return;
     setArmyMoving(true);
@@ -965,7 +986,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setArmyMoving(false);
     if (!result.ok) { toast.error(result.error || "Přesun se nepodařil"); return; }
     toast.success(`${selectedArmy.name} vyrazila o ${armyMovePlan.path.length - 1} políček`);
-    setArmyMoveMode(false); setArmyMoveTarget(null); await load();
+    setArmyMoveMode(false); setArmyMoveTarget(null); setArmyHover(null); await load();
   };
   const selectedArmyStack = useMemo(() => {
     if (!selectedArmy) return [];
@@ -2066,6 +2087,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {city.population_total > city.housing_capacity && <path d="M-27 -11 L-22 -20 L-17 -11 Z" fill="var(--map-focus)"><title>Tlak na růst</title></path>}
             </g>;
           })}
+          {armyMoveMode && selectedArmy && <rect x={-100000} y={-100000} width={200000} height={200000} fill="transparent" className="cursor-crosshair" data-army-move-capture
+            onPointerMove={(event) => { if (armyMoveTarget) return; const m = microFromEvent(event); if (m && (m.x !== armyHover?.x || m.y !== armyHover?.y)) setArmyHover(m); }}
+            onClick={(event) => { event.stopPropagation(); if (dragRef.current?.moved) return; const m = microFromEvent(event); if (m) setArmyMoveTarget(m); }}
+            onContextMenu={(event) => { event.preventDefault(); setArmyMoveTarget(null); }} />}
           {armyMovePlan && armyMovePlan.path.length > 0 && (() => {
             const microPoint = (m: Micro) => {
               const t = tileOfMicro(m); const c = at(t.gridX, t.gridY);
@@ -2074,7 +2099,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             };
             const pts = armyMovePlan.path.map(microPoint);
             const end = pts[pts.length - 1];
-            const tgt = armyMoveTarget ? microPoint(armyMoveTarget) : null;
+            const tgt = armyPlanTarget ? microPoint(armyPlanTarget) : null;
             return <g pointerEvents="none" data-army-move-plan>
               <polyline points={pts.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="var(--map-marker)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".7" />
               <polyline points={pts.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="var(--map-focus)" strokeWidth="2" strokeDasharray="5 3" strokeLinecap="round" strokeLinejoin="round" />
@@ -2105,18 +2130,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               className="cursor-pointer"
               onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
-              {/* the cell the army stands on */}
-              <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill="none" stroke={active ? "var(--map-focus)" : banner} strokeWidth={active ? 1.8 : .8} strokeDasharray="3 4" opacity={active ? .85 : .45} />
-              {/* occupied sub-parcels: faint trampled ground, then painted squads back-to-front, max 500 men each */}
-              {camp.map(index => <polygon key={`g${index}`} points={parcelQuad(point, index % TILE_PARCEL_COLS, Math.floor(index / TILE_PARCEL_COLS))}
-                fill={banner} opacity={active ? .22 : .12} stroke={banner} strokeWidth=".4" strokeOpacity=".5" />)}
               {(() => {
                 const total = group.list.reduce((sum, army) => sum + army.soldiers, 0);
                 const kind = squadKind(lead.formation_type);
                 return camp.map((index, order) => ({ index, men: Math.min(MAX_MEN_PER_MICRO, Math.max(0, total - order * MAX_MEN_PER_MICRO)), c: centreOf(index) }))
                   .sort((a, b) => a.c.y - b.c.y)
                   .map(({ index, men, c }) => <g key={`s${index}`} transform={`translate(${point.x + c.x},${point.y + c.y})`}>
-                    <ArmySquad men={men} kind={kind} banner={banner} active={active} />
+                    <ArmySquad men={men} kind={kind} banner={banner} active={active} formation={lead.battle_formation} />
                   </g>);
               })()}
               <g transform={`translate(${point.x + seat.x + 4},${point.y + seat.y - 2}) scale(.62)`} filter="url(#iso-shadow)">
@@ -2596,16 +2616,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <Flag className="h-4 w-4 text-primary"/>
           <span className="text-xs text-muted-foreground">Pohyb: až {MOVE_BUDGET / 10} bodů za kolo — silnice 1, rovina 1,5, les a kopce 2, hory a bažiny 3; voda a řeka bez mostu neprůchodné.</span>
         </div>
+        {selectedArmy.player_name === playerName && <div className="mt-4">
+          <p className="mb-1.5 text-xs font-semibold">Bojová formace</p>
+          <div className="grid grid-cols-5 gap-1">
+            {([["line", "Linie"], ["wedge", "Klín"], ["square", "Čtverec"], ["column", "Kolona"], ["skirmish", "Rozptyl"]] as const).map(([key, label]) => (
+              <Button key={key} size="sm" variant={(selectedArmy.battle_formation || "line") === key ? "default" : "outline"} className="h-8 px-1 text-[11px]"
+                disabled={formationSaving} onClick={() => void setBattleFormation(key)}>{label}</Button>))}
+          </div>
+        </div>}
         {selectedArmy.player_name === playerName && <div className="mt-3 space-y-2">
           {selectedArmy.moved_this_turn
             ? <p className="text-xs text-muted-foreground">Armáda se v tomto kole už pohnula.</p>
             : !armyMoveMode
               ? <Button size="sm" className="w-full" onClick={() => { setArmyMoveMode(true); setArmyMoveTarget(null); }}>Přesunout armádu</Button>
               : <div className="space-y-2 border border-primary/30 p-2 text-xs">
-                  <p>{armyMovePlan ? `Trasa: ${armyMovePlan.path.length - 1} políček · ${(armyMovePlan.spent / 10).toLocaleString("cs-CZ")} / ${MOVE_BUDGET / 10} bodů${armyMovePlan.reachedTarget ? "" : " · cíl je dál, armáda dojde jen sem"}` : "Klikni na mapě na cílové políčko."}</p>
+                  <p>{armyMovePlan ? `Trasa: ${armyMovePlan.path.length - 1} políček · ${(armyMovePlan.spent / 10).toLocaleString("cs-CZ")} / ${MOVE_BUDGET / 10} bodů${armyMovePlan.reachedTarget ? "" : " · cíl je dál, armáda dojde jen sem"}` : "Najeď myší na cíl a klikni. Pravým tlačítkem cíl zrušíš."}</p>
                   <div className="flex gap-2">
                     <Button size="sm" className="flex-1" disabled={!armyMovePlan || armyMovePlan.path.length < 2 || armyMoving} onClick={() => void confirmArmyMove()}>{armyMoving ? "Přesouvám…" : "Potvrdit pohyb"}</Button>
-                    <Button size="sm" variant="outline" onClick={() => { setArmyMoveMode(false); setArmyMoveTarget(null); }}>Zrušit</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setArmyMoveMode(false); setArmyMoveTarget(null); setArmyHover(null); }}>Zrušit</Button>
                   </div>
                 </div>}
         </div>}

@@ -60,9 +60,16 @@ const Siege = ({ banner }: { banner: string }) => <g>
 </g>;
 
 /** Painted war-band on a single 6x6 sub-square (centre at 0,0; sub-square is ~14x7 px). Static, no animation. */
-const ArmySquadBase = ({ men, kind, banner, active }: { men: number; kind: SquadKind; banner: string; active: boolean }) => {
+const LAYOUTS: Record<string, Array<[number, number]>> = {
+  wedge: [[0, 1.8], [-1.8, .6], [1.8, .6], [-3.6, -.6], [0, -.6], [3.6, -.6], [-5, -1.8], [-1.6, -1.8], [1.6, -1.8]],
+  column: [[0, 2.4], [0, 1.2], [0, 0], [0, -1.2], [0, -2.4], [1.8, 1.8], [1.8, .6], [1.8, -.6], [1.8, -1.8]],
+  skirmish: [[0, 0], [-4, -1.6], [4, 1.4], [3.4, -2.2], [-3.6, 1.8], [.4, -3], [-.6, 2.6], [5.4, -.4], [-5.4, -.2]],
+  square: [[-2.4, 0], [2.4, 0], [0, -1.6], [0, 1.6], [-1.2, -.8], [1.2, .8], [1.2, -.8], [-1.2, .8], [0, 0]],
+};
+
+const ArmySquadBase = ({ men, kind, banner, active, formation }: { men: number; kind: SquadKind; banner: string; active: boolean; formation?: string | null }) => {
   const n = kind === "foot" ? squadFigures(men) : Math.max(1, Math.min(kind === "horse" ? 4 : 2, Math.ceil(squadFigures(men) / (kind === "horse" ? 2 : 4))));
-  const pts = kind === "foot" ? ORDER.slice(0, n).map(i => SLOTS[i])
+  const pts = kind === "foot" ? (formation && LAYOUTS[formation] ? LAYOUTS[formation].slice(0, n) : ORDER.slice(0, n).map(i => SLOTS[i]))
     : kind === "horse" ? ([[-2.4, -1], [2.4, -1], [-1.2, .6], [2.6, .8]] as Array<[number, number]>).slice(0, n)
     : ([[-2, -.4], [2.4, .6]] as Array<[number, number]>).slice(0, n);
   const sorted = pts.slice().sort((a, b) => a[1] - b[1]);
