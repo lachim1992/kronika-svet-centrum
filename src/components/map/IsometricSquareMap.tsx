@@ -32,7 +32,7 @@ import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
-import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroPath, planMicroRoute, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
+import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroRoute, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
 import CityEconomyBrief from "@/components/map/CityEconomyBrief";
