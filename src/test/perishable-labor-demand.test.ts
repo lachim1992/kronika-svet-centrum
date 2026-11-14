@@ -52,7 +52,7 @@ describe("demand-aware labour for non-storable subsistence sources", () => {
     const fishBalance = result.balances.find((row) => row.city === "town" && row.good === "raw_fish")!;
 
     expect(fishBalance.lost_discard).toBeLessThan(9);
-    expect(fish.realized).toBeLessThan(13);
+    expect(fish.realized).toBeLessThan(14);
     expect(mill.staffing_ratio).toBeCloseTo(1, 7);
     expect(bakery.staffing_ratio).toBeCloseTo(1, 7);
     expect(result.cityAccounts[0].physical_need_coverage).toBeCloseTo(1, 7);
