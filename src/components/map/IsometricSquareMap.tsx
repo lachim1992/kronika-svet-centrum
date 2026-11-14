@@ -30,6 +30,7 @@ import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
+import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroPath, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
 import TradeCorridorSheet from "@/components/map/TradeCorridorSheet";
@@ -394,7 +395,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [armyMoveMode, setArmyMoveMode] = useState(false);
   const [armyMoveTarget, setArmyMoveTarget] = useState<Micro | null>(null);
   const [armyMoving, setArmyMoving] = useState(false);
-  const [armyHover, setArmyHover] = useState<Micro | null>(null);
   const [formationSaving, setFormationSaving] = useState(false);
   const [flowRows, setFlowRows] = useState<FlowRow[]>([]);
   const [openCorridor, setOpenCorridor] = useState<string | null>(null);
@@ -958,18 +958,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const cell = entityCell(selectedArmy);
     return microOf(selectedArmy.grid_x ?? cell.a, selectedArmy.grid_y ?? cell.b, selectedArmy.parcel_index ?? fallbackArmyParcel(selectedArmy.id));
   }, [selectedArmy, entityCell]);
-  const armyPlanTarget = armyMoveTarget ?? armyHover;
+  const armyPlanTarget = armyMoveTarget;
   const armyMovePlan = useMemo(() => (armyMoveMode && selectedArmyMicro && armyPlanTarget)
     ? planMicroPath(selectedArmyMicro, armyPlanTarget, microTerrainAt) : null, [armyMoveMode, selectedArmyMicro, armyPlanTarget, microTerrainAt]);
-  const microFromEvent = (event: { currentTarget: SVGRectElement; clientX: number; clientY: number }): Micro | null => {
-    const el = event.currentTarget; const ctm = el.getScreenCTM(); const svg = el.ownerSVGElement;
-    if (!ctm || !svg) return null;
-    const pt = svg.createSVGPoint(); pt.x = event.clientX; pt.y = event.clientY;
-    const loc = pt.matrixTransform(ctm.inverse());
-    const u = loc.x / TILE_SIZE, v = 2 * loc.y / TILE_SIZE;
-    const A = (u + v) / 2, B = (v - u) / 2;
-    return { x: Math.floor((A + .5) * MICRO_PER_TILE), y: Math.floor((B + .5) * MICRO_PER_TILE) };
-  };
   const setBattleFormation = async (formation: string) => {
     if (!selectedArmy || formationSaving) return;
     setFormationSaving(true);
@@ -987,7 +978,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setArmyMoving(false);
     if (!result.ok) { toast.error(result.error || "Přesun se nepodařil"); return; }
     toast.success(`${selectedArmy.name} vyrazila o ${armyMovePlan.path.length - 1} políček`);
-    setArmyMoveMode(false); setArmyMoveTarget(null); setArmyHover(null); await load();
+    setArmyMoveMode(false); setArmyMoveTarget(null); await load();
   };
   const selectedArmyStack = useMemo(() => {
     if (!selectedArmy) return [];
@@ -2088,10 +2079,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {city.population_total > city.housing_capacity && <path d="M-27 -11 L-22 -20 L-17 -11 Z" fill="var(--map-focus)"><title>Tlak na růst</title></path>}
             </g>;
           })}
-          {armyMoveMode && selectedArmy && <rect x={-100000} y={-100000} width={200000} height={200000} fill="transparent" className="cursor-crosshair" data-army-move-capture
-            onPointerMove={(event) => { if (armyMoveTarget) return; const m = microFromEvent(event); if (m && (m.x !== armyHover?.x || m.y !== armyHover?.y)) setArmyHover(m); }}
-            onClick={(event) => { event.stopPropagation(); if (dragRef.current?.moved) return; const m = microFromEvent(event); if (m) setArmyMoveTarget(m); }}
-            onContextMenu={(event) => { event.preventDefault(); setArmyMoveTarget(null); }} />}
+          {armyMoveMode && selectedArmy && selectedArmyMicro && <ArmyMoveOverlay start={selectedArmyMicro} terrainAt={microTerrainAt} committed={!!armyMoveTarget}
+            isDrag={() => !!dragRef.current?.moved} onPick={setArmyMoveTarget} />}
           {armyMovePlan && armyMovePlan.path.length > 0 && (() => {
             const microPoint = (m: Micro) => {
               const t = tileOfMicro(m); const c = at(t.gridX, t.gridY);
@@ -2635,7 +2624,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                   <p>{armyMovePlan ? `Trasa: ${armyMovePlan.path.length - 1} políček · ${(armyMovePlan.spent / 10).toLocaleString("cs-CZ")} / ${MOVE_BUDGET / 10} bodů${armyMovePlan.reachedTarget ? "" : " · cíl je dál, armáda dojde jen sem"}` : "Najeď myší na cíl a klikni. Pravým tlačítkem cíl zrušíš."}</p>
                   <div className="flex gap-2">
                     <Button size="sm" className="flex-1" disabled={!armyMovePlan || armyMovePlan.path.length < 2 || armyMoving} onClick={() => void confirmArmyMove()}>{armyMoving ? "Přesouvám…" : "Potvrdit pohyb"}</Button>
-                    <Button size="sm" variant="outline" onClick={() => { setArmyMoveMode(false); setArmyMoveTarget(null); setArmyHover(null); }}>Zrušit</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setArmyMoveMode(false); setArmyMoveTarget(null); }}>Zrušit</Button>
                   </div>
                 </div>}
         </div>}

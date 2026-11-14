@@ -43,13 +43,13 @@ describe("micro-square army movement", () => {
     expect(plan.reachedTarget).toBe(true);
     expect(plan.spent).toBe(100);
   });
-  it("max 500 men per micro square; bigger armies spread but stay within one tile", () => {
-    expect(MAX_MEN_PER_MICRO).toBe(500);
-    expect(microFootprint(500)).toBe(1);
-    expect(microFootprint(501)).toBe(2);
-    expect(microFootprint(4000)).toBe(8);
+  it("max 200 men per micro square; bigger armies spread but stay within one tile", () => {
+    expect(MAX_MEN_PER_MICRO).toBe(200);
+    expect(microFootprint(200)).toBe(1);
+    expect(microFootprint(201)).toBe(2);
+    expect(microFootprint(1600)).toBe(8);
     expect(microFootprint(100000)).toBe(36);
-    const camp = armyCampParcels(35, microFootprint(4000));
+    const camp = armyCampParcels(35, microFootprint(1600));
     expect(camp).toHaveLength(8);
     expect(new Set(camp).size).toBe(8);
     expect(camp.every(i => i >= 0 && i < 36)).toBe(true);
