@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Castle, Loader2, Swords } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,14 +11,16 @@ type ArmyLite = { id: string; name: string; player_name: string; soldiers: numbe
 type Siege = { id: string; city_id: string; attacker_player: string; defender_player: string; walls: WallSegment[]; last_report: any; started_turn: number };
 type Order = { seq: number; unit_key: string; target: any; side: string };
 type Props = { sessionId: string; currentTurn: number; playerName: string; army: ArmyLite; cities: CityLite[]; armies: ArmyLite[];
-  selectedUnitKey?: string | null; onSelectUnit?: (key: string | null) => void };
+  selectedUnitKey?: string | null; onSelectUnit?: (key: string | null) => void;
+  onSiegeChange?: (v: SiegeMapView | null) => void; mapOrder?: { unitKey: string; target: any; n: number } | null };
+export type SiegeMapView = { cityId: string; walls: WallSegment[]; mySide: "attacker" | "defender"; orders: Order[] };
 
 const cell = (a: ArmyLite) => ({ x: a.grid_x ?? a.hex_q, y: a.grid_y ?? a.hex_r });
 const targetLabel = (t: any, walls: WallSegment[], name: (k: string) => string) =>
   t?.kind === "wall" ? walls.find(w => w.id === t.segment)?.name ?? "hradba" : t?.kind === "unit" ? name(t.key) : t?.kind === "keep" ? "Hlavní budova" : "—";
 
 /** Siege of an adjacent enemy city: each micro unit (≤200 men) gets one target per turn; resolved at the end of the turn. */
-export default function SiegePanel({ sessionId, currentTurn, playerName, army, cities, armies, selectedUnitKey, onSelectUnit }: Props) {
+export default function SiegePanel({ sessionId, currentTurn, playerName, army, cities, armies, selectedUnitKey, onSelectUnit, onSiegeChange, mapOrder }: Props) {
   const [siege, setSiege] = useState<Siege | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [busy, setBusy] = useState(false);
@@ -37,6 +39,24 @@ export default function SiegePanel({ sessionId, currentTurn, playerName, army, c
     }
   }, [sessionId, currentTurn, inRange]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    onSiegeChange?.(siege ? { cityId: siege.city_id, walls: siege.walls, mySide: siege.attacker_player === army.player_name ? "attacker" : "defender", orders } : null);
+  }, [siege, orders, army.player_name, onSiegeChange]);
+  useEffect(() => () => onSiegeChange?.(null), [onSiegeChange]);
+  const lastMapOrder = useRef(mapOrder?.n ?? 0);
+  useEffect(() => {
+    if (!mapOrder || !siege || mapOrder.n === lastMapOrder.current) return;
+    lastMapOrder.current = mapOrder.n;
+    void (async () => {
+      setBusy(true);
+      const res = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "SIEGE_ORDER", commandPayload: { siegeId: siege.id, unitKey: mapOrder.unitKey, target: mapOrder.target } });
+      setBusy(false);
+      if (!res.ok) { toast.error(res.error || "Rozkaz se nepodařil"); return; }
+      toast.success(`Oddíl ${Number(mapOrder.unitKey.split(":")[1]) + 1} dostal rozkaz`);
+      await load();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapOrder?.n]);
   if (!inRange.length) return null;
   const city = siege ? cities.find(c => c.id === siege.city_id) ?? inRange[0] : inRange[0];
   const start = async () => {
@@ -80,6 +100,7 @@ export default function SiegePanel({ sessionId, currentTurn, playerName, army, c
     <p className="flex items-center gap-1 font-medium"><Castle className="h-3.5 w-3.5" /> Obléhání: {city.name} · od kola {siege.started_turn}</p>
     <div className="flex flex-wrap gap-1">{siege.walls.map(w => <span key={w.id} className={`border px-1.5 py-0.5 ${w.breached ? "border-destructive text-destructive" : "border-border"}`}>{w.name}{w.breached ? " · průlom" : ""}</span>)}</div>
     <p className="text-muted-foreground">{mySide === "attacker" ? (breached ? "Hradba je prolomená — znič obránce a dobuď hlavní budovu." : "Nejdřív prolom hradbu.") : "Bráníš město."} Útočník jedná první, pak rozhoduje pořadí rozkazů. Vyhodnotí se na konci kola.</p>
+    {mySide === "attacker" && <p className="text-primary">Na mapě klikni na oddíl a pak na úsek hradby (nebo hlavní budovu).</p>}
     {mySide === "attacker" && !breached && siege.walls[0] && <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => void orderAll({ kind: "wall", segment: siege.walls.find(w => !w.breached)!.id })}>Všechny oddíly na {siege.walls.find(w => !w.breached)!.name}</Button>}
     <div className="max-h-64 space-y-1 overflow-y-auto">
       {myUnits.map(u => { const o = orders.find(x => x.unit_key === u.key);

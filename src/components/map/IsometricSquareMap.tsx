@@ -31,7 +31,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
-import SiegePanel from "@/components/map/SiegePanel";
+import SiegePanel, { type SiegeMapView } from "@/components/map/SiegePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
@@ -943,6 +943,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     }));
   }, [armies, entityCell]);
   const selectedArmy = useMemo(() => armies.find(army => army.id === selectedArmyId) || null, [armies, selectedArmyId]);
+  const [siegeView, setSiegeView] = useState<SiegeMapView | null>(null);
+  const [siegeUnitKey, setSiegeUnitKey] = useState<string | null>(null);
+  const [siegeMapOrder, setSiegeMapOrder] = useState<{ unitKey: string; target: any; n: number } | null>(null);
+  useEffect(() => { setSiegeUnitKey(null); }, [selectedArmyId]);
   useEffect(() => { setArmyMoveMode(false); clearArmyWaypoints(); }, [selectedArmyId, clearArmyWaypoints]);
   /** Same terrain the server validates with: stored sub-squares, macro biome otherwise, completed road cells. */
   const microTerrainAt = useMemo(() => {
@@ -2149,11 +2153,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {(() => {
                 const total = group.list.reduce((sum, army) => sum + army.soldiers, 0);
                 const kind = squadKind(lead.formation_type);
-                return camp.map((index, order) => ({ index, men: Math.min(MAX_MEN_PER_MICRO, Math.max(0, total - order * MAX_MEN_PER_MICRO)), c: centreOf(index) }))
+                return camp.map((index, order) => ({ index, order, men: Math.min(MAX_MEN_PER_MICRO, Math.max(0, total - order * MAX_MEN_PER_MICRO)), c: centreOf(index) }))
                   .sort((a, b) => a.c.y - b.c.y)
-                  .map(({ index, men, c }) => <g key={`s${index}`} transform={`translate(${point.x + c.x},${point.y + c.y})`}>
-                    <ArmySquad men={men} kind={kind} banner={banner} active={active} formation={lead.battle_formation} />
-                  </g>);
+                  .map(({ index, men, c, order }) => { const unitKey = `${lead.id}:${order}`;
+                    const pickable = !!siegeView && stacked === 1 && lead.id === selectedArmyId && men > 0;
+                    const picked = pickable && siegeUnitKey === unitKey;
+                    const hasOrder = pickable && siegeView!.orders.some(o => o.unit_key === unitKey);
+                    return <g key={`s${index}`} transform={`translate(${point.x + c.x},${point.y + c.y})`}
+                      onClick={pickable ? (e) => { e.stopPropagation(); if (!dragRef.current?.moved) setSiegeUnitKey(k => k === unitKey ? null : unitKey); } : undefined}>
+                      {pickable && <ellipse cx="0" cy="2" rx="7" ry="3.5" fill={picked ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={picked ? "var(--map-focus)" : hasOrder ? "var(--map-city-own)" : "transparent"} strokeWidth="1.2" />}
+                      <ArmySquad men={men} kind={kind} banner={banner} active={active} formation={lead.battle_formation} />
+                    </g>; });
               })()}
               <g transform={`translate(${point.x + seat.x + 4},${point.y + seat.y - 2}) scale(.62)`} filter="url(#iso-shadow)">
                 <ArmyStandard name={lead.name} soldiers={group.list.reduce((sum, army) => sum + army.soldiers, 0)} unitCount={lead.unit_count} morale={lead.morale} banner={banner} active={active} />
@@ -2165,6 +2175,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </g>
             </g>;
           })}
+          {!cityLayerCityId && siegeView && siegeView.mySide === "attacker" && siegeUnitKey && (() => {
+            const city = cities.find(c => c.id === siegeView.cityId); if (!city || city.grid_x == null || city.grid_y == null) return null;
+            const p = at(city.grid_x, city.grid_y); const n = siegeView.walls.length;
+            const send = (target: any) => { setSiegeMapOrder(o => ({ unitKey: siegeUnitKey, target, n: (o?.n ?? 0) + 1 })); setSiegeUnitKey(null); };
+            const breached = siegeView.walls.some(w => w.breached);
+            return <g data-siege-targets>
+              {siegeView.walls.map((w, i) => { const a = -Math.PI / 2 + (i / n) * Math.PI * 2; const x = p.x + Math.cos(a) * TILE_SIZE * .7, y = p.y + Math.sin(a) * TILE_SIZE * .35;
+                return <g key={w.id} transform={`translate(${x},${y})`} className={w.breached ? "" : "cursor-crosshair"} role="button" aria-label={`Poslat na ${w.name}`}
+                  onClick={e => { e.stopPropagation(); if (!w.breached) send({ kind: "wall", segment: w.id }); }}>
+                  <circle r="6" fill="var(--map-marker)" stroke={w.breached ? "var(--map-city-rival)" : "var(--map-focus)"} strokeWidth="1.6" opacity=".95" />
+                  <text y="2.4" textAnchor="middle" fontSize="6.5" fontWeight="700" fill="var(--map-label)">{w.breached ? "✕" : i + 1}</text>
+                  <title>{w.breached ? `${w.name} · prolomena` : `Zaútočit na ${w.name}`}</title>
+                </g>; })}
+              {breached && <g transform={`translate(${p.x},${p.y})`} className="cursor-crosshair" role="button" aria-label="Poslat na hlavní budovu" onClick={e => { e.stopPropagation(); send({ kind: "keep" }); }}>
+                <circle r="7" fill="var(--map-marker)" stroke="var(--map-city-rival)" strokeWidth="2" /><text y="2.6" textAnchor="middle" fontSize="7" fontWeight="700" fill="var(--map-label)">♛</text>
+                <title>Zaútočit na hlavní budovu</title></g>}
+            </g>;
+          })()}
           {/* top-most drawing layer: sub-parcels of passable cells catch every click and drag */}
           {roadDraft.length > 0 && <g>
             {sortedTiles.map(tile => {
@@ -2663,7 +2691,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 </div>}
         </div>}
         {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) &&
-          <SiegePanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName} army={selectedArmy} cities={cities} armies={armies} />}
+          <SiegePanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName} army={selectedArmy} cities={cities} armies={armies}
+            selectedUnitKey={siegeUnitKey} onSelectUnit={setSiegeUnitKey} onSiegeChange={setSiegeView} mapOrder={siegeMapOrder} />}
         {selectedArmyStack.length > 1 && <div className="mt-4">
           <h3 className="text-sm">Na stejném poli ({selectedArmyStack.length})</h3>
           <div className="mt-2 space-y-1">
