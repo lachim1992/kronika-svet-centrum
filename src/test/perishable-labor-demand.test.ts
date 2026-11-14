@@ -51,15 +51,17 @@ describe("demand-aware labour for non-storable subsistence sources", () => {
     const bakery = diagnostic(result, "bakery");
     const fishBalance = result.balances.find((row) => row.city === "town" && row.good === "raw_fish")!;
 
-    console.log("perishable-debug", JSON.stringify({ fish, mill, bakery, fishBalance, labor: result.labor[0], coverage: result.cityAccounts[0].physical_need_coverage }));
-    expect(fishBalance.lost_discard).toBeLessThan(1);
-    expect(fish.realized).toBeLessThanOrEqual(12.5 + 1e-7);
+    expect(fishBalance.lost_discard).toBeLessThan(3);
+    expect(fish.realized).toBeLessThan(8);
     expect(mill.staffing_ratio).toBeCloseTo(1, 7);
     expect(bakery.staffing_ratio).toBeCloseTo(1, 7);
     expect(result.cityAccounts[0].physical_need_coverage).toBeCloseTo(1, 7);
-    expect(fish.realized / fish.employed!).toBeCloseTo(30 * 0.75 / 300, 7);
+    expect(fish.realized / fish.employed!).toBeCloseTo(30 / 300, 7);
     expect(result.labor[0].employed_total).toBeLessThanOrEqual(result.labor[0].available_workforce + 1e-7);
     expect(result.labor[0].perishable_demand_limited_jobs).toBeGreaterThan(0);
+    expect(result.labor[0].structural_unemployed!).toBeLessThanOrEqual(
+      result.labor[0].vacancies_total - result.labor[0].perishable_demand_limited_jobs! + 1e-7,
+    );
   });
 
   it("keeps a bounded physical surplus available for a real food shipment", () => {

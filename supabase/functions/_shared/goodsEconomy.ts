@@ -517,16 +517,19 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     }
     const active=workforce.get(c.id)!.effectiveActivePop;
     const unemployed=Math.max(0,supplyTotal-employedTotal),vacancies=Math.max(0,jobsTotal-employedTotal);
+    // Intentional perishable overcapacity is not labour-market demand: it must neither
+    // masquerade as structural mismatch nor suppress the local wage through false vacancies.
+    const marketVacancies=Math.max(0,vacancies-perishableLimited);
     laborMetrics.push({city:c.id,population:c.population,urban_population:c.urbanPopulation??c.population,rural_population:c.ruralPopulation??0,economically_active:active,
       available_workforce:workforce.get(c.id)!.workforce,employed_total:employedTotal,
       unemployed_total:unemployed,jobs_capacity:jobsTotal,vacancies_total:vacancies,
       labor_mobility:mobility,retrained:moved+critMoved,
       // People idle while jobs stand empty: the mismatch itself, not a general labour shortage.
-      structural_unemployed:Math.min(unemployed,vacancies),
+      structural_unemployed:Math.min(unemployed,marketVacancies),
       critical_priority_employed:priorityEmployed,perishable_demand_limited_jobs:perishableLimited,
       employment_rate:supplyTotal>C.epsilon?employedTotal/supplyTotal:0,
       unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors,
-      wage_rate:localWage({supply:supplyTotal,vacancies,unemployed}),service:serviceLabor.get(c.id)});
+      wage_rate:localWage({supply:supplyTotal,vacancies:marketVacancies,unemployed}),service:serviceLabor.get(c.id)});
   }
   /** employed / jobs_capacity, clamped. Automated producers without declared labour run at their own staffing. */
   const staffingRatio=(p:Producer)=>{const jobs=jobsOf(p);
