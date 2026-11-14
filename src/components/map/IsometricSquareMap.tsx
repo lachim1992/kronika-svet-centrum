@@ -954,9 +954,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     };
   }, [tiles, storedSubBiomes, roadSegments]);
   const selectedArmyMicro = useMemo(() => {
-    if (!selectedArmy || selectedArmy.grid_x === null || selectedArmy.grid_y === null) return null;
-    return microOf(selectedArmy.grid_x, selectedArmy.grid_y, selectedArmy.parcel_index ?? fallbackArmyParcel(selectedArmy.id));
-  }, [selectedArmy]);
+    if (!selectedArmy) return null;
+    const cell = entityCell(selectedArmy);
+    return microOf(selectedArmy.grid_x ?? cell.a, selectedArmy.grid_y ?? cell.b, selectedArmy.parcel_index ?? fallbackArmyParcel(selectedArmy.id));
+  }, [selectedArmy, entityCell]);
   const armyPlanTarget = armyMoveTarget ?? armyHover;
   const armyMovePlan = useMemo(() => (armyMoveMode && selectedArmyMicro && armyPlanTarget)
     ? planMicroPath(selectedArmyMicro, armyPlanTarget, microTerrainAt) : null, [armyMoveMode, selectedArmyMicro, armyPlanTarget, microTerrainAt]);
