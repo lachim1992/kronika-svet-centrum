@@ -960,7 +960,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const armyPlanTarget = armyMoveTarget ?? armyHover;
   const armyMovePlan = useMemo(() => (armyMoveMode && selectedArmyMicro && armyPlanTarget)
     ? planMicroPath(selectedArmyMicro, armyPlanTarget, microTerrainAt) : null, [armyMoveMode, selectedArmyMicro, armyPlanTarget, microTerrainAt]);
-  const microFromEvent = (event: React.PointerEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>): Micro | null => {
+  const microFromEvent = (event: { currentTarget: SVGRectElement; clientX: number; clientY: number }): Micro | null => {
     const el = event.currentTarget; const ctm = el.getScreenCTM(); const svg = el.ownerSVGElement;
     if (!ctm || !svg) return null;
     const pt = svg.createSVGPoint(); pt.x = event.clientX; pt.y = event.clientY;
