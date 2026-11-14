@@ -64,6 +64,8 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
         if (owned.has(next) && !reach.has(next)) { reach.add(next); queue.push(next); } }
     }
     if (!reach.has(`${p.grid_x},${p.grid_y}`)) continue;
+    // A farm field is worked land of its farm: its yield is counted only in the farm's capacity, never twice.
+    if (rural.fieldParcels?.has(p.id)) continue;
     const site = siteByParcel.get(p.id);
     const { specs } = siteSpecs(parcelPotential(p, terrain, turn), site && site.owner === city.owner ? site : undefined, p.grid_x, p.grid_y, rural.deposits);
     const transport = rural.roads ? parcelTransport(`${p.grid_x},${p.grid_y}`, city.cell, rural.roads, city.owner) : { factor: 1, mode: 'local' as const };

@@ -29,6 +29,7 @@ import { parcelTransport } from "../../../supabase/functions/_shared/ruralSites"
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
+import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
@@ -2421,6 +2422,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {selectedCell && <MicroResourcePanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName}
             gridX={selectedCell.a} gridY={selectedCell.b} parcelIndex={selectedParcel.parcel_index}
             subBiome={selectedParcel.sub_biome ?? null} macroBiome={selected?.biome_family ?? null} onSurveyed={() => void load()} />}
+          {selectedCell && selectedParcel.id && selectedParcel.claim_kind === "worked" && <FarmFieldPanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName}
+            parcel={{ id: selectedParcel.id, grid_x: selectedCell.a, grid_y: selectedCell.b, parcel_index: selectedParcel.parcel_index, sub_biome: selectedParcel.sub_biome ?? null,
+              city_id: selectedParcel.city_id ?? null, owner_player: (selectedParcel as any).owner_player ?? null, claim_kind: selectedParcel.claim_kind }}
+            macroBiome={selected?.biome_family ?? null} onChanged={() => void load()} />}
           {parcelBlock && <p className="border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-200">{parcelBlock}</p>}
           {!!claimHost && selectedParcel.buildable &&
             (selectedParcel.status === "wild" || (selectedParcel.claim_kind === "worked" && selectedParcel.city_id === claimHost.id)) &&
