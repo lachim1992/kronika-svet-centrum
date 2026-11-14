@@ -1633,19 +1633,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     });
   };
 
-  const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
-  const viewRef = useRef({ zoom, pan });
-  viewRef.current = { zoom, pan };
-  const zoomBy = (factor: number, screenX?: number, screenY?: number) => {
-    const { zoom: current, pan: currentPan } = viewRef.current;
+  const at = (a: number, b: number) => projectCell("square4", { a, b }, TILE_SIZE);
+  const zoomBy = (factor: number, screenX?: number, screenY?: number, settle: "now" | "debounce" = "now") => {
+    const { zoom: current, pan: currentPan } = cameraRef.current;
     const next = clampZoom(current * factor);
     if (next === current) return;
     const element = viewportRef.current;
     const px = screenX ?? (element ? element.clientWidth / 2 : 0);
     const py = screenY ?? (element ? element.clientHeight / 2 : 0);
     const shift = 1 / next - 1 / current;
-    setPan({ x: currentPan.x + px * shift, y: currentPan.y + py * shift });
-    setZoom(next);
+    updateCamera({ zoom: next, pan: { x: currentPan.x + px * shift, y: currentPan.y + py * shift } }, settle);
   };
   const zoomHandlerRef = useRef(zoomBy);
   zoomHandlerRef.current = zoomBy;
@@ -1656,7 +1653,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       event.preventDefault();
       const dy = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1);
       const rect = element.getBoundingClientRect();
-      zoomHandlerRef.current(Math.exp(-dy * 0.0018), event.clientX - rect.left, event.clientY - rect.top);
+      zoomHandlerRef.current(Math.exp(-dy * 0.0018), event.clientX - rect.left, event.clientY - rect.top, "debounce");
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);
@@ -1667,10 +1664,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const cityId = requestedCityId || cityByCell.get(cellKey(cell.a, cell.b));
     const city = cityId ? cityById.get(cityId) : undefined;
     const targetZoom = city ? 2.25 : 1.65;
-    setSelected(tile); setZoom(targetZoom);
+    setSelected(tile);
     setCityLayerCityId(city?.id || null);
     onDetailOpenChange?.(true);
-    setPan({ x: element.clientWidth * (city ? .47 : .38) / targetZoom - projected.x, y: element.clientHeight * .46 / targetZoom - projected.y });
+    updateCamera({ zoom: targetZoom, pan: { x: element.clientWidth * (city ? .47 : .38) / targetZoom - projected.x, y: element.clientHeight * .46 / targetZoom - projected.y } }, "now");
   };
 
   const startRoadDraft = () => {
@@ -1744,7 +1741,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setSelected(null);
     onDetailOpenChange?.(false);
     const element = viewportRef.current;
-    if (element) { setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * .35 - center.y }); }
+    if (element) updateCamera({ zoom: 1, pan: { x: element.clientWidth / 2 - center.x, y: element.clientHeight * .35 - center.y } }, "now");
   };
 
   /** Static settlement silhouette: houses, walls, keep — scaled by population. */
