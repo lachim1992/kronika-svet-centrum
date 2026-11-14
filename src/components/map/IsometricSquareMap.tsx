@@ -28,6 +28,7 @@ import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDeto
 import { parcelTransport } from "../../../supabase/functions/_shared/ruralSites";
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
+import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroPath, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
@@ -2390,6 +2391,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <p className="mt-1 text-muted-foreground">{selectedNode.node_subtype || selectedNode.node_type} · správce {selectedNode.controlled_by || "nezávislý"}</p>
             <div className="mt-2 flex gap-3"><span>Produkce {selectedNode.production_output}</span><span>Bohatství {selectedNode.wealth_output}</span><span>Potraviny {selectedNode.food_value}</span></div>
           </div>}
+          {selectedCell && <MicroResourcePanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName}
+            gridX={selectedCell.a} gridY={selectedCell.b} parcelIndex={selectedParcel.parcel_index}
+            subBiome={selectedParcel.sub_biome ?? null} macroBiome={selected?.biome_family ?? null} onSurveyed={() => void load()} />}
           {parcelBlock && <p className="border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-200">{parcelBlock}</p>}
           {!!claimHost && selectedParcel.buildable &&
             (selectedParcel.status === "wild" || (selectedParcel.claim_kind === "worked" && selectedParcel.city_id === claimHost.id)) &&
