@@ -118,6 +118,7 @@ export const LABOR_FIELDS: EconomyField[] = [
   { key: "jobs_capacity", label: "Pracovní místa", kind: "count", source: "labor", tip: "Deklarovaná místa budov, čtvrtí a uzlů; nikdy se nezkracují." },
   { key: "employed_total", label: "Zaměstnaní", kind: "count", source: "labor", tip: "Skutečně obsazená místa; nikdo není zaměstnán dvakrát." },
   { key: "critical_priority_employed", label: "Přednostně na jídlo/vodu/palivo", kind: "count", source: "labor", tip: "Pracovníci obsazení nejdřív u výroby jídla a vody (do potřeby domácností), pak paliva (do 80 %). Zbytek dostávají ostatní provozy." },
+  { key: "perishable_demand_limited_jobs", label: "Neobsazeno kvůli kazivé nadvýrobě", kind: "count", source: "labor", tip: "Deklarovaná místa záměrně bez dalších pracovníků nad místní potřebu a čtvrtinovou rezervu u neskladovatelného jídla, vody a paliva. Výnos na pracovníka se nemění; uvolněná práce může obsloužit jiné provozy stejného odvětví." },
   { key: "vacancies_total", label: "Neobsazená místa", kind: "count", source: "labor", tip: "Místa, pro která chybí lidé — tyto provozy běží pod kapacitou." },
   { key: "unemployed_total", label: "Nezaměstnaní", kind: "count", source: "labor", tip: "Pracovní síla bez místa." },
   { key: "structural_unemployed", label: "Strukturální nezaměstnanost", kind: "count", source: "labor", tip: "Lidé bez práce vedle prázdných míst jiné odbornosti." },

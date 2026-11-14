@@ -4,7 +4,11 @@
 - [x] Traced canonical production → stocks/reserves → demand → physical trade gates → freight paths → projections; basket endpoint is compatibility-only, not a second solver. No turn/refresh/command or game-data write.
 - [x] JV72O7 turn 7: 85.428 output but only 0.2286 exported (one raw-timber shipment); 54.429 unmet = 35.634 source_empty + 18.785 route_unreachable. Ledger/committed/current projections agree at one flow.
 - [x] All five player cities are connected by ten completed road segments. All five lack the same charcoal/peat/textile/tools/storage; none produces textile/tools/storage, while AI fuel stocks are disconnected. Fish use ~60% of recorded labour and ~30% spoils; uniform production/demand multipliers would preserve city symmetry and worsen waste or shortages.
-- [ ] Confirm desired trade behaviour with the user before changing formulas; then use isolated simulation, starting with specialization/missing producers and only afterwards bounded volume calibration.
+- [x] User chose both sequentially: real specialization/missing producers first, then bounded volume calibration.
+- [x] Implemented demand-aware urban labour caps for non-storable subsistence sources above local household need + existing reserveTurns; preserved declared jobs/capacity, output per worker, physical conservation, subsistence priority and protected saves.
+- [x] Frozen JV72O7 turn-7 memory-only simulation: fish discard 12.550→7.459, water discard 6.469→2.468, flour/bread 0.068→0.110, unmet 54.429→53.768, conservation errors 0; export stays 0.2286, so no new trade is claimed.
+- [x] Added canonical `perishable_demand_limited_jobs` to shared Economy/Dev labour diagnostics; full suite 926 passed / 3 skipped, automatic build OK; six affected functions deployed without running refresh/turn/gameplay.
+- [ ] Next: specialize the existing mill city and grain neighbours in an isolated JV72O7 snapshot until a canonical raw_grain production_input shipment uses completed roads without reducing food coverage; only then test bounded volume coefficients.
 
 ## Visual Map Polish 2.0 — first verified slice, 2026-11-14
 - [x] Audited Dashboard → WorldMapTab → IsometricSquareMap: raster terrain/vegetation plus SVG interaction and infrastructure; preserved square coordinates, 6×6 parcels, hitboxes and game data.

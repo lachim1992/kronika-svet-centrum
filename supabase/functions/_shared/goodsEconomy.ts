@@ -63,6 +63,8 @@ export interface CityLabor { city: string; population: number; urban_population?
   structural_unemployed?: number;
   /** Workers placed first on food/water (then fuel minimum) up to household need. */
   critical_priority_employed?: number;
+  /** Declared jobs intentionally left idle above non-storable local need + reserveTurns. */
+  perishable_demand_limited_jobs?: number;
   sectors: Record<string, { labor_supply: number; jobs_capacity: number; employed: number; vacancies: number; labor_shortage: number; transferred_in?: number; service_jobs?: number; service_employed?: number }>;
   /** Trade-service jobs from formal commercial infrastructure (logistics sector, filled after goods producers). */
   service?: { infrastructure: number; jobs: number; employed: number; staffing: number } }
@@ -377,6 +379,26 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const subsistenceNeed=(c:City,basket:string)=>{
     const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
     return basketDemandChannels(basket,{weightedPop,populationRate:C.populationDemand} as DemandInput).household_need||0;};
+  const referencePrice=(c:City,g:Good)=>snapshot.priorPrices?.[key(c.id,g.key)]??g.price*(1+stock(c.id,g.key).quality*C.qualityPremium);
+  /** One product-choice calculation, shared by household demand and the perishable labour ceiling. */
+  const productChoiceCache=new Map<string,{options:Good[];shares:ReturnType<typeof demandShares>}>();
+  const productDemandChoice=(c:City,basket:string)=>{
+    const cacheKey=key(c.id,basket),cached=productChoiceCache.get(cacheKey);if(cached)return cached;
+    const options=goods.filter(g=>g.basket===basket&&(g.finalUse??g.stage!=='intermediate'));
+    const budget=snapshot.budget?.[c.id],afford=budget?clamp(budget.affordability):1;
+    const offer=options.map(g=>stock(c.id,g.key).opening+producers.filter(p=>p.city===c.id&&p.recipe.good===g.key).reduce((s,p)=>s+n(p.capacity)*clamp(p.allocation),0));
+    const offerTotal=offer.reduce((a,b)=>a+b,0),avgPrice=options.length?options.reduce((a,g)=>a+referencePrice(c,g),0)/options.length:0;
+    const shares=demandShares(options.map((g,i)=>({good:g.key,basket,referencePrice:referencePrice(c,g),basketAveragePrice:avgPrice,
+      quality:stock(c.id,g.key).quality,fame:bestFame(c,g).fame,
+      familiarity:snapshot.familiarity?.[c.id]?.[g.key]??0,prevalence:offerTotal>0?offer[i]/offerTotal:1/options.length,
+      coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
+    const result={options,shares};productChoiceCache.set(cacheKey,result);return result;
+  };
+  /** One output-per-worker estimate for both subsistence priority and the perishable demand ceiling. */
+  const subsistenceOutputPerJob=(p:Producer,c:City)=>{
+    const jobs=jobsOf(p),g=goodByKey.get(p.recipe.good);if(jobs<=C.epsilon||!g)return 0;
+    return n(p.capacity)*clamp(p.allocation)*producerStability(p,c,g)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobs;
+  };
   const laborSupply=(c:City,sector:Sector)=>workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
   const ruralProducers=producers.filter(p=>p.ruralLabor);
   const ruralEmployed=allocateRuralLabor(new Map(ruralProducers.map(p=>[p.ruralLabor?.cell||'',p.ruralLabor?.population||0])),
@@ -423,7 +445,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const critJobsOf=(r:typeof plan[number])=>{let jobs=0;
       for(const tier of SUBSISTENCE_TIERS)for(const basket of tier.baskets){let need=subsistenceNeed(c,basket)*tier.share;
         const cands=r.own.filter(p=>goodByKey.get(p.recipe.good)?.basket===basket&&jobsOf(p)>C.epsilon)
-          .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*producerStability(p,c,goodByKey.get(p.recipe.good)!)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
+          .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
           .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
         for(const {p,per} of cands){if(need<=C.epsilon)break;const take=Math.min(jobsOf(p),need/per);jobs+=take;need-=take*per;}}
       return jobs;};
@@ -435,10 +457,25 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const critMoved=Math.min(needCrit,canGive);
     const critOut=plan.map(()=>0);
     if(critMoved>C.epsilon)plan.forEach((r,i)=>{critOut[i]=critMoved*donor[i]/canGive;r.supply-=critOut[i];r.transferred+=critMoved*shortfall[i]/needCrit;});
-    let priorityEmployed=0;
+    let priorityEmployed=0,perishableLimited=0;
     for(const r of plan){
       const available=r.supply+r.transferred;
-      const goodsUsed=Math.min(available,r.goodsJobs);
+      // PERISHABLE DEMAND CEILING. The subsistence pass still fills food/water first. Above
+      // local need + one reserveTurns buffer, however, non-storable source output would be
+      // guaranteed discard. Leave those declared jobs idle and give the remaining workers to
+      // other producers in the SAME sector. Capacity, jobs and output per worker stay unchanged.
+      const perishableCaps=new Map<string,number>();
+      for(const tier of SUBSISTENCE_TIERS)for(const basket of tier.baskets){
+        let target=subsistenceNeed(c,basket)*tier.share*(1+C.reserveTurns);
+        const cands=r.own.filter(p=>p.source&&goodByKey.get(p.recipe.good)?.basket===basket&&goodByKey.get(p.recipe.good)?.storable===false&&jobsOf(p)>C.epsilon)
+          .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
+          .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
+        for(const {p,per} of cands){const cap=Math.min(jobsOf(p),Math.max(0,target)/per);
+          perishableCaps.set(p.id,cap);target-=cap*per;}
+      }
+      const employmentJobs=(p:Producer)=>Math.max(0,Math.min(jobsOf(p),perishableCaps.get(p.id)??jobsOf(p)));
+      for(const p of r.own)if(perishableCaps.has(p.id))perishableLimited+=Math.max(0,jobsOf(p)-employmentJobs(p));
+      const goodsUsed=Math.min(available,r.own.reduce((s,p)=>s+employmentJobs(p),0));
       // SUBSISTENCE PRIORITY: inside the sector, crews for food and drinking water (then a fuel
       // minimum) are filled first, only up to the jobs needed for the city's household need;
       // the rest of the sector's workers are shared proportionally. Same people, same jobs —
@@ -448,16 +485,16 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         for(const basket of tier.baskets){
           let need=subsistenceNeed(c,basket)*tier.share;
           const cands=r.own.filter(p=>goodByKey.get(p.recipe.good)?.basket===basket&&jobsOf(p)>C.epsilon)
-            .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*producerStability(p,c,goodByKey.get(p.recipe.good)!)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
+            .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
             .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
           for(const {p,per} of cands){if(left<=C.epsilon||need<=C.epsilon)break;
-            const take=Math.min(left,jobsOf(p)-(assigned.get(p.id)||0),need/per);if(take<=C.epsilon)continue;
+            const take=Math.min(left,employmentJobs(p)-(assigned.get(p.id)||0),need/per);if(take<=C.epsilon)continue;
             assigned.set(p.id,(assigned.get(p.id)||0)+take);left-=take;need-=take*per;priority+=take;}
         }
       }
-      const restJobs=r.own.reduce((s,p)=>s+Math.max(0,jobsOf(p)-(assigned.get(p.id)||0)),0);
+      const restJobs=r.own.reduce((s,p)=>s+Math.max(0,employmentJobs(p)-(assigned.get(p.id)||0)),0);
       const fill=restJobs>C.epsilon?Math.min(1,left/restJobs):0;
-      for(const p of r.own)employed.set(p.id,(assigned.get(p.id)||0)+Math.max(0,jobsOf(p)-(assigned.get(p.id)||0))*fill);
+      for(const p of r.own)employed.set(p.id,(assigned.get(p.id)||0)+Math.max(0,employmentJobs(p)-(assigned.get(p.id)||0))*fill);
       priorityEmployed+=priority;
       const serviceEmployed=Math.min(r.serviceJobs,Math.max(0,available-goodsUsed));
       const filled=goodsUsed+serviceEmployed;
@@ -471,16 +508,19 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     }
     const active=workforce.get(c.id)!.effectiveActivePop;
     const unemployed=Math.max(0,supplyTotal-employedTotal),vacancies=Math.max(0,jobsTotal-employedTotal);
+    // Intentional perishable overcapacity is not labour-market demand: it must neither
+    // masquerade as structural mismatch nor suppress the local wage through false vacancies.
+    const marketVacancies=Math.max(0,vacancies-perishableLimited);
     laborMetrics.push({city:c.id,population:c.population,urban_population:c.urbanPopulation??c.population,rural_population:c.ruralPopulation??0,economically_active:active,
       available_workforce:workforce.get(c.id)!.workforce,employed_total:employedTotal,
       unemployed_total:unemployed,jobs_capacity:jobsTotal,vacancies_total:vacancies,
       labor_mobility:mobility,retrained:moved+critMoved,
       // People idle while jobs stand empty: the mismatch itself, not a general labour shortage.
-      structural_unemployed:Math.min(unemployed,vacancies),
-      critical_priority_employed:priorityEmployed,
+      structural_unemployed:Math.min(unemployed,marketVacancies),
+      critical_priority_employed:priorityEmployed,perishable_demand_limited_jobs:perishableLimited,
       employment_rate:supplyTotal>C.epsilon?employedTotal/supplyTotal:0,
       unemployment_rate:supplyTotal>C.epsilon?Math.max(0,1-employedTotal/supplyTotal):0,sectors,
-      wage_rate:localWage({supply:supplyTotal,vacancies,unemployed}),service:serviceLabor.get(c.id)});
+      wage_rate:localWage({supply:supplyTotal,vacancies:marketVacancies,unemployed}),service:serviceLabor.get(c.id)});
   }
   /** employed / jobs_capacity, clamped. Automated producers without declared labour run at their own staffing. */
   const staffingRatio=(p:Producer)=>{const jobs=jobsOf(p);
@@ -523,16 +563,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const spec=basketSpec(basket)!;
       // Industrial intermediates receive demand from downstream recipes only.
       if(spec.class==='intermediate_only')continue;
-      const options=goods.filter(g=>g.basket===basket&&(g.finalUse??g.stage!=='intermediate'));if(!options.length)continue;
+      const {options,shares}=productDemandChoice(c,basket);if(!options.length)continue;
       // PRODUCT CHOICE: preference, region, familiarity, novelty, quality, fame and PREVIOUS
       // COMMITTED local price (bootstrap: base × quality). Shares split the functional need only.
-      const offer=options.map(g=>stock(c.id,g.key).opening+producers.filter(p=>p.city===c.id&&p.recipe.good===g.key).reduce((s,p)=>s+n(p.capacity)*clamp(p.allocation),0));
-      const offerTotal=offer.reduce((a,b)=>a+b,0);
-      const avgPrice=options.reduce((a,g)=>a+refPrice(g),0)/options.length;
-      const shares=demandShares(options.map((g,i)=>({good:g.key,basket,referencePrice:refPrice(g),basketAveragePrice:avgPrice,
-        quality:stock(c.id,g.key).quality,fame:bestFame(c,g).fame,
-        familiarity:snapshot.familiarity?.[c.id]?.[g.key]??0,prevalence:offerTotal>0?offer[i]/offerTotal:1/options.length,
-        coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
       for(const s of shares)choice.push({city:c.id,basket,...s,fame_origin:bestFame(c,goodByKey.get(s.good)!).origin,reference_price:refPrice(goodByKey.get(s.good)!),functional_value:functionalValue(s.good,basket)});
       const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
       plans.push({basket,spec,options,shareOf:new Map(shares.map(s=>[s.good,s.share])),channels:basketDemandChannels(basket,{...input,weightedPop})});
