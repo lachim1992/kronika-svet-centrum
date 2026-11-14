@@ -162,6 +162,13 @@
       "when": 1794602951496,
       "tag": "0022_allow_gold_mine_on_worked_parcel",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794639486540,
+      "tag": "0023_rural_population_atomic_world_phase",
+      "breakpoints": true
     }
   ]
 }
