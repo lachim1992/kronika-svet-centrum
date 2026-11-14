@@ -15,7 +15,7 @@ describe('new town founding matches physical parcel economy', () => {
     expect(Object.values(first).every(Number.isFinite)).toBe(true);
   });
 
-  it('command dispatch uses one founding population for city and claimed parcel footprint', () => {
+  it('command dispatch transfers the founding population from rural cells atomically', () => {
     const source = readCommand();
     const start = source.indexOf('async function executeFoundCity(');
     const end = source.indexOf('async function ', start + 12);
