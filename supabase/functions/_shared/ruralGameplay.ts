@@ -150,6 +150,6 @@ export function foundingTransfer(rows: RuralState[], settlers = 100) {
   let left = settlers;
   return [...rows].sort((a,b) => a.q-b.q || a.r-b.r).map(r => {
     const take = Math.min(left,integer(r.rural_population)); left-=take;
-    const mobileTaken=Math.min(integer(r.mobile_population),take); return { ...r, rural_population:r.rural_population-take, mobile_population:Math.max(0,integer(r.mobile_population)-mobileTaken) };
+    const mobileTaken=Math.min(integer(r.mobile_population),take); return { ...r, rural_population:r.rural_population-take, mobile_population:Math.min(Math.max(0,r.rural_population-take),Math.max(0,integer(r.mobile_population)-mobileTaken)) };
   });
 }
