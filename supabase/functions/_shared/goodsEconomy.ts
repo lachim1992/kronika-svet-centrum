@@ -442,10 +442,25 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const critMoved=Math.min(needCrit,canGive);
     const critOut=plan.map(()=>0);
     if(critMoved>C.epsilon)plan.forEach((r,i)=>{critOut[i]=critMoved*donor[i]/canGive;r.supply-=critOut[i];r.transferred+=critMoved*shortfall[i]/needCrit;});
-    let priorityEmployed=0;
+    let priorityEmployed=0,perishableLimited=0;
     for(const r of plan){
       const available=r.supply+r.transferred;
-      const goodsUsed=Math.min(available,r.goodsJobs);
+      // PERISHABLE DEMAND CEILING. The subsistence pass still fills food/water first. Above
+      // local need + one reserveTurns buffer, however, non-storable source output would be
+      // guaranteed discard. Leave those declared jobs idle and give the remaining workers to
+      // other producers in the SAME sector. Capacity, jobs and output per worker stay unchanged.
+      const perishableCaps=new Map<string,number>();
+      for(const tier of SUBSISTENCE_TIERS)for(const basket of tier.baskets){
+        let target=subsistenceNeed(c,basket)*tier.share*(1+C.reserveTurns);
+        const cands=r.own.filter(p=>p.source&&goodByKey.get(p.recipe.good)?.basket===basket&&goodByKey.get(p.recipe.good)?.storable===false&&jobsOf(p)>C.epsilon)
+          .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
+          .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
+        for(const {p,per} of cands){const cap=Math.min(jobsOf(p),Math.max(0,target)/per);
+          perishableCaps.set(p.id,cap);target-=cap*per;}
+      }
+      const employmentJobs=(p:Producer)=>Math.max(0,Math.min(jobsOf(p),perishableCaps.get(p.id)??jobsOf(p)));
+      for(const p of r.own)if(perishableCaps.has(p.id))perishableLimited+=Math.max(0,jobsOf(p)-employmentJobs(p));
+      const goodsUsed=Math.min(available,r.own.reduce((s,p)=>s+employmentJobs(p),0));
       // SUBSISTENCE PRIORITY: inside the sector, crews for food and drinking water (then a fuel
       // minimum) are filled first, only up to the jobs needed for the city's household need;
       // the rest of the sector's workers are shared proportionally. Same people, same jobs —
@@ -455,16 +470,16 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         for(const basket of tier.baskets){
           let need=subsistenceNeed(c,basket)*tier.share;
           const cands=r.own.filter(p=>goodByKey.get(p.recipe.good)?.basket===basket&&jobsOf(p)>C.epsilon)
-            .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*producerStability(p,c,goodByKey.get(p.recipe.good)!)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
+            .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
             .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
           for(const {p,per} of cands){if(left<=C.epsilon||need<=C.epsilon)break;
-            const take=Math.min(left,jobsOf(p)-(assigned.get(p.id)||0),need/per);if(take<=C.epsilon)continue;
+            const take=Math.min(left,employmentJobs(p)-(assigned.get(p.id)||0),need/per);if(take<=C.epsilon)continue;
             assigned.set(p.id,(assigned.get(p.id)||0)+take);left-=take;need-=take*per;priority+=take;}
         }
       }
-      const restJobs=r.own.reduce((s,p)=>s+Math.max(0,jobsOf(p)-(assigned.get(p.id)||0)),0);
+      const restJobs=r.own.reduce((s,p)=>s+Math.max(0,employmentJobs(p)-(assigned.get(p.id)||0)),0);
       const fill=restJobs>C.epsilon?Math.min(1,left/restJobs):0;
-      for(const p of r.own)employed.set(p.id,(assigned.get(p.id)||0)+Math.max(0,jobsOf(p)-(assigned.get(p.id)||0))*fill);
+      for(const p of r.own)employed.set(p.id,(assigned.get(p.id)||0)+Math.max(0,employmentJobs(p)-(assigned.get(p.id)||0))*fill);
       priorityEmployed+=priority;
       const serviceEmployed=Math.min(r.serviceJobs,Math.max(0,available-goodsUsed));
       const filled=goodsUsed+serviceEmployed;
