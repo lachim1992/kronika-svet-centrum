@@ -50,7 +50,19 @@ export async function rasterizeTerrain(quads: TerrainQuad[], sprites: TerrainSpr
   const ctx = canvas.getContext("2d"); if (!ctx) return [];
   const patterns = new Map<string, CanvasPattern>();
   images.forEach((img, href) => {
-    const pattern = ctx.createPattern(img, "repeat"); if (!pattern) return;
+    let source: CanvasImageSource = img;
+    const filter = quads.find(quad => quad.tex === href && quad.texFilter)?.texFilter;
+    if (filter) {
+      const filtered = document.createElement("canvas");
+      filtered.width = img.width; filtered.height = img.height;
+      const filterCtx = filtered.getContext("2d");
+      if (filterCtx) {
+        filterCtx.filter = filter;
+        filterCtx.drawImage(img, 0, 0);
+        source = filtered;
+      }
+    }
+    const pattern = ctx.createPattern(source, "repeat"); if (!pattern) return;
     pattern.setTransform(new DOMMatrix([1, .5, -1, .5, 0, 0]).scale(texWorldSize / img.width, texWorldSize / img.height));
     patterns.set(href, pattern);
   });
