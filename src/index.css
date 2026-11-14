@@ -115,6 +115,11 @@
     --map-city-base: hsl(147 22% 19%);
     --map-city-wall-light: hsl(35 20% 67%);
     --map-city-wall-dark: hsl(31 18% 46%);
+    --map-army-skin: hsl(24 45% 62%);
+    --map-army-metal: hsl(210 10% 72%);
+    --map-army-metal-dark: hsl(212 12% 38%);
+    --map-army-cloth: hsl(30 25% 30%);
+    --map-army-wood: hsl(28 40% 28%);
     --map-label: hsl(44 100% 91%);
     --map-label-edge: hsl(195 41% 5%);
     --map-window: hsl(48 92% 72%);
