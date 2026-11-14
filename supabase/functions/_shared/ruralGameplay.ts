@@ -34,7 +34,7 @@ export function ruralCatchments(cells: ControlledCell[], cities: Pick<RuralDesti
   const best = new Map<string, { city: string; distance: number }>();
   const distance = (a: string, b: string) => {
     const [ax,ay] = a.split(',').map(Number), [bx,by] = b.split(',').map(Number);
-    return Math.abs(ax-bx)+Math.abs(ay-by);
+    return Math.max(Math.abs(ax-bx),Math.abs(ay-by),Math.abs((ax+ay)-(bx+by)));
   };
   for (const city of [...cities].sort((a,b) => a.id.localeCompare(b.id))) {
     const exact = byCell.get(city.cell);
@@ -51,7 +51,7 @@ export function ruralCatchments(cells: ControlledCell[], cities: Pick<RuralDesti
       const prev = best.get(at.cell);
       if (!prev || at.distance < prev.distance) best.set(at.cell, { city: city.id, distance: at.distance });
       const [x,y] = at.cell.split(',').map(Number);
-      for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      for (const [dx,dy] of [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]]) {
         const next = key(x+dx,y+dy), h = byCell.get(next);
         if (!seen.has(next) && h?.owner_player === city.owner && (h.province_id ?? null) === provinceId) {
           seen.add(next); queue.push({ cell: next, distance: at.distance+1 });
@@ -114,7 +114,7 @@ export function ruralTurn(seed: string, cells: (RuralCell & ControlledCell)[], e
     const row = advanceRural(before,turn,{food:destination?.food ?? 1,water:destination?.water ?? 1});
     if (!cityId || !destination) return row;
     const [cityX,cityY]=destination.cell.split(',').map(Number);
-    const directDistance=Math.abs(x-cityX)+Math.abs(y-cityY);
+    const directDistance=Math.max(Math.abs(x-cityX),Math.abs(y-cityY),Math.abs((x+y)-(cityX+cityY)));
     const access=clamp01(terrain?.access_score ?? 1);
     const movementPenalty=1/Math.sqrt(Math.max(1,integer(terrain?.movement_cost ?? 1)));
     const routeDistance=roadDistances.get(cityId)?.get(key(x,y));
