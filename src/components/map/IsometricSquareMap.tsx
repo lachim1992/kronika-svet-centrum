@@ -2120,7 +2120,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               })()}
               <g transform={`translate(${point.x + seat.x + 4},${point.y + seat.y - 2})`} filter="url(#iso-shadow)">
                 <ArmyStandard name={lead.name} soldiers={group.list.reduce((sum, army) => sum + army.soldiers, 0)} unitCount={lead.unit_count} morale={lead.morale} banner={banner} active={active} />
-                {stacked > 1 && <g transform="translate(15,-19)">
+                {stacked > 1 && <g transform="translate(11,-18) scale(.75)">
                   <circle r="7" fill="var(--map-marker)" stroke={banner} strokeWidth="1.2" />
                   <text textAnchor="middle" y="2.6" fontSize="7.5" fontWeight="700" fill="var(--map-label)">{stacked}</text>
                 </g>}
