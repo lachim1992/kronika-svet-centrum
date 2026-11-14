@@ -20,7 +20,7 @@ import { dispatchCommand } from "@/lib/commands";
 import { rasterizeTerrain, type TerrainQuad, type TerrainSprite, type TerrainRaster } from "@/lib/terrainRaster";
 import { mapVisualVariation, polishedTerrainTint, polishedTerrainTintAlpha } from "@/lib/mapVisualPolish";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
-import { SUB_BIOME_COLORS, parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
+import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
 import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDetour, subRoadPathBetween, tileBridgeCells, tileRoadBranches, tileRoadCells, tileRoadCost, type RoadStep, type SubRoadCell } from "@/lib/tileRoads";
 import { parcelTransport } from "../../../supabase/functions/_shared/ruralSites";
