@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS public.city_founding_transfers (
   command_id text NOT NULL,
   city_id uuid UNIQUE REFERENCES public.cities(id) ON DELETE CASCADE,
   owner_player text NOT NULL,
+  request_hash text NOT NULL,
   turn_number integer NOT NULL,
   settlers integer NOT NULL CHECK (settlers > 0),
   source_cells jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -45,6 +46,7 @@ DECLARE
   v_burghers integer;
   v_clerics integer;
   v_sources jsonb := '[]'::jsonb;
+  v_request_hash text;
 BEGIN
   IF p_session_id IS NULL OR nullif(trim(p_command_id), '') IS NULL
      OR nullif(trim(p_owner_player), '') IS NULL OR nullif(trim(p_city_name), '') IS NULL THEN
@@ -53,28 +55,28 @@ BEGIN
   IF p_settlers < 1 OR p_settlers > 10000 THEN
     RAISE EXCEPTION 'FOUNDING_INVALID_SETTLER_COUNT';
   END IF;
+  v_request_hash := md5(concat_ws('|',p_owner_player,p_turn_number,p_city_name,p_province_id,p_q,p_r,p_settlers));
 
   -- Reserve and lock this command key before touching rural cells. ON CONFLICT waits for a
   -- concurrent identical command; after that transaction commits, the second caller sees its city.
   INSERT INTO public.city_founding_transfers(
-    session_id,command_id,owner_player,turn_number,settlers,source_cells
-  ) VALUES(p_session_id,p_command_id,p_owner_player,p_turn_number,p_settlers,'[]'::jsonb)
+    session_id,command_id,owner_player,request_hash,turn_number,settlers,source_cells
+  ) VALUES(p_session_id,p_command_id,p_owner_player,v_request_hash,p_turn_number,p_settlers,'[]'::jsonb)
   ON CONFLICT(session_id,command_id) DO NOTHING;
   SELECT * INTO v_transfer
   FROM public.city_founding_transfers
   WHERE session_id = p_session_id AND command_id = p_command_id
   FOR UPDATE;
   IF v_transfer.city_id IS NOT NULL THEN
-    IF v_transfer.owner_player IS DISTINCT FROM p_owner_player THEN
-      RAISE EXCEPTION 'FOUNDING_COMMAND_OWNER_CONFLICT';
+    IF v_transfer.request_hash IS DISTINCT FROM v_request_hash THEN
+      RAISE EXCEPTION 'FOUNDING_COMMAND_CONFLICT';
     END IF;
     RETURN jsonb_build_object(
       'city_id', v_transfer.city_id, 'transferred', v_transfer.settlers,
       'source_cells', v_transfer.source_cells, 'idempotent', true
     );
   END IF;
-  IF v_transfer.owner_player IS DISTINCT FROM p_owner_player
-     OR v_transfer.turn_number <> p_turn_number OR v_transfer.settlers <> p_settlers THEN
+  IF v_transfer.request_hash IS DISTINCT FROM v_request_hash THEN
     RAISE EXCEPTION 'FOUNDING_COMMAND_CONFLICT';
   END IF;
 
