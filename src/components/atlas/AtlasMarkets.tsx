@@ -29,7 +29,7 @@ export default function AtlasMarkets({ market, goods, report, reportTurn }: { ma
             <td className="py-1.5">{names.get(g.good) || g.good}</td><td>{fmt(base.get(g.good) ?? null)}</td>
             <td>{g.weightedPrice == null ? <ProvenanceBadge status="unavailable" /> : fmt(g.weightedPrice)}</td>
             <td>{fmt(g.supply)}</td><td>{fmt(g.demand)}</td>
-            <td className={g.balance < 0 ? "text-destructive" : ""}>{g.balance < 0 ? "nedostatek " : "přebytek "}{fmt(Math.abs(g.balance))}</td><td>{g.markets}</td>
+            <td className={g.balance < -0.005 ? "text-destructive" : ""}>{g.balance < -0.005 ? "nedostatek " : "přebytek "}{fmt(Math.abs(g.balance))}</td><td>{g.markets}</td>
           </tr>)}</tbody></table></div></>}
     </AtlasCard>
     <AtlasCard title="Moje městské ceny" aside={report ? <ProvenanceBadge status="actual" source={`hlášení tahu ${reportTurn}`} /> : <ProvenanceBadge status="unavailable" source="žádné uzavřené hlášení" />}>

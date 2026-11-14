@@ -504,3 +504,13 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [x] Oprava: `economyAdapter.rows()` řadil `macro_deposits` podle neexistujícího `id` → tah 7 selhal fail-closed v compute-trade-flows; nyní řadí podle grid_x, grid_y. Nasazeno compute-trade-flows, commit-turn, backfill-parcel-economy.
 - [x] Tah 7→8 proběhl: zásilky 1 → 5 (dřevo Qweo/Hakka→Kwak, obilí Kwak→Lambadagrad), objem 0,23 → 0,70.
 - [ ] Objemy jsou stále malé; další krok: kalibrace výroby/poptávky v izolované simulaci.
+
+## Atlas — read-only encyklopedie (2026-11-14)
+Plán: `.lovable/plan/atlas.md` (původní `.lovable/plan.md` obnoven z 166e9b1d beze změny).
+- [x] Záložka „Atlas“ v horním menu (MapTopNav), AppSidebar, BottomNav; render v Dashboard. Codex/ChroWiki beze změn.
+- [x] Sekce: Jak funguje svět, Suroviny a zboží, Spotřební koše (13 z BASKET_DEMAND, substitutionEfficiency, nutritionOnly), Výrobní řetězce (interaktivní strom z DB receptů + producersOfRecipe, nesoulad katalogu), Světové trhy (poslední snapshot city_market_summary, poptávkou vážená cena, stáří), Moje území (pole, biomy jako odvozeno, vlastní průzkumy, parcelPotential jako potenciál, skutečný výnos z hlášení, doložené příležitosti z import_blockers).
+- Soubory: src/pages/game/AtlasTab.tsx; src/components/atlas/{ProvenanceBadge,AtlasOverview,AtlasGoods,AtlasBaskets,AtlasChains,AtlasMarkets,AtlasTerritory}.tsx; src/lib/atlas/{canon,provenance,paging,market,chains,opportunities}.ts; src/hooks/useAtlasData.ts; src/test/atlas.test.ts; upraveny BottomNav, AppSidebar, MapTopNav, Dashboard, AGENTS.md.
+- Testy: atlas.test.ts 19/19; celá sada 968 passed / 3 skipped; tsgo bez chyb; build OK.
+- Prohlížeč (JV72O7, přihlášen, jen čtení, desktop 1280 + mobil 390): všech 6 sekcí, 0 chyb stránky, 0 zápisů/volání funkcí. Žádný tah, refresh, seed ani claim.
+- Limity: city_buildings se samostatně nečtou (budovy jen přes parcel building_id a hlášení); příležitosti jen z import_blockers; zisk jen z margin výrobce, jinak „nelze spolehlivě vyčíslit“; biomová nápověda je obecná; světová cena chybí u zboží bez poptávky.
+- Další krok: přidat do Moje území vlastní budovy z city_buildings (jen select vybraných sloupců) s vazbou na recepty a jejich skutečný provoz.
