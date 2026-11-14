@@ -43,7 +43,7 @@ export const parcelDist = (a: number, b: number) => { const p = pxy(a), q = pxy(
 export const validParcel = (i: unknown) => Number.isInteger(i) && (i as number) >= 0 && (i as number) < CITY_SIDE * CITY_SIDE;
 /** Edge micro square behind wall segment i of n (same compass direction the map draws the wall marker in). */
 export function entryParcel(segment: number, n: number) {
-  const a = -Math.PI / 2 + (segment / Math.max(1, n)) * Math.PI * 2; let best = 0, score = -Infinity;
+  const a = -Math.PI / 4 + (segment / Math.max(1, n)) * Math.PI * 2; let best = 0, score = -Infinity;
   for (let i = 0; i < CITY_SIDE * CITY_SIDE; i++) { const { x, y } = pxy(i); if (x > 0 && y > 0 && x < CITY_SIDE - 1 && y < CITY_SIDE - 1) continue;
     const u = (x - y) / (CITY_SIDE - 1), v = (x + y) / (CITY_SIDE - 1) - 1; const sc = u * Math.cos(a) + v * Math.sin(a); if (sc > score + 1e-9) { score = sc; best = i; } }
   return best;
