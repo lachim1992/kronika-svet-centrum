@@ -59,6 +59,7 @@ describe("SQL rural parcel guard — actual PostgreSQL trigger", () => {
       await template(13, []);
       await template(14, ["fell_timber"]);
       await template(15, ["weave_basic"]);
+      await template(16, ["build_granary"]);
       await building(20, 10);
       await building(21, 11);
       await building(22, 12);
@@ -66,11 +67,14 @@ describe("SQL rural parcel guard — actual PostgreSQL trigger", () => {
       await building(24, 13, ["fell_timber"]); // building-level override
       await building(25, 12);
       await building(26, 15);
+      await building(27, 16);
 
       // Reproduce the reported JSON array cast failure with the formerly deployed trigger.
       await expect(place(39, urban, 26)).rejects.toThrow(/malformed array literal/);
-      await db.exec(readFileSync("drizzle/migrations/0023_fix_rural_site_recipe_guard.sql", "utf8"));
+      await expect(place(41, urban, 27)).rejects.toThrow(/malformed array literal/);
+      await db.exec(readFileSync("drizzle/migrations/0024_fix_rural_site_recipe_guard.sql", "utf8"));
       await place(39, urban, 26); // exact same placement now accepts weave_basic
+      await place(41, urban, 27); // granary uses the same corrected array conversion
       await expect(place(40, otherWorked, 26)).rejects.toThrow(/městské/);
 
       await place(30, worked, 20); // valid gold mine, previously broken by jsonb -> text[]
@@ -84,7 +88,7 @@ describe("SQL rural parcel guard — actual PostgreSQL trigger", () => {
       await expect(db.query("INSERT INTO tile_parcel_contents VALUES($1,$2,$3,'district',$4)",
         [uuid(38), session, otherWorked, uuid(13)])).rejects.toThrow(/Čtvrť/);
       const rows = await db.query<{ id: string }>("SELECT id FROM tile_parcel_contents ORDER BY id");
-      expect(rows.rows.map(r => r.id)).toEqual([30, 36, 37, 39].map(uuid));
+      expect(rows.rows.map(r => r.id)).toEqual([30, 36, 37, 39, 41].map(uuid));
     } finally {
       await db.close();
     }
