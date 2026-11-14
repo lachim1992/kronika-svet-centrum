@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BarChart3, BookOpen, Brain, Crown, FlaskConical, Globe, Home, Map, Newspaper, Shield, Swords, Timer, Trophy, Wrench, Zap } from "lucide-react";
+import { BarChart3, BookOpen, Brain, Crown, FlaskConical, Globe, Home, Map, Newspaper, Shield, Swords, Timer, Trophy, Wrench, Zap, BookMarked } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useSandboxMode } from "@/hooks/useSandboxMode";
@@ -18,6 +18,7 @@ const baseItems: Array<{ id: TabId; label: string; icon: React.ElementType }> = 
   { id: "realm", label: "Diplomacie", icon: Shield },
   { id: "army", label: "Armády", icon: Swords },
   { id: "economy", label: "Ekonomika", icon: BarChart3 },
+  { id: "atlas", label: "Atlas", icon: BookMarked },
   { id: "world", label: "Svět", icon: Globe },
   { id: "council", label: "Rada", icon: Crown },
   { id: "chronicles", label: "Kroniky", icon: BookOpen },
