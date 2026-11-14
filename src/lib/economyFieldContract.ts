@@ -111,8 +111,10 @@ export const fieldByKey = (key: string): EconomyField => {
 
 /** Canonical labour readout (goodsEconomy.labor[]) shown identically in Economy tab and Dev Mode. */
 export const LABOR_FIELDS: EconomyField[] = [
-  { key: "population", label: "Obyvatelé", kind: "count", source: "labor", tip: "Obyvatelé města v ekonomickém tahu." },
-  { key: "available_workforce", label: "Pracovní síla", kind: "count", source: "labor", tip: "Lidé, kteří mohou pracovat (bez vojáků a neaktivních)." },
+  { key: "population", label: "Obyvatelé trhu", kind: "count", source: "labor", tip: "Celková populace města a jeho připojeného venkovského zázemí, která vytváří místní poptávku." },
+  { key: "urban_population", label: "Městští obyvatelé", kind: "count", source: "labor", tip: "Obyvatelé samotné městské osady; tvoří městskou pracovní sílu." },
+  { key: "rural_population", label: "Venkovští obyvatelé", kind: "count", source: "labor", tip: "Obyvatelé připojeného venkovského zázemí; spotřebovávají přes trh města, ale jejich práce se přiděluje venkovským producentům." },
+  { key: "available_workforce", label: "Městská pracovní síla", kind: "count", source: "labor", tip: "Pracovní síla městských obyvatel (bez vojáků a neaktivních); venkovští pracovníci se přidělují samostatně parcelním producentům." },
   { key: "jobs_capacity", label: "Pracovní místa", kind: "count", source: "labor", tip: "Deklarovaná místa budov, čtvrtí a uzlů; nikdy se nezkracují." },
   { key: "employed_total", label: "Zaměstnaní", kind: "count", source: "labor", tip: "Skutečně obsazená místa; nikdo není zaměstnán dvakrát." },
   { key: "critical_priority_employed", label: "Přednostně na jídlo/vodu/palivo", kind: "count", source: "labor", tip: "Pracovníci obsazení nejdřív u výroby jídla a vody (do potřeby domácností), pak paliva (do 80 %). Zbytek dostávají ostatní provozy." },
