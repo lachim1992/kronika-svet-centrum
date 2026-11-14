@@ -169,6 +169,13 @@
       "when": 1794639486540,
       "tag": "0023_rural_population_atomic_world_phase",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794655041567,
+      "tag": "0024_fix_rural_site_recipe_guard",
+      "breakpoints": true
     }
   ]
 }
