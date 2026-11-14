@@ -17,6 +17,21 @@ describe('canonical wage settlement', () => {
     expect(s.cities[0]).toMatchObject({ wages_paid: 30, household_wage_income: 30, producer_retained: 70, arrears_closing: 0 });
     expect(s.treasury_effect).toBe(0);
   });
+  it('splits settled payroll between rural and urban households without creating additional cash',()=>{
+    const first=settleWages(1,[{city:'A',producer_payroll:100,rural_producer_payroll:25,goods_value_added:80}]);
+    conserved(first);
+    expect(first.cities[0]).toMatchObject({
+      wages_paid:80,rural_payroll_due:25,rural_wages_paid:20,urban_wages_paid:60,
+      rural_arrears_closing:5,urban_arrears_closing:15,arrears_closing:20,
+    });
+    const second=settleWages(2,[{city:'A',producer_payroll:0,rural_producer_payroll:0,goods_value_added:20}],first);
+    conserved(second);
+    expect(second.cities[0]).toMatchObject({
+      rural_arrears_opening:5,rural_wages_paid:5,rural_arrears_closing:0,
+      urban_wages_paid:15,urban_arrears_closing:0,arrears_closing:0,
+    });
+    expect(first.treasury_effect).toBe(0);expect(second.treasury_effect).toBe(0);
+  });
   it('never pays more than producer cash (no money created, no negative funds) and carries arrears over 2 turns', () => {
     const t1 = settleWages(1, [{ city: 'A', producer_payroll: 50, goods_value_added: 20 }, { city: 'B', producer_payroll: 10, goods_value_added: -5 }]);
     conserved(t1);
