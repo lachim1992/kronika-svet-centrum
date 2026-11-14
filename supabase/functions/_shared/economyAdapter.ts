@@ -210,9 +210,15 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
 
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
   const workedIds=new Set((db.tile_parcels||[]).filter((p:any)=>p.claim_kind==='worked').map((p:any)=>p.id));
+  // Farm fields: only fields still worked by the farm's own city count (one physical source, no double harvest).
+  const farmFieldRows=parcelMode?await rows(sb,'farm_fields',session):[];
+  const parcelById=new Map((db.tile_parcels||[]).map((p:any)=>[p.id,p]));
+  const liveFields=farmFieldRows.filter((f:any)=>{const a:any=parcelById.get(f.farm_parcel_id),b:any=parcelById.get(f.field_parcel_id);return a&&b&&workedIds.has(b.id)&&a.city_id===b.city_id&&a.owner_player===b.owner_player;});
+  const fieldCount=new Map<string,number>();for(const f of liveFields)fieldCount.set(f.farm_parcel_id,(fieldCount.get(f.farm_parcel_id)||0)+1);
+  const fieldParcels=new Set<string>(liveFields.map((f:any)=>f.field_parcel_id));
   const ruralSites=db.city_buildings.filter((b:any)=>b.status==='completed'&&b.parcel_id&&workedIds.has(b.parcel_id)).map((b:any)=>{
     const t=db.building_templates.find((x:any)=>x.id===b.template_id);
-    return {parcelId:b.parcel_id,recipeKeys:(b.effects?.recipe_keys??t?.effects?.recipe_keys??[]).map(String),level:Number(b.current_level||1),
+    return {parcelId:b.parcel_id,recipeKeys:(b.effects?.recipe_keys??t?.effects?.recipe_keys??[]).map(String),level:Number(b.current_level||1),fields:fieldCount.get(b.parcel_id)||0,
       owner:cities.find(c=>c.id===b.city_id)?.owner||''};});
   const ruralBuildingIds=new Set(db.city_buildings.filter((b:any)=>b.parcel_id&&workedIds.has(b.parcel_id)).map((b:any)=>b.id));
   const roadEdges=db.road_segments.filter((r:any)=>r.status==='completed').map((r:any)=>({from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`,owner:r.owner_player??null}));
@@ -222,7 +228,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const macroTruth=parcelMode?await rows(sb,'macro_deposits',session):[];
   const reserves=new Map<string,{reserve:number;grade:number}>();
   for(const m of macroTruth as any[])for(const d of (m.deposits||[]))if(d.reserve!=null)reserves.set(`${m.grid_x},${m.grid_y}|${d.kind}`,{reserve:Number(d.reserve)||0,grade:Number(d.grade)||1});
-  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
+  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves,fieldParcels}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
   const ruralAttached=ruralCatchments(db.province_hexes,cities);
   const ruralByCell=new Map<string,number>();
   for(const r of db.hex_population) {
