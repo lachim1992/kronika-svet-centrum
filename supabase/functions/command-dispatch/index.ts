@@ -1030,12 +1030,13 @@ async function executeFoundCity(
       !occupied.has(`${h.q},${h.r}`) && ["plains","hills","forest","swamp"].includes(h.biome_family)
     ).map((h:any)=>{
       let localPopulation=0;
-      for(const [cell,pop] of ruralByKey){
-        const [q,r]=cell.split(",").map(Number);
-        const distance=Math.max(Math.abs(q-h.q),Math.abs(r-h.r),Math.abs((q+r)-(h.q+h.r)));
-        if(distance>2)continue;
+      // A radius-two axial hex neighbourhood has only 19 cells; use direct keyed lookups
+      // instead of scanning every rural row for every candidate tile.
+      for(let dq=-2;dq<=2;dq++)for(let dr=-2;dr<=2;dr++){
+        if(Math.max(Math.abs(dq),Math.abs(dr),Math.abs(dq+dr))>2)continue;
+        const cell=`${h.q+dq},${h.r+dr}`;
         const source=hexByKey.get(cell) as any;
-        if(source && source.province_id===h.province_id)localPopulation+=pop;
+        if(source && source.province_id===h.province_id)localPopulation+=ruralByKey.get(cell)||0;
       }
       return {...h,localPopulation};
     }).filter((h:any)=>h.localPopulation>=FOUNDING_HAMLET_POPULATION)
