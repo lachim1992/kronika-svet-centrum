@@ -51,6 +51,7 @@ describe("demand-aware labour for non-storable subsistence sources", () => {
     const bakery = diagnostic(result, "bakery");
     const fishBalance = result.balances.find((row) => row.city === "town" && row.good === "raw_fish")!;
 
+    console.log("perishable-debug", JSON.stringify({ fish, mill, bakery, fishBalance, labor: result.labor[0], coverage: result.cityAccounts[0].physical_need_coverage }));
     expect(fishBalance.lost_discard).toBeLessThan(1);
     expect(fish.realized).toBeLessThanOrEqual(12.5 + 1e-7);
     expect(mill.staffing_ratio).toBeCloseTo(1, 7);
