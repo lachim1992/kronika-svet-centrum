@@ -917,6 +917,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           quads.push({
             pts: [P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)],
             tex: subTex || TERRAIN_TEX[tile.biome_family],
+            texFilter: (subTex || TERRAIN_TEX[tile.biome_family]) === texWater ? "saturate(.58) brightness(.78)" : undefined,
             tint: polishedTerrainTint(parcel.subBiome),
             tintAlpha: polishedTerrainTintAlpha(parcel.subBiome, variation.tintDelta),
           });

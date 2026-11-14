@@ -38,6 +38,6 @@ export function polishedTerrainTint(subBiome: string) {
 }
 
 export function polishedTerrainTintAlpha(subBiome: string, delta = 0) {
-  const base = WATER_SUB_BIOMES.has(subBiome) ? .36 : .23;
-  return Math.max(.16, Math.min(.42, base + delta));
+  const base = WATER_SUB_BIOMES.has(subBiome) ? .36 : .16;
+  return Math.max(.12, Math.min(.42, base + delta));
 }
