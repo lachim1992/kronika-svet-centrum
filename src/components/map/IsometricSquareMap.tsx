@@ -20,6 +20,7 @@ import { dispatchCommand } from "@/lib/commands";
 import { rasterizeTerrain, type TerrainQuad, type TerrainSprite, type TerrainRaster } from "@/lib/terrainRaster";
 import { mapVisualVariation, polishedTerrainTint, polishedTerrainTintAlpha } from "@/lib/mapVisualPolish";
 import { mapCameraTransform, pinchMapCameraAt, zoomMapCameraAt } from "@/lib/mapCamera";
+import { completeParcelTerrain } from "@/lib/parcelTerrainFallback";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
@@ -691,17 +692,18 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [storedSubBiomes]);
   const subBiomesOf = useCallback((tile: Tile, a: number, b: number) => {
     const key = cellKey(a, b);
-    const stored = storedSubBiomesByCell.get(key);
-    if (stored && stored.length) return stored;
-    const cached = subBiomeCache.current.get(key);
-    if (cached) return cached;
-    const neighbours = CARDINAL_STEPS.flatMap(step => {
-      const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
-      return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
+    const stored = storedSubBiomesByCell.get(key) || [];
+    return completeParcelTerrain(stored, () => {
+      const cached = subBiomeCache.current.get(key);
+      if (cached) return cached;
+      const neighbours = CARDINAL_STEPS.flatMap(step => {
+        const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
+        return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
+      });
+      const specs = generateTileParcels(sessionId, a, b, terrainOf(tile), neighbours);
+      subBiomeCache.current.set(key, specs);
+      return specs;
     });
-    const specs = generateTileParcels(sessionId, a, b, terrainOf(tile), neighbours);
-    subBiomeCache.current.set(key, specs);
-    return specs;
   }, [storedSubBiomesByCell, tileByCell, terrainOf, sessionId]);
 
 
