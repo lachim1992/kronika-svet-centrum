@@ -19,9 +19,9 @@ interface Totals {
 }
 
 /**
- * PHASE B readout — deterministic rural population shadow projection.
- * Read-only diagnostics. This panel never mutates settlements, treasury,
- * trade or demand; the projection lives only in hex_population.
+ * Active rural population readout.
+ * The canonical state is advanced by commit-turn; this panel is read-only and its
+ * optional baseline estimate is explicitly dry-run, never a population writer.
  */
 const RuralPopulationShadowPanel = ({ sessionId }: Props) => {
   const [running, setRunning] = useState(false);
@@ -116,13 +116,13 @@ const RuralPopulationShadowPanel = ({ sessionId }: Props) => {
               </div>
             </div>
             <div className="rounded-md border border-border/60 p-2">
-              <div className="text-[10px] uppercase text-muted-foreground">Ochotní se odstěhovat</div>
+              <div className="text-[10px] uppercase text-muted-foreground">Mobilní populace</div>
               <div className="text-sm font-semibold">{fmt(totals.mobile)}</div>
             </div>
           </div>
         ) : (
           <div className="text-xs text-muted-foreground">
-            {loading ? "Načítám…" : "Žádná data — spusť přepočet."}
+            {loading ? "Načítám…" : "Žádná data — venkovská populace se založí při první uzávěrce kola."}
           </div>
         )}
 
