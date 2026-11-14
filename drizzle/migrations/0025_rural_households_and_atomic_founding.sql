@@ -96,6 +96,12 @@ BEGIN
     RAISE EXCEPTION 'FOUNDING_TARGET_PROVINCE_MISMATCH';
   END IF;
   v_province_id := coalesce(v_target.province_id, p_province_id);
+  IF EXISTS (
+    SELECT 1 FROM public.cities
+    WHERE session_id = p_session_id AND province_q = p_q AND province_r = p_r
+  ) THEN
+    RAISE EXCEPTION 'FOUNDING_TARGET_OCCUPIED';
+  END IF;
 
   -- Lock source rows in deterministic order. The axial hex distance <= 2 defines the local
   -- founding catchment; foreign, unpassable and other-province cells cannot contribute.
