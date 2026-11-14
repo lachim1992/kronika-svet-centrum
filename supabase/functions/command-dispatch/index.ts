@@ -32,7 +32,7 @@ import {
 } from "../_shared/citySeat.ts";
 import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
-import { foundingHamletPopulation, FOUNDING_HAMLET_POPULATION } from "../_shared/foundingPopulation.ts";
+import { FOUNDING_HAMLET_POPULATION } from "../_shared/foundingPopulation.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
 import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
@@ -1044,35 +1044,39 @@ async function executeFoundCity(
     if (!found) { freeQ = Math.floor(Math.random() * 100) + 20; freeR = Math.floor(Math.random() * 100) + 20; }
   }
 
-  // ── 1. Create city ──
-  const { data: cityData, error: cityErr } = await supabase.from("cities").insert({
-    session_id: sessionId,
-    owner_player: actor.name,
-    name: cityName.trim(),
-    province_id: provinceId || null,
-    province: provinceName || "",
-    level: "Osada",
-    settlement_level: "HAMLET",
-    tags: tags?.length > 0 ? tags : null,
-    founded_round: turnNumber,
-    flavor_prompt: flavorPrompt?.trim() || null,
-    province_q: freeQ,
-    province_r: freeR,
-    grid_x: freeQ,
-    grid_y: freeR,
-    founded_parcel_index: foundedParcelIndex,
-    // PHASE C TODO (do not remove): founding must transfer these inhabitants
-    // atomically out of the rural population pool of the surrounding cells
-    // instead of creating them ex nihilo. INVARIANT 2 becomes active then.
-    // Guarded by src/test/population-ownership.test.ts.
-    ...foundingHamletPopulation(),
-    city_stability: 70,
-    local_grain_reserve: 0,
-    local_granary_capacity: 0,
-  }).select("id").single();
-
-  if (cityErr) return { events: [], error: `City creation failed: ${cityErr.message}` };
-  const cityId = cityData.id;
+  // ── 1. Atomic city founding + rural population transfer ──
+  // One SECURITY DEFINER RPC locks the local rural rows, subtracts settlers and inserts the
+  // city in the same database transaction. A repeated command_id returns the same city without
+  // deducting residents twice; insufficient local population rolls back everything.
+  const { data: foundingData, error: foundingErr } = await supabase.rpc("found_city_with_rural_settlers", {
+    p_session_id: sessionId,
+    p_command_id: String(base.command_id),
+    p_turn_number: turnNumber,
+    p_owner_player: actor.name,
+    p_city_name: cityName.trim(),
+    p_province_id: provinceId || null,
+    p_province: provinceName || "",
+    p_tags: tags?.length > 0 ? tags : null,
+    p_flavor_prompt: flavorPrompt?.trim() || null,
+    p_q: freeQ,
+    p_r: freeR,
+    p_founded_parcel_index: foundedParcelIndex,
+    p_settlers: FOUNDING_HAMLET_POPULATION,
+  });
+  if (foundingErr) {
+    const message = foundingErr.message || "Neznámá chyba převodu osadníků";
+    const userMessage = message.includes("INSUFFICIENT_RURAL_SETTLERS")
+      ? "V okolí není dost venkovských obyvatel. Osada potřebuje 100 skutečných osadníků z vlastního území."
+      : message.includes("FOUNDING_TARGET_NOT_OWNED")
+        ? "Osadu lze založit pouze na vlastním kontrolovaném území."
+        : `Založení osady selhalo: ${message}`;
+    return { events: [], error: userMessage };
+  }
+  const cityId = foundingData?.city_id;
+  const settlersTransferred = Number(foundingData?.transferred || 0);
+  if (!cityId || settlersTransferred !== FOUNDING_HAMLET_POPULATION) {
+    return { events: [], error: "Atomické založení nevrátilo úplný převod 100 osadníků." };
+  }
 
   // ── 1b. Physical footprint on the 32 sub-parcel grid of the founding cell ──
   const seatResult = await seatCityOnParcels(supabase, {
@@ -1086,6 +1090,18 @@ async function executeFoundCity(
 
   // ── 1c. Settlement node in the physical graph (structural, idempotent) ──
   await ensureCitySettlementNodes(supabase, sessionId);
+  const foundingReason = `FOUND_CITY:${String(base.command_id)}`;
+  const { data: foundingNode } = await supabase.from("province_nodes")
+    .select("id").eq("session_id", sessionId).eq("city_id", cityId)
+    .eq("node_subtype", "city").maybeSingle();
+  if (foundingNode?.id) {
+    const { data: priorFoundingFlow } = await supabase.from("node_migrations")
+      .select("id").eq("session_id", sessionId).eq("reason", foundingReason).maybeSingle();
+    if (!priorFoundingFlow) await safeInsert(supabase.from("node_migrations").insert({
+      session_id: sessionId, turn_number: turnNumber, from_node: null, to_node: foundingNode.id,
+      population_delta: settlersTransferred, reason: foundingReason,
+    }));
+  }
 
   // ── 1d. Starter production bundle: a settlement subsists on real structures,
   // never on population emitting goods out of nothing (idempotent).
@@ -1122,7 +1138,7 @@ async function executeFoundCity(
     session_id: sessionId,
     turn_number: turnNumber,
     feed_type: "gossip",
-    text: `V provincii ${provinceName || ""} byla založena nová osada ${cityName.trim()}.`,
+    text: `V provincii ${provinceName || ""} byla založena nová osada ${cityName.trim()} a z okolního venkova se do ní přestěhovalo ${settlersTransferred} obyvatel.`,
     player_source: actor.name,
     related_entity_type: "city",
     related_entity_id: cityId,
@@ -1131,7 +1147,7 @@ async function executeFoundCity(
   // ── 4. Chronicle entry ──
   const chronicleText = legend?.trim()
     ? `V roce ${turnNumber} byla založena osada **${cityName.trim()}** v provincii ${provinceName || ""}, pod vládou ${actor.name}. ${legend.trim()}`
-    : `V roce ${turnNumber} byla založena osada **${cityName.trim()}** v provincii ${provinceName || ""}, pod vládou ${actor.name}. Nová osada se rodí z prachu a naděje.`;
+    : `V roce ${turnNumber} byla založena osada **${cityName.trim()}** v provincii ${provinceName || ""}, pod vládou ${actor.name}. Nová osada se rodí z okolního venkova: ${settlersTransferred} obyvatel opustilo své dosavadní domovy a přestěhovalo se do ní.`;
 
   await safeInsert(supabase.from("chronicle_entries").insert({
     session_id: sessionId,
