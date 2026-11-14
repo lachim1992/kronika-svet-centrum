@@ -1,4 +1,4 @@
-import { ruralCatchments } from './ruralGameplay.ts';
+import { aggregateRuralPopulationByCity, ruralCatchments } from './ruralGameplay.ts';
 import { depositKey } from './ruralSites.ts';
 import { STARTER_RESERVE_GOODS } from './starterEconomy.ts';
 import { suppressStarterLandExtraction } from './starterParcelPolicy.ts';
@@ -228,6 +228,18 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     const h=db.province_hexes.find((h:any)=>h.q===r.q&&h.r===r.r);
     const cell=`${h?.grid_x??r.q},${h?.grid_y??r.r}`;
     if(ruralAttached.has(cell))ruralByCell.set(cell,nonnegative(r.rural_population));
+  }
+  // Rural households consume through their one assigned city catchment. Keep the persisted
+  // city population untouched; the derived market population includes hinterland peasants,
+  // while the urban labour pool below remains based on the city's own residents only.
+  const ruralByCity=aggregateRuralPopulationByCity(ruralAttached,ruralByCell);
+  for(const c of cities) {
+    const ruralPopulation=ruralByCity.get(c.id)||0;
+    c.urbanPopulation=c.population;
+    c.urbanClasses={...c.classes};
+    c.ruralPopulation=ruralPopulation;
+    c.population+=ruralPopulation;
+    c.classes={...c.classes,peasants:nonnegative(c.classes.peasants)+ruralPopulation};
   }
   for(const p of producers.filter(p=>p.parcel)) {
     const cell=`${p.parcel?.grid_x},${p.parcel?.grid_y}`;
