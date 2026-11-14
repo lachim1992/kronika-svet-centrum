@@ -1,0 +1,2 @@
+ALTER TABLE public.military_stacks ADD COLUMN IF NOT EXISTS controller_player text;
+COMMENT ON COLUMN public.military_stacks.controller_player IS 'Optional player allowed to command this stack besides its owner (admin test control).';
