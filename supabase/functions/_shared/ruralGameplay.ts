@@ -1,8 +1,8 @@
 import { ruralPopulationForWorld, RURAL_MOBILE_SHARE, type RuralCell, type RuralPopulationRow } from './ruralPopulation.ts';
 
 export type RuralState = RuralPopulationRow & { last_resolved_turn: number };
-export type ControlledCell = { q: number; r: number; grid_x?: number; grid_y?: number; owner_player?: string | null; province_id?: string | null };
-export type RuralDestination = { id: string; owner: string; cell: string; population: number; housing: number; stability: number; food: number; vacancies: number };
+export type ControlledCell = { q: number; r: number; grid_x?: number; grid_y?: number; owner_player?: string | null; province_id?: string | null; is_passable?: boolean };
+export type RuralDestination = { id: string; owner: string; cell: string; province_id?: string | null; population: number; housing: number; stability: number; food: number; vacancies: number };
 const key = (q: number, r: number) => `${q},${r}`;
 const integer = (n: number) => Math.max(0, Math.floor(Number(n) || 0));
 export const RURAL_WORKFORCE_SHARE = 0.5;
@@ -17,27 +17,50 @@ export function advanceRural(row: RuralState, turn: number): RuralState {
   return { ...row, rural_population: next, mobile_population: Math.min(next, Math.floor(next * RURAL_MOBILE_SHARE)), last_resolved_turn: turn };
 }
 
-/** Cardinal connected, owned province catchments. Each cell has exactly one destination. */
-export function ruralCatchments(cells: ControlledCell[], cities: Pick<RuralDestination, 'id' | 'owner' | 'cell'>[]) {
-  const byCell = new Map(cells.map(c => [key(c.grid_x ?? c.q, c.grid_y ?? c.r), c]));
+/** Cardinal connected, owned, passable province catchments. Each cell has exactly one destination.
+ * Legacy capitals may have a stale/missing grid seat; in that case seed the BFS at the nearest
+ * passable cell in the city's own province instead of silently dropping its entire hinterland. */
+export function ruralCatchments(cells: ControlledCell[], cities: Pick<RuralDestination, 'id' | 'owner' | 'cell' | 'province_id'>[]) {
+  const byCell = new Map(cells.filter(c => c.is_passable !== false).map(c => [key(c.grid_x ?? c.q, c.grid_y ?? c.r), c]));
   const best = new Map<string, { city: string; distance: number }>();
+  const distance = (a: string, b: string) => {
+    const [ax,ay] = a.split(',').map(Number), [bx,by] = b.split(',').map(Number);
+    return Math.abs(ax-bx)+Math.abs(ay-by);
+  };
   for (const city of [...cities].sort((a,b) => a.id.localeCompare(b.id))) {
-    const home = byCell.get(city.cell);
-    if (!home || home.owner_player !== city.owner || !home.province_id) continue;
-    const queue = [{ cell: city.cell, distance: 0 }], seen = new Set([city.cell]);
+    const exact = byCell.get(city.cell);
+    const exactMatches = exact?.owner_player === city.owner && (!city.province_id || exact.province_id === city.province_id);
+    const candidates = [...byCell.entries()]
+      .filter(([,h]) => h.owner_player === city.owner && (!city.province_id || h.province_id === city.province_id))
+      .sort((a,b) => distance(a[0],city.cell)-distance(b[0],city.cell) || a[0].localeCompare(b[0]));
+    const homeCell = exactMatches ? city.cell : candidates[0]?.[0];
+    if (!homeCell) continue;
+    const home = byCell.get(homeCell)!;
+    const provinceId = city.province_id ?? home.province_id ?? null;
+    const queue = [{ cell: homeCell, distance: distance(homeCell,city.cell) }], seen = new Set([homeCell]);
     for (const at of queue) {
       const prev = best.get(at.cell);
       if (!prev || at.distance < prev.distance) best.set(at.cell, { city: city.id, distance: at.distance });
       const [x,y] = at.cell.split(',').map(Number);
       for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
         const next = key(x+dx,y+dy), h = byCell.get(next);
-        if (!seen.has(next) && h?.owner_player === city.owner && h.province_id === home.province_id) {
+        if (!seen.has(next) && h?.owner_player === city.owner && (h.province_id ?? null) === provinceId) {
           seen.add(next); queue.push({ cell: next, distance: at.distance+1 });
         }
       }
     }
   }
   return new Map([...best].map(([cell, v]) => [cell, v.city]));
+}
+
+/** Aggregate catchment residents once per cell; no cell can feed two city markets. */
+export function aggregateRuralPopulationByCity(catchments: Map<string,string>, populationByCell: Map<string,number>) {
+  const totals = new Map<string,number>();
+  for (const [cell,city] of catchments) {
+    const residents = integer(populationByCell.get(cell) ?? 0);
+    if (residents > 0) totals.set(city,(totals.get(city) ?? 0)+residents);
+  }
+  return totals;
 }
 
 export function ruralTurn(seed: string, cells: (RuralCell & ControlledCell)[], existing: RuralState[], cities: RuralDestination[], turn: number) {
