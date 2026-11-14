@@ -1,7 +1,10 @@
 /** Rasterises the static terrain (sub-square textures, tints, trees, peaks) into one bitmap,
  * so the map draws a single image instead of tens of thousands of SVG nodes. */
-export interface TerrainQuad { pts: [number, number][]; tex?: string; tint?: string }
-export interface TerrainSprite { href: string; x: number; y: number; w: number; h: number }
+export interface TerrainQuad { pts: [number, number][]; tex?: string; tint?: string; tintAlpha?: number }
+export interface TerrainSprite {
+  href: string; x: number; y: number; w: number; h: number;
+  shadow?: { dx: number; dy: number; rx: number; ry: number; color: string; opacity: number };
+}
 export interface TerrainRasterChunk { url: string; x: number; y: number; w: number; h: number }
 export type TerrainRaster = TerrainRasterChunk[];
 
