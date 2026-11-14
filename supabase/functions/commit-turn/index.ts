@@ -1787,20 +1787,22 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
       if(error)throw error; out.push(...(data||[])); if((data||[]).length<1000)return out;
     }
   };
-  const [ruralCells,ruralExisting,settlementNodes,{data:ruralSession},{data:priorEconomy,error:priorError}] = await Promise.all([
+  const [ruralCells,ruralExisting,settlementNodes,{data:ruralSession},{data:priorEconomy,error:priorError},{data:ruralRoads,error:ruralRoadError}] = await Promise.all([
     loadAll('province_hexes'),loadAll('hex_population'),loadAll('province_nodes'),
     supabase.from('game_sessions').select('world_seed').eq('id',sessionId).single(),
     supabase.from('economy_turn_ledgers').select('labor:committed_result->labor').eq('session_id',sessionId)
       .eq('committed',true).lt('turn_number',turnNumber).order('turn_number',{ascending:false}).limit(1).maybeSingle(),
+    supabase.from('road_segments').select('owner_player,from_x,from_y,to_x,to_y,status').eq('session_id',sessionId).eq('status','completed'),
   ]);
   if(priorError)throw priorError;
+  if(ruralRoadError)throw ruralRoadError;
   const local = ruralTurn(String(ruralSession?.world_seed??sessionId),ruralCells,ruralExisting,(cities||[]).map((c:any)=>{
     const i=growthInfo[c.id];
     return {id:c.id,owner:c.owner_player,cell:`${c.grid_x??c.province_q},${c.grid_y??c.province_r}`,province_id:c.province_id??null,
       population:i.afterGrowth-(migration.emigration[c.id]||0)+(migration.immigration[c.id]||0),housing:i.housing,
-      stability:i.stability,food:needsByCity[c.id]?.food??0,
+      stability:i.stability,food:needsByCity[c.id]?.food??1,water:needsByCity[c.id]?.water??1,
       vacancies:Number(priorEconomy?.labor?.find((l:any)=>l.city===c.id)?.vacancies_total||0)};
-  }),turnNumber);
+  }),turnNumber,(ruralRoads||[]) as any[]);
   for(const row of local.rows) {
     const old=ruralExisting.find((r:any)=>r.q===row.q&&r.r===row.r);
     if(old?.last_resolved_turn>=turnNumber)continue;
