@@ -1,5 +1,12 @@
 # Economy implementation progress
 
+## 2026-11-14 — repeated game updates
+
+- Removed automatic `seed-city-parcels` invocation from `IsometricSquareMap`: map viewing no longer triggers footprint writes and a second full map load. Founding/explicit rollout remain authoritative.
+- `Dashboard` membership/foundation loading now depends on stable user ID and fallback player name, not new player arrays/auth objects. Added architecture rule and `src/test/map-read-only.test.tsx` covering mount, identity/turn changes and remount.
+- Targeted component + map visual tests: 4/4 passed. Automatic build OK. Signed-in JV72O7 turn 7 browser: zero requests during 15 seconds idle, zero seed calls, zero page errors; Map→Realm→Map renders correctly. Verification blocked game writes and did not advance/refresh/reset any world. Preview only, no publication.
+- Remaining: ongoing idle refresh was not reproducible with writes blocked even before the fix; confirmed auto-write/reload path is removed. Next if symptoms persist: inspect fresh browser network/realtime activity during the reported episode rather than changing economy or game data.
+
 ## 2026-11-14 — parcel placement recipe-array repair
 
 - Root cause: live `guard_worked_parcel_content` still used the 0022 JSON-to-text[] assignment; existing `0023_fix_rural_site_recipe_guard.sql` was not registered in the migration journal.
