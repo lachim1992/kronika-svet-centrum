@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MICRO_CHANCES, MICRO_RESOURCE_GOOD, MICRO_SURVEY_COST, certainMicroResources, surveyMicroSquare } from "../../supabase/functions/_shared/microResources";
 import { SURVEY_COST } from "../../supabase/functions/_shared/geology";
-import { CATALOG_GOODS } from "../../supabase/functions/_shared/productionCatalog";
+import { GOODS as CATALOG_GOODS } from "../../supabase/functions/_shared/productionCatalog";
 
 describe("micro-square resources", () => {
   it("grain is always possible on arable flats; stone is certain in hills and mountains", () => {
