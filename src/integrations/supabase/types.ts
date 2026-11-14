@@ -1829,6 +1829,57 @@ export type Database = {
           },
         ]
       }
+      city_founding_transfers: {
+        Row: {
+          city_id: string | null
+          command_id: string
+          created_at: string
+          owner_player: string
+          request_hash: string
+          session_id: string
+          settlers: number
+          source_cells: Json
+          turn_number: number
+        }
+        Insert: {
+          city_id?: string | null
+          command_id: string
+          created_at?: string
+          owner_player: string
+          request_hash: string
+          session_id: string
+          settlers: number
+          source_cells?: Json
+          turn_number: number
+        }
+        Update: {
+          city_id?: string | null
+          command_id?: string
+          created_at?: string
+          owner_player?: string
+          request_hash?: string
+          session_id?: string
+          settlers?: number
+          source_cells?: Json
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_founding_transfers_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: true
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_founding_transfers_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city_good_balances: {
         Row: {
           balance: Json
@@ -12906,6 +12957,24 @@ export type Database = {
           p_turn: number
         }
         Returns: undefined
+      }
+      found_city_with_rural_settlers: {
+        Args: {
+          p_city_name: string
+          p_command_id: string
+          p_flavor_prompt: string
+          p_founded_parcel_index: number
+          p_owner_player: string
+          p_province: string
+          p_province_id: string
+          p_q: number
+          p_r: number
+          p_session_id: string
+          p_settlers?: number
+          p_tags: string[]
+          p_turn_number: number
+        }
+        Returns: Json
       }
       has_role: {
         Args: {
