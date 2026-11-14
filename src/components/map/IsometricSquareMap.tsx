@@ -365,6 +365,27 @@ function useMapLayer(key: string, initial = true) {
   return [visible, setVisible] as const;
 }
 
+/** Siege camp props sized to the soldier figures: tents with pennants, campfire, a parked engine. */
+const SiegeCampProp = ({ variant, banner }: { variant: number; banner: string }) => {
+  const v = variant % 6; const wood = "var(--map-road-edge, #5b3b1f)"; const canvas = "var(--map-label, #e8dcc0)";
+  const tent = (x: number, y: number, s = 1) => <g transform={`translate(${x},${y}) scale(${s})`}>
+    <path d="M-3.2 1.2 L0 -3.4 L3.2 1.2 Z" fill={canvas} stroke={wood} strokeWidth=".35" /><path d="M0 -3.4 L0 1.2 L-.9 1.2 Z" fill={wood} opacity=".35" />
+    <line x1="0" y1="-3.4" x2="0" y2="-5.6" stroke={wood} strokeWidth=".3" /><path d="M0 -5.6 L1.8 -5.1 L0 -4.6 Z" fill={banner} /></g>;
+  return <g pointerEvents="visiblePainted">
+    <ellipse cx="0" cy="1.6" rx="6" ry="2.6" fill={wood} opacity=".18" />
+    {v === 0 && <>{tent(-2.4, 0)}{tent(2.6, 1, .85)}</>}
+    {v === 1 && <>{tent(0, -.5, 1.1)}<g transform="translate(3.6,1.6)"><circle r="1" fill={wood} /><path d="M-.6 0 Q0 -2 .6 0 Z" fill="var(--map-marker, #f59e0b)" /></g></>}
+    {v === 2 && <g transform="translate(0,1)"><circle r="1.3" fill={wood} /><path d="M-.9 0 Q0 -2.8 .9 0 Z" fill="var(--map-marker, #f59e0b)" />
+      <line x1="-2.8" y1="1.2" x2="-1.4" y2="1.6" stroke={wood} strokeWidth=".6" /><line x1="1.4" y1="1.6" x2="2.8" y2="1.2" stroke={wood} strokeWidth=".6" /></g>}
+    {v === 3 && <g transform="translate(0,1) scale(.8)">
+      <path d="M-2.6 1 L0 -5.5 L2.6 1" fill="none" stroke={wood} strokeWidth=".9" /><line x1="-2.2" y1="-6.6" x2="2.8" y2="-4.4" stroke={wood} strokeWidth=".8" />
+      <rect x="-3.4" y="-7.6" width="2.2" height="2" rx=".3" fill="var(--map-label-edge, #333)" /><circle cx="-2.2" cy="1.2" r=".8" fill={wood} /><circle cx="2.2" cy="1.2" r=".8" fill={wood} /></g>}
+    {v === 4 && <>{tent(-1.6, -.4)}{tent(2.2, 1.2, .8)}{tent(-3.4, 1.8, .7)}</>}
+    {v === 5 && <g transform="translate(0,1)"><rect x="-2.6" y="-1.6" width="5.2" height="2" fill={wood} /><circle cx="-1.7" cy=".6" r=".9" fill={wood} /><circle cx="1.7" cy=".6" r=".9" fill={wood} />
+      <rect x="-1.4" y="-3" width="2.8" height="1.4" fill={canvas} stroke={wood} strokeWidth=".3" /></g>}
+  </g>;
+};
+
 export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange, resetSignal = 0 }: Props) {
   const isMobile = useIsMobile();
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -1849,28 +1870,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     if (element) updateCamera({ zoom: 1, pan: { x: element.clientWidth / 2 - center.x, y: element.clientHeight * .35 - center.y } }, "now");
   };
 
-  /** Siege camp props sized to the soldier figures: tents with pennants, campfire, a parked engine. */
-const SiegeCampProp = ({ variant, banner }: { variant: number; banner: string }) => {
-  const v = variant % 6; const wood = "var(--map-road-edge, #5b3b1f)"; const canvas = "var(--map-label, #e8dcc0)";
-  const tent = (x: number, y: number, s = 1) => <g transform={`translate(${x},${y}) scale(${s})`}>
-    <path d="M-3.2 1.2 L0 -3.4 L3.2 1.2 Z" fill={canvas} stroke={wood} strokeWidth=".35" /><path d="M0 -3.4 L0 1.2 L-.9 1.2 Z" fill={wood} opacity=".35" />
-    <line x1="0" y1="-3.4" x2="0" y2="-5.6" stroke={wood} strokeWidth=".3" /><path d="M0 -5.6 L1.8 -5.1 L0 -4.6 Z" fill={banner} /></g>;
-  return <g pointerEvents="visiblePainted">
-    <ellipse cx="0" cy="1.6" rx="6" ry="2.6" fill={wood} opacity=".18" />
-    {v === 0 && <>{tent(-2.4, 0)}{tent(2.6, 1, .85)}</>}
-    {v === 1 && <>{tent(0, -.5, 1.1)}<g transform="translate(3.6,1.6)"><circle r="1" fill={wood} /><path d="M-.6 0 Q0 -2 .6 0 Z" fill="var(--map-marker, #f59e0b)" /></g></>}
-    {v === 2 && <g transform="translate(0,1)"><circle r="1.3" fill={wood} /><path d="M-.9 0 Q0 -2.8 .9 0 Z" fill="var(--map-marker, #f59e0b)" />
-      <line x1="-2.8" y1="1.2" x2="-1.4" y2="1.6" stroke={wood} strokeWidth=".6" /><line x1="1.4" y1="1.6" x2="2.8" y2="1.2" stroke={wood} strokeWidth=".6" /></g>}
-    {v === 3 && <g transform="translate(0,1) scale(.8)">
-      <path d="M-2.6 1 L0 -5.5 L2.6 1" fill="none" stroke={wood} strokeWidth=".9" /><line x1="-2.2" y1="-6.6" x2="2.8" y2="-4.4" stroke={wood} strokeWidth=".8" />
-      <rect x="-3.4" y="-7.6" width="2.2" height="2" rx=".3" fill="var(--map-label-edge, #333)" /><circle cx="-2.2" cy="1.2" r=".8" fill={wood} /><circle cx="2.2" cy="1.2" r=".8" fill={wood} /></g>}
-    {v === 4 && <>{tent(-1.6, -.4)}{tent(2.2, 1.2, .8)}{tent(-3.4, 1.8, .7)}</>}
-    {v === 5 && <g transform="translate(0,1)"><rect x="-2.6" y="-1.6" width="5.2" height="2" fill={wood} /><circle cx="-1.7" cy=".6" r=".9" fill={wood} /><circle cx="1.7" cy=".6" r=".9" fill={wood} />
-      <rect x="-1.4" y="-3" width="2.8" height="1.4" fill={canvas} stroke={wood} strokeWidth=".3" /></g>}
-  </g>;
-};
-
-/** Static settlement silhouette: houses, walls, keep — scaled by population. */
+  /** Static settlement silhouette: houses, walls, keep — scaled by population. */
 
   return (
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
