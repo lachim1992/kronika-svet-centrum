@@ -100,7 +100,7 @@ export function resolveSiegeTurn(input: { seed: string; wall: number; walls: Wal
         if (occupied(e)) { ev("blocked", 0, 0, `Průlom v ${seg.name} je ucpaný — pole za ním je obsazené.`); continue; }
         pos[me.key] = e; ev("entered", 0, 0, `Oddíl prošel průlomem v ${seg.name} do města.`); continue; }
       const p = breachChance(me.men, me.quality, input.wall, onWalls);
-      const loss = Math.min(me.men, Math.round(me.men * 0.04 * input.wall * (1 + onWalls / 400) * (0.6 + 0.8 * rand(`${input.seed}:${o.seq}:loss`))));
+      const loss = Math.min(me.men, Math.max(10, Math.round(me.men * 0.08 * input.wall * (1 + onWalls / 400) * (0.6 + 0.8 * rand(`${input.seed}:${o.seq}:loss`)))));
       me.men -= loss;
       if (r < p) { seg.breached = true; const e = entryParcel(seg.id, n);
         if (me.men > 0 && !occupied(e)) pos[me.key] = e;
