@@ -11,7 +11,9 @@ export function squadKind(formation: string | null | undefined): SquadKind {
 
 /** Figures shown on one sub-square: one painted soldier per ~22 men, 1..9 (3x3 file block). */
 export function squadFigures(men: number): number {
-  return Math.max(1, Math.min(9, Math.ceil(Math.max(0, men) / 22)));
+  const m = Math.max(0, men);
+  // 4 visual stages: ~200 / ~150 / ~100 / ~50 men.
+  return m > 175 ? 9 : m > 125 ? 7 : m > 75 ? 5 : 3;
 }
 
 /** Isometric 3x3 block positions (rows run along the sub-square diagonal), back to front. */
