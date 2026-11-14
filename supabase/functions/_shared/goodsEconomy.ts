@@ -63,6 +63,8 @@ export interface CityLabor { city: string; population: number; urban_population?
   structural_unemployed?: number;
   /** Workers placed first on food/water (then fuel minimum) up to household need. */
   critical_priority_employed?: number;
+  /** Declared jobs intentionally left idle above non-storable local need + reserveTurns. */
+  perishable_demand_limited_jobs?: number;
   sectors: Record<string, { labor_supply: number; jobs_capacity: number; employed: number; vacancies: number; labor_shortage: number; transferred_in?: number; service_jobs?: number; service_employed?: number }>;
   /** Trade-service jobs from formal commercial infrastructure (logistics sector, filled after goods producers). */
   service?: { infrastructure: number; jobs: number; employed: number; staffing: number } }
@@ -377,6 +379,11 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const subsistenceNeed=(c:City,basket:string)=>{
     const weightedPop=Object.entries(DEMAND_WEIGHTS[basket]||{}).reduce((s,[k,w])=>s+n(c.classes[k])*w,0);
     return basketDemandChannels(basket,{weightedPop,populationRate:C.populationDemand} as DemandInput).household_need||0;};
+  /** One output-per-worker estimate for both subsistence priority and the perishable demand ceiling. */
+  const subsistenceOutputPerJob=(p:Producer,c:City)=>{
+    const jobs=jobsOf(p),g=goodByKey.get(p.recipe.good);if(jobs<=C.epsilon||!g)return 0;
+    return n(p.capacity)*clamp(p.allocation)*producerStability(p,c,g)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobs;
+  };
   const laborSupply=(c:City,sector:Sector)=>workforce.get(c.id)!.workforce*C.sectors[sector]*sectorFactor(c,sector);
   const ruralProducers=producers.filter(p=>p.ruralLabor);
   const ruralEmployed=allocateRuralLabor(new Map(ruralProducers.map(p=>[p.ruralLabor?.cell||'',p.ruralLabor?.population||0])),
@@ -423,7 +430,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const critJobsOf=(r:typeof plan[number])=>{let jobs=0;
       for(const tier of SUBSISTENCE_TIERS)for(const basket of tier.baskets){let need=subsistenceNeed(c,basket)*tier.share;
         const cands=r.own.filter(p=>goodByKey.get(p.recipe.good)?.basket===basket&&jobsOf(p)>C.epsilon)
-          .map(p=>({p,per:n(p.capacity)*clamp(p.allocation)*producerStability(p,c,goodByKey.get(p.recipe.good)!)*clamp(p.logistics)*DEMAND.toolProductivityFloor/jobsOf(p)}))
+          .map(p=>({p,per:subsistenceOutputPerJob(p,c)}))
           .filter(x=>x.per>C.epsilon).sort((a,b)=>b.per-a.per||a.p.id.localeCompare(b.p.id));
         for(const {p,per} of cands){if(need<=C.epsilon)break;const take=Math.min(jobsOf(p),need/per);jobs+=take;need-=take*per;}}
       return jobs;};
