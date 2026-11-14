@@ -104,3 +104,10 @@ export function planMicroPath(start: Micro, target: Micro, terrainAt: (m: Micro)
   while (microKey(cur) !== microKey(start)) { cur = prev.get(microKey(cur))!; path.unshift(cur); }
   return { path, spent: bestD, reachedTarget: bestH === 0 };
 }
+
+/** Deterministic camp square for armies created before micro positions existed. */
+export function defaultArmyParcel(id: string): number {
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) hash = (hash * 31 + id.charCodeAt(index)) % 997;
+  return hash % (MICRO_PER_TILE * MICRO_PER_TILE);
+}

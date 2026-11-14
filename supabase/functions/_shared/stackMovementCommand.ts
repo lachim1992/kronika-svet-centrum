@@ -137,3 +137,98 @@ export async function applyStackMove(
     usedRoadBonus: allowed.usedRoadBonus,
   };
 }
+
+// ── Micro-square movement (square4 worlds) ─────────────────────────────
+import { type Micro, type MicroTerrain, MOVE_BUDGET, defaultArmyParcel, microKey, microOf, tileOfMicro, validateMicroPath } from "./microMovement.ts";
+
+export type ApplyMicroMoveResult =
+  | { ok: true; stackId: string; final: Micro; gridX: number; gridY: number; parcelIndex: number; spent: number; steps: number }
+  | { ok: false; error: string; code: string };
+
+const MICRO_BLOCK_TEXT: Record<string, string> = {
+  too_short: "Cesta musí mít alespoň jeden krok.",
+  not_adjacent: "Cesta přeskakuje políčka.",
+  impassable: "Cesta vede přes vodu nebo řeku bez mostu.",
+  over_budget: "Na tuto vzdálenost armáda za jedno kolo nedojde.",
+};
+
+/** Loads terrain (macro biome, sub-biome, completed road cells) for every micro square of the given tiles. */
+export async function loadMicroTerrain(supabase: any, sessionId: string, path: Micro[]): Promise<(m: Micro) => MicroTerrain | undefined> {
+  const tiles = path.map(tileOfMicro);
+  const minX = Math.min(...tiles.map(t => t.gridX)), maxX = Math.max(...tiles.map(t => t.gridX));
+  const minY = Math.min(...tiles.map(t => t.gridY)), maxY = Math.max(...tiles.map(t => t.gridY));
+  const [{ data: hexes, error: hexErr }, { data: parcels, error: parErr }, { data: roads, error: roadErr }] = await Promise.all([
+    supabase.from("province_hexes").select("grid_x, grid_y, biome_family, is_passable").eq("session_id", sessionId)
+      .gte("grid_x", minX).lte("grid_x", maxX).gte("grid_y", minY).lte("grid_y", maxY),
+    supabase.from("tile_parcels").select("grid_x, grid_y, parcel_index, sub_biome").eq("session_id", sessionId)
+      .gte("grid_x", minX).lte("grid_x", maxX).gte("grid_y", minY).lte("grid_y", maxY).limit(5000),
+    supabase.from("road_segments").select("sub_path_cells").eq("session_id", sessionId).eq("status", "completed").limit(5000),
+  ]);
+  if (hexErr || parErr || roadErr) throw new Error("Terén pro pohyb se nepodařilo načíst.");
+  const macro = new Map<string, { biome: string | null; passable: boolean | null }>();
+  for (const h of hexes || []) macro.set(`${h.grid_x},${h.grid_y}`, { biome: h.biome_family, passable: h.is_passable });
+  const sub = new Map<string, string>();
+  for (const p of parcels || []) sub.set(microKey(microOf(p.grid_x, p.grid_y, p.parcel_index)), p.sub_biome);
+  const road = new Set<string>();
+  for (const r of roads || []) for (const c of (Array.isArray(r.sub_path_cells) ? r.sub_path_cells : [])) {
+    if ([c?.gridX, c?.gridY, c?.parcelX, c?.parcelY].every((v: unknown) => typeof v === "number")) road.add(`${c.gridX * 6 + c.parcelX},${c.gridY * 6 + c.parcelY}`);
+  }
+  return (m: Micro) => {
+    const t = tileOfMicro(m);
+    const mac = macro.get(`${t.gridX},${t.gridY}`);
+    if (!mac) return undefined;
+    return { macroBiome: mac.biome, macroPassable: mac.passable, subBiome: sub.get(microKey(m)) ?? null, road: road.has(microKey(m)) };
+  };
+}
+
+export async function applyStackMicroMove(
+  supabase: any,
+  args: { sessionId: string; stackId: string; microPath: Micro[]; actorName: string },
+): Promise<ApplyMicroMoveResult> {
+  const { sessionId, stackId, actorName } = args;
+  const microPath = (Array.isArray(args.microPath) ? args.microPath : [])
+    .filter(m => Number.isInteger(m?.x) && Number.isInteger(m?.y)).map(m => ({ x: m.x, y: m.y }));
+  if (microPath.length < 2 || microPath.length > MOVE_BUDGET / 10 + 1) {
+    return { ok: false, error: MICRO_BLOCK_TEXT.too_short, code: "PATH_INVALID" };
+  }
+  const { data: stack, error: stackErr } = await supabase.from("military_stacks")
+    .select("id, player_name, grid_x, grid_y, parcel_index, moved_this_turn")
+    .eq("id", stackId).eq("session_id", sessionId).maybeSingle();
+  if (stackErr || !stack) return { ok: false, error: "Armáda nenalezena.", code: "STACK_NOT_FOUND" };
+  if (stack.player_name !== actorName) return { ok: false, error: "Tato armáda není tvoje.", code: "NOT_OWNER" };
+  if (stack.moved_this_turn) return { ok: false, error: "Tato armáda se už v tomto kole pohnula.", code: "ALREADY_MOVED" };
+  if (typeof stack.grid_x !== "number" || typeof stack.grid_y !== "number") return { ok: false, error: "Armáda nemá pozici na mapě.", code: "POSITION_MISSING" };
+  const startParcel = stack.parcel_index ?? defaultArmyParcel(stack.id);
+  const start = microOf(stack.grid_x, stack.grid_y, startParcel);
+  if (microPath[0].x !== start.x || microPath[0].y !== start.y) return { ok: false, error: "Cesta nezačíná u armády.", code: "PATH_START_MISMATCH" };
+
+  let terrainAt;
+  try { terrainAt = await loadMicroTerrain(supabase, sessionId, microPath); }
+  catch (e) { return { ok: false, error: (e as Error).message, code: "TERRAIN_UNAVAILABLE" }; }
+  const check = validateMicroPath(microPath, terrainAt);
+  if (check.ok === false) return { ok: false, error: MICRO_BLOCK_TEXT[check.reason], code: `BLOCKED_${check.reason.toUpperCase()}` };
+
+  const startTile = `${stack.grid_x},${stack.grid_y}`;
+  const traversed = Array.from(new Map(microPath.slice(1).map(tileOfMicro)
+    .map(t => [`${t.gridX},${t.gridY}`, { q: t.gridX, r: t.gridY }])).entries())
+    .filter(([k]) => k !== startTile).map(([, v]) => v);
+  if (traversed.length) {
+    const [{ pacts, wars }, owners] = await Promise.all([
+      loadDiplomacyState(supabase, sessionId),
+      loadHexOwners(supabase, sessionId, traversed, "square4"),
+    ]);
+    const access = checkTerritoryAccess(pacts, wars, actorName, owners);
+    if (access.ok === false) return { ok: false, error: access.error, code: "BLOCKED_NO_PASSAGE" };
+  }
+
+  const final = microPath[microPath.length - 1];
+  const dest = tileOfMicro(final);
+  let upd = supabase.from("military_stacks")
+    .update({ grid_x: dest.gridX, grid_y: dest.gridY, hex_q: dest.gridX, hex_r: dest.gridY, parcel_index: dest.parcelIndex, moved_this_turn: true })
+    .eq("id", stackId).eq("session_id", sessionId).eq("grid_x", stack.grid_x).eq("grid_y", stack.grid_y).eq("moved_this_turn", false);
+  upd = stack.parcel_index === null ? upd.is("parcel_index", null) : upd.eq("parcel_index", stack.parcel_index);
+  const { data: updated, error: updErr } = await upd.select("id").maybeSingle();
+  if (updErr) return { ok: false, error: `Přesun selhal: ${updErr.message}`, code: "WRITE_FAILED" };
+  if (!updated) return { ok: false, error: "Armádu mezitím přesunul jiný proces.", code: "RACE_LOST" };
+  return { ok: true, stackId, final, gridX: dest.gridX, gridY: dest.gridY, parcelIndex: dest.parcelIndex, spent: check.spent, steps: check.steps };
+}
