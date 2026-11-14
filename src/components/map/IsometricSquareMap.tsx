@@ -467,7 +467,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("trade_flows").select("id, good_key, path_cells, transport_modes, source_city_id, target_city_id, source_player, target_player, volume_per_turn, effective_price").eq("session_id", sessionId).not("path_cells", "is", null),
       supabase.from("basket_trade_flows").select("id, basket_key, path_cells, transport_modes, source_city_id, target_city_id, source_player, target_player, volume, gross_value").eq("session_id", sessionId).eq("turn_number", currentTurn).not("path_cells", "is", null),
-      supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, battle_formation, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
+      supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, controller_player, soldiers, morale, unit_count, power, stance, formation_type, battle_formation, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
       supabase.from("tile_parcels").select("grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId).limit(40000),
       supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
@@ -2640,7 +2640,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <Flag className="h-4 w-4 text-primary"/>
           <span className="text-xs text-muted-foreground">Pohyb: až {MOVE_BUDGET / 10} bodů za kolo — silnice 1 (až 30 políček), rovina 3 (10 políček), les a kopce 4, hory a bažiny 6; voda a řeka bez mostu neprůchodné.</span>
         </div>
-        {selectedArmy.player_name === playerName && <div className="mt-4">
+        {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) && <div className="mt-4">
           <p className="mb-1.5 text-xs font-semibold">Bojová formace</p>
           <div className="grid grid-cols-5 gap-1">
             {([["line", "Linie"], ["wedge", "Klín"], ["square", "Čtverec"], ["column", "Kolona"], ["skirmish", "Rozptyl"]] as const).map(([key, label]) => (
@@ -2648,7 +2648,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 disabled={formationSaving} onClick={() => void setBattleFormation(key)}>{label}</Button>))}
           </div>
         </div>}
-        {selectedArmy.player_name === playerName && <div className="mt-3 space-y-2">
+        {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) && <div className="mt-3 space-y-2">
           {selectedArmy.moved_this_turn
             ? <p className="text-xs text-muted-foreground">Armáda se v tomto kole už pohnula.</p>
             : !armyMoveMode
