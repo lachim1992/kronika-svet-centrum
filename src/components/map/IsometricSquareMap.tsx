@@ -562,8 +562,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [tiles, tileCell]);
   const home = useCallback(() => {
     const element = viewportRef.current; if (!element) return;
-    setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y }); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false);
-  }, [center, onDetailOpenChange]);
+    updateCamera({ zoom: 1, pan: { x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y } }, "now");
+    setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false);
+  }, [center, onDetailOpenChange, updateCamera]);
   useEffect(() => {
     if (tiles.length > 0 && !hasInitialized.current) {
       home();
