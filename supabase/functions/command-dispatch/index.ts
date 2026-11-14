@@ -15,7 +15,7 @@ import {
   type InfluenceState,
   type RivalRow,
 } from "../_shared/nodeInfluence.ts";
-import { applyStackMove } from "../_shared/stackMovementCommand.ts";
+import { applyStackMove, applyStackMicroMove } from "../_shared/stackMovementCommand.ts";
 import { checkTerritoryAccess, checkWarDeclaration, loadDiplomacyState } from "../_shared/diplomacyEnforcement.ts";
 import {
   parcelClaimCost,
@@ -1269,6 +1269,19 @@ async function executeMoveStack(
 ): Promise<CommandResult> {
   const { stackId, toQ, toR, fromQ, fromR, plannedPath } = payload;
   if (!stackId) return { events: [], error: "Missing stackId" };
+
+  // Micro-square movement: the path is validated tile-by-tile on the 6x6 sub-squares.
+  if (Array.isArray(payload.microPath)) {
+    const micro = await applyStackMicroMove(supabase, { sessionId, stackId, microPath: payload.microPath, actorName: actor.name });
+    if (micro.ok === false) return { events: [], error: micro.error };
+    return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+      ...base,
+      event_type: "military",
+      note: payload.note || `${actor.name} přesunul armádu ${payload.stackName || ""} o ${micro.steps} políček na pole [${micro.gridX},${micro.gridY}].`,
+      importance: "normal",
+      reference: { stackId, microPath: payload.microPath, final: micro.final, gridX: micro.gridX, gridY: micro.gridY, parcelIndex: micro.parcelIndex, spent: micro.spent },
+    }], payload.chronicleText);
+  }
 
   // Build planned path: prefer client-supplied plannedPath if it looks valid,
   // otherwise synthesize start→target using fromQ/fromR + toQ/toR (single hop).
