@@ -7173,6 +7173,7 @@ export type Database = {
           battle_formation: string
           blockading_route_id: string | null
           construction_progress: number
+          controller_player: string | null
           created_at: string
           current_node_id: string | null
           demobilized_turn: number | null
@@ -7219,6 +7220,7 @@ export type Database = {
           battle_formation?: string
           blockading_route_id?: string | null
           construction_progress?: number
+          controller_player?: string | null
           created_at?: string
           current_node_id?: string | null
           demobilized_turn?: number | null
@@ -7265,6 +7267,7 @@ export type Database = {
           battle_formation?: string
           blockading_route_id?: string | null
           construction_progress?: number
+          controller_player?: string | null
           created_at?: string
           current_node_id?: string | null
           demobilized_turn?: number | null

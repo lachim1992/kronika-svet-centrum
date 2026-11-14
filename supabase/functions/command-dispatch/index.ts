@@ -794,7 +794,7 @@ async function executeCommand(
       const { stackId, formation } = payload || {};
       if (!stackId || !allowed.includes(formation)) return { events: [], error: "Neplatná formace" };
       const { data: upd, error: updErr } = await supabase.from("military_stacks").update({ battle_formation: formation })
-        .eq("id", stackId).eq("session_id", sessionId).eq("player_name", actor.name).select("id, name");
+        .eq("id", stackId).eq("session_id", sessionId).or(`player_name.eq."${String(actor.name).replace(/"/g, "")}",controller_player.eq."${String(actor.name).replace(/"/g, "")}"`).select("id, name");
       if (updErr) return { events: [], error: updErr.message };
       if (!upd || upd.length === 0) return { events: [], error: "Armáda nepatří tomuto hráči" };
       return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
