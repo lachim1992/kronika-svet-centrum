@@ -2234,7 +2234,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                   onClick={canHit ? (e) => { e.stopPropagation(); setSiegeMapOrder(o => ({ unitKey: siegeUnitKey!, target: { kind: "unit", key: k }, n: (o?.n ?? 0) + 1 })); setSiegeUnitKey(null); }
                     : pick ? (e) => { e.stopPropagation(); setSiegeUnitKey(x => x === k ? null : k); } : undefined}>
                   {siegeUnitKey === k && <ellipse cx="0" cy="2" rx="7" ry="3.5" fill="var(--map-focus)" fillOpacity=".35" stroke="var(--map-focus)" strokeWidth="1.2" />}
-                  <ArmySquad men={Number(roster[k] ?? 200)} kind="infantry" banner={banner} active={false} />
+                  <ArmySquad men={Number(roster[k] ?? 200)} kind="foot" banner={banner} active={false} />
                   <title>{`Posádka · oddíl ${Number(k.split(":")[1]) + 1} · ${roster[k] ?? "?"} mužů`}</title>
                 </g>; })}</g>;
           })}
