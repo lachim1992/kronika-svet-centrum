@@ -45,6 +45,7 @@ import { MICRO_SURVEY_COST, surveyMicroSquare, microSiteReason } from "../_share
 import { PLANT_COST, plantReason } from "../_shared/cropSpread.ts";
 import { initialWalls, siegeInRange } from "../_shared/siege.ts";
 import { loadSiegeUnits } from "../_shared/siegeState.ts";
+import { battleInRange, validateBattlefield } from "../_shared/fieldBattle.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
@@ -790,6 +791,31 @@ async function executeCommand(
         importance: "normal",
         reference: payload,
       }], payload.chronicleText);
+
+    case "START_FIELD_BATTLE": {
+      const { stackId, targetStackId, battlefield } = payload || {};
+      const cols = "id, name, player_name, controller_player, grid_x, grid_y, hex_q, hex_r, is_active, is_deployed, soldiers";
+      const { data: st } = await supabase.from("military_stacks").select(cols).eq("id", stackId).eq("session_id", sessionId).maybeSingle();
+      const { data: en } = await supabase.from("military_stacks").select(cols).eq("id", targetStackId).eq("session_id", sessionId).maybeSingle();
+      if (!st || !st.is_active || !st.is_deployed) return { events: [], error: "Armáda není v poli" };
+      if (st.player_name !== actor.name && st.controller_player !== actor.name) return { events: [], error: "Tato armáda není tvoje" };
+      if (!en || !en.is_active || !en.is_deployed) return { events: [], error: "Nepřátelská armáda není v poli" };
+      if (en.player_name === st.player_name) return { events: [], error: "Nelze napadnout vlastní armádu" };
+      const a = { x: st.grid_x ?? st.hex_q, y: st.grid_y ?? st.hex_r }, d = { x: en.grid_x ?? en.hex_q, y: en.grid_y ?? en.hex_r };
+      if (!battleInRange(a, d)) return { events: [], error: "Nepřátelská armáda není na dosah" };
+      const bad = validateBattlefield(battlefield, a, d, (st.soldiers || 0) + (en.soldiers || 0));
+      if (bad) return { events: [], error: bad };
+      const { data: war } = await supabase.from("war_declarations").select("id").eq("session_id", sessionId).eq("status", "active")
+        .or(`and(declaring_player.eq."${st.player_name}",target_player.eq."${en.player_name}"),and(declaring_player.eq."${en.player_name}",target_player.eq."${st.player_name}")`).limit(1);
+      if (!war?.length) return { events: [], error: "Bitvu lze vyvolat jen s nepřítelem, se kterým jsi ve válce" };
+      const { data: fb, error: fErr } = await supabase.from("field_battles").insert({ session_id: sessionId, attacker_player: st.player_name, defender_player: en.player_name,
+        attacker_stack_id: st.id, defender_stack_id: en.id, started_turn: turnNumber, battlefield: battlefield.map((c: any) => ({ x: c.x, y: c.y })) }).select("id").single();
+      if (fErr) return { events: [], error: fErr.code === "23505" ? "Některá z armád už bojuje" : fErr.message };
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base, event_type: "military", player: st.player_name, note: `${st.name} vyvolala bitvu s armádou ${en.name}.`, importance: "critical",
+        reference: { fieldBattleId: fb.id, stackId: st.id, targetStackId: en.id },
+      }], payload.chronicleText);
+    }
 
     case "START_SIEGE": {
       const { stackId, cityId } = payload || {};
