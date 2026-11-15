@@ -62,7 +62,13 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
     if (!selectedKey) return;
     if (battle.status === "deploying") void send("FIELD_BATTLE_DEPLOY", { key: selectedKey, x: mapClick.x, y: mapClick.y }).then(ok => {
       if (!ok) return; const next = units.find(v => v.side === side && v.x === null && v.key !== selectedKey); setSelectedKey(next?.key ?? null); });
-    else if (battle.status === "fighting") void send("FIELD_BATTLE_ORDER", { key: selectedKey, order: { kind: "move", to: { x: mapClick.x, y: mapClick.y } } }).then(ok => ok && setSelectedKey(null));
+    else if (battle.status === "fighting") {
+      const su = units.find(v => v.key === selectedKey);
+      if (su && su.x !== null && Math.abs(su.x - mapClick.x) + Math.abs((su.y ?? 0) - mapClick.y) > MOVE_RANGE[su.type]) {
+        toast.info(`Tento oddíl dojde za kolo nejvýš ${MOVE_RANGE[su.type]} políčka — vyber bližší (zvýrazněné) políčko.`); return;
+      }
+      void send("FIELD_BATTLE_ORDER", { key: selectedKey, order: { kind: "move", to: { x: mapClick.x, y: mapClick.y } } }).then(ok => ok && setSelectedKey(null));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapClick?.n]);
   useEffect(() => () => { onBattlefield(null); onPicking(false, []); }, [onBattlefield, onPicking]);
