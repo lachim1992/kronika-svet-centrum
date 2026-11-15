@@ -2889,7 +2889,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 disabled={formationSaving} onClick={() => void setBattleFormation(key)}>{FB_FORMATION_INFO[key].label}</Button>))}
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">{FB_FORMATION_INFO[fbNormalizeFormation(selectedArmy.battle_formation)].text}. Oddíly, které formaci neumí, bojují v linii. Formace se při startu bitvy zafixuje.</p>
-          </div>
         </div>}
         {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) && <div className="mt-3 space-y-2">
           {selectedArmy.moved_this_turn
