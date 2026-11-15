@@ -1,0 +1,2 @@
+ALTER TABLE public.field_battles ADD COLUMN units jsonb, ADD COLUMN orders jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN ready jsonb NOT NULL DEFAULT '{}'::jsonb, ADD COLUMN rev integer NOT NULL DEFAULT 0, ADD COLUMN finished_at timestamptz;
