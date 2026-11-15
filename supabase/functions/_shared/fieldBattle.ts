@@ -516,7 +516,7 @@ export function settlementPlan(units: FBUnit[], stacks: StackRow[], comps: CompR
     const lt = lossByType.get(u.stackId) ?? {}; lt[u.sourceType ?? "MILITIA"] = (lt[u.sourceType ?? "MILITIA"] ?? 0) + lost; lossByType.set(u.stackId, lt);
     const ms = moraleSum.get(u.stackId) ?? { w: 0, m: 0 }; ms.w += u.men; ms.m += u.men * u.morale; moraleSum.set(u.stackId, ms);
   }
-  const compUpdates = comps.filter(c => lossByComp.has(c.id)).map(c => ({ id: c.id, manpower: Math.max(0, c.manpower - (lossByComp.get(c.id) ?? 0)) }));
+  const compUpdates = comps.filter(c => (lossByComp.get(c.id) ?? 0) > 0).map(c => ({ id: c.id, manpower: Math.max(0, c.manpower - (lossByComp.get(c.id) ?? 0)) }));
   const stackUpdates = stacks.map(s => {
     const soldiers = Math.max(0, s.soldiers - (lossByStack.get(s.id) ?? 0));
     const before = comps.filter(c => c.stack_id === s.id);

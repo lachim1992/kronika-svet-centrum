@@ -118,7 +118,8 @@ describe("formations", () => {
 describe("matchups, flank, terrain", () => {
   it("spearmen ×1.5 vs cavalry", () => expect(hit({ type: "SPEARMEN" }, { type: "LIGHT_CAVALRY" })).toBeGreaterThan(hit({ type: "SPEARMEN" }, { type: "AXEMEN" })));
   it("axemen ×1.3 vs shieldwall", () => expect(hit({ type: "AXEMEN" }, { formation: "shieldwall" })).toBeGreaterThan(hit({ type: "SWORDSMEN" }, { formation: "shieldwall" })));
-  it("cavalry ×1.25 vs ranged", () => expect(hit({ type: "LIGHT_CAVALRY" }, { type: "ARCHERS" })).toBeGreaterThan(hit({ type: "LIGHT_CAVALRY" }, { type: "SLINGERS", formation: "loose" })));
+  // 21 melee × morale .85 × line 1.05 × 1.25 matchup × mitigation (1 − .08 − .025 − .05) = 19.8 → 20 (16 without the matchup)
+  it("cavalry ×1.25 vs ranged", () => expect(hit({ type: "LIGHT_CAVALRY" }, { type: "ARCHERS" })).toBe(20));
   it("front < side < rear", () => {
     const fr = hit({}, {}, { flank: "front" }), sd = hit({}, {}, { flank: "side" }), rr = hit({}, {}, { flank: "rear" });
     expect(fr).toBeLessThan(sd); expect(sd).toBeLessThan(rr);
