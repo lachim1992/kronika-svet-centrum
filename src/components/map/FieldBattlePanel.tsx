@@ -27,9 +27,11 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
   const load = useCallback(async () => {
     const { data } = await supabase.from("field_battles").select("id, battlefield, status, attacker_stack_id, defender_stack_id, attacker_player, defender_player, units, orders, ready, round, last_report")
       .eq("session_id", sessionId).neq("status", "finished").or(`attacker_stack_id.eq.${army.id},defender_stack_id.eq.${army.id}`).limit(1);
-    setBattle((data?.[0] ?? null) as unknown as Battle | null);
+    const next = (data?.[0] ?? null) as unknown as Battle | null;
+    // Keep the same object when nothing changed, so polling does not re-render the whole map.
+    setBattle(prev => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
   }, [sessionId, army.id]);
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 6000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { void load(); const t = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 8000); return () => clearInterval(t); }, [load]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [activeSide, setActiveSide] = useState<Side | null>(null);
   const stackOf = (id: string) => armies.find(a => a.id === id) as (ArmyLite & { controller_player?: string | null }) | undefined;
