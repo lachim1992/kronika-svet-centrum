@@ -65,3 +65,9 @@ Textile/tools/storage still have no producer, AI fuel stocks remain disconnected
 - Deployment: commit-turn deployed, source SHA-256 `a7f22ca913bd12ca65b498b853afb8bee92e19708d6ae0ea2fc7be839e8eddae`; frontend preview changed, publication not performed. Repository commits are managed by the platform, not independently confirmed here.
 - Remaining military gap: verify entry-to-capture through an authorized test battle. Economy next task remains the isolated grain shipment scenario above.
 - Movement follow-up: `IsometricSquareMap.tsx` reads complete nearby stored subterrain in stable pages before enabling confirmation instead of using a potentially truncated global parcel read; `commands.ts` catches session failures too. New `command-errors.test.ts` + existing movement tests 11/11 passed; build OK; signed-in movement planning opened with no page errors. No game writes; original rejected route unavailable, so exact historical reproduction remains unverified.
+
+## 2026-11-15 — Battle System v1 (field battles)
+- Files: `_shared/fieldBattle.ts` (rules), `_shared/unitTypes.ts` (recruit catalogue), `command-dispatch/fieldBattleCommand.ts` (new), `command-dispatch/index.ts`, `FieldBattlePanel.tsx`, `IsometricSquareMap.tsx`, `ArmySquad.tsx`, `ArmyTab.tsx`, `src/lib/turnEngine.ts`, `src/test/field-battle.test.ts`.
+- Migration prepared, NOT applied: `supabase/migrations/20261115160000_battle_system_v1.sql` (field_battles.meta, formation check incl. shieldwall/deep/loose, `settle_field_battle` RPC).
+- Tests: field-battle 53/53; full vitest 1061 passed / 3 skipped; tsgo clean; deno check command-dispatch clean. Not deployed.
+- Next: apply migration + deploy command-dispatch, then play one battle end-to-end.

@@ -14,8 +14,8 @@ import { UNIT_TYPE_LABELS } from "../../../supabase/functions/_shared/unitTypes"
 
 type ArmyLite = { id: string; name: string; player_name: string; soldiers: number; grid_x: number | null; grid_y: number | null; hex_q: number; hex_r: number; controller_player?: string | null };
 type Report = { round: number; events: FBEvent[]; winner: string | null; losses?: Record<string, { lost: number; byType: Record<string, number>; soldiers: number; morale: number }> };
-type Battle = { id: string; battlefield: Cell[]; status: string; attacker_stack_id: string; defender_stack_id: string; attacker_player: string; defender_player: string;
-  units: FBUnit[] | null; orders: FBOrder[]; ready: Record<string, boolean>; round: number; last_report: Report | null; meta?: BattleMeta | null; started_turn: number };
+type Battle = { id: string; rev?: number; battlefield: Cell[]; status: string; attacker_stack_id: string; defender_stack_id: string; attacker_player: string; defender_player: string;
+  units: FBUnit[] | null; orders: FBOrder[]; ready: Record<string, boolean>; round: number; last_report: (Report & { meta?: BattleMeta }) | null; meta?: BattleMeta | null; started_turn: number };
 export type BattleMode = OrderKind | null;
 export type FieldBattleView = { id: string; cells: Cell[]; units: FBUnit[]; orders: FBOrder[]; status: string; selectedKeys: string[]; activeSide: Side | null;
   attackerPlayer: string; mode: BattleMode; zones: { own: Cell[]; enemy: Cell[] }; reach: { x: number; y: number }[]; reachKind: "move" | "range" | null };
@@ -43,7 +43,8 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
   const [hideFinished, setHideFinished] = useState(false);
   const here = cellOf(army);
   const enemies = useMemo(() => armies.filter(a => a.player_name !== army.player_name && a.soldiers > 0 && battleInRange(here, cellOf(a))), [armies, army.player_name, here.x, here.y]);
-  const COLS = "id, battlefield, status, attacker_stack_id, defender_stack_id, attacker_player, defender_player, units, orders, ready, round, last_report, meta, started_turn";
+  // "*" so the panel keeps working before the meta column migration is applied.
+  const COLS = "*";
   const load = useCallback(async () => {
     const { data } = await supabase.from("field_battles").select(COLS)
       .eq("session_id", sessionId).neq("status", "finished").or(`attacker_stack_id.eq.${army.id},defender_stack_id.eq.${army.id}`).limit(1);
@@ -94,7 +95,7 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
     const res: any = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType, commandPayload: { battleId: battle.id, side, ...extra } });
     setBusy(false);
     if (!res.ok) { toast.error(res.error || "Příkaz se nepodařil"); await load(); return null; }
-    const rej = res.result?.rejected ?? res.data?.result?.rejected;
+    const rej = res.sideEffects?.fieldBattle?.rejected;
     if (Array.isArray(rej) && rej.length) toast.warning(rej.map((r: any) => `${unitLabel(units.find(u => u.key === r.key) ?? ({ key: r.key, type: "MILITIA" } as FBUnit))}: ${r.reason}`).join(" · "));
     await load(); return res;
   }, [battle, sessionId, currentTurn, playerName, side, load, units]);
@@ -166,12 +167,12 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
     const shown = mine.filter(u => filter === "all" ? u.status !== "dead" : filter === "reserve" ? u.status === "reserve" : u.status === "ready" && (filter === "cav" ? isCavalry(u.type) : filter === "ranged" ? isRanged(u.type) : !isCavalry(u.type) && !isRanged(u.type)));
     const name = (key: string) => { const u = units.find(v => v.key === key); return u ? `${sideName(u.side)} · ${unitLabel(u)}` : key; };
     const orderOf = (key: string) => (battle.orders ?? []).find(o => o.key === key);
-    const cp = side ? commandPoints(battle.meta?.generalSkill?.[side] ?? null) : 0;
+    const cp = side ? commandPoints((battle.meta ?? battle.last_report?.meta)?.generalSkill?.[side] ?? null) : 0;
     const used = side ? cpUsed(battle.orders ?? [], units, side) : 0;
     const lead = units.find(u => u.key === selected[0]);
     const fighting = battle.status === "fighting";
     const initiative: Side = battle.round % 2 === 1 ? "attacker" : "defender";
-    const hasGeneral = side ? !!battle.meta?.hasGeneral?.[side] : false;
+    const hasGeneral = side ? !!(battle.meta ?? battle.last_report?.meta)?.hasGeneral?.[side] : false;
     const can = (k: OrderKind) => selected.length > 0 && selected.every(key => { const u = units.find(v => v.key === key); if (!u) return false;
       return k === "CHARGE" ? isCavalry(u.type) : k === "VOLLEY" ? ["ARCHERS", "SLINGERS", "JAVELINERS"].includes(u.type) && u.ammo >= 2 : k === "FORTIFY" ? u.type === "ENGINEERS" : k === "RALLY" ? hasGeneral && selected.length === 1 : u.status === "ready"; });
     const OB = ({ k, icon: I }: { k: OrderKind; icon: React.ElementType }) => <Button size="sm" variant={mode === k ? "default" : "outline"} className="h-7 px-2 text-[11px]" disabled={busy || !can(k) || !!battle.ready?.[side!]}
@@ -180,7 +181,7 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
       <p className="flex items-center gap-1 font-medium"><Swords className="h-3.5 w-3.5" /> Bitva: {sideName("attacker")} × {sideName("defender")}</p>
       <div className="grid grid-cols-2 gap-1">
         {(["attacker", "defender"] as Side[]).map(sd => { const c = count(sd); return <div key={sd} className={`border p-1 ${sd === side ? "border-primary/60" : "border-border"}`}>
-          <p className="truncate font-medium">{sd === "attacker" ? "Útočník" : "Obránce"}{battle.ready?.[sd] ? " ✓" : ""}{battle.meta?.ai?.[sd] ? " · AI" : ""}</p>
+          <p className="truncate font-medium">{sd === "attacker" ? "Útočník" : "Obránce"}{battle.ready?.[sd] ? " ✓" : ""}{(battle.meta ?? battle.last_report?.meta)?.ai?.[sd] ? " · AI" : ""}</p>
           <p className="text-muted-foreground">{c.men.toLocaleString("cs-CZ")} mužů · {c.ready} v poli · {c.reserve} záloha · {c.out} mimo</p>
         </div>; })}
       </div>
