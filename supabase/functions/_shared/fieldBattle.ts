@@ -157,7 +157,7 @@ export function resolveRound(units0: FBUnit[], orders: FBOrder[], field: Cell[],
     let back = 0;
     if (!ranged && r.flank !== "rear" && t.status === "ready") { const save = t.men; const rr = hit({ ...t, men: Math.round(save * 0.5) }, u, false); back = rr.loss; }
     events.push({ seq: o.seq, key: u.key, kind: "attack", target: t.key, lossesTarget: r.loss, lossesSelf: back,
-      text: `${ranged ? "střelba" : "útok"} ${r.flank === "front" ? "zepředu" : r.flank === "side" ? "z boku" : "do týlu"}: ${r.loss} padlých${back ? `, vlastní ztráty ${back}` : ""}${t.status === "routed" ? ", nepřítel prchá" : t.status === "dead" ? ", oddíl zničen" : ""}` });
+      text: `${ranged ? "střelba" : "útok"} ${r.flank === "front" ? "zepředu" : r.flank === "side" ? "z boku" : "do týlu"}: ${r.loss} padlých${back ? `, vlastní ztráty ${back}` : ""}${(t.status as string) === "routed" ? ", nepřítel prchá" : (t.status as string) === "dead" ? ", oddíl zničen" : ""}` });
   }
   const alive = (s: Side) => units.some(u => u.side === s && u.status === "ready");
   const winner: Side | "draw" | null = !alive("attacker") && !alive("defender") ? "draw" : !alive("attacker") ? "defender" : !alive("defender") ? "attacker" : null;
