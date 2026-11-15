@@ -4,7 +4,7 @@
 - [x] Vytvořena Lambadagradská garda (Player, 8000, -8,1)
 - [x] Vyvolání bitvy a výběr makropolí (všechny hry)
 - [x] Rozmístění, bitevní kola, rozkazy, terén/typy/boky/morálka (v1)
-- [ ] Ověřit celou bitvu ve hře; ladění síly; formace jako skupinové rozkazy, bitevní kola, terén/typy/boky/morálka
+- [ ] Ověřit celou bitvu ve hře; ladění síly; formace jako skupinové rozkazy
 
 ## Přesun — neúplný terén náhledu (2026-11-15)
 - [x] Náhled již nespoléhá na potenciálně zkrácený celosvětový read 40 000 parcel: před potvrzením načte okolí armády (±5 velkých polí, maximální silniční dosah) po stabilních stránkách. Chyba načtení zastaví plánování; chyba přihlášené relace se vrací jako odmítnutí, ne nezachycený pád.
