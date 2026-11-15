@@ -1,7 +1,8 @@
 # Map-first square-grid roadmap
 
 ## Přesun — neúplný terén náhledu (2026-11-15)
-- [ ] Načíst úplný podterén okolí vybrané armády před plánováním; bezpečně zachytit odmítnutí a ověřit regresi bez přesunu chráněné hry.
+- [x] Náhled již nespoléhá na potenciálně zkrácený celosvětový read 40 000 parcel: před potvrzením načte okolí armády (±5 velkých polí, maximální silniční dosah) po stabilních stránkách. Chyba načtení zastaví plánování; chyba přihlášené relace se vrací jako odmítnutí, ne nezachycený pád.
+- [x] command-errors + micro-movement 11/11, build OK; přihlášená JV72O7 Mapa → Železná horda → Přesunout armádu bez page errors. Žádný přesun, tah či zápis proveden. Historické odmítnutí se z dostupné telemetry nepodařilo reprodukovat; přesná původní trasa není k dispozici.
 
 ## Obléhání — vstup do hlavní budovy a vlaječky (2026-11-15)
 - [x] Prostřední terč odstraněn; dobytí pouze při vstupu útočníka na jedno ze stávajících polí hlavní budovy (14/15/20/21), postup 1 pole/kolo, obsazené pole blokuje vstup. Starší keep příkazy používají stejný pohyb, nikoli dobytí ze sousedství.
