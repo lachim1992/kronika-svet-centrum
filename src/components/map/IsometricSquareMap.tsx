@@ -983,6 +983,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [fieldBattle, setFieldBattle] = useState<FieldBattleView | null>(null);
   const [fieldBattleClick, setFieldBattleClick] = useState<FieldBattleClick | null>(null);
   const battlefieldCells = fieldBattle?.cells ?? null;
+  // Armies in an active field battle rest in camps on the strategic map; the tactical view is only for participants with the battle open.
+  const [battleCampStacks, setBattleCampStacks] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase.from("field_battles").select("attacker_stack_id, defender_stack_id").eq("session_id", sessionId).neq("status", "finished");
+      if (!cancelled) setBattleCampStacks(new Set((data || []).flatMap(b => [b.attacker_stack_id, b.defender_stack_id])));
+    };
+    void load(); const t = setInterval(() => void load(), 10000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [sessionId, fieldBattle?.status]);
   const fieldBattleStacks = useMemo(() => new Set((fieldBattle?.units ?? []).filter(u => u.x !== null).map(u => u.stackId)), [fieldBattle]);
   const onBattlePicking = useCallback((on: boolean, initial: { x: number; y: number }[]) => { setBattlePicking(on); setBattlePicked(initial); }, []);
   const [siegeUnitKey, setSiegeUnitKey] = useState<string | null>(null);
@@ -2312,7 +2323,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                     const pickable = !!siegeView && stacked === 1 && lead.id === selectedArmyId && men > 0;
                     const picked = pickable && siegeUnitKey === unitKey;
                     const hasOrder = pickable && siegeView!.orders.some(o => o.unit_key === unitKey);
-                    const spot0 = siegeSpot(lead, unitKey, order); const camping = !!spot0?.camp; const spot = camping ? null : spot0;
+                    const spot0 = siegeSpot(lead, unitKey, order); const camping = !!spot0?.camp || group.list.some(a => battleCampStacks.has(a.id)); const spot = camping ? null : spot0;
                     const sx = spot ? spot.x : point.x + c.x, sy = spot ? spot.y : point.y + c.y;
                     if (camping && !picked) return <g key={`s${index}`} transform={`translate(${sx},${sy})`}
                       onClick={pickable ? (e) => { e.stopPropagation(); if (!dragRef.current?.moved) setSiegeUnitKey(k => k === unitKey ? null : unitKey); } : undefined}>
