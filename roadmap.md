@@ -1,5 +1,8 @@
 # Map-first square-grid roadmap
 
+## Přesun — neúplný terén náhledu (2026-11-15)
+- [ ] Načíst úplný podterén okolí vybrané armády před plánováním; bezpečně zachytit odmítnutí a ověřit regresi bez přesunu chráněné hry.
+
 ## Obléhání — vstup do hlavní budovy a vlaječky (2026-11-15)
 - [x] Prostřední terč odstraněn; dobytí pouze při vstupu útočníka na jedno ze stávajících polí hlavní budovy (14/15/20/21), postup 1 pole/kolo, obsazené pole blokuje vstup. Starší keep příkazy používají stejný pohyb, nikoli dobytí ze sousedství.
 - [x] Miniaturní vlaječky vlastníka na věžičkách v běžné i detailní mapě, stávající vlastní/cizí barvy. Testy siege.test.ts 12/12, automatický build OK. Přihlášená JV72O7 mapa: 62 vlaječek, otevření armády bez page errors. Nasazen commit-turn; žádný herní zápis, obléhání ani posun tahu.

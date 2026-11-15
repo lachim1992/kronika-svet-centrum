@@ -999,12 +999,40 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const siegeSpotRef = useRef<(lead: any, unitKey: string, order: number) => { x: number; y: number; ram: boolean; camp?: boolean } | null>(() => null);
   const siegeSpot = (lead: any, unitKey: string, order: number) => siegeSpotRef.current(lead, unitKey, order);
   useEffect(() => { setArmyMoveMode(false); clearArmyWaypoints(); }, [selectedArmyId, clearArmyWaypoints]);
+  const [movementSubBiomes, setMovementSubBiomes] = useState<StoredSubBiome[] | null>(null);
+  useEffect(() => {
+    setMovementSubBiomes(null);
+    if (!armyMoveMode || !selectedArmy) return;
+    let cancelled = false;
+    const cell = entityCell(selectedArmy);
+    const x = selectedArmy.grid_x ?? cell.a, y = selectedArmy.grid_y ?? cell.b;
+    // The world-wide map read can be truncated. Read all nearby micro terrain in stable pages.
+    void (async () => {
+      try {
+        const rows: StoredSubBiome[] = [];
+        for (let offset = 0; ; offset += 1000) {
+          const { data, error } = await supabase.from("tile_parcels")
+            .select("grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome")
+            .eq("session_id", sessionId).gte("grid_x", x - 5).lte("grid_x", x + 5)
+            .gte("grid_y", y - 5).lte("grid_y", y + 5)
+            .order("grid_x").order("grid_y").order("parcel_index").range(offset, offset + 999);
+          if (error) throw error;
+          rows.push(...(data || []));
+          if ((data?.length ?? 0) < 1000) break;
+        }
+        if (!cancelled) setMovementSubBiomes(rows);
+      } catch {
+        if (!cancelled) { toast.error("Terén pro přesun se nepodařilo načíst. Zkus přesun znovu."); setArmyMoveMode(false); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [armyMoveMode, selectedArmy, sessionId, entityCell]);
   /** Same terrain the server validates with: stored sub-squares, macro biome otherwise, completed road cells. */
   const microTerrainAt = useMemo(() => {
     const macro = new Map<string, Tile>();
     tiles.forEach(tile => { if (tile.grid_x !== null && tile.grid_y !== null) macro.set(cellKey(tile.grid_x, tile.grid_y), tile); });
     const sub = new Map<string, string>();
-    storedSubBiomes.forEach(row => sub.set(microKey(microOf(row.grid_x, row.grid_y, row.parcel_index)), row.sub_biome));
+    (movementSubBiomes ?? storedSubBiomes).forEach(row => sub.set(microKey(microOf(row.grid_x, row.grid_y, row.parcel_index)), row.sub_biome));
     const road = new Set<string>();
     roadSegments.forEach(segment => {
       if (segment.status !== "completed" || !Array.isArray(segment.sub_path_cells)) return;
@@ -1015,15 +1043,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       if (!tile) return undefined;
       return { macroBiome: tile.biome_family, macroPassable: tile.is_passable, subBiome: sub.get(microKey(m)) ?? null, road: road.has(microKey(m)) };
     };
-  }, [tiles, storedSubBiomes, roadSegments]);
+  }, [tiles, storedSubBiomes, movementSubBiomes, roadSegments]);
   const selectedArmyMicro = useMemo(() => {
     if (!selectedArmy) return null;
     const cell = entityCell(selectedArmy);
     return microOf(selectedArmy.grid_x ?? cell.a, selectedArmy.grid_y ?? cell.b, selectedArmy.parcel_index ?? fallbackArmyParcel(selectedArmy.id));
   }, [selectedArmy, entityCell]);
   const armyPlanTarget = armyMoveTarget;
-  const armyMovePlan = useMemo(() => (armyMoveMode && selectedArmyMicro && armyPlanTarget)
-    ? planMicroRoute(selectedArmyMicro, armyWaypoints, microTerrainAt) : null, [armyMoveMode, selectedArmyMicro, armyPlanTarget, armyWaypoints, microTerrainAt]);
+  const armyMovePlan = useMemo(() => (armyMoveMode && movementSubBiomes !== null && selectedArmyMicro && armyPlanTarget)
+    ? planMicroRoute(selectedArmyMicro, armyWaypoints, microTerrainAt) : null, [armyMoveMode, movementSubBiomes, selectedArmyMicro, armyPlanTarget, armyWaypoints, microTerrainAt]);
   const setBattleFormation = async (formation: string) => {
     if (!selectedArmy || formationSaving) return;
     setFormationSaving(true);
