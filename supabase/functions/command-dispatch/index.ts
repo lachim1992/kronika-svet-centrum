@@ -45,7 +45,9 @@ import { MICRO_SURVEY_COST, surveyMicroSquare, microSiteReason } from "../_share
 import { PLANT_COST, plantReason } from "../_shared/cropSpread.ts";
 import { initialWalls, siegeInRange } from "../_shared/siege.ts";
 import { loadSiegeUnits } from "../_shared/siegeState.ts";
-import { battleInRange, validateBattlefield, buildUnits, autoDeploy, inDeployZone, orderProblem, resolveRound, stackOutcome, MAX_ROUNDS, type FBUnit, type Side } from "../_shared/fieldBattle.ts";
+import { executeFieldBattleCommand } from "./fieldBattleCommand.ts";
+import { FORMATIONS } from "../_shared/fieldBattle.ts";
+import { FORMATION_PRESETS as SHARED_FORMATION_PRESETS, UNIT_GOLD_FACTOR as SHARED_GOLD, UNIT_PROD_FACTOR as SHARED_PROD, UNIT_POWER_FACTOR as SHARED_POWER, UNIT_TYPE_LABELS as SHARED_LABELS, presetRequirements, missingBuildings } from "../_shared/unitTypes.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
@@ -792,134 +794,11 @@ async function executeCommand(
         reference: payload,
       }], payload.chronicleText);
 
+    case "START_FIELD_BATTLE":
     case "FIELD_BATTLE_DEPLOY":
     case "FIELD_BATTLE_ORDER":
-    case "FIELD_BATTLE_READY": {
-      const { battleId, side } = payload || {};
-      const { data: fb } = await supabase.from("field_battles").select("*").eq("id", battleId).eq("session_id", sessionId).neq("status", "finished").maybeSingle();
-      if (!fb) return { events: [], error: "Bitva neběží" };
-      const { data: stacks } = await supabase.from("military_stacks").select("id, name, player_name, controller_player, grid_x, grid_y, hex_q, hex_r, soldiers, morale, power")
-        .in("id", [fb.attacker_stack_id, fb.defender_stack_id]);
-      const att = stacks?.find((x: any) => x.id === fb.attacker_stack_id), def = stacks?.find((x: any) => x.id === fb.defender_stack_id);
-      if (!att || !def) return { events: [], error: "Armáda bitvy chybí" };
-      const controls = (st: any) => st.player_name === actor.name || st.controller_player === actor.name;
-      const cellOf = (st: any) => ({ x: st.grid_x ?? st.hex_q, y: st.grid_y ?? st.hex_r });
-      let units: FBUnit[] = fb.units;
-      if (!units) {
-        const { data: comp } = await supabase.from("military_stack_composition").select("stack_id, unit_type, manpower").in("stack_id", [att.id, def.id]);
-        units = [...buildUnits("attacker", att.id, att.soldiers, (comp || []).filter((c: any) => c.stack_id === att.id), att.morale ?? 70),
-                 ...buildUnits("defender", def.id, def.soldiers, (comp || []).filter((c: any) => c.stack_id === def.id), def.morale ?? 70)];
-      }
-      const field = fb.battlefield;
-      const save = async (patch: any) => {
-        const { data, error } = await supabase.from("field_battles").update({ ...patch, rev: fb.rev + 1 }).eq("id", fb.id).eq("rev", fb.rev).select("id");
-        if (error) return error.message; if (!data?.length) return "Bitva se mezitím změnila, zkus to znovu"; return null;
-      };
-      const unitSide = (key: string) => units.find(u => u.key === key)?.side;
-      if (commandType === "FIELD_BATTLE_DEPLOY") {
-        if (fb.status !== "deploying") return { events: [], error: "Rozmístění už skončilo" };
-        if (side !== "attacker" && side !== "defender") return { events: [], error: "Chybí strana" };
-        const own = side === "attacker" ? att : def, foe = side === "attacker" ? def : att;
-        if (!controls(own)) return { events: [], error: "Tuto stranu neovládáš" };
-        if (fb.ready?.[side]) return { events: [], error: "Strana už je připravena" };
-        if (payload.auto) units = autoDeploy(units.map(u => u.side === side ? { ...u, x: null, y: null } : u), side, field, cellOf(own), cellOf(foe));
-        else {
-          const { key, x, y } = payload;
-          const u = units.find(v => v.key === key); if (!u || u.side !== side) return { events: [], error: "Oddíl nepatří této straně" };
-          if (x === null) { u.x = null; u.y = null; }
-          else {
-            if (!inDeployZone(field, cellOf(own), cellOf(foe), x, y)) return { events: [], error: "Sem lze rozmístit jen na své polovině bojiště" };
-            if (units.some(v => v.key !== key && v.x === x && v.y === y)) return { events: [], error: "Políčko je obsazené" };
-            u.x = x; u.y = y; u.facing = Math.abs(cellOf(foe).x - cellOf(own).x) >= Math.abs(cellOf(foe).y - cellOf(own).y) ? (cellOf(foe).x >= cellOf(own).x ? "e" : "w") : (cellOf(foe).y >= cellOf(own).y ? "s" : "n");
-          }
-        }
-        const err = await save({ units }); if (err) return { events: [], error: err };
-        return { events: [] };
-      }
-      if (commandType === "FIELD_BATTLE_ORDER") {
-        if (fb.status !== "fighting") return { events: [], error: "Bitva ještě nezačala" };
-        const { key, order } = payload; const sd = unitSide(key); if (!sd) return { events: [], error: "Neznámý oddíl" };
-        if (!controls(sd === "attacker" ? att : def)) return { events: [], error: "Tento oddíl neovládáš" };
-        if (fb.ready?.[sd]) return { events: [], error: "Tato strana už kolo ukončila" };
-        if (order?.kind === "cancel") {
-          const err = await save({ orders: (fb.orders || []).filter((o: any) => o.key !== key) }); return err ? { events: [], error: err } : { events: [] };
-        }
-        const bad = orderProblem(units, field, key, order || {}); if (bad) return { events: [], error: bad };
-        const orders = (fb.orders || []).filter((o: any) => o.key !== key);
-        const seq = (fb.orders || []).reduce((m: number, o: any) => Math.max(m, o.seq), 0) + 1;
-        orders.push(order.kind === "move" ? { seq, key, kind: "move", to: { x: order.to.x, y: order.to.y } } : { seq, key, kind: "attack", target: order.target });
-        const err = await save({ orders }); return err ? { events: [], error: err } : { events: [] };
-      }
-      // READY: deployment done / round ended for a side.
-      if (side !== "attacker" && side !== "defender") return { events: [], error: "Chybí strana" };
-      if (!controls(side === "attacker" ? att : def)) return { events: [], error: "Tuto stranu neovládáš" };
-      if (fb.status === "deploying" && !units.some(u => u.side === side && u.x !== null)) return { events: [], error: "Nejdřív rozmísti aspoň jeden oddíl" };
-      const ready = { ...(fb.ready || {}), [side]: true };
-      if (!(ready.attacker && ready.defender)) { const err = await save({ ready, units }); return err ? { events: [], error: err } : { events: [] }; }
-      if (fb.status === "deploying") {
-        // Undeployed units stay off the field (in reserve) and do not fight.
-        const err = await save({ status: "fighting", round: 1, ready: {}, orders: [], units: units.map(u => u.x === null ? { ...u, status: "routed" } : u) });
-        return err ? { events: [], error: err } : { events: [] };
-      }
-      // Both sides ended the round → resolve it.
-      const gx = field.map((c: any) => c.x), gy = field.map((c: any) => c.y);
-      const { data: parcels } = await supabase.from("tile_parcels").select("grid_x, grid_y, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId)
-        .gte("grid_x", Math.min(...gx)).lte("grid_x", Math.max(...gx)).gte("grid_y", Math.min(...gy)).lte("grid_y", Math.max(...gy)).limit(2000);
-      const terr = new Map<string, string>();
-      for (const p of parcels || []) terr.set(`${p.grid_x * 6 + p.parcel_x},${p.grid_y * 6 + p.parcel_y}`, String(p.sub_biome || ""));
-      const terrainAt = (x: number, y: number) => { const t = terr.get(`${x},${y}`) || ""; return /forest|wood|jungle|taiga/.test(t) ? "forest" as const : /hill|highland/.test(t) ? "hills" as const : "plain" as const; };
-      let seed = (fb.round * 7919 + fb.id.charCodeAt(0) * 31) % 2147483647 || 1;
-      const rand = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
-      const r = resolveRound(units, fb.orders || [], field, terrainAt, rand);
-      const finished = r.winner || fb.round >= MAX_ROUNDS;
-      const report = { round: fb.round, events: r.events, winner: r.winner ?? (finished ? "draw" : null) };
-      const err = await save({ units: r.units, orders: [], ready: {}, round: fb.round + (finished ? 0 : 1), last_report: report,
-        ...(finished ? { status: "finished", finished_at: new Date().toISOString() } : {}) });
-      if (err) return { events: [], error: err };
-      if (!finished) return { events: [] };
-      const outcome = stackOutcome(r.units);
-      for (const st of [att, def]) {
-        const o = outcome.get(st.id); if (!o) continue;
-        const men = Math.max(0, o.men);
-        await supabase.from("military_stacks").update({ soldiers: men, unit_count: men, power: Math.round((st.power || 0) * (st.soldiers ? men / st.soldiers : 0)), morale: o.morale,
-          ...(men === 0 ? { is_active: false } : {}) }).eq("id", st.id);
-        // Shrink composition proportionally so manpower stays the single source.
-        const { data: comp } = await supabase.from("military_stack_composition").select("id, manpower").eq("stack_id", st.id);
-        const ratio = st.soldiers ? men / st.soldiers : 0;
-        for (const c of comp || []) await supabase.from("military_stack_composition").update({ manpower: Math.round(c.manpower * ratio) }).eq("id", c.id);
-      }
-      const win = report.winner === "attacker" ? att.name : report.winner === "defender" ? def.name : null;
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base, event_type: "military", player: att.player_name, importance: "critical",
-        note: `Bitva ${att.name} × ${def.name} skončila po ${fb.round} kolech${win ? `, vítězí ${win}` : " nerozhodně"}. Ztráty: ${att.name} ${outcome.get(att.id)?.lost ?? 0}, ${def.name} ${outcome.get(def.id)?.lost ?? 0}.`,
-        reference: { fieldBattleId: fb.id, winner: report.winner },
-      }], payload.chronicleText);
-    }
-
-    case "START_FIELD_BATTLE": {
-      const { stackId, targetStackId, battlefield } = payload || {};
-      const cols = "id, name, player_name, controller_player, grid_x, grid_y, hex_q, hex_r, is_active, is_deployed, soldiers";
-      const { data: st } = await supabase.from("military_stacks").select(cols).eq("id", stackId).eq("session_id", sessionId).maybeSingle();
-      const { data: en } = await supabase.from("military_stacks").select(cols).eq("id", targetStackId).eq("session_id", sessionId).maybeSingle();
-      if (!st || !st.is_active || !st.is_deployed) return { events: [], error: "Armáda není v poli" };
-      if (st.player_name !== actor.name && st.controller_player !== actor.name) return { events: [], error: "Tato armáda není tvoje" };
-      if (!en || !en.is_active || !en.is_deployed) return { events: [], error: "Nepřátelská armáda není v poli" };
-      if (en.player_name === st.player_name) return { events: [], error: "Nelze napadnout vlastní armádu" };
-      const a = { x: st.grid_x ?? st.hex_q, y: st.grid_y ?? st.hex_r }, d = { x: en.grid_x ?? en.hex_q, y: en.grid_y ?? en.hex_r };
-      if (!battleInRange(a, d)) return { events: [], error: "Nepřátelská armáda není na dosah" };
-      const bad = validateBattlefield(battlefield, a, d, (st.soldiers || 0) + (en.soldiers || 0));
-      if (bad) return { events: [], error: bad };
-      const { data: war } = await supabase.from("war_declarations").select("id").eq("session_id", sessionId).eq("status", "active")
-        .or(`and(declaring_player.eq."${st.player_name}",target_player.eq."${en.player_name}"),and(declaring_player.eq."${en.player_name}",target_player.eq."${st.player_name}")`).limit(1);
-      if (!war?.length) return { events: [], error: "Bitvu lze vyvolat jen s nepřítelem, se kterým jsi ve válce" };
-      const { data: fb, error: fErr } = await supabase.from("field_battles").insert({ session_id: sessionId, attacker_player: st.player_name, defender_player: en.player_name,
-        attacker_stack_id: st.id, defender_stack_id: en.id, started_turn: turnNumber, battlefield: battlefield.map((c: any) => ({ x: c.x, y: c.y })) }).select("id").single();
-      if (fErr) return { events: [], error: fErr.code === "23505" ? "Některá z armád už bojuje" : fErr.message };
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base, event_type: "military", player: st.player_name, note: `${st.name} vyvolala bitvu s armádou ${en.name}.`, importance: "critical",
-        reference: { fieldBattleId: fb.id, stackId: st.id, targetStackId: en.id },
-      }], payload.chronicleText);
-    }
+    case "FIELD_BATTLE_READY":
+      return await executeFieldBattleCommand(supabase, base, actor, commandType, payload || {}, commandId, sessionId, turnNumber, insertEventsWithChronicle);
 
     case "START_SIEGE": {
       const { stackId, cityId } = payload || {};
@@ -970,7 +849,7 @@ async function executeCommand(
     }
 
     case "SET_BATTLE_FORMATION": {
-      const allowed = ["line", "wedge", "square", "column", "skirmish"];
+      const allowed = [...FORMATIONS, "column"];
       const { stackId, formation } = payload || {};
       if (!stackId || !allowed.includes(formation)) return { events: [], error: "Neplatná formace" };
       const { data: upd, error: updErr } = await supabase.from("military_stacks").update({ battle_formation: formation })
@@ -1927,21 +1806,14 @@ async function executeDeclareWar(
 // RECRUIT_STACK — full server-side execution
 // ═══════════════════════════════════════════
 
-const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number; prod_override?: number; requires_buildings?: string[] }> = {
-  // Emergency militia: small recovery unit so disarmed factions (player or AI) can rebuild
-  // without waiting many turns. Free-form manpower scales this further down if needed.
-  emergency_militia: { label: "Krizová milice", composition: [{ unit_type: "MILITIA", manpower: 80 }], formation_type: "UNIT", morale: 45 },
-  militia: { label: "Milice", composition: [{ unit_type: "MILITIA", manpower: 400 }], formation_type: "UNIT", morale: 55 },
-  professional: { label: "Profesionální vojsko", composition: [{ unit_type: "PROFESSIONAL", manpower: 400 }], formation_type: "UNIT", morale: 70, requires_buildings: ["barracks", "smithy"] },
-  legion: { label: "Zárodek legie", composition: [{ unit_type: "MILITIA", manpower: 400 }, { unit_type: "PROFESSIONAL", manpower: 400 }], formation_type: "LEGION", morale: 70, gold_override: 80, requires_buildings: ["barracks", "smithy"] },
-};
+const FORMATION_PRESETS = SHARED_FORMATION_PRESETS;
 
 // Mixed recruitment cost: HALVED (Apr 2026 balance pass — wealth & prod /2; manpower untouched)
-const UNIT_GOLD_FACTOR: Record<string, number> = { MILITIA: 0.4, PROFESSIONAL: 1.0 };
-const UNIT_PROD_FACTOR: Record<string, number> = { MILITIA: 0.25, PROFESSIONAL: 0.75 };
+const UNIT_GOLD_FACTOR: Record<string, number> = SHARED_GOLD;
+const UNIT_PROD_FACTOR: Record<string, number> = SHARED_PROD;
 
 // Combat power per soldier (used for stack.power on creation/reinforce)
-const UNIT_POWER_FACTOR: Record<string, number> = { MILITIA: 1.0, PROFESSIONAL: 2.2 };
+const UNIT_POWER_FACTOR: Record<string, number> = SHARED_POWER;
 
 function computeStackPower(
   composition: Array<{ unit_type: string; manpower: number }>,
@@ -1958,7 +1830,7 @@ function computeStackPower(
   const generalMult = 1 + (Math.max(0, Math.min(10, generalSkill)) / 10) * 0.25;
   return Math.round(base * moraleMult * generalMult);
 }
-const UNIT_TYPE_LABELS: Record<string, string> = { MILITIA: "Milice", PROFESSIONAL: "Profesionálové" };
+const UNIT_TYPE_LABELS: Record<string, string> = SHARED_LABELS;
 const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2, warriors: 0.9 };
 const DEFAULT_ACTIVE_POP_RATIO = 0.5;
 const DEFAULT_MAX_MOBILIZATION = 0.3;
@@ -2011,21 +1883,14 @@ async function executeRecruitStack(
   }));
   const totalManpower = scaledComposition.reduce((s, c) => s + c.manpower, 0);
 
-  // Check building requirements (professional/legion need barracks+smithy)
-  if (preset.requires_buildings && preset.requires_buildings.length > 0) {
+  // Building prerequisites by real completed building names (Kasárny, Kovárna, Střelnice, Jízdárna, Obléhací dílna).
+  const required = presetRequirements(preset);
+  if (required.length > 0) {
     const { data: playerCities } = await supabase.from("cities").select("id").eq("session_id", sessionId).eq("owner_player", playerName);
-    const { data: buildings } = await supabase
-      .from("city_buildings")
-      .select("category, status")
-      .eq("session_id", sessionId)
-      .in("city_id", (playerCities || []).map((c: any) => c.id))
-      .eq("status", "completed");
-
-    const builtCategories = new Set((buildings || []).map((b: any) => b.category?.toLowerCase()));
-    const missing = preset.requires_buildings.filter(req => !builtCategories.has(req));
-    if (missing.length > 0) {
-      return { events: [], error: `Chybí budovy: ${missing.join(", ")}. Profesionální vojsko vyžaduje kasárny a kovárnu.` };
-    }
+    const { data: buildings } = await supabase.from("city_buildings").select("name").eq("session_id", sessionId)
+      .in("city_id", (playerCities || []).map((c: any) => c.id)).eq("status", "completed");
+    const missing = missingBuildings(required, (buildings || []).map((b: any) => String(b.name || "")));
+    if (missing.length > 0) return { events: [], error: `Chybí dokončené budovy: ${missing.join(", ")}.` };
   }
 
   // Costs scale linearly with manpower; presets keep their override budgets if set.

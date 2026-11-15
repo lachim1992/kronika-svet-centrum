@@ -4,7 +4,7 @@ import { actualSoldiers } from '../../../supabase/functions/_shared/manpower';
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
-import { UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, UNIT_PROD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
+import { UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, UNIT_PROD_FACTOR, FORMATION_PRESETS, presetRequirements } from "@/lib/turnEngine";
 import { computeWorkforceBreakdown, DEFAULT_MAX_MOBILIZATION } from "@/lib/economyConstants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ const UNIT_ICONS: Record<string, React.ElementType> = {
 
 const FORMATION_LABELS: Record<string, string> = {
   UNIT: "Jednotka",
+  CAVALRY: "Jízda",
   LEGION: "Legie",
   ARMY: "Armáda",
 };
@@ -1191,9 +1192,9 @@ function RecruitDialog({
                       );
                     })}
                   </div>
-                  {preset.requires_buildings && preset.requires_buildings.length > 0 && (
-                    <div className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
-                      ⚠ Vyžaduje budovy ve městě: {preset.requires_buildings.join(", ")}
+                  {presetRequirements(preset).length > 0 && (
+                    <div className="mt-1.5 text-[11px] text-muted-foreground">
+                      ⚠ Vyžaduje dokončené budovy: {presetRequirements(preset).join(", ")}
                     </div>
                   )}
                 </div>

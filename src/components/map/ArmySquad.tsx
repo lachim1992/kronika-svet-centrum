@@ -37,6 +37,38 @@ const Foot = ({ banner }: { banner: string }) => <g>
   <circle cx="-.75" cy="-1.9" r=".18" fill="var(--map-army-metal)" />
 </g>;
 
+/** Battle-type figure: same painted soldier with a weapon/gear variant per unit type. */
+export type SquadWeapon = "sword" | "spear" | "axe" | "bow" | "sling" | "javelin" | "pick" | "elite" | "militia";
+export function weaponOf(type: string | null | undefined): SquadWeapon {
+  switch (String(type || "").toUpperCase()) {
+    case "SPEARMEN": return "spear"; case "AXEMEN": return "axe"; case "ARCHERS": return "bow"; case "SLINGERS": return "sling";
+    case "JAVELINERS": return "javelin"; case "ENGINEERS": return "pick"; case "ELITE_GUARD": return "elite"; case "MILITIA": return "militia";
+    default: return "sword";
+  }
+}
+const TypedFoot = ({ banner, weapon }: { banner: string; weapon: SquadWeapon }) => {
+  const shield = weapon === "sword" || weapon === "spear" || weapon === "axe" || weapon === "elite" || weapon === "militia";
+  const armor = weapon === "elite" ? "var(--map-army-metal)" : weapon === "militia" || weapon === "sling" || weapon === "pick" ? "var(--map-army-cloth)" : "var(--map-army-metal-dark)";
+  return <g>
+    <ellipse cx=".2" cy=".15" rx="1.3" ry=".45" fill={E} opacity=".35" />
+    <path d="M-.45 0 L-.35 -1.2 M.45 0 L.35 -1.2" stroke="var(--map-army-cloth)" strokeWidth=".38" strokeLinecap="round" />
+    <path d="M-.7 -1.1 L.7 -1.1 L.55 -2.8 L-.55 -2.8 Z" fill={armor} />
+    <path d="M-.55 -2.8 L.55 -2.8 L.45 -2.1 L-.45 -2.1 Z" fill={banner} opacity=".9" />
+    <circle cx="0" cy="-3.25" r=".42" fill="var(--map-army-skin)" />
+    {weapon !== "sling" && weapon !== "militia" && <path d="M-.5 -3.3 Q0 -4.1 .5 -3.3 Z" fill="var(--map-army-metal)" stroke={E} strokeWidth=".12" />}
+    {weapon === "elite" && <path d="M0 -3.9 Q.6 -4.8 .1 -5.2" fill="none" stroke={banner} strokeWidth=".35" strokeLinecap="round" />}
+    {weapon === "spear" && <><line x1=".75" y1=".2" x2="1.3" y2="-7" stroke="var(--map-army-wood)" strokeWidth=".24" strokeLinecap="round" /><path d="M1.3 -7 L1.1 -6.2 L1.5 -6.2 Z" fill="var(--map-army-metal)" /></>}
+    {(weapon === "sword" || weapon === "elite") && <line x1=".7" y1="-1.4" x2="1.4" y2="-3.6" stroke="var(--map-army-metal)" strokeWidth=".26" strokeLinecap="round" />}
+    {weapon === "axe" && <><line x1=".7" y1="-1" x2="1.2" y2="-4.2" stroke="var(--map-army-wood)" strokeWidth=".24" /><path d="M1.15 -4.3 Q2.2 -4 1.9 -3.1 L1.1 -3.5 Z" fill="var(--map-army-metal)" stroke={E} strokeWidth=".1" /></>}
+    {weapon === "bow" && <><path d="M.9 -.9 Q2 -2.4 .9 -4" fill="none" stroke="var(--map-army-wood)" strokeWidth=".26" /><line x1=".9" y1="-.9" x2=".9" y2="-4" stroke="var(--map-army-cloth)" strokeWidth=".08" /></>}
+    {weapon === "sling" && <path d="M.6 -2.4 Q1.6 -3.8 1.1 -4.6" fill="none" stroke="var(--map-army-wood)" strokeWidth=".16" />}
+    {weapon === "javelin" && <><line x1=".5" y1="-1.2" x2="1.6" y2="-5" stroke="var(--map-army-wood)" strokeWidth=".18" /><line x1=".2" y1="-1.2" x2="1.1" y2="-4.6" stroke="var(--map-army-wood)" strokeWidth=".16" /></>}
+    {weapon === "pick" && <><line x1=".7" y1="-.6" x2="1" y2="-3.8" stroke="var(--map-army-wood)" strokeWidth=".22" /><path d="M.2 -3.9 Q1 -4.4 1.9 -3.7" fill="none" stroke="var(--map-army-metal)" strokeWidth=".3" /></>}
+    {shield && <><ellipse cx="-.75" cy="-1.9" rx={weapon === "spear" || weapon === "elite" ? .7 : .55} ry={weapon === "spear" || weapon === "elite" ? 1.15 : .95} fill={banner} stroke={E} strokeWidth=".14" />
+      <circle cx="-.75" cy="-1.9" r=".18" fill="var(--map-army-metal)" /></>}
+  </g>;
+};
+
 const Horse = ({ banner }: { banner: string }) => <g>
   <ellipse cx="0" cy=".2" rx="2.2" ry=".6" fill={E} opacity=".35" />
   <path d="M-1.4 0 L-1.3 -1.1 M-.8 0 L-.8 -1.1 M.9 0 L.9 -1.1 M1.4 0 L1.3 -1.1" stroke="var(--map-army-wood)" strokeWidth=".3" strokeLinecap="round" />
@@ -63,13 +95,22 @@ const Siege = ({ banner }: { banner: string }) => <g>
 
 /** Painted war-band on a single 6x6 sub-square (centre at 0,0; sub-square is ~14x7 px). Static, no animation. */
 const LAYOUTS: Record<string, Array<[number, number]>> = {
+  deep: [[0, 2.4], [0, 1.2], [0, 0], [0, -1.2], [0, -2.4], [1.8, 1.8], [1.8, .6], [1.8, -.6], [1.8, -1.8]],
+  loose: [[0, 0], [-4, -1.6], [4, 1.4], [3.4, -2.2], [-3.6, 1.8], [.4, -3], [-.6, 2.6], [5.4, -.4], [-5.4, -.2]],
+  shieldwall: [[-4.8, 1.2], [-2.4, 1.2], [0, 1.2], [2.4, 1.2], [4.8, 1.2], [-3.6, -.6], [-1.2, -.6], [1.2, -.6], [3.6, -.6]],
   wedge: [[0, 1.8], [-1.8, .6], [1.8, .6], [-3.6, -.6], [0, -.6], [3.6, -.6], [-5, -1.8], [-1.6, -1.8], [1.6, -1.8]],
   column: [[0, 2.4], [0, 1.2], [0, 0], [0, -1.2], [0, -2.4], [1.8, 1.8], [1.8, .6], [1.8, -.6], [1.8, -1.8]],
   skirmish: [[0, 0], [-4, -1.6], [4, 1.4], [3.4, -2.2], [-3.6, 1.8], [.4, -3], [-.6, 2.6], [5.4, -.4], [-5.4, -.2]],
   square: [[-2.4, 0], [2.4, 0], [0, -1.6], [0, 1.6], [-1.2, -.8], [1.2, .8], [1.2, -.8], [-1.2, .8], [0, 0]],
 };
 
-const ArmySquadBase = ({ men, kind, banner, active, formation }: { men: number; kind: SquadKind; banner: string; active: boolean; formation?: string | null }) => {
+const HeavyHorse = ({ banner }: { banner: string }) => <g><Horse banner={banner} />
+  <path d="M-1.6 -1.1 Q-1.7 -2 -.6 -2 L1 -2 L1.5 -1.1 Z" fill="var(--map-army-metal-dark)" opacity=".85" />
+  <path d="M-1.6 -1.1 L1.5 -1.1" stroke={banner} strokeWidth=".3" /></g>;
+
+const ArmySquadBase = ({ men, kind, banner, active, formation, unitType }: { men: number; kind: SquadKind; banner: string; active: boolean; formation?: string | null; unitType?: string | null }) => {
+  const heavy = String(unitType || "").toUpperCase() === "HEAVY_CAVALRY";
+  const weapon = unitType ? weaponOf(unitType) : null;
   const n = kind === "foot" ? squadFigures(men) : Math.max(1, Math.min(kind === "horse" ? 4 : 2, Math.ceil(squadFigures(men) / (kind === "horse" ? 2 : 4))));
   const pts = kind === "foot" ? (formation && LAYOUTS[formation] ? LAYOUTS[formation].slice(0, n) : ORDER.slice(0, n).map(i => SLOTS[i]))
     : kind === "horse" ? ([[-2.4, -1], [2.4, -1], [-1.2, .6], [2.6, .8]] as Array<[number, number]>).slice(0, n)
@@ -80,7 +121,7 @@ const ArmySquadBase = ({ men, kind, banner, active, formation }: { men: number; 
       <ellipse cx="0" cy=".6" rx="6.6" ry="3" fill="var(--map-army-cloth)" opacity={active ? .3 : .18} />
       {sorted.map(([x, y], i) => (
         <g key={i} transform={`translate(${x},${y})`}>
-          {kind === "horse" ? <Horse banner={banner} /> : kind === "siege" ? <Siege banner={banner} /> : <Foot banner={banner} />}
+          {kind === "horse" ? (heavy ? <HeavyHorse banner={banner} /> : <Horse banner={banner} />) : kind === "siege" ? <Siege banner={banner} /> : weapon ? <TypedFoot banner={banner} weapon={weapon} /> : <Foot banner={banner} />}
         </g>
       ))}
     </g>
