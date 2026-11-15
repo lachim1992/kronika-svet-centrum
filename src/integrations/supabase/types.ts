@@ -4291,6 +4291,59 @@ export type Database = {
           },
         ]
       }
+      field_battles: {
+        Row: {
+          attacker_player: string
+          attacker_stack_id: string
+          battlefield: Json
+          created_at: string
+          defender_player: string
+          defender_stack_id: string
+          id: string
+          last_report: Json | null
+          round: number
+          session_id: string
+          started_turn: number
+          status: string
+        }
+        Insert: {
+          attacker_player: string
+          attacker_stack_id: string
+          battlefield: Json
+          created_at?: string
+          defender_player: string
+          defender_stack_id: string
+          id?: string
+          last_report?: Json | null
+          round?: number
+          session_id: string
+          started_turn: number
+          status?: string
+        }
+        Update: {
+          attacker_player?: string
+          attacker_stack_id?: string
+          battlefield?: Json
+          created_at?: string
+          defender_player?: string
+          defender_stack_id?: string
+          id?: string
+          last_report?: Json | null
+          round?: number
+          session_id?: string
+          started_turn?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "field_battles_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       flow_paths: {
         Row: {
           bottleneck_cost: number | null
