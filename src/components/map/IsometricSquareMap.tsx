@@ -33,7 +33,6 @@ import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
 import SiegePanel, { type SiegeMapView } from "@/components/map/SiegePanel";
 import FieldBattlePanel, { type FieldBattleView, type FieldBattleClick } from "@/components/map/FieldBattlePanel";
-import { MOVE_RANGE as MOVE_RANGE_FB } from "../../../supabase/functions/_shared/fieldBattle";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
@@ -2037,7 +2036,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 setBattlePicked(list => list.some(c => c.x === cell.a && c.y === cell.b) ? list.filter(c => !(c.x === cell.a && c.y === cell.b)) : [...list, { x: cell.a, y: cell.b }]);
                 return;
               }
-              if (fieldBattle && fieldBattle.selectedKey) {
+              if (fieldBattle && fieldBattle.selectedKeys.length) {
                 const g = event.currentTarget as SVGGElement; const ctm = g.getScreenCTM(); const svg = g.ownerSVGElement;
                 if (!ctm || !svg) return;
                 const pt = svg.createSVGPoint(); pt.x = event.clientX; pt.y = event.clientY;
@@ -2045,7 +2044,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const lx = (loc.x - point.x) / TILE_SIZE, ly = (loc.y - point.y) * 2 / TILE_SIZE;
                 const clamp = (v: number) => Math.max(0, Math.min(MICRO_PER_TILE - 1, Math.floor(v * MICRO_PER_TILE)));
                 const px = clamp((lx + ly + 1) / 2), py = clamp((ly + 1 - lx) / 2);
-                setFieldBattleClick(o => ({ kind: "micro", x: cell.a * MICRO_PER_TILE + px, y: cell.b * MICRO_PER_TILE + py, n: (o?.n ?? 0) + 1 }));
+                setFieldBattleClick(o => ({ kind: "micro", x: cell.a * MICRO_PER_TILE + px, y: cell.b * MICRO_PER_TILE + py, shift: event.shiftKey, n: (o?.n ?? 0) + 1 }));
                 return;
               }
               if (armyMoveMode && selectedArmy) {
@@ -2065,6 +2064,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={Array.isArray(terrainRaster) && terrainRaster.length ? "transparent" : colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 1.2 : 0} />
+              {!battlePicking && fieldBattle?.status === "deploying" && fieldBattle.zones.own.some(c => c.x === cell.a && c.y === cell.b) && <polygon points={squareDiamondPoints(point, TILE_SIZE * .96)} pointerEvents="none" fill="var(--map-city-own)" opacity=".16" />}
+              {!battlePicking && fieldBattle?.status === "deploying" && fieldBattle.zones.enemy.some(c => c.x === cell.a && c.y === cell.b) && !fieldBattle.zones.own.some(c => c.x === cell.a && c.y === cell.b) && <polygon points={squareDiamondPoints(point, TILE_SIZE * .96)} pointerEvents="none" fill="var(--map-city-rival)" opacity=".14" />}
               {(battlePicking ? battlePicked : battlefieldCells ?? []).some(c => c.x === cell.a && c.y === cell.b) && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill="hsl(var(--destructive) / .18)" stroke="hsl(var(--destructive))" strokeWidth={2.5} strokeDasharray={battlePicking ? "8 5" : undefined} />}
               {cityLayerCityId && !inActiveCity && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill="var(--map-marker-edge)" opacity=".55" />}
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".8" opacity=".38" strokeDasharray="5 3" />}
@@ -2274,29 +2275,33 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               const px = (x - gx * MICRO_PER_TILE + .5) / MICRO_PER_TILE, py = (y - gy * MICRO_PER_TILE + .5) / MICRO_PER_TILE;
               return { x: c.x + (px - py) * TILE_SIZE, y: c.y + (px + py - 1) * TILE_SIZE / 2 };
             };
-            const placed = fieldBattle.units.filter(u => u.x !== null && u.y !== null && u.status !== "dead" && !(u.status === "routed" && fieldBattle.status === "fighting"))
+            const placed = fieldBattle.units.filter(u => u.x !== null && u.y !== null && u.status === "ready")
               .map(u => ({ u, p: microPoint(u.x!, u.y!) })).sort((a, b) => a.p.y - b.p.y);
             const byKey = new Map(placed.map(o => [o.u.key, o]));
-            const selU = fieldBattle.status === "fighting" ? fieldBattle.units.find(u => u.key === fieldBattle.selectedKey && u.x !== null) : undefined;
-            const reach: { x: number; y: number }[] = [];
-            if (selU) { const r = MOVE_RANGE_FB[selU.type]; for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) if ((dx || dy) && Math.abs(dx) + Math.abs(dy) <= r) reach.push(microPoint(selU.x! + dx, selU.y! + dy)); }
+            const selSet = new Set(fieldBattle.selectedKeys);
+            const ATTACKY = new Set(["ATTACK", "CHARGE", "VOLLEY"]);
+            const TYPE_CZ: Record<string, string> = { MILITIA: "milice", SPEARMEN: "kopiníci", SWORDSMEN: "šermíři", AXEMEN: "sekerníci", ARCHERS: "lučištníci", SLINGERS: "prakovníci", JAVELINERS: "oštěpaři", LIGHT_CAVALRY: "lehká jízda", HEAVY_CAVALRY: "těžká jízda", ELITE_GUARD: "elitní garda", ENGINEERS: "ženisté" };
             return <g data-field-battle-units>
-              {reach.map((p, i) => <circle key={`r${i}`} cx={p.x} cy={p.y} r="2.2" fill="var(--map-focus)" opacity=".45" pointerEvents="none" />)}
+              {fieldBattle.reach.map((c, i) => { const p = microPoint(c.x, c.y); return <circle key={`r${i}`} cx={p.x} cy={p.y} r="2" fill={fieldBattle.reachKind === "range" ? "var(--map-city-rival)" : "var(--map-focus)"} opacity=".4" pointerEvents="none" />; })}
               {fieldBattle.orders.map(o => { const from = byKey.get(o.key); if (!from) return null;
-                const to = o.kind === "move" ? microPoint(o.to.x, o.to.y) : byKey.get(o.target)?.p; if (!to) return null;
-                return <g key={`o${o.key}`} pointerEvents="none"><line x1={from.p.x} y1={from.p.y} x2={to.x} y2={to.y} stroke={o.kind === "attack" ? "var(--map-city-rival)" : "var(--map-focus)"} strokeWidth="1.3" strokeDasharray="3 2" />
-                  <circle cx={to.x} cy={to.y} r="2.2" fill="none" stroke={o.kind === "attack" ? "var(--map-city-rival)" : "var(--map-focus)"} strokeWidth="1" />
-                  <text x={from.p.x} y={from.p.y - 11} textAnchor="middle" fontSize="5" fontWeight="700" fill="var(--map-focus)">{o.seq}</text></g>; })}
+                const to = o.to ? microPoint(o.to.x, o.to.y) : o.target ? byKey.get(o.target)?.p : undefined; if (!to) return null;
+                const col = ATTACKY.has(o.kind) ? "var(--map-city-rival)" : "var(--map-focus)";
+                const ang = Math.atan2(to.y - from.p.y, to.x - from.p.x);
+                return <g key={`o${o.key}`} pointerEvents="none"><line x1={from.p.x} y1={from.p.y} x2={to.x} y2={to.y} stroke={col} strokeWidth="1.3" strokeDasharray={o.kind === "MOVE" ? "3 2" : undefined} />
+                  <path d={`M${to.x} ${to.y} L${to.x - Math.cos(ang - .5) * 4} ${to.y - Math.sin(ang - .5) * 4} L${to.x - Math.cos(ang + .5) * 4} ${to.y - Math.sin(ang + .5) * 4} Z`} fill={col} />
+                  <text x={from.p.x} y={from.p.y - 12} textAnchor="middle" fontSize="5" fontWeight="700" fill={col}>{o.cmd ?? o.seq}</text></g>; })}
               {placed.map(({ u, p }) => {
-                const stack = armies.find(a => a.id === u.stackId); const own = stack?.player_name === playerName;
                 const banner = u.side === "attacker" ? "var(--map-city-rival)" : "var(--map-city-own)";
-                const sel = fieldBattle.selectedKey === u.key; const mineSide = u.side === fieldBattle.activeSide;
+                const sel = selSet.has(u.key); const mineSide = u.side === fieldBattle.activeSide;
+                const ord = fieldBattle.orders.find(o => o.key === u.key);
+                const horse = u.type === "LIGHT_CAVALRY" || u.type === "HEAVY_CAVALRY";
                 return <g key={u.key} transform={`translate(${p.x},${p.y})`} style={{ transition: "transform .6s ease" }} className="cursor-pointer"
-                  onClick={e => { e.stopPropagation(); if (!dragRef.current?.moved) setFieldBattleClick(o => ({ kind: "unit", key: u.key, n: (o?.n ?? 0) + 1 })); }}>
-                  <ellipse cx="0" cy="2" rx="7" ry="3.5" fill={sel ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={sel ? "var(--map-focus)" : mineSide ? banner : "transparent"} strokeWidth="1" />
-                  <ArmySquad men={u.men} kind={u.type === "CAVALRY" ? "horse" : "foot"} banner={banner} active={sel} formation={stack?.battle_formation} />
-                  {u.status === "routed" && <text y="-10" textAnchor="middle" fontSize="5" fill="var(--map-city-rival)">prchá</text>}
-                  <title>{`${u.side === "attacker" ? "Útočník" : "Obránce"}${own ? "" : ""} · ${u.type} · ${u.men} mužů · morálka ${u.morale} %`}</title>
+                  onClick={e => { e.stopPropagation(); if (!dragRef.current?.moved) setFieldBattleClick(o => ({ kind: "unit", key: u.key, shift: e.shiftKey, n: (o?.n ?? 0) + 1 })); }}>
+                  <ellipse cx="0" cy="2" rx="7" ry="3.5" fill={sel ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={sel ? "var(--map-focus)" : mineSide ? banner : "transparent"} strokeWidth={sel ? 1.8 : 1} />
+                  <ArmySquad men={u.men} kind={horse ? "horse" : "foot"} banner={banner} active={sel} formation={u.formation} unitType={u.type} />
+                  <rect x="-5" y="-10.5" width="10" height="1.2" fill="var(--map-marker-edge)" opacity=".7" />
+                  <rect x="-5" y="-10.5" width={10 * Math.max(0, Math.min(100, u.morale)) / 100} height="1.2" fill={u.morale < 35 ? "var(--map-city-rival)" : banner} />
+                  <title>{`${u.side === "attacker" ? "Útočník" : "Obránce"} · ${TYPE_CZ[u.type] ?? u.type} · ${u.men} mužů · morálka ${u.morale} % · únava ${u.fatigue}${u.ammo ? ` · munice ${u.ammo}` : ""} · formace ${u.formation}${ord ? ` · rozkaz ${ord.kind}` : ""}`}</title>
                 </g>; })}
             </g>;
           })()}
