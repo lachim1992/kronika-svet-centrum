@@ -58,3 +58,9 @@ Deployed source functions: `compute-trade-flows`, `preview-economy`, `commit-tur
 Textile/tools/storage still have no producer, AI fuel stocks remain disconnected, and five player cities still share similar basic-output profiles. Global production/demand multipliers remain unjustified.
 
 **Next:** in an isolated JV72O7 snapshot, specialize the existing mill city and its grain-producing neighbours so a canonical `raw_grain` `production_input` shipment occurs over the completed roads while every city's food coverage and physical conservation remain intact; only after that test bounded volume coefficients.
+
+## 2026-11-15 — military-only follow-up
+- Changed `siege.ts`, `IsometricSquareMap.tsx`, `siege.test.ts`, roadmap and combat preference memory: capture on physical entry to an unoccupied main-building square; removed central target; miniature owner-colour tower flags. No economy formulas or persisted world rows changed.
+- Actually run: siege regression 12/12; automatic preview build OK; signed-in JV72O7 map shows 62 tower flags and army detail with zero page errors. Current game has no active siege, so live capture is not verified and no turn was advanced.
+- Deployment: commit-turn deployed, source SHA-256 `a7f22ca913bd12ca65b498b853afb8bee92e19708d6ae0ea2fc7be839e8eddae`; frontend preview changed, publication not performed. Repository commits are managed by the platform, not independently confirmed here.
+- Remaining military gap: verify entry-to-capture through an authorized test battle. Economy next task remains the isolated grain shipment scenario above.

@@ -1,8 +1,9 @@
 # Map-first square-grid roadmap
 
 ## Obléhání — vstup do hlavní budovy a vlaječky (2026-11-15)
-- [ ] Odstranit prostřední terč, dobýt město pouze vstupem útočníka na políčko hlavní budovy, zachovat postup o jedno pole a obsazená pole.
-- [ ] Přidat miniaturní vlaječky vlastníka na věžičky; ověřit testy, přihlášenou mapu a nasadit resolver bez posunu uložených her.
+- [x] Prostřední terč odstraněn; dobytí pouze při vstupu útočníka na jedno ze stávajících polí hlavní budovy (14/15/20/21), postup 1 pole/kolo, obsazené pole blokuje vstup. Starší keep příkazy používají stejný pohyb, nikoli dobytí ze sousedství.
+- [x] Miniaturní vlaječky vlastníka na věžičkách v běžné i detailní mapě, stávající vlastní/cizí barvy. Testy siege.test.ts 12/12, automatický build OK. Přihlášená JV72O7 mapa: 62 vlaječek, otevření armády bez page errors. Nasazen commit-turn; žádný herní zápis, obléhání ani posun tahu.
+- [ ] Živý vstup na hlavní budovu neověřen: JV72O7 aktuálně nemá aktivní obléhání; další kontrola vyžaduje autorizovanou testovací bitvu.
 
 ## Přehledné okno města a mikroparcely — 2026-11-14
 - [x] Nové `MapDetailWindow.tsx` nahrazuje současnou dlouhou pravou lištu nemodálním portálovým oknem: desktop lze přesouvat za záhlaví a drží se uvnitř viewportu, mobil používá dolní panel. Mapa zůstává aktivní; sekce Přehled / Parcely / Rozrůst / Území oddělují dosud smíšený obsah. Existující nákup, výstavba, průzkum, provincie i správa sídel nadále používají původní command-dispatch toky.
