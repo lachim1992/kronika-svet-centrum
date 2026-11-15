@@ -21,51 +21,9 @@ export const LEVEL_TO_SETTLEMENT: Record<string, string> = {
 // ═══ 2-UNIT-TYPE SYSTEM ═══
 // MILITIA: cheaper, weaker, available immediately (weight 0.8)
 // PROFESSIONAL: stronger, requires barracks+smithy (weight 1.3)
-export const UNIT_TYPE_LABELS: Record<string, string> = {
-  MILITIA: "Milice",
-  PROFESSIONAL: "Profesionálové",
-};
-
-export const UNIT_WEIGHTS: Record<string, number> = {
-  MILITIA: 0.8,
-  PROFESSIONAL: 1.3,
-};
-
-// HALVED in Apr 2026 balance pass — must mirror command-dispatch UNIT_GOLD_FACTOR.
-export const UNIT_GOLD_FACTOR: Record<string, number> = {
-  MILITIA: 0.4,
-  PROFESSIONAL: 1.0,
-};
-
-// Production cost per soldier — must mirror command-dispatch UNIT_PROD_FACTOR.
-export const UNIT_PROD_FACTOR: Record<string, number> = {
-  MILITIA: 0.25,
-  PROFESSIONAL: 0.75,
-};
-
-export const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number; requires_buildings?: string[] }> = {
-  militia: {
-    label: "Milice",
-    composition: [{ unit_type: "MILITIA", manpower: 400 }],
-    formation_type: "UNIT",
-    morale: 55,
-  },
-  professional: {
-    label: "Profesionální vojsko",
-    composition: [{ unit_type: "PROFESSIONAL", manpower: 400 }],
-    formation_type: "UNIT",
-    morale: 70,
-    requires_buildings: ["barracks", "smithy"],
-  },
-  legion: {
-    label: "Zárodek legie",
-    composition: [{ unit_type: "MILITIA", manpower: 400 }, { unit_type: "PROFESSIONAL", manpower: 400 }],
-    formation_type: "LEGION",
-    morale: 70,
-    gold_override: 80,
-    requires_buildings: ["barracks", "smithy"],
-  },
-};
+// Unit catalogue is shared with command-dispatch (single source): supabase/functions/_shared/unitTypes.ts
+export { UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, UNIT_PROD_FACTOR, FORMATION_PRESETS, UNIT_TYPES, UNIT_POWER_FACTOR, UNIT_RECRUIT_MORALE, presetRequirements } from "../../supabase/functions/_shared/unitTypes";
+export const UNIT_WEIGHTS: Record<string, number> = { MILITIA: 0.8, PROFESSIONAL: 1.3 };
 
 // ensureRealmResources & recomputeManpowerPool removed (War Plan v16):
 // - realm_resources rows are bootstrapped server-side at world generation

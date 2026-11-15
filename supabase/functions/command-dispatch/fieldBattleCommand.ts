@@ -206,4 +206,3 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
     reference: { fieldBattleId: fb.id, winner: r.winner },
   }], payload.chronicleText);
 }
-export { normalizeFormation };
