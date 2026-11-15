@@ -1,5 +1,9 @@
 # Map-first square-grid roadmap
 
+## Obléhání — vstup do hlavní budovy a vlaječky (2026-11-15)
+- [ ] Odstranit prostřední terč, dobýt město pouze vstupem útočníka na políčko hlavní budovy, zachovat postup o jedno pole a obsazená pole.
+- [ ] Přidat miniaturní vlaječky vlastníka na věžičky; ověřit testy, přihlášenou mapu a nasadit resolver bez posunu uložených her.
+
 ## Přehledné okno města a mikroparcely — 2026-11-14
 - [x] Nové `MapDetailWindow.tsx` nahrazuje současnou dlouhou pravou lištu nemodálním portálovým oknem: desktop lze přesouvat za záhlaví a drží se uvnitř viewportu, mobil používá dolní panel. Mapa zůstává aktivní; sekce Přehled / Parcely / Rozrůst / Území oddělují dosud smíšený obsah. Existující nákup, výstavba, průzkum, provincie i správa sídel nadále používají původní command-dispatch toky.
 - [x] `IsometricSquareMap.tsx` výrazně zvýrazňuje městem držené parcely trvalým šrafováním, barvou vlastníka a silnějším obrysem; neaktivní průzkumná mřížka zůstává slabá. Všechny akce a hitboxy jsou beze změny.

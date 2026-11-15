@@ -1383,7 +1383,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </g>;
       })}
       {/* city land is ringed so the built-up block reads at a glance */}
-      {renderWallRun(wallEdges, holderColor, 2, "survey-wall")}
+      {renderWallRun(wallEdges, holderColor, 2, "survey-wall", holder?.owner_player)}
       {(roadTier > 0 || selectedInfrastructure?.status === "building") && localRoadSegments(occupiedIndexes).map((segment, index) => {
         const centre = (point: { x: number; y: number }) => {
           const corners = parcelCorners(centerPoint, point.x, point.y);
@@ -1615,7 +1615,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   /** Stone rampart run: textured face, shaded base, crenellated crown and round roofed towers. */
   const renderWallRun = (
     edges: { from: { x: number; y: number }; to: { x: number; y: number } }[],
-    wallColor: string, height = 2.4, prefix = "wall",
+    wallColor: string, height = 2.4, prefix = "wall", owner?: string,
   ) => {
     const h = height * 1.3;
     return <g>
@@ -1647,6 +1647,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <rect x="-1.6" y={-h - 2.6} width="1.1" height={h + 2.6} fill="var(--map-city-wall-light)" opacity=".45" />
           <path d={`M-2.1 ${-h - 2.6} L0 ${-h - 5} L2.1 ${-h - 2.6} Z`} fill="var(--map-city-wall-dark)" stroke="none" />
           <path d={`M-1.4 ${-h - 2.6} L0 ${-h - 4.6} L1.4 ${-h - 2.6} Z`} fill={wallColor} opacity=".35" />
+          <g data-city-tower-flag pointerEvents="none">
+            <line x1="0" y1={-h - 4.7} x2="0" y2={-h - 9.3} stroke="var(--map-city-wall-light)" strokeWidth=".45" />
+            <path d={`M.25 ${-h - 9.1} Q1.5 ${-h - 9.7} 3.2 ${-h - 8.8} L2.5 ${-h - 7.7} Q1.3 ${-h - 8.5} .25 ${-h - 8.1} Z`} fill={wallColor} stroke="var(--map-marker-edge)" strokeWidth=".2" />
+            <title>{owner ? `Město: ${owner}` : "Městská vlajka"}</title>
+          </g>
         </g>
       ))}
     </g>;
@@ -1687,7 +1692,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   };
 
   /** City-held parcels of a cell: footprint, ramparts with towers, and houses. */
-  const renderCityFootprint = (parcels: TileParcel[], centerPoint: { x: number; y: number }, own: boolean) => {
+  const renderCityFootprint = (parcels: TileParcel[], centerPoint: { x: number; y: number }, own: boolean, owner?: string) => {
     const wallColor = own ? "var(--map-city-own)" : "var(--map-city-rival)";
     const edges = footprintWallEdges(parcels, centerPoint);
     const occupied = parcels.filter(parcel => parcel.status === "occupied");
@@ -1698,7 +1703,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           stroke="var(--map-marker-edge)" strokeWidth=".25" strokeOpacity=".45"
           fillOpacity={parcel.status === "occupied" ? .72 : .42} />
       ))}
-      {renderWallRun(edges, wallColor, 2.2, "wall")}
+      {renderWallRun(edges, wallColor, 2.2, "wall", owner)}
       {parcelsBackToFront(occupied).map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
     </g>;
   };
@@ -2073,7 +2078,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const footprint = parcelsByCell.get(cellKey(cell.a, cell.b)) || [];
             if (!footprint.length) return null;
             const holderCity = cityById.get(cityByCell.get(cellKey(cell.a, cell.b)) || "");
-            return <g key={`fp-${tile.id}`} pointerEvents="none">{renderCityFootprint(footprint, at(cell.a, cell.b), holderCity ? holderCity.owner_player === playerName : true)}</g>;
+            return <g key={`fp-${tile.id}`} pointerEvents="none">{renderCityFootprint(footprint, at(cell.a, cell.b), holderCity ? holderCity.owner_player === playerName : true, holderCity?.owner_player)}</g>;
           })}
           {roadNetwork.bridges.map(bridge => {
             const point = bridge.point;
@@ -2285,7 +2290,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const city = cities.find(c => c.id === siegeView.cityId); if (!city || city.grid_x == null || city.grid_y == null) return null;
             const p = at(city.grid_x, city.grid_y); const n = siegeView.walls.length;
             const send = (target: any) => { setSiegeMapOrder(o => ({ unitKey: siegeUnitKey, target, n: (o?.n ?? 0) + 1 })); setSiegeUnitKey(null); };
-            const breached = siegeView.walls.some(w => w.breached);
             return <g data-siege-targets>
               {siegeView.walls.map((w, i) => { const a = -Math.PI / 4 + (i / n) * Math.PI * 2; const x = p.x + Math.cos(a) * TILE_SIZE * .7, y = p.y + Math.sin(a) * TILE_SIZE * .35;
                 return <g key={w.id} transform={`translate(${x},${y})`} className="cursor-crosshair" role="button" aria-label={w.breached ? `Projít průlomem: ${w.name}` : `Poslat na ${w.name}`}
@@ -2294,9 +2298,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                   <text y="2.4" textAnchor="middle" fontSize="6.5" fontWeight="700" fill="var(--map-label)">{w.breached ? "✕" : i + 1}</text>
                   <title>{w.breached ? `${w.name} · prolomena — klikni a oddíl projde do města` : `Zaútočit na ${w.name}`}</title>
                 </g>; })}
-              {breached && <g transform={`translate(${p.x},${p.y})`} className="cursor-crosshair" role="button" aria-label="Poslat na hlavní budovu" onClick={e => { e.stopPropagation(); send({ kind: "keep" }); }}>
-                <circle r="7" fill="var(--map-marker)" stroke="var(--map-city-rival)" strokeWidth="2" /><text y="2.6" textAnchor="middle" fontSize="7" fontWeight="700" fill="var(--map-label)">♛</text>
-                <title>Zaútočit na hlavní budovu</title></g>}
             </g>;
           })()}
           {/* top-most drawing layer: sub-parcels of passable cells catch every click and drag */}
