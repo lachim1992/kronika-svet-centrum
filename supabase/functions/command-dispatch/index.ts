@@ -890,7 +890,7 @@ async function executeCommand(
       }
       const win = report.winner === "attacker" ? att.name : report.winner === "defender" ? def.name : null;
       return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base, event_type: "battle", player: att.player_name, importance: "critical",
+        ...base, event_type: "military", player: att.player_name, importance: "critical",
         note: `Bitva ${att.name} × ${def.name} skončila po ${fb.round} kolech${win ? `, vítězí ${win}` : " nerozhodně"}. Ztráty: ${att.name} ${outcome.get(att.id)?.lost ?? 0}, ${def.name} ${outcome.get(def.id)?.lost ?? 0}.`,
         reference: { fieldBattleId: fb.id, winner: report.winner },
       }], payload.chronicleText);
