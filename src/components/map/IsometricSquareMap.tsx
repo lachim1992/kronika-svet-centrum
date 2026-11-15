@@ -990,9 +990,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     let cancelled = false;
     const load = async () => {
       const { data } = await supabase.from("field_battles").select("attacker_stack_id, defender_stack_id").eq("session_id", sessionId).neq("status", "finished");
-      if (!cancelled) setBattleCampStacks(new Set((data || []).flatMap(b => [b.attacker_stack_id, b.defender_stack_id])));
+      if (cancelled) return;
+      const ids = (data || []).flatMap(b => [b.attacker_stack_id, b.defender_stack_id]).sort();
+      setBattleCampStacks(prev => ids.length === prev.size && ids.every(id => prev.has(id)) ? prev : new Set(ids));
     };
-    void load(); const t = setInterval(() => void load(), 10000);
+    void load(); const t = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 15000);
     return () => { cancelled = true; clearInterval(t); };
   }, [sessionId, fieldBattle?.status]);
   const fieldBattleStacks = useMemo(() => new Set((fieldBattle?.units ?? []).filter(u => u.x !== null).map(u => u.stackId)), [fieldBattle]);
@@ -1046,7 +1048,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       }
     })();
     return () => { cancelled = true; };
-  }, [armyMoveMode, selectedArmy, sessionId, entityCell]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [armyMoveMode, selectedArmy?.id, selectedArmy?.grid_x, selectedArmy?.grid_y, sessionId]);
   /** Same terrain the server validates with: stored sub-squares, macro biome otherwise, completed road cells. */
   const microTerrainAt = useMemo(() => {
     const macro = new Map<string, Tile>();
