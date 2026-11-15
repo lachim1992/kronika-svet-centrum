@@ -1048,7 +1048,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       }
     })();
     return () => { cancelled = true; };
-  }, [armyMoveMode, selectedArmy, sessionId, entityCell]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [armyMoveMode, selectedArmy?.id, selectedArmy?.grid_x, selectedArmy?.grid_y, sessionId]);
   /** Same terrain the server validates with: stored sub-squares, macro biome otherwise, completed road cells. */
   const microTerrainAt = useMemo(() => {
     const macro = new Map<string, Tile>();
