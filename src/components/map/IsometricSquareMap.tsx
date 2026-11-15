@@ -32,6 +32,7 @@ import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
 import SiegePanel, { type SiegeMapView } from "@/components/map/SiegePanel";
+import FieldBattlePanel from "@/components/map/FieldBattlePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
@@ -977,6 +978,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [armies, entityCell]);
   const selectedArmy = useMemo(() => armies.find(army => army.id === selectedArmyId) || null, [armies, selectedArmyId]);
   const [siegeView, setSiegeView] = useState<SiegeMapView | null>(null);
+  const [battlePicking, setBattlePicking] = useState(false);
+  const [battlePicked, setBattlePicked] = useState<{ x: number; y: number }[]>([]);
+  const [battlefieldCells, setBattlefieldCells] = useState<{ x: number; y: number }[] | null>(null);
+  const onBattlePicking = useCallback((on: boolean, initial: { x: number; y: number }[]) => { setBattlePicking(on); setBattlePicked(initial); }, []);
   const [siegeUnitKey, setSiegeUnitKey] = useState<string | null>(null);
   const [siegeMapOrder, setSiegeMapOrder] = useState<{ unitKey: string; target: any; n: number } | null>(null);
   useEffect(() => { setSiegeUnitKey(null); }, [selectedArmyId]);
@@ -2010,6 +2015,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const holderOwn = holderCity ? holderCity.owner_player === playerName : true;
             const holderColor = holderCity ? (holderOwn ? "var(--map-city-own)" : "var(--map-city-rival)") : colors[1];
             return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (roadDraft.length > 0) return; if (dragRef.current?.moved) return;
+              if (battlePicking) {
+                setBattlePicked(list => list.some(c => c.x === cell.a && c.y === cell.b) ? list.filter(c => !(c.x === cell.a && c.y === cell.b)) : [...list, { x: cell.a, y: cell.b }]);
+                return;
+              }
               if (armyMoveMode && selectedArmy) {
                 const g = event.currentTarget as SVGGElement; const ctm = g.getScreenCTM(); const svg = g.ownerSVGElement;
                 if (!ctm || !svg) return;
@@ -2022,11 +2031,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 return;
               }
               focusTile(tile); }}
-              className={roadDraft.length > 0 || armyMoveMode ? "cursor-crosshair" : "cursor-pointer"}>
+              className={roadDraft.length > 0 || armyMoveMode || battlePicking ? "cursor-crosshair" : "cursor-pointer"}>
 
               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={Array.isArray(terrainRaster) && terrainRaster.length ? "transparent" : colors[0]}
                 stroke={active || inActiveCity ? "var(--map-focus)" : holderColor}
                 strokeWidth={active ? 3 : inActiveCity ? 2.2 : holderCity ? 1.2 : 0} />
+              {(battlePicking ? battlePicked : battlefieldCells ?? []).some(c => c.x === cell.a && c.y === cell.b) && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill="hsl(var(--destructive) / .18)" stroke="hsl(var(--destructive))" strokeWidth={2.5} strokeDasharray={battlePicking ? "8 5" : undefined} />}
               {cityLayerCityId && !inActiveCity && <polygon points={squareDiamondPoints(point, TILE_SIZE)} pointerEvents="none" fill="var(--map-marker-edge)" opacity=".55" />}
               {holderCity && !active && <polygon points={squareDiamondPoints(point, TILE_SIZE - 3)} fill="none" stroke={holderColor} strokeWidth=".8" opacity=".38" strokeDasharray="5 3" />}
               {showSubBiomes && zoom >= 1.2 && <g pointerEvents="none" opacity={active ? .13 : .035}>
@@ -2828,6 +2838,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) &&
           <SiegePanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName} army={selectedArmy} cities={cities} armies={armies}
             selectedUnitKey={siegeUnitKey} onSelectUnit={setSiegeUnitKey} onSiegeChange={setSiegeView} mapOrder={siegeMapOrder} />}
+        {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) &&
+          <FieldBattlePanel key={selectedArmy.id} sessionId={sessionId} currentTurn={currentTurn} playerName={playerName} army={selectedArmy} armies={armies}
+            picked={battlePicked} picking={battlePicking} onPicking={onBattlePicking} onBattlefield={setBattlefieldCells} />}
         {selectedArmyStack.length > 1 && <div className="mt-4">
           <h3 className="text-sm">Na stejném poli ({selectedArmyStack.length})</h3>
           <div className="mt-2 space-y-1">

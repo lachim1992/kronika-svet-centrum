@@ -225,6 +225,13 @@
       "when": 1794688393348,
       "tag": "0031_sieges",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794750296730,
+      "tag": "0032_field_battles",
+      "breakpoints": true
     }
   ]
 }
