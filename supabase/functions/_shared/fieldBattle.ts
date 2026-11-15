@@ -190,7 +190,7 @@ export function autoDeploy(units: FBUnit[], side: Side, field: Cell[], own: Cell
   void meleeCount;
   const facing = faceTo(oc, ec);
   return units.map(u => {
-    if (u.side !== side || !(u.status === "ready" || u.status === "reserve")) return u;
+    if (u.side !== side || !((u.status as UnitStatus) === "ready" || (u.status as UnitStatus) === "reserve")) return u;
     const p = placed.get(u.key);
     return p ? { ...u, x: p.x, y: p.y, facing, status: "ready" } : { ...u, x: null, y: null, status: "reserve" };
   });
@@ -406,7 +406,7 @@ export function resolveRound(units0: FBUnit[], orders: FBOrder[], field: Cell[],
     if (!t || t.status !== "ready" || t.x === null) { events.push({ seq: o.seq, key: u.key, kind: "attack_void", target: o.target, text: "cíl už nebojuje" }); continue; }
     if (o.kind === "CHARGE") {
       if (!isCavalry(u.type)) continue;
-      const tt = terrainAt(t.x, t.y);
+      const tt = terrainAt(t.x!, t.y!);
       if (tt === "forest" || tt === "village") { events.push({ seq: o.seq, key: u.key, kind: "charge_fail", target: t.key, text: "náraz do lesa/vesnice nelze" }); continue; }
       const r = moveRange(u, terrainAt);
       const opp: Record<Facing, [number, number]> = { n: [0, 1], s: [0, -1], e: [-1, 0], w: [1, 0] };
@@ -426,7 +426,7 @@ export function resolveRound(units0: FBUnit[], orders: FBOrder[], field: Cell[],
       u.ammo -= need; u.fatigue = Math.min(100, u.fatigue + 10); u.facing = faceTo(pos(u), pos(t));
       const r = strike(u, t, { ranged: true, volley: o.kind === "VOLLEY" });
       events.push({ seq: o.seq, key: u.key, kind: o.kind === "VOLLEY" ? "volley" : "shoot", target: t.key, lossesTarget: r.loss,
-        text: `${o.kind === "VOLLEY" ? "salva" : "střelba"} ${r.flank === "front" ? "zepředu" : r.flank === "side" ? "z boku" : "do týlu"}: ${r.loss} padlých${t.status === "routed" ? ", nepřítel prchá" : t.status === "dead" ? ", oddíl zničen" : ""}` });
+        text: `${o.kind === "VOLLEY" ? "salva" : "střelba"} ${r.flank === "front" ? "zepředu" : r.flank === "side" ? "z boku" : "do týlu"}: ${r.loss} padlých${(t.status as UnitStatus) === "routed" ? ", nepřítel prchá" : (t.status as UnitStatus) === "dead" ? ", oddíl zničen" : ""}` });
       continue;
     }
     events.push({ seq: o.seq, key: u.key, kind: "attack_miss", target: t.key, text: st.ranged > 0 && u.ammo < need && d <= st.range ? "došla munice" : "cíl mimo dosah (mezitím odešel?)" });
