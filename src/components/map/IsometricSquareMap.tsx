@@ -32,7 +32,7 @@ import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
 import SiegePanel, { type SiegeMapView } from "@/components/map/SiegePanel";
-import FieldBattlePanel from "@/components/map/FieldBattlePanel";
+import FieldBattlePanel, { type FieldBattleView, type FieldBattleClick } from "@/components/map/FieldBattlePanel";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
@@ -980,7 +980,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [siegeView, setSiegeView] = useState<SiegeMapView | null>(null);
   const [battlePicking, setBattlePicking] = useState(false);
   const [battlePicked, setBattlePicked] = useState<{ x: number; y: number }[]>([]);
-  const [battlefieldCells, setBattlefieldCells] = useState<{ x: number; y: number }[] | null>(null);
+  const [fieldBattle, setFieldBattle] = useState<FieldBattleView | null>(null);
+  const [fieldBattleClick, setFieldBattleClick] = useState<FieldBattleClick | null>(null);
+  const battlefieldCells = fieldBattle?.cells ?? null;
+  const fieldBattleStacks = useMemo(() => new Set((fieldBattle?.units ?? []).map(u => u.stackId)), [fieldBattle]);
   const onBattlePicking = useCallback((on: boolean, initial: { x: number; y: number }[]) => { setBattlePicking(on); setBattlePicked(initial); }, []);
   const [siegeUnitKey, setSiegeUnitKey] = useState<string | null>(null);
   const [siegeMapOrder, setSiegeMapOrder] = useState<{ unitKey: string; target: any; n: number } | null>(null);
@@ -2019,6 +2022,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 setBattlePicked(list => list.some(c => c.x === cell.a && c.y === cell.b) ? list.filter(c => !(c.x === cell.a && c.y === cell.b)) : [...list, { x: cell.a, y: cell.b }]);
                 return;
               }
+              if (fieldBattle && fieldBattle.selectedKey) {
+                const g = event.currentTarget as SVGGElement; const ctm = g.getScreenCTM(); const svg = g.ownerSVGElement;
+                if (!ctm || !svg) return;
+                const pt = svg.createSVGPoint(); pt.x = event.clientX; pt.y = event.clientY;
+                const loc = pt.matrixTransform(ctm.inverse());
+                const lx = (loc.x - point.x) / TILE_SIZE, ly = (loc.y - point.y) * 2 / TILE_SIZE;
+                const clamp = (v: number) => Math.max(0, Math.min(MICRO_PER_TILE - 1, Math.floor(v * MICRO_PER_TILE)));
+                const px = clamp((lx + ly + 1) / 2), py = clamp((ly + 1 - lx) / 2);
+                setFieldBattleClick(o => ({ kind: "micro", x: cell.a * MICRO_PER_TILE + px, y: cell.b * MICRO_PER_TILE + py, n: (o?.n ?? 0) + 1 }));
+                return;
+              }
               if (armyMoveMode && selectedArmy) {
                 const g = event.currentTarget as SVGGElement; const ctm = g.getScreenCTM(); const svg = g.ownerSVGElement;
                 if (!ctm || !svg) return;
@@ -2239,7 +2253,35 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             // Squad without a siege action this turn rests in the siege camp.
             return { x: NaN, y: NaN, ram: false, camp: true };
           }; return null; })()}
-          {!cityLayerCityId && armyGroups.map(group => {
+          {!cityLayerCityId && fieldBattle && fieldBattle.units.length > 0 && (() => {
+            const microPoint = (x: number, y: number) => {
+              const gx = Math.floor(x / MICRO_PER_TILE), gy = Math.floor(y / MICRO_PER_TILE); const c = at(gx, gy);
+              const px = (x - gx * MICRO_PER_TILE + .5) / MICRO_PER_TILE, py = (y - gy * MICRO_PER_TILE + .5) / MICRO_PER_TILE;
+              return { x: c.x + (px - py) * TILE_SIZE, y: c.y + (px + py - 1) * TILE_SIZE / 2 };
+            };
+            const placed = fieldBattle.units.filter(u => u.x !== null && u.y !== null && u.status !== "dead" && !(u.status === "routed" && fieldBattle.status === "fighting"))
+              .map(u => ({ u, p: microPoint(u.x!, u.y!) })).sort((a, b) => a.p.y - b.p.y);
+            const byKey = new Map(placed.map(o => [o.u.key, o]));
+            return <g data-field-battle-units>
+              {fieldBattle.orders.map(o => { const from = byKey.get(o.key); if (!from) return null;
+                const to = o.kind === "move" ? microPoint(o.to.x, o.to.y) : byKey.get(o.target)?.p; if (!to) return null;
+                return <g key={`o${o.key}`} pointerEvents="none"><line x1={from.p.x} y1={from.p.y} x2={to.x} y2={to.y} stroke={o.kind === "attack" ? "var(--map-city-rival)" : "var(--map-focus)"} strokeWidth="1.3" strokeDasharray="3 2" />
+                  <circle cx={to.x} cy={to.y} r="2.2" fill="none" stroke={o.kind === "attack" ? "var(--map-city-rival)" : "var(--map-focus)"} strokeWidth="1" />
+                  <text x={from.p.x} y={from.p.y - 11} textAnchor="middle" fontSize="5" fontWeight="700" fill="var(--map-focus)">{o.seq}</text></g>; })}
+              {placed.map(({ u, p }) => {
+                const stack = armies.find(a => a.id === u.stackId); const own = stack?.player_name === playerName;
+                const banner = u.side === "attacker" ? "var(--map-city-rival)" : "var(--map-city-own)";
+                const sel = fieldBattle.selectedKey === u.key; const mineSide = u.side === fieldBattle.activeSide;
+                return <g key={u.key} transform={`translate(${p.x},${p.y})`} style={{ transition: "transform .6s ease" }} className="cursor-pointer"
+                  onClick={e => { e.stopPropagation(); if (!dragRef.current?.moved) setFieldBattleClick(o => ({ kind: "unit", key: u.key, n: (o?.n ?? 0) + 1 })); }}>
+                  <ellipse cx="0" cy="2" rx="7" ry="3.5" fill={sel ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={sel ? "var(--map-focus)" : mineSide ? banner : "transparent"} strokeWidth="1" />
+                  <ArmySquad men={u.men} kind={u.type === "CAVALRY" ? "horse" : "foot"} banner={banner} active={sel} formation={stack?.battle_formation} />
+                  {u.status === "routed" && <text y="-10" textAnchor="middle" fontSize="5" fill="var(--map-city-rival)">prchá</text>}
+                  <title>{`${u.side === "attacker" ? "Útočník" : "Obránce"}${own ? "" : ""} · ${u.type} · ${u.men} mužů · morálka ${u.morale} %`}</title>
+                </g>; })}
+            </g>;
+          })()}
+          {!cityLayerCityId && armyGroups.filter(group => !(fieldBattle && fieldBattle.units.some(u => u.x !== null) && group.list.some(a => fieldBattleStacks.has(a.id)))).map(group => {
             const point = at(group.cell.a, group.cell.b);
             const lead = group.list[0];
             const own = lead.player_name === playerName;
@@ -2840,7 +2882,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             selectedUnitKey={siegeUnitKey} onSelectUnit={setSiegeUnitKey} onSiegeChange={setSiegeView} mapOrder={siegeMapOrder} />}
         {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) &&
           <FieldBattlePanel key={selectedArmy.id} sessionId={sessionId} currentTurn={currentTurn} playerName={playerName} army={selectedArmy} armies={armies}
-            picked={battlePicked} picking={battlePicking} onPicking={onBattlePicking} onBattlefield={setBattlefieldCells} />}
+            picked={battlePicked} picking={battlePicking} onPicking={onBattlePicking} onBattlefield={setFieldBattle} mapClick={fieldBattleClick} />}
         {selectedArmyStack.length > 1 && <div className="mt-4">
           <h3 className="text-sm">Na stejném poli ({selectedArmyStack.length})</h3>
           <div className="mt-2 space-y-1">

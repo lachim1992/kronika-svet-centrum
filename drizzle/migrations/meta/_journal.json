@@ -232,6 +232,13 @@
       "when": 1794750296730,
       "tag": "0032_field_battles",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794750740893,
+      "tag": "0033_field_battle_state",
+      "breakpoints": true
     }
   ]
 }

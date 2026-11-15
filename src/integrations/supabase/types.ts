@@ -4299,12 +4299,17 @@ export type Database = {
           created_at: string
           defender_player: string
           defender_stack_id: string
+          finished_at: string | null
           id: string
           last_report: Json | null
+          orders: Json
+          ready: Json
+          rev: number
           round: number
           session_id: string
           started_turn: number
           status: string
+          units: Json | null
         }
         Insert: {
           attacker_player: string
@@ -4313,12 +4318,17 @@ export type Database = {
           created_at?: string
           defender_player: string
           defender_stack_id: string
+          finished_at?: string | null
           id?: string
           last_report?: Json | null
+          orders?: Json
+          ready?: Json
+          rev?: number
           round?: number
           session_id: string
           started_turn: number
           status?: string
+          units?: Json | null
         }
         Update: {
           attacker_player?: string
@@ -4327,12 +4337,17 @@ export type Database = {
           created_at?: string
           defender_player?: string
           defender_stack_id?: string
+          finished_at?: string | null
           id?: string
           last_report?: Json | null
+          orders?: Json
+          ready?: Json
+          rev?: number
           round?: number
           session_id?: string
           started_turn?: number
           status?: string
+          units?: Json | null
         }
         Relationships: [
           {
