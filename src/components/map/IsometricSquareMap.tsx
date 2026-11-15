@@ -33,6 +33,7 @@ import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
 import SiegePanel, { type SiegeMapView } from "@/components/map/SiegePanel";
 import FieldBattlePanel, { type FieldBattleView, type FieldBattleClick } from "@/components/map/FieldBattlePanel";
+import { FORMATIONS as FB_FORMATIONS, FORMATION_INFO as FB_FORMATION_INFO, normalizeFormation as fbNormalizeFormation } from "../../../supabase/functions/_shared/fieldBattle";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
@@ -2882,10 +2883,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </div>
         {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) && <div className="mt-4">
           <p className="mb-1.5 text-xs font-semibold">Bojová formace</p>
-          <div className="grid grid-cols-5 gap-1">
-            {([["line", "Linie"], ["wedge", "Klín"], ["square", "Čtverec"], ["column", "Kolona"], ["skirmish", "Rozptyl"]] as const).map(([key, label]) => (
-              <Button key={key} size="sm" variant={(selectedArmy.battle_formation || "line") === key ? "default" : "outline"} className="h-8 px-1 text-[11px]"
-                disabled={formationSaving} onClick={() => void setBattleFormation(key)}>{label}</Button>))}
+          <div className="grid grid-cols-4 gap-1">
+            {FB_FORMATIONS.map(key => (
+              <Button key={key} size="sm" variant={fbNormalizeFormation(selectedArmy.battle_formation) === key ? "default" : "outline"} className="h-8 px-1 text-[11px]" title={FB_FORMATION_INFO[key].text}
+                disabled={formationSaving} onClick={() => void setBattleFormation(key)}>{FB_FORMATION_INFO[key].label}</Button>))}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">{FB_FORMATION_INFO[fbNormalizeFormation(selectedArmy.battle_formation)].text}. Oddíly, které formaci neumí, bojují v linii. Formace se při startu bitvy zafixuje.</p>
           </div>
         </div>}
         {(selectedArmy.player_name === playerName || (selectedArmy as any).controller_player === playerName) && <div className="mt-3 space-y-2">
