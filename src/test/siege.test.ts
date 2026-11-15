@@ -29,7 +29,7 @@ describe("micro siege", () => {
     const orders = units.map((u, i) => ({ seq: i + 1, side: "attacker" as const, unitKey: u.key, target: { kind: "wall" as const, segment: 0 } }));
     expect(resolveSiegeTurn({ seed: "x", wall: 1, walls, units, orders }).walls[0].breached).toBe(true);
   });
-  it("defenders behind intact walls cannot be attacked; keep needs a breach and no defenders", () => {
+  it("defenders behind intact walls cannot be attacked; legacy keep orders move through a breach", () => {
     const units = [...microUnits("attacker", "a", 400, 50), ...microUnits("defender", "d", 100, 50)];
     const r = resolveSiegeTurn({ seed: "k", wall: 1, walls, units, orders: [{ seq: 1, side: "attacker", unitKey: "a:0", target: { kind: "unit", key: "d:0" } }, { seq: 2, side: "attacker", unitKey: "a:1", target: { kind: "keep" } }] });
     expect(r.events.map(e => e.outcome)).toEqual(["blocked", "blocked"]);
@@ -38,6 +38,36 @@ describe("micro siege", () => {
     expect(far.captured).toBe(false);
     const c = resolveSiegeTurn({ seed: "k", wall: 1, walls: open, units: microUnits("attacker", "a", 400, 50), orders: [{ seq: 1, side: "attacker", unitKey: "a:0", target: { kind: "keep" } }], positions: { "a:0": 8 } });
     expect(c.captured).toBe(true);
+    expect(c.positions["a:0"]).toBe(14);
+  });
+  it("captures on entry to a main-building square even with defenders elsewhere", () => {
+    const r = resolveSiegeTurn({ seed: "entry", wall: 1, walls: walls.map(w => ({ ...w, breached: true })),
+      units: [...microUnits("attacker", "a", 200, 50), ...microUnits("defender", "d", 200, 50)],
+      positions: { "a:0": 8, "d:0": 35 }, orders: [{ seq: 1, side: "attacker", unitKey: "a:0", target: { kind: "move", parcel: 14 } }] });
+    expect(r.positions["a:0"]).toBe(14);
+    expect(r.positions["d:0"]).toBe(35);
+    expect(r.captured).toBe(true);
+    expect(r.events[0].outcome).toBe("captured");
+  });
+  it("adjacency alone never captures the main building", () => {
+    const r = resolveSiegeTurn({ seed: "adjacent", wall: 1, walls, units: microUnits("attacker", "a", 200, 50),
+      positions: { "a:0": 0 }, orders: [{ seq: 1, side: "attacker", unitKey: "a:0", target: { kind: "move", parcel: 14 } }] });
+    expect(r.positions["a:0"]).toBe(7);
+    expect(parcelDist(7, 14)).toBe(1);
+    expect(r.captured).toBe(false);
+  });
+  it("cannot enter an occupied main-building square", () => {
+    const r = resolveSiegeTurn({ seed: "guarded", wall: 1, walls, units: [...microUnits("attacker", "a", 200, 50), ...microUnits("defender", "d", 200, 50)],
+      positions: { "a:0": 8, "d:0": 14 }, orders: [{ seq: 1, side: "attacker", unitKey: "a:0", target: { kind: "move", parcel: 14 } }] });
+    expect(r.positions["a:0"]).toBe(8);
+    expect(r.events[0].outcome).toBe("blocked");
+    expect(r.captured).toBe(false);
+  });
+  it("defender movement onto the main building does not capture its own city", () => {
+    const r = resolveSiegeTurn({ seed: "defence", wall: 1, walls, units: microUnits("defender", "d", 200, 50),
+      positions: { "d:0": 8 }, orders: [{ seq: 1, side: "defender", unitKey: "d:0", target: { kind: "move", parcel: 14 } }] });
+    expect(r.positions["d:0"]).toBe(14);
+    expect(r.captured).toBe(false);
   });
   it("after a breach only squads sent through it enter the city", () => {
     const open = walls.map((w, i) => ({ ...w, breached: i === 0 }));

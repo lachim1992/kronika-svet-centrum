@@ -30,13 +30,10 @@ export async function dispatchCommand(params: {
   commandPayload: Record<string, any>;
   commandId?: string;
 }): Promise<DispatchResult> {
-  const commandId = params.commandId || crypto.randomUUID();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
   let data: any, error: any;
   try {
+    const commandId = params.commandId || crypto.randomUUID();
+    const { data: { session } } = await supabase.auth.getSession();
     ({ data, error } = await supabase.functions.invoke("command-dispatch", {
     body: {
       sessionId: params.sessionId,

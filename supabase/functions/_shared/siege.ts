@@ -108,9 +108,11 @@ export function resolveSiegeTurn(input: { seed: string; wall: number; walls: Wal
       else ev("held", loss, 0, `${seg.name} odolala (šance ${Math.round(p * 100)} %).`);
       continue;
     }
-    if (o.target.kind === "move") {
-      const from = pos[me.key]; const to = (o.target as any).parcel;
+    if (o.target.kind === "move" || o.target.kind === "keep") {
+      const from = pos[me.key];
+      if (o.target.kind === "keep" && (me.side !== "attacker" || !breached)) { ev("blocked", 0, 0, "K hlavní budově se dostaneš jen průlomem v hradbách."); continue; }
       if (from === undefined) { ev("invalid", 0, 0, "Oddíl ještě není ve městě — nejdřív projdi průlomem."); continue; }
+      const to = o.target.kind === "move" ? o.target.parcel : KEEP_PARCELS.reduce((a, k) => parcelDist(from, k) < parcelDist(from, a) ? k : a, KEEP_PARCELS[0]);
       if (!validParcel(to)) { ev("invalid", 0, 0, "Neplatné pole."); continue; }
       // One micro square per turn towards the target, never onto an occupied square.
       const { x, y } = pxy(from); let best = from, bd = parcelDist(from, to);
@@ -118,7 +120,11 @@ export function resolveSiegeTurn(input: { seed: string; wall: number; walls: Wal
         if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= CITY_SIDE || ny >= CITY_SIDE) continue; const c = ny * CITY_SIDE + nx;
         if (occupied(c)) continue; const d = parcelDist(c, to); if (d < bd) { bd = d; best = c; } }
       if (best === from) { ev("blocked", 0, 0, "Cesta je zablokovaná."); continue; }
-      pos[me.key] = best; ev("moved", 0, 0, "Oddíl postoupil o jedno pole."); continue;
+      pos[me.key] = best;
+      if (me.side === "attacker" && KEEP_PARCELS.includes(best)) {
+        captured = true; ev("captured", 0, 0, "Oddíl vstoupil do hlavní budovy — město padlo."); break;
+      }
+      ev("moved", 0, 0, "Oddíl postoupil o jedno pole."); continue;
     }
     if (o.target.kind === "unit") {
       const t = units.get((o.target as any).key);
@@ -137,23 +143,6 @@ export function resolveSiegeTurn(input: { seed: string; wall: number; walls: Wal
       ev(t.men <= 0 ? "killed" : "hit", back, dmg, `Zabito ${dmg} nepřátel, ztráty ${back}${t.men <= 0 ? " — nepřátelská jednotka zničena" : ""}.`);
       continue;
     }
-    // Main building: needs a breach and no living defenders.
-    if (me.side !== "attacker") { ev("invalid", 0, 0, "Neplatný cíl."); continue; }
-    if (!breached) { ev("blocked", 0, 0, "K hlavní budově se dostaneš jen průlomem v hradbách."); continue; }
-    const mp = pos[me.key];
-    if (mp === undefined) { ev("blocked", 0, 0, "Nejdřív projdi průlomem do města."); continue; }
-    if (!KEEP_PARCELS.some(k => parcelDist(mp, k) <= 1)) {
-      // Too far: march one square towards the main building instead of doing nothing.
-      const goal = KEEP_PARCELS.reduce((a, k) => parcelDist(mp, k) < parcelDist(mp, a) ? k : a, KEEP_PARCELS[0]);
-      const { x, y } = pxy(mp); let best = mp, bd = parcelDist(mp, goal);
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const nx = x + dx, ny = y + dy;
-        if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= CITY_SIDE || ny >= CITY_SIDE) continue; const c = ny * CITY_SIDE + nx;
-        if (occupied(c)) continue; const d = parcelDist(c, goal); if (d < bd) { bd = d; best = c; } }
-      if (best === mp) { ev("blocked", 0, 0, "Cesta k hlavní budově je zablokovaná."); continue; }
-      pos[me.key] = best; ev("moved", 0, 0, "Oddíl postupuje k hlavní budově (o jedno pole)."); continue;
-    }
-    if (KEEP_PARCELS.some(k => Object.entries(pos).some(([u, q]) => q === k && units.get(u)?.side === "defender" && (units.get(u)?.men ?? 0) > 0))) { ev("blocked", 0, 0, "Hlavní budovu ještě brání posádka."); continue; }
-    captured = true; ev("captured", 0, 0, "Hlavní budova dobyta — město padlo.");
   }
   const losses = new Map<string, number>();
   for (const u of input.units) { const now = units.get(u.key)!; const lost = u.men - Math.max(0, now.men); if (lost > 0) losses.set(u.stackId ?? "garrison", (losses.get(u.stackId ?? "garrison") ?? 0) + lost); }

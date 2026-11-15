@@ -1,5 +1,14 @@
 # Map-first square-grid roadmap
 
+## Přesun — neúplný terén náhledu (2026-11-15)
+- [x] Náhled již nespoléhá na potenciálně zkrácený celosvětový read 40 000 parcel: před potvrzením načte okolí armády (±5 velkých polí, maximální silniční dosah) po stabilních stránkách. Chyba načtení zastaví plánování; chyba přihlášené relace se vrací jako odmítnutí, ne nezachycený pád.
+- [x] command-errors + micro-movement 11/11, build OK; přihlášená JV72O7 Mapa → Železná horda → Přesunout armádu bez page errors. Žádný přesun, tah či zápis proveden. Historické odmítnutí se z dostupné telemetry nepodařilo reprodukovat; přesná původní trasa není k dispozici.
+
+## Obléhání — vstup do hlavní budovy a vlaječky (2026-11-15)
+- [x] Prostřední terč odstraněn; dobytí pouze při vstupu útočníka na jedno ze stávajících polí hlavní budovy (14/15/20/21), postup 1 pole/kolo, obsazené pole blokuje vstup. Starší keep příkazy používají stejný pohyb, nikoli dobytí ze sousedství.
+- [x] Miniaturní vlaječky vlastníka na věžičkách v běžné i detailní mapě, stávající vlastní/cizí barvy. Testy siege.test.ts 12/12, automatický build OK. Přihlášená JV72O7 mapa: 62 vlaječek, otevření armády bez page errors. Nasazen commit-turn; žádný herní zápis, obléhání ani posun tahu.
+- [ ] Živý vstup na hlavní budovu neověřen: JV72O7 aktuálně nemá aktivní obléhání; další kontrola vyžaduje autorizovanou testovací bitvu.
+
 ## Přehledné okno města a mikroparcely — 2026-11-14
 - [x] Nové `MapDetailWindow.tsx` nahrazuje současnou dlouhou pravou lištu nemodálním portálovým oknem: desktop lze přesouvat za záhlaví a drží se uvnitř viewportu, mobil používá dolní panel. Mapa zůstává aktivní; sekce Přehled / Parcely / Rozrůst / Území oddělují dosud smíšený obsah. Existující nákup, výstavba, průzkum, provincie i správa sídel nadále používají původní command-dispatch toky.
 - [x] `IsometricSquareMap.tsx` výrazně zvýrazňuje městem držené parcely trvalým šrafováním, barvou vlastníka a silnějším obrysem; neaktivní průzkumná mřížka zůstává slabá. Všechny akce a hitboxy jsou beze změny.
