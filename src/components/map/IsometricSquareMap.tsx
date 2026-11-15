@@ -33,6 +33,7 @@ import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
 import SiegePanel, { type SiegeMapView } from "@/components/map/SiegePanel";
 import FieldBattlePanel, { type FieldBattleView, type FieldBattleClick } from "@/components/map/FieldBattlePanel";
+import { MOVE_RANGE as MOVE_RANGE_FB } from "../../../supabase/functions/_shared/fieldBattle";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
@@ -2273,7 +2274,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const placed = fieldBattle.units.filter(u => u.x !== null && u.y !== null && u.status !== "dead" && !(u.status === "routed" && fieldBattle.status === "fighting"))
               .map(u => ({ u, p: microPoint(u.x!, u.y!) })).sort((a, b) => a.p.y - b.p.y);
             const byKey = new Map(placed.map(o => [o.u.key, o]));
+            const selU = fieldBattle.status === "fighting" ? fieldBattle.units.find(u => u.key === fieldBattle.selectedKey && u.x !== null) : undefined;
+            const reach: { x: number; y: number }[] = [];
+            if (selU) { const r = MOVE_RANGE_FB[selU.type]; for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) if ((dx || dy) && Math.abs(dx) + Math.abs(dy) <= r) reach.push(microPoint(selU.x! + dx, selU.y! + dy)); }
             return <g data-field-battle-units>
+              {reach.map((p, i) => <circle key={`r${i}`} cx={p.x} cy={p.y} r="2.2" fill="var(--map-focus)" opacity=".45" pointerEvents="none" />)}
               {fieldBattle.orders.map(o => { const from = byKey.get(o.key); if (!from) return null;
                 const to = o.kind === "move" ? microPoint(o.to.x, o.to.y) : byKey.get(o.target)?.p; if (!to) return null;
                 return <g key={`o${o.key}`} pointerEvents="none"><line x1={from.p.x} y1={from.p.y} x2={to.x} y2={to.y} stroke={o.kind === "attack" ? "var(--map-city-rival)" : "var(--map-focus)"} strokeWidth="1.3" strokeDasharray="3 2" />
