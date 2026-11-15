@@ -68,7 +68,7 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
       if (meta.ai.attacker) { units = autoDeploy(units, "attacker", field, a, d, terrainAt); ready.attacker = true; }
     }
     const { data: fb, error: fErr } = await supabase.from("field_battles").insert({ session_id: sessionId, attacker_player: st.player_name, defender_player: en.player_name,
-      attacker_stack_id: st.id, defender_stack_id: en.id, started_turn: turnNumber, battlefield: field, units, ready, meta }).select("id").single();
+      attacker_stack_id: st.id, defender_stack_id: en.id, started_turn: turnNumber, battlefield: field, units, ready, last_report: { round: 0, events: [], winner: null, meta } }).select("id").single();
     if (fErr) return { events: [], error: fErr.code === "23505" ? "Některá z armád už bojuje" : fErr.message };
     return insertEvents(supabase, commandId, sessionId, turnNumber, [{
       ...base, event_type: "military", player: st.player_name, note: `${st.name} vyvolala bitvu s armádou ${en.name}.`, importance: "critical",
@@ -84,7 +84,8 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
   if (!att || !def) return { events: [], error: "Armáda bitvy chybí" };
   const stackOf = (s: Side) => s === "attacker" ? att : def;
   const field: Cell[] = fb.battlefield;
-  const meta: BattleMeta = fb.meta ?? {};
+  // Meta lives inside last_report.meta (no extra column needed); older rows may carry a meta column.
+  const meta: BattleMeta = fb.meta ?? fb.last_report?.meta ?? {};
   let units: FBUnit[];
   if (fb.units) units = (fb.units as any[]).map(upgradeUnit);
   else {
@@ -186,7 +187,7 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
   const r = resolveRound(units, orders, field, terrainAt, seededRandom(`${fb.id}:${fb.round}`), fb.round, meta, zoneOf);
   const report = { round: fb.round, events: r.events, winner: r.winner };
   if (!r.winner) {
-    let next = { units: r.units, orders: [] as FBOrder[], ready: {} as Record<string, boolean>, round: fb.round + 1, last_report: report, meta: r.meta };
+    let next = { units: r.units, orders: [] as FBOrder[], ready: {} as Record<string, boolean>, round: fb.round + 1, last_report: { ...report, meta: r.meta } };
     const err = await save(next); return err ? { events: [], error: err } : { events: [] };
   }
   // Final settlement: battle state + stack losses + typed composition losses in ONE transaction, guarded by rev.
@@ -194,10 +195,21 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
   const plan = settlementPlan(r.units, [att, def].map((s: any) => ({ id: s.id, soldiers: s.soldiers, power: s.power ?? 0, morale: s.morale ?? 70 })), comps || [], UNIT_POWER_FACTOR);
   const summary = { ...report, losses: Object.fromEntries(plan.stackUpdates.map(s => [s.id, { lost: s.lost, byType: s.lostByType, soldiers: s.soldiers, morale: s.morale }])) };
   const { data: settled, error: sErr } = await supabase.rpc("settle_field_battle", { p_battle: fb.id, p_rev: fb.rev,
-    p_patch: { units: r.units, last_report: summary, meta: r.meta, round: fb.round },
+    p_patch: { units: r.units, last_report: { ...summary, meta: r.meta }, round: fb.round },
     p_stacks: plan.stackUpdates.map(({ lost: _l, lostByType: _t, ...s }) => s), p_comps: plan.compUpdates });
-  if (sErr) return { events: [], error: sErr.message };
-  if (!settled) return { events: [], error: "Bitva se mezitím změnila, zkus to znovu" };
+  let ok = settled;
+  if (sErr && /settle_field_battle|PGRST202|function/i.test(`${sErr.code} ${sErr.message}`)) {
+    // RPC not installed yet: claim the finish with a rev-guarded update first, so a retry can never apply losses twice.
+    const { data: claimed, error: cErr } = await supabase.from("field_battles").update({ units: r.units, last_report: { ...summary, meta: r.meta }, round: fb.round,
+      status: "finished", finished_at: new Date().toISOString(), rev: fb.rev + 1 }).eq("id", fb.id).eq("rev", fb.rev).neq("status", "finished").select("id");
+    if (cErr) return { events: [], error: cErr.message };
+    ok = !!claimed?.length;
+    if (ok) {
+      for (const { lost: _l, lostByType: _t, ...s } of plan.stackUpdates) await supabase.from("military_stacks").update(s).eq("id", s.id);
+      for (const c of plan.compUpdates) await supabase.from("military_stack_composition").update({ manpower: c.manpower }).eq("id", c.id);
+    }
+  } else if (sErr) return { events: [], error: sErr.message };
+  if (!ok) return { events: [], error: "Bitva se mezitím změnila, zkus to znovu" };
   const win = r.winner === "attacker" ? att.name : r.winner === "defender" ? def.name : null;
   const lost = (id: string) => plan.stackUpdates.find(s => s.id === id)?.lost ?? 0;
   return insertEvents(supabase, commandId, sessionId, turnNumber, [{
