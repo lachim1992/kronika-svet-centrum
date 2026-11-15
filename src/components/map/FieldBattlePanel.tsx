@@ -35,7 +35,8 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
   const stackOf = (id: string) => armies.find(a => a.id === id) as (ArmyLite & { controller_player?: string | null }) | undefined;
   const controls = (id: string | undefined) => { const st = id ? stackOf(id) : undefined; return !!st && (st.player_name === playerName || st.controller_player === playerName); };
   const mySides: Side[] = battle ? (["attacker", "defender"] as Side[]).filter(sd => controls(sd === "attacker" ? battle.attacker_stack_id : battle.defender_stack_id)) : [];
-  const side: Side | null = activeSide && mySides.includes(activeSide) ? activeSide : mySides[0] ?? null;
+  const ownSide: Side | null = battle ? (battle.attacker_stack_id === army.id ? "attacker" : "defender") : null;
+  const side: Side | null = activeSide && mySides.includes(activeSide) ? activeSide : ownSide && mySides.includes(ownSide) ? ownSide : mySides[0] ?? null;
   useEffect(() => {
     onBattlefield(battle ? { id: battle.id, cells: battle.battlefield, units: battle.units ?? [], orders: battle.orders ?? [], status: battle.status, selectedKey, activeSide: side, attackerPlayer: battle.attacker_player } : null);
   }, [battle, onBattlefield, selectedKey, side]);

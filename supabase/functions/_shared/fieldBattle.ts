@@ -76,11 +76,11 @@ const faceTo = (from: { x: number; y: number }, to: { x: number; y: number }): F
 /** Place every undeployed unit of a side in ranks in its own zone, front rank towards the enemy. */
 export function autoDeploy(units: FBUnit[], side: Side, field: Cell[], own: Cell, enemy: Cell): FBUnit[] {
   const taken = new Set(units.filter(u => u.x !== null).map(u => `${u.x},${u.y}`));
-  const ec = { x: enemy.x * MICRO + 2.5, y: enemy.y * MICRO + 2.5 };
+  const ec = { x: enemy.x * MICRO + 2.5, y: enemy.y * MICRO + 2.5 }; // own squares first, shared squares only when needed
   const spots: { x: number; y: number; d: number }[] = [];
   for (const f of field) for (let i = 0; i < MICRO; i++) for (let j = 0; j < MICRO; j++) {
     const x = f.x * MICRO + i, y = f.y * MICRO + j;
-    if (!taken.has(`${x},${y}`) && inDeployZone(field, own, enemy, x, y)) spots.push({ x, y, d: Math.hypot(x - ec.x, y - ec.y) });
+    if (!taken.has(`${x},${y}`) && inDeployZone(field, own, enemy, x, y)) spots.push({ x, y, d: Math.hypot(x - ec.x, y - ec.y) + (cheb(f, own) < cheb(f, enemy) ? 0 : 1000) });
   }
   spots.sort((a, b) => a.d - b.d || a.y - b.y || a.x - b.x);
   // Melee first (front), archers behind.

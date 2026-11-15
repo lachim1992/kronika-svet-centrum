@@ -47,3 +47,10 @@ describe("tactical rounds", () => {
     const o = stackOutcome(r.units).get("defender")!; expect(o.lost).toBe(r.events[0].lossesTarget);
   });
 });
+describe("auto deploy leaves shared squares for the enemy", () => {
+  it("uses own square before contested ones", () => {
+    const f = [{ x: 0, y: 1 }, { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }];
+    const us = autoDeploy(buildUnits("attacker", "a", 7200, [], 70), "attacker", f, { x: 0, y: 1 }, { x: 0, y: 0 });
+    expect(us.every(x => Math.floor(x.x! / 6) === 0 && Math.floor(x.y! / 6) === 1)).toBe(true);
+  });
+});
