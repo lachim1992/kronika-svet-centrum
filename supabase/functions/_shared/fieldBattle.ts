@@ -439,7 +439,7 @@ export function resolveRound(units0: FBUnit[], orders: FBOrder[], field: Cell[],
   for (const u of units) {
     if (u.status !== "ready" || u.x === null) continue;
     const n = routedNow.filter(r => r.side === u.side && cheb(pos(r), pos(u)) <= 1).length;
-    if (n) { moraleHit(u, Math.min(12, n * 4)); checkRout(u); if (u.status === "routed") events.push({ seq: 999, key: u.key, kind: "rout_chain", text: "panika se šíří, oddíl prchá" }); }
+    if (n) { moraleHit(u, Math.min(12, n * 4)); checkRout(u); if ((u.status as UnitStatus) === "routed") events.push({ seq: 999, key: u.key, kind: "rout_chain", text: "panika se šíří, oddíl prchá" }); }
   }
   // Routed and dead leave the field.
   for (const u of units) if (u.status === "routed" || u.status === "dead") { u.x = null; u.y = null; }
