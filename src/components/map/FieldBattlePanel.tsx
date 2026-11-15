@@ -43,7 +43,8 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
   const [hideFinished, setHideFinished] = useState(false);
   const here = cellOf(army);
   const enemies = useMemo(() => armies.filter(a => a.player_name !== army.player_name && a.soldiers > 0 && battleInRange(here, cellOf(a))), [armies, army.player_name, here.x, here.y]);
-  const COLS = "id, battlefield, status, attacker_stack_id, defender_stack_id, attacker_player, defender_player, units, orders, ready, round, last_report, meta, started_turn";
+  // "*" so the panel keeps working before the meta column migration is applied.
+  const COLS = "*";
   const load = useCallback(async () => {
     const { data } = await supabase.from("field_battles").select(COLS)
       .eq("session_id", sessionId).neq("status", "finished").or(`attacker_stack_id.eq.${army.id},defender_stack_id.eq.${army.id}`).limit(1);
