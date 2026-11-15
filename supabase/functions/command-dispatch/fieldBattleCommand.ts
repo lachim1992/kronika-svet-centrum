@@ -6,7 +6,7 @@ import {
 } from "../_shared/fieldBattle.ts";
 import { UNIT_POWER_FACTOR } from "../_shared/unitTypes.ts";
 
-type Res = { events: any[]; error?: string; result?: any; status?: number };
+type Res = { events: any[]; error?: string; sideEffects?: Record<string, any>; status?: number };
 const STACK_COLS = "id, name, player_name, controller_player, grid_x, grid_y, hex_q, hex_r, is_active, is_deployed, soldiers, morale, power, general_id, battle_formation";
 const cellOf = (st: any): Cell => ({ x: st.grid_x ?? st.hex_q, y: st.grid_y ?? st.hex_r });
 const LEGACY_KIND: Record<string, OrderKind> = { move: "MOVE", attack: "ATTACK", charge: "CHARGE", hold: "HOLD", volley: "VOLLEY", fortify: "FORTIFY", rally: "RALLY", reserve: "RESERVE" };
@@ -161,7 +161,7 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
     // Drop now-empty command groups automatically via the filter above.
     orders = orders.sort((a, b) => a.seq - b.seq);
     const err = await save({ orders, units });
-    return err ? { events: [], error: err } : { events: [], result: { accepted, rejected, cpUsed: used, cp } };
+    return err ? { events: [], error: err } : { events: [], sideEffects: { fieldBattle: { accepted, rejected, cpUsed: used, cp } } };
   }
 
   // FIELD_BATTLE_READY

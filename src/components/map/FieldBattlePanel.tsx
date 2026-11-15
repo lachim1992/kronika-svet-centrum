@@ -94,7 +94,7 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
     const res: any = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType, commandPayload: { battleId: battle.id, side, ...extra } });
     setBusy(false);
     if (!res.ok) { toast.error(res.error || "Příkaz se nepodařil"); await load(); return null; }
-    const rej = res.result?.rejected ?? res.data?.result?.rejected;
+    const rej = res.sideEffects?.fieldBattle?.rejected;
     if (Array.isArray(rej) && rej.length) toast.warning(rej.map((r: any) => `${unitLabel(units.find(u => u.key === r.key) ?? ({ key: r.key, type: "MILITIA" } as FBUnit))}: ${r.reason}`).join(" · "));
     await load(); return res;
   }, [battle, sessionId, currentTurn, playerName, side, load, units]);
