@@ -798,7 +798,7 @@ async function executeCommand(
     case "FIELD_BATTLE_DEPLOY":
     case "FIELD_BATTLE_ORDER":
     case "FIELD_BATTLE_READY":
-      return await executeFieldBattleCommand(supabase, base, actor, commandType, payload || {}, commandId, sessionId, turnNumber);
+      return await executeFieldBattleCommand(supabase, base, actor, commandType, payload || {}, commandId, sessionId, turnNumber, insertEventsWithChronicle);
 
     case "START_SIEGE": {
       const { stackId, cityId } = payload || {};
