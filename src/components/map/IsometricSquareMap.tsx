@@ -983,7 +983,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [fieldBattle, setFieldBattle] = useState<FieldBattleView | null>(null);
   const [fieldBattleClick, setFieldBattleClick] = useState<FieldBattleClick | null>(null);
   const battlefieldCells = fieldBattle?.cells ?? null;
-  const fieldBattleStacks = useMemo(() => new Set((fieldBattle?.units ?? []).map(u => u.stackId)), [fieldBattle]);
+  const fieldBattleStacks = useMemo(() => new Set((fieldBattle?.units ?? []).filter(u => u.x !== null).map(u => u.stackId)), [fieldBattle]);
   const onBattlePicking = useCallback((on: boolean, initial: { x: number; y: number }[]) => { setBattlePicking(on); setBattlePicked(initial); }, []);
   const [siegeUnitKey, setSiegeUnitKey] = useState<string | null>(null);
   const [siegeMapOrder, setSiegeMapOrder] = useState<{ unitKey: string; target: any; n: number } | null>(null);
@@ -2281,7 +2281,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 </g>; })}
             </g>;
           })()}
-          {!cityLayerCityId && armyGroups.filter(group => !(fieldBattle && fieldBattle.units.some(u => u.x !== null) && group.list.some(a => fieldBattleStacks.has(a.id)))).map(group => {
+          {!cityLayerCityId && armyGroups.filter(group => !group.list.some(a => fieldBattleStacks.has(a.id))).map(group => {
             const point = at(group.cell.a, group.cell.b);
             const lead = group.list[0];
             const own = lead.player_name === playerName;
