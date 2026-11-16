@@ -214,8 +214,10 @@ export function moveRange(u: FBUnit, terrainAt: TerrainAt = () => "plain") {
   if (u.formation === "loose" || u.formation === "skirmish") m += 1;
   if (u.x !== null && isCavalry(u.type)) { const t = terrainAt(u.x, u.y!); if (t === "forest" || t === "marsh") m -= 1; }
   if (u.fatigue >= 80) m -= 1;
-  return Math.max(1, m);
+  return Math.max(MIN_MOVE, m);
 }
+/** Temporary playtest floor: every unit moves at least 4 cells. */
+export const MIN_MOVE = 4;
 const canDo = (u: FBUnit, kind: OrderKind) =>
   kind === "CHARGE" ? isCavalry(u.type) : kind === "VOLLEY" ? (u.type === "ARCHERS" || u.type === "SLINGERS" || u.type === "JAVELINERS")
   : kind === "FORTIFY" ? u.type === "ENGINEERS" : true;
@@ -257,7 +259,8 @@ export function orderProblem(units: FBUnit[], field: Cell[], key: string, o: { k
 /** Server-side CP check: distinct command ids of a side must not exceed its command points. */
 export function cpUsed(orders: FBOrder[], units: FBUnit[], side: Side) {
   const sideOf = new Map(units.map(u => [u.key, u.side]));
-  return new Set(orders.filter(o => sideOf.get(o.key) === side).map(o => o.cmd)).size;
+  // MOVE orders are temporarily free of command points (playtest).
+  return new Set(orders.filter(o => sideOf.get(o.key) === side && o.kind !== "MOVE").map(o => o.cmd)).size;
 }
 
 // ── Deterministic RNG ──
