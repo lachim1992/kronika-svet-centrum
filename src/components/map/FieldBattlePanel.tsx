@@ -105,7 +105,7 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
     if (battle && side) {
       const cp = commandPoints((battle.meta ?? battle.last_report?.meta)?.generalSkill?.[side] ?? null);
       const rest = (battle.orders ?? []).filter(o => !keys.includes(o.key));
-      const next = [...rest, ...keys.map((key, i) => ({ seq: 1e9 + i, cmd: "__new__", key, kind } as FBOrder))];
+      const next = [...rest, ...keys.map((key, i) => ({ seq: 1e9 + i, cmd: -1, key, kind } as FBOrder))];
       if (cpUsed(next, units, side) > cp) {
         toast.info(`Velitelské body jsou vyčerpané (${cp} za kolo). Zruš některý rozkaz, vyber víc oddílů najednou (skupina stojí 1 bod), nebo ukonči kolo.`);
         return;
