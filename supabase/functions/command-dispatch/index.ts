@@ -158,7 +158,9 @@ Deno.serve(async (req) => {
     );
 
     if (result.error) {
-      return json({ error: result.error }, result.status || 400);
+      // Tactical-battle rule refusals are normal gameplay answers, not failures.
+      const isBattleRule = /FIELD_BATTLE/.test(String(commandType)) && !result.status;
+      return json({ ok: false, error: result.error }, isBattleRule ? 200 : (result.status || 400));
     }
 
     if (sandbox && !result.idempotent) {
