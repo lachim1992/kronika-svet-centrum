@@ -108,10 +108,11 @@ describe("formations", () => {
     expect(f("skirmish")).toBeGreaterThan(base);
   });
   it("movement modifiers", () => {
-    expect(moveRange(u("a", "attacker", 0, 0, { type: "SPEARMEN", formation: "shieldwall" }))).toBe(1);
+    expect(moveRange(u("a", "attacker", 0, 0, { type: "SPEARMEN", formation: "shieldwall" }))).toBe(4);
     expect(moveRange(u("a", "attacker", 0, 0, { type: "SLINGERS", formation: "skirmish" }))).toBe(4);
-    expect(moveRange(u("a", "attacker", 0, 0, { type: "LIGHT_CAVALRY" }), () => "forest")).toBe(3);
-    expect(moveRange(u("a", "attacker", 0, 0, { fatigue: 85 }))).toBe(1);
+    expect(moveRange(u("a", "attacker", 0, 0, { type: "LIGHT_CAVALRY" }), () => "forest")).toBe(4);
+    expect(moveRange(u("a", "attacker", 0, 0, { fatigue: 85 }))).toBe(4);
+    expect(moveRange(u("a", "attacker", 0, 0, { type: "LIGHT_CAVALRY", formation: "skirmish" }))).toBe(5);
   });
 });
 
@@ -209,7 +210,7 @@ describe("rounds", () => {
   });
   it("move bounds and occupied cells", () => {
     const us = [u("a", "attacker", 2, 2), u("b", "attacker", 3, 2)];
-    expect(orderProblem(us, field, "a", { kind: "MOVE", to: { x: 5, y: 2 } })).toMatch(/nejvýš 2/);
+    expect(orderProblem(us, field, "a", { kind: "MOVE", to: { x: 7, y: 2 } })).toMatch(/nejvýš 4/);
     expect(orderProblem(us, field, "a", { kind: "MOVE", to: { x: 2, y: 9 } })).toMatch(/mimo bojiště/);
     const r = resolveRound(us, [{ seq: 1, cmd: 1, key: "a", kind: "MOVE", to: { x: 3, y: 2 } }], field, plain, () => .5, 1);
     expect(r.events[0].kind).toBe("move_blocked");
