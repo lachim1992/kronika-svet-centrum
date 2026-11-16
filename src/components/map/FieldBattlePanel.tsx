@@ -102,7 +102,7 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
 
   const issue = useCallback(async (kind: OrderKind, extra: Record<string, unknown> = {}, keys = selected) => {
     if (!keys.length) { toast.info("Nejdřív vyber oddíly"); return; }
-    if (battle && side && kind !== "HOLD") {
+    if (battle && side) {
       const cp = commandPoints((battle.meta ?? battle.last_report?.meta)?.generalSkill?.[side] ?? null);
       const rest = (battle.orders ?? []).filter(o => !keys.includes(o.key));
       const next = [...rest, ...keys.map((key, i) => ({ seq: 1e9 + i, cmd: "__new__", key, kind } as FBOrder))];
