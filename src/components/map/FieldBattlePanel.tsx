@@ -102,9 +102,18 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
 
   const issue = useCallback(async (kind: OrderKind, extra: Record<string, unknown> = {}, keys = selected) => {
     if (!keys.length) { toast.info("Nejdřív vyber oddíly"); return; }
+    if (battle && side && kind !== "HOLD") {
+      const cp = commandPoints((battle.meta ?? battle.last_report?.meta)?.generalSkill?.[side] ?? null);
+      const rest = (battle.orders ?? []).filter(o => !keys.includes(o.key));
+      const next = [...rest, ...keys.map((key, i) => ({ seq: 1e9 + i, cmd: "__new__", key, kind } as FBOrder))];
+      if (cpUsed(next, units, side) > cp) {
+        toast.info(`Velitelské body jsou vyčerpané (${cp} za kolo). Zruš některý rozkaz, vyber víc oddílů najednou (skupina stojí 1 bod), nebo ukonči kolo.`);
+        return;
+      }
+    }
     const ok = await send("FIELD_BATTLE_ORDER", { keys, order: { kind, ...extra } });
     if (ok) { setMode(null); setSelected([]); }
-  }, [send, selected]);
+  }, [send, selected, battle, side, units]);
 
   const lastClick = useRef(mapClick?.n ?? 0);
   useEffect(() => {
