@@ -2283,7 +2283,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const ATTACKY = new Set(["ATTACK", "CHARGE", "VOLLEY"]);
             const TYPE_CZ: Record<string, string> = { MILITIA: "milice", SPEARMEN: "kopiníci", SWORDSMEN: "šermíři", AXEMEN: "sekerníci", ARCHERS: "lučištníci", SLINGERS: "prakovníci", JAVELINERS: "oštěpaři", LIGHT_CAVALRY: "lehká jízda", HEAVY_CAVALRY: "těžká jízda", ELITE_GUARD: "elitní garda", ENGINEERS: "ženisté" };
             return <g data-field-battle-units>
-              {fieldBattle.reach.map((c, i) => { const p = microPoint(c.x, c.y); return <circle key={`r${i}`} cx={p.x} cy={p.y} r="2" fill={fieldBattle.reachKind === "range" ? "var(--map-city-rival)" : "var(--map-focus)"} opacity=".4" pointerEvents="none" />; })}
+              {fieldBattle.reach.map((c, i) => {
+                const p = microPoint(c.x, c.y);
+                const dx = TILE_SIZE / MICRO_PER_TILE * .9, dy = dx / 2;
+                const color = fieldBattle.reachKind === "range" ? "var(--map-city-rival)" : "var(--map-focus)";
+                return <g key={`r${i}`} pointerEvents="none">
+                  <path d={`M${p.x} ${p.y - dy} L${p.x + dx} ${p.y} L${p.x} ${p.y + dy} L${p.x - dx} ${p.y} Z`} fill={color} fillOpacity=".3" stroke="var(--map-marker-edge)" strokeWidth="1.5" />
+                  <path d={`M${p.x} ${p.y - dy} L${p.x + dx} ${p.y} L${p.x} ${p.y + dy} L${p.x - dx} ${p.y} Z`} fill="none" stroke={color} strokeWidth=".8" />
+                  <circle cx={p.x} cy={p.y} r="1.1" fill={color} stroke="var(--map-marker-edge)" strokeWidth=".5" />
+                </g>;
+              })}
               {fieldBattle.orders.map(o => { const from = byKey.get(o.key); if (!from) return null;
                 const to = o.to ? microPoint(o.to.x, o.to.y) : o.target ? byKey.get(o.target)?.p : undefined; if (!to) return null;
                 const col = ATTACKY.has(o.kind) ? "var(--map-city-rival)" : "var(--map-focus)";
@@ -2298,10 +2307,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const horse = u.type === "LIGHT_CAVALRY" || u.type === "HEAVY_CAVALRY";
                 return <g key={u.key} transform={`translate(${p.x},${p.y})`} style={{ transition: "transform .6s ease" }} className="cursor-pointer"
                   onClick={e => { e.stopPropagation(); if (!dragRef.current?.moved) setFieldBattleClick(o => ({ kind: "unit", key: u.key, shift: e.shiftKey, n: (o?.n ?? 0) + 1 })); }}>
-                  <ellipse cx="0" cy="2" rx="7" ry="3.5" fill={sel ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={sel ? "var(--map-focus)" : mineSide ? banner : "transparent"} strokeWidth={sel ? 1.8 : 1} />
+                  <ellipse cx="0" cy=".4" rx="4.5" ry="2.3" fill={sel ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={sel ? "var(--map-focus)" : mineSide ? banner : "transparent"} strokeWidth={sel ? .9 : .45} />
                   <ArmySquad men={u.men} kind={horse ? "horse" : "foot"} banner={banner} active={sel} formation={u.formation} unitType={u.type} />
-                  <rect x="-5" y="-10.5" width="10" height="1.2" fill="var(--map-marker-edge)" opacity=".7" />
-                  <rect x="-5" y="-10.5" width={10 * Math.max(0, Math.min(100, u.morale)) / 100} height="1.2" fill={u.morale < 35 ? "var(--map-city-rival)" : banner} />
+                  <rect x="-3.5" y="-5.5" width="7" height=".8" fill="var(--map-marker-edge)" opacity=".7" />
+                  <rect x="-3.5" y="-5.5" width={7 * Math.max(0, Math.min(100, u.morale)) / 100} height=".8" fill={u.morale < 35 ? "var(--map-city-rival)" : banner} />
                   <title>{`${u.side === "attacker" ? "Útočník" : "Obránce"} · ${TYPE_CZ[u.type] ?? u.type} · ${u.men} mužů · morálka ${u.morale} % · únava ${u.fatigue}${u.ammo ? ` · munice ${u.ammo}` : ""} · formace ${u.formation}${ord ? ` · rozkaz ${ord.kind}` : ""}`}</title>
                 </g>; })}
             </g>;
@@ -2341,11 +2350,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                     const sx = spot ? spot.x : point.x + c.x, sy = spot ? spot.y : point.y + c.y;
                     if (camping && !picked) return <g key={`s${index}`} transform={`translate(${sx},${sy})`}
                       onClick={pickable ? (e) => { e.stopPropagation(); if (!dragRef.current?.moved) setSiegeUnitKey(k => k === unitKey ? null : unitKey); } : undefined}>
-                      {pickable && hasOrder && <ellipse cx="0" cy="2" rx="7" ry="3.5" fill="none" stroke="var(--map-city-own)" strokeWidth="1.2" />}
+                      {pickable && hasOrder && <ellipse cx="0" cy=".4" rx="4.5" ry="2.3" fill="none" stroke="var(--map-city-own)" strokeWidth="1.2" />}
                       <SiegeCampProp variant={order} banner={banner} /><title>{`Oddíl ${order + 1} v táboře · ${men} mužů`}</title></g>;
                     return <g key={`s${index}`} transform={`translate(${sx},${sy})`} style={{ transition: "transform .6s ease" }}
                       onClick={pickable ? (e) => { e.stopPropagation(); if (!dragRef.current?.moved) setSiegeUnitKey(k => k === unitKey ? null : unitKey); } : undefined}>
-                      {pickable && <ellipse cx="0" cy="2" rx="7" ry="3.5" fill={picked ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={picked ? "var(--map-focus)" : hasOrder ? "var(--map-city-own)" : "transparent"} strokeWidth="1.2" />}
+                      {pickable && <ellipse cx="0" cy=".4" rx="4.5" ry="2.3" fill={picked ? "var(--map-focus)" : "none"} fillOpacity=".35" stroke={picked ? "var(--map-focus)" : hasOrder ? "var(--map-city-own)" : "transparent"} strokeWidth="1.2" />}
                       <ArmySquad men={men} kind={kind} banner={banner} active={active} formation={lead.battle_formation} />
                     </g>; });
               })()}
@@ -2371,7 +2380,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 return <g key={k} transform={`translate(${c.x},${c.y})`} className={canHit || pick ? "cursor-crosshair" : ""}
                   onClick={canHit ? (e) => { e.stopPropagation(); setSiegeMapOrder(o => ({ unitKey: siegeUnitKey!, target: { kind: "unit", key: k }, n: (o?.n ?? 0) + 1 })); setSiegeUnitKey(null); }
                     : pick ? (e) => { e.stopPropagation(); setSiegeUnitKey(x => x === k ? null : k); } : undefined}>
-                  {siegeUnitKey === k && <ellipse cx="0" cy="2" rx="7" ry="3.5" fill="var(--map-focus)" fillOpacity=".35" stroke="var(--map-focus)" strokeWidth="1.2" />}
+                  {siegeUnitKey === k && <ellipse cx="0" cy=".4" rx="4.5" ry="2.3" fill="var(--map-focus)" fillOpacity=".35" stroke="var(--map-focus)" strokeWidth="1.2" />}
                   <ArmySquad men={Number(roster[k] ?? 200)} kind="foot" banner={banner} active={false} />
                   <title>{`Posádka · oddíl ${Number(k.split(":")[1]) + 1} · ${roster[k] ?? "?"} mužů`}</title>
                 </g>; })}</g>;

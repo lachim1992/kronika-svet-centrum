@@ -9,17 +9,17 @@ export function squadKind(formation: string | null | undefined): SquadKind {
   return "foot";
 }
 
-/** Figures shown on one sub-square: one painted soldier per ~22 men, 1..9 (3x3 file block). */
+/** Four visual strength stages; full detachment = 18 soldiers and two rear commanders. */
 export function squadFigures(men: number): number {
-  const m = Math.max(0, men);
-  // 4 visual stages: ~200 / ~150 / ~100 / ~50 men.
-  return m > 175 ? 9 : m > 125 ? 7 : m > 75 ? 5 : 3;
+  return men <= 0 ? 0 : men > 175 ? 20 : men > 125 ? 15 : men > 75 ? 10 : 5;
 }
 
-/** Isometric 3x3 block positions (rows run along the sub-square diagonal), back to front. */
-const SLOTS: Array<[number, number]> = [];
-for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) SLOTS.push([(c - r) * 2.4, (c + r - 2) * 1.2]);
-const ORDER = [4, 1, 3, 5, 7, 0, 2, 6, 8];
+/** Six ranks of three, projected onto the isometric ground plane. */
+const SOLDIER_SLOTS: Array<[number, number]> = [];
+for (let r = 0; r < 6; r++) for (let c = 0; c < 3; c++) {
+  SOLDIER_SLOTS.push([(c - r + 1.5) * .95, (c + r - 3.5) * .48]);
+}
+const COMMANDER_SLOTS: Array<[number, number]> = [[2.85, -2.4], [3.8, -1.92]];
 
 const E = "var(--map-marker-edge)";
 
@@ -93,17 +93,6 @@ const Siege = ({ banner }: { banner: string }) => <g>
   <rect x="-2.3" y="-1.9" width=".7" height=".5" fill={banner} />
 </g>;
 
-/** Painted war-band on a single 6x6 sub-square (centre at 0,0; sub-square is ~14x7 px). Static, no animation. */
-const LAYOUTS: Record<string, Array<[number, number]>> = {
-  deep: [[0, 2.4], [0, 1.2], [0, 0], [0, -1.2], [0, -2.4], [1.8, 1.8], [1.8, .6], [1.8, -.6], [1.8, -1.8]],
-  loose: [[0, 0], [-4, -1.6], [4, 1.4], [3.4, -2.2], [-3.6, 1.8], [.4, -3], [-.6, 2.6], [5.4, -.4], [-5.4, -.2]],
-  shieldwall: [[-4.8, 1.2], [-2.4, 1.2], [0, 1.2], [2.4, 1.2], [4.8, 1.2], [-3.6, -.6], [-1.2, -.6], [1.2, -.6], [3.6, -.6]],
-  wedge: [[0, 1.8], [-1.8, .6], [1.8, .6], [-3.6, -.6], [0, -.6], [3.6, -.6], [-5, -1.8], [-1.6, -1.8], [1.6, -1.8]],
-  column: [[0, 2.4], [0, 1.2], [0, 0], [0, -1.2], [0, -2.4], [1.8, 1.8], [1.8, .6], [1.8, -.6], [1.8, -1.8]],
-  skirmish: [[0, 0], [-4, -1.6], [4, 1.4], [3.4, -2.2], [-3.6, 1.8], [.4, -3], [-.6, 2.6], [5.4, -.4], [-5.4, -.2]],
-  square: [[-2.4, 0], [2.4, 0], [0, -1.6], [0, 1.6], [-1.2, -.8], [1.2, .8], [1.2, -.8], [-1.2, .8], [0, 0]],
-};
-
 const HeavyHorse = ({ banner }: { banner: string }) => <g><Horse banner={banner} />
   <path d="M-1.6 -1.1 Q-1.7 -2 -.6 -2 L1 -2 L1.5 -1.1 Z" fill="var(--map-army-metal-dark)" opacity=".85" />
   <path d="M-1.6 -1.1 L1.5 -1.1" stroke={banner} strokeWidth=".3" /></g>;
@@ -111,16 +100,18 @@ const HeavyHorse = ({ banner }: { banner: string }) => <g><Horse banner={banner}
 const ArmySquadBase = ({ men, kind, banner, active, formation, unitType }: { men: number; kind: SquadKind; banner: string; active: boolean; formation?: string | null; unitType?: string | null }) => {
   const heavy = String(unitType || "").toUpperCase() === "HEAVY_CAVALRY";
   const weapon = unitType ? weaponOf(unitType) : null;
-  const n = kind === "foot" ? squadFigures(men) : Math.max(1, Math.min(kind === "horse" ? 4 : 2, Math.ceil(squadFigures(men) / (kind === "horse" ? 2 : 4))));
-  const pts = kind === "foot" ? (formation && LAYOUTS[formation] ? LAYOUTS[formation].slice(0, n) : ORDER.slice(0, n).map(i => SLOTS[i]))
-    : kind === "horse" ? ([[-2.4, -1], [2.4, -1], [-1.2, .6], [2.6, .8]] as Array<[number, number]>).slice(0, n)
-    : ([[-2, -.4], [2.4, .6]] as Array<[number, number]>).slice(0, n);
-  const sorted = pts.slice().sort((a, b) => a[1] - b[1]);
+  const n = squadFigures(men);
+  const pts = kind === "siege"
+    ? ([[-1, -.2], [1.2, .3]] as Array<[number, number]>).slice(0, Math.ceil(n / 10))
+    : [...SOLDIER_SLOTS.slice(0, Math.max(0, n - 2)).map(([x, y]) => ({ x, y, commander: false })),
+       ...COMMANDER_SLOTS.slice(0, Math.min(n, 2)).map(([x, y]) => ({ x, y, commander: true }))];
+  const sorted = pts.map(p => Array.isArray(p) ? { x: p[0], y: p[1], commander: false } : p).sort((a, b) => a.y - b.y);
   return (
     <g>
-      <ellipse cx="0" cy=".6" rx="6.6" ry="3" fill="var(--map-army-cloth)" opacity={active ? .3 : .18} />
-      {sorted.map(([x, y], i) => (
-        <g key={i} transform={`translate(${x},${y})`}>
+      <ellipse cx="0" cy=".4" rx="4.3" ry="2.2" fill="var(--map-army-cloth)" opacity={active ? .3 : .18} />
+      {sorted.map(({ x, y, commander }, i) => (
+        <g key={i} transform={`translate(${x},${y}) scale(.5)`}>
+          {commander && <path d="M-.6 -2.6 L-1.5 -.4 L.3 -1 Z" fill={banner} stroke={E} strokeWidth=".12" />}
           {kind === "horse" ? (heavy ? <HeavyHorse banner={banner} /> : <Horse banner={banner} />) : kind === "siege" ? <Siege banner={banner} /> : weapon ? <TypedFoot banner={banner} weapon={weapon} /> : <Foot banner={banner} />}
         </g>
       ))}
