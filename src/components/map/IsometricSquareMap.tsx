@@ -2513,7 +2513,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <div className="mb-1 flex items-center gap-2"><Gem className="h-4 w-4 text-primary" /><strong className="mr-auto">★ Mapa surovin</strong>
           <Button size="icon" variant="ghost" className="h-6 w-6" aria-label="Zavřít mapu surovin" onClick={() => setShowAtlas(false)}><X className="h-3 w-3" /></Button></div>
         {!atlasDeposits ? <div className="flex items-center gap-2 py-2"><Loader2 className="h-3 w-3 animate-spin" />Načítám…</div> : <>
-          <p className="mb-2 text-muted-foreground">Barva = surovina mikročtverce, sytost = pravděpodobnost (plná = jistá, slabá = vzácná šance). Bez filtru ukazuje nejlepší vzácnou šanci; jisté suroviny (obilí, kámen, dřevo, ryby, rašelina) jen tam, kde žádná šance není. Rudy a žula jen tam, kde je pod polem ložisko. Kliknutím na surovinu zobrazíš jen ji.</p>
+          <p className="mb-2 text-muted-foreground">Barva = možná surovina mikročtverce, sytost = pravděpodobnost nálezu (plná = jistá, slabá = vzácná šance). Bez filtru ukazuje nejlepší vzácnou šanci; jisté suroviny jen tam, kde žádná šance není. Obarvená ruda nebo žula není potvrzené ložisko: makroložisko na velkém poli výskyt jen umožňuje a průzkum mikročtverce může skončit bez nálezu. Kliknutím na surovinu zobrazíš jen její šance.</p>
           <div className="grid grid-cols-2 gap-1">
             {ATLAS_KINDS.map(kind => <button key={kind} type="button" onClick={() => setAtlasFocus(f => f === kind ? null : kind)}
               className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left ${atlasFocus === kind ? "bg-secondary" : atlasFocus ? "opacity-50" : ""}`}>
