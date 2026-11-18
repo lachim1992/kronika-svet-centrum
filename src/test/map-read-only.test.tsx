@@ -8,7 +8,7 @@ vi.mock("@/integrations/supabase/client", () => ({
     from: (table: string) => {
       read(table);
       const query: any = {};
-      for (const method of ["select", "eq", "limit", "not", "order", "in", "maybeSingle"])
+      for (const method of ["select", "eq", "neq", "limit", "not", "order", "in", "maybeSingle"])
         query[method] = () => query;
       query.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve);
       return query;
@@ -32,6 +32,7 @@ describe("read-only map updates", () => {
       await act(async () => root.render(null));
       await act(async () => root.render(<IsometricSquareMap sessionId="test" playerName="Player" currentTurn={8} />));
       expect(read).toHaveBeenCalledWith("tile_parcels");
+      expect(read).toHaveBeenCalledWith("field_battles");
       expect(invoke).not.toHaveBeenCalled();
     } finally {
       await act(async () => root.unmount());
