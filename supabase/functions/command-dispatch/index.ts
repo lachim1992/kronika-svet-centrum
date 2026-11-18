@@ -111,7 +111,8 @@ Deno.serve(async (req) => {
       return json({ error: "Session not found" }, 404);
     }
     if(session.resolving_turn != null && actor?.type !== 'ai_faction' && actor?.type !== 'system')
-      return json({error:'Tah se právě uzavírá. Nejprve dokončete jeho zpracování.'},409);
+      // Expected busy state, not a failure: answer as a normal refusal so the client shows a notice instead of crashing.
+      return json({ok:false,idempotent:false,events:[],code:'TURN_RESOLVING',error:'Tah se právě uzavírá. Počkejte na dokončení a zkuste to znovu.'},200);
 
     // Human authority is the verified JWT's own seat, never a body-supplied realm name.
     let authenticatedUserId: string | null = null;

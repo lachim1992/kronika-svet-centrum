@@ -22,6 +22,8 @@ interface DispatchResult {
   error?: string;
 }
 
+export const TURN_RESOLVING_MESSAGE = "Tah se právě uzavírá. Počkejte na dokončení a zkuste to znovu.";
+
 export async function dispatchCommand(params: {
   sessionId: string;
   turnNumber?: number;
@@ -32,6 +34,13 @@ export async function dispatchCommand(params: {
 }): Promise<DispatchResult> {
   let data: any, error: any;
   try {
+    // While a turn is being resolved the server refuses player commands; tell the player without calling it.
+    if (!params.actor.type || params.actor.type === "player") {
+      const { data: s } = await supabase.from("game_sessions").select("resolving_turn").eq("id", params.sessionId).maybeSingle();
+      if (s?.resolving_turn != null) {
+        return { ok: false, idempotent: false, events: [], error: TURN_RESOLVING_MESSAGE };
+      }
+    }
     const commandId = params.commandId || crypto.randomUUID();
     const { data: { session } } = await supabase.auth.getSession();
     ({ data, error } = await supabase.functions.invoke("command-dispatch", {
