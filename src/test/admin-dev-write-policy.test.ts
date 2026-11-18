@@ -20,6 +20,16 @@ describe("admin-dev-write policy", () => {
     const r = validateAdminOp({ sessionId: S, table: "realm_resources", action: "update", values: { gold_reserve: 1 }, filters: [{ op: "eq", column: "id", value: "a" }] }, U);
     expect(r.ok && r.op.filters).toContainEqual({ op: "eq", column: "session_id", value: S });
   });
+  it("allows audited building changes only inside the requested session", () => {
+    const r = validateAdminOp({ sessionId: S, table: "city_buildings", action: "update", values: { current_level: 2 }, filters: [{ op: "eq", column: "id", value: "a" }] }, U);
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.op.filters).toContainEqual({ op: "eq", column: "session_id", value: S });
+  });
+  it.each(["road_segments", "tile_parcels"])("pins %s scenario edits to the requested session", (table) => {
+    const r = validateAdminOp({ sessionId: S, table, action: "update", values: { status: "claimed" }, filters: [] }, U);
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.op.filters).toContainEqual({ op: "eq", column: "session_id", value: S });
+  });
   it("rejects rows targeting another session", () => {
     const r = validateAdminOp({ sessionId: S, table: "cities", action: "insert", values: { session_id: "00000000-0000-0000-0000-000000000000", name: "x" } }, U);
     expect(r.ok).toBe(false);

@@ -17,11 +17,11 @@ export interface AdminOp {
 
 type Scope = "session" | "composition" | "user" | "session_row";
 export const ADMIN_TABLES: Record<string, Scope> = {
-  provinces: "session", regions: "session", cities: "session", wonders: "session",
+  provinces: "session", regions: "session", cities: "session", city_buildings: "session", wonders: "session",
   great_persons: "session", countries: "session", wiki_entries: "session", simulation_log: "session",
   game_players: "session", player_resources: "session", city_states: "session", civilizations: "session",
   province_hexes: "session", world_foundations: "session", map_gen_feedback: "session",
-  province_nodes: "session", province_routes: "session", flow_paths: "session",
+  province_nodes: "session", province_routes: "session", flow_paths: "session", road_segments: "session", tile_parcels: "session",
   economy_overrides: "session", realm_resources: "session", military_stacks: "session",
   ai_factions: "session", realm_infrastructure: "session",
   military_stack_composition: "composition",

@@ -166,7 +166,7 @@ export default function LiveGameEditor() {
           <p className="text-xs text-muted-foreground">Malování mění typ makropole; mikropolíčka, cesty a suroviny živé hry zatím editor neupravuje.</p>
         </aside>
         <main className="min-w-0 flex-1 overflow-auto">
-          <ScenarioMap scenario={view.scenario} deposits={deposits} selectedTile={null} roadDraft={null} selection={selection} overlayKind={null}
+          <ScenarioMap scenario={view.scenario} deposits={deposits} selectedTile={selection?.kind === "tile" ? { x: Number(selection.id.split(",")[0]), y: Number(selection.id.split(",")[1]) } : null} roadDraft={null} selection={selection} overlayKind={null}
             onCell={(x, y, dragging) => { if (!dragging || tool === "paint") onCell(x, y); }} onStrokeStart={() => {}} onSelect={s => { if (tool === "select" || tool === "move") setSelection(s); }} />
         </main>
       </div>

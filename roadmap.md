@@ -1,5 +1,12 @@
 # Map-first square-grid roadmap
 
+## JV72O7 — ekonomická pohoda a oprava editoru (2026-11-18)
+- [x] Opravit a v přihlášeném náhledu ověřit výběr a úpravy objektů v admin editoru na mapě. Tlačítko je portálem mimo překrývající pracovní plochu; město i dlaždice prokliknuty, dlaždice má viditelný výběr.
+- [x] Přes auditovaný admin zápis odstranit obě obří armády Player a Frakce 1; Player garda byla smazána, AI horda vyřazena kvůli historické FK, malý 101členný oddíl zůstal. Žádný generál nebyl změněn.
+- [x] Nastavit pouze JV72O7 klidný scénář: všech 7 měst stabilita 100 a historický hladomor vynulován; specializovaná jídlo/voda/obilí/mlýny/pekárny, 7 lesních táborů, 4 uhlírny a 10 cest kapacita 20. Bez posunu tahu (stále 18).
+- [x] Finální derived refresh: 10 canonical toků (3,879 raw_grain, 2,402 flour, 0,741 raw_timber, 4,964 charcoal), jídlo i voda 100 % ve všech městech, fiskální stav beze změny. Palivo zůstává nedostatkové v Kwaku/Qweu/Lambadagradu; jiné koše a ceny stále generují analytická varování.
+- [x] Ověřeno Ekonomika → Trhy & Obchod bez varování o hladomoru a bez page errors. Celá sada 1123 passed / 3 skipped, TypeScript, Deno check admin-dev-write a produkční build prošly.
+
 ## JV72O7 turn 18 — read-only counterfactual economy audit
 - [x] Loaded only committed turn-18 snapshot (SHA-256 `2d42f319…a39980447f`) and ran four isolated in-memory resolveGoodsEconomy scenarios; no turn/refresh/command or game-data write. Baseline control totals match the committed ledger.
 - [x] Documented workforce, lines, goods, food/water/fuel, chains, flows, prices/wages, storage and conservation in `docs/economy/JV72O7-turn18-counterfactual-audit.md`; canonical physical food is 0.0021766188 versus legacy grain_reserve 1,000,000. Actual zero trade = 94 source_empty blockers; peacetime creates one 0.459 raw_timber input flow.

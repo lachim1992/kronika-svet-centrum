@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useParams, useNavigate } from "react-router-dom";
 import { useGameSession, useGameSessionLegacy } from "@/hooks/useGameSession";
@@ -598,10 +599,11 @@ const Dashboard = () => {
         <AILabTab sessionId={session.id} myRole={myRole} onRefetch={refetch} />
       )}
       </div>
-      {myRole === "admin" && (
-        <Button size="sm" variant="secondary" className="fixed bottom-20 left-4 z-40 shadow-lg" onClick={() => navigate(`/game/${session.id}/editor`)}>
+      {myRole === "admin" && createPortal(
+        <Button size="sm" variant="secondary" className="fixed bottom-20 left-4 z-[80] shadow-lg" onClick={() => navigate(`/game/${session.id}/editor`)}>
           ★ Editor hry
-        </Button>
+        </Button>,
+        document.body,
       )}
       <CityActionsPopover
         open={!!cityActionsTarget}

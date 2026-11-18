@@ -1,5 +1,14 @@
 # Economy implementation progress
 
+## 2026-11-18 — JV72O7 live comfort/trade scenario + editor access
+
+- Scope: only session `d379caff-8992-48e2-9084-7c9d74acceb1` (JV72O7), still turn 18 with no resolving turn. Removed the 8,000-man Player army (deleted) and 7,978-composition-man AI army (deactivated because a legacy lobby FK prevents deletion); retained the separate active 101-soldier Player stack and all generals. All seven cities now have stability 100 and no persisted famine flag.
+- Per-city scenario changes, not global formula changes: specialised fish/grain/water/mill/bakery capacities and crews, level-3 wheat farm and seven physical logging camps, four charcoal kilns, storage upgrades and ten existing Player roads raised to capacity 20. Urban mills/bakeries were detached from rural parcel IDs. All mutations went through deployed `admin-dev-write` with session scope and audit rows; its tested allowlist now covers `city_buildings`, `road_segments` and `tile_parcels`.
+- Final canonical refresh succeeded with `fiscal_unchanged=true`, no warnings and no turn advancement. Food and drinking-water coverage is 100% in every city. Ten canonical flows carry 3.879 raw_grain, 2.402 flour, 0.741 raw_timber and 4.964 charcoal. Fuel remains scarce in Kwak (39.3%), Qweo (39.2%) and Lambadagrad (38.9%); this is not famine and no global production multiplier was introduced.
+- Fixed the actual editor-entry defect: the map workspace intercepted the visible admin button. The button now portals to `document.body`; signed-in browser verification opened the editor, selected Lambadagrad and a highlighted tile, then opened Economy → Markets & Trade with no page errors and no famine banner.
+- Changed source files: `src/pages/Dashboard.tsx`, `src/pages/LiveGameEditor.tsx`, `supabase/functions/admin-dev-write/policy.ts`, `src/test/admin-dev-write-policy.test.ts`, `roadmap.md` and this report. Deployed only `admin-dev-write` (final source SHA-256 `23afc61d1cd5fc93f506a29f9ca77ab48cd6423c30da0e6dc9f31c4fdc19c36e`); no migration or publication.
+- Verification actually run: full suite **1123 passed / 3 skipped** (137 files passed, 1 skipped), `oj typecheck -b --noEmit`, `deno check supabase/functions/admin-dev-write/index.ts`, production build (27.80 s), and signed-in browser UI checks. Next precise task: decide separately whether this test scenario should receive more forest/peat geography; do not hide the remaining fuel deficit with fictitious stocks.
+
 ## 2026-11-18 — JV72O7 committed turn-18 counterfactual audit
 
 - Added `docs/economy/JV72O7-turn18-counterfactual-audit.md`, the exact committed fixture `src/test/fixtures/jv72o7-turn18-snapshot.json` (SHA-256 `2d42f319834b09fe1cd7161830416d4c5792747f7d6a5a7dd1df5aa39980447f`), scenario helper, `scripts/jv72o7-turn18-counterfactual.ts`, invariant tests and roadmap evidence.
