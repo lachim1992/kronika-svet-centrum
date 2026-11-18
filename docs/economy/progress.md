@@ -1,5 +1,13 @@
 # Economy implementation progress
 
+## 2026-11-18 — JV72O7 committed turn-18 counterfactual audit
+
+- Added `docs/economy/JV72O7-turn18-counterfactual-audit.md`, the exact committed fixture `src/test/fixtures/jv72o7-turn18-snapshot.json` (SHA-256 `2d42f319834b09fe1cd7161830416d4c5792747f7d6a5a7dd1df5aa39980447f`), scenario helper, `scripts/jv72o7-turn18-counterfactual.ts`, invariant tests and roadmap evidence.
+- Four isolated in-memory `resolveGoodsEconomy` runs changed only city soldier weights. Baseline control totals match the committed ledger. Peacetime restores Player 851 civilian workers / 711.997 urban employed; canonical caps are Player 255 and AI Frakce 1 13. Actual zero trade follows 94 `source_empty` blockers; peacetime produces one 0.459 raw_timber production-input flow. Conservation residual stays below `5e-16` per balance.
+- No production economy formula, game row, turn, migration, deployment or publication changed. The audit identifies extreme test mobilization and a legacy `grain_reserve=1,000,000` mismatch; canonical physical food is `0.002176618755707576`. It also documents downstream staffing before input sourcing as a separate model limitation, not something repaired without a focused contract.
+- Tests actually run: **71/71 passed** across five relevant files, including **5/5 new counterfactual invariants**. `oj typecheck -b --noEmit` clean; `bun run build` passed (30.07 s, existing chunk warnings only).
+- Remaining gaps: one-step physical counterfactual, not a multi-turn/fiscal simulation; no live cleanup performed. Next precise task: specify a synthetic grain→flour→bread regression where an input-starved downstream line cannot consume crews while a feasible upstream critical line remains idle, then implement input-aware subsistence staffing only if that contract passes without changing declared jobs/capacity.
+
 ## 2026-11-14 — repeated game updates
 
 - Removed automatic `seed-city-parcels` invocation from `IsometricSquareMap`: map viewing no longer triggers footprint writes and a second full map load. Founding/explicit rollout remain authoritative.

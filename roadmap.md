@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## JV72O7 turn 18 — read-only counterfactual economy audit
+- [x] Loaded only committed turn-18 snapshot (SHA-256 `2d42f319…a39980447f`) and ran four isolated in-memory resolveGoodsEconomy scenarios; no turn/refresh/command or game-data write. Baseline control totals match the committed ledger.
+- [x] Documented workforce, lines, goods, food/water/fuel, chains, flows, prices/wages, storage and conservation in `docs/economy/JV72O7-turn18-counterfactual-audit.md`; canonical physical food is 0.0021766188 versus legacy grain_reserve 1,000,000. Actual zero trade = 94 source_empty blockers; peacetime creates one 0.459 raw_timber input flow.
+- [x] Added five mobilization/cloning/rural/cap/conservation invariants; no production model change was justified. Relevant suite 71/71, TypeScript and production build passed. Extreme mobilization explains the collapse; input-unaware downstream staffing remains a separately documented limitation.
+- [ ] Next safe slice: synthetic grain→flour→bread contract for input-aware subsistence staffing, before any production-formula change or live-game cleanup.
+
 ## Legacy battle retirement + general command + Battle AI v2 — 2026-11-18
 - [x] Removed the abstract engine's UI, commands, functions and source/test/documentation references; preserved field battles, sieges, generals, recruitment and map/economy state. Deployed replacements; all three retired endpoints verified absent (404).
 - [x] Removed all obsolete pending decisions (live count 0) and applied `0035_general_command_atomic_field_settlement.sql`: unique general assignment, ownership/capacity RPC and strict atomic settlement; retired lobby removed from the turn-write allowlist.
