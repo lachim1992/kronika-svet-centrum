@@ -253,6 +253,13 @@
       "when": 1795022027942,
       "tag": "0035_general_command_atomic_field_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795024879082,
+      "tag": "0036_fix_turn_write_batch_conflict_text",
+      "breakpoints": true
     }
   ]
 }
