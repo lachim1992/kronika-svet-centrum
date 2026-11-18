@@ -1,3 +1,4 @@
+import { isStackActive } from "./stackState.ts";
 import { computeRouteTraversalProgress } from "./physics.ts";
 import { minimalBattlefield } from "./fieldBattle.ts";
 
@@ -138,7 +139,9 @@ export async function advanceTurnProgress(
 
     if (newGarrison <= 0 && node.besieging_stack_id) {
       const { data: siegeStack } = await supabase.from("military_stacks")
-        .select("player_name").eq("id", node.besieging_stack_id).maybeSingle();
+        .select("player_name, is_active").eq("id", node.besieging_stack_id).maybeSingle();
+      // A disbanded (inactive) besieger cannot take the node, even if is_deployed is still set.
+      if (!isStackActive(siegeStack)) continue;
       const newOwner = siegeStack?.player_name || null;
 
       await supabase.from("province_nodes").update({

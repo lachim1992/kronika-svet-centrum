@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 const { invoke, read } = vi.hoisted(() => ({ invoke: vi.fn(), read: vi.fn() }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
+    auth: { getUser: async () => ({ data: { user: null } }) },
     from: (table: string) => {
       const query: any = {};
       query.select = (columns: string) => { read(table, columns); return query; };

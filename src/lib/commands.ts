@@ -22,7 +22,8 @@ interface DispatchResult {
   error?: string;
 }
 
-export const TURN_RESOLVING_MESSAGE = "Tah se právě uzavírá. Počkejte na dokončení a zkuste to znovu.";
+export { TURN_RESOLVING_MESSAGE } from "../../supabase/functions/_shared/commandGate";
+import { TURN_RESOLVING_MESSAGE } from "../../supabase/functions/_shared/commandGate";
 
 export async function dispatchCommand(params: {
   sessionId: string;
@@ -36,7 +37,9 @@ export async function dispatchCommand(params: {
   try {
     // While a turn is being resolved the server refuses player commands; tell the player without calling it.
     if (!params.actor.type || params.actor.type === "player") {
-      const { data: s } = await supabase.from("game_sessions").select("resolving_turn").eq("id", params.sessionId).maybeSingle();
+      // Best effort only: if this read fails, the server's own TURN_RESOLVING refusal still applies.
+      const s = await Promise.resolve().then(() => supabase.from("game_sessions").select("resolving_turn").eq("id", params.sessionId).maybeSingle())
+        .then((r: any) => r?.data, () => null);
       if (s?.resolving_turn != null) {
         return { ok: false, idempotent: false, events: [], error: TURN_RESOLVING_MESSAGE };
       }

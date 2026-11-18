@@ -88,3 +88,6 @@ Textile/tools/storage still have no producer, AI fuel stocks remain disconnected
 - Migration prepared, NOT applied: `supabase/migrations/20261115160000_battle_system_v1.sql` (field_battles.meta, formation check incl. shieldwall/deep/loose, `settle_field_battle` RPC).
 - Tests: field-battle 53/53; full vitest 1061 passed / 3 skipped; tsgo clean; deno check command-dispatch clean. Not deployed.
 - Next: apply migration + deploy command-dispatch, then play one battle end-to-end.
+
+## 2026-11-18 turn-21 deactivation audit
+See docs/economy/JV72O7-turn21-deactivation-audit.md. Tests: full suite 1140 passed / 3 skipped. Next: real Player→AI1 road or physical sea mode for built ports.

@@ -1,3 +1,5 @@
+import { isStackActive } from "../_shared/stackState.ts";
+import { turnResolvingRefusal } from "../_shared/commandGate.ts";
 import { terrainReason, sanitizeRegionName } from "../_shared/terrainSuitability.ts";
 import { validateBuild, canonicalBuilding, stripProductionEffects } from "../_shared/buildValidation.ts";
 import { validateBuildingUpgrade, quoteBuildingUpgrade } from '../_shared/upgradeValidation.ts';
@@ -110,9 +112,9 @@ Deno.serve(async (req) => {
     if (sessErr || !session) {
       return json({ error: "Session not found" }, 404);
     }
-    if(session.resolving_turn != null && actor?.type !== 'ai_faction' && actor?.type !== 'system')
-      // Expected busy state, not a failure: answer as a normal refusal so the client shows a notice instead of crashing.
-      return json({ok:false,idempotent:false,events:[],code:'TURN_RESOLVING',error:'Tah se právě uzavírá. Počkejte na dokončení a zkuste to znovu.'},200);
+    // Expected busy state, not a failure: a normal 200 refusal so the client shows a notice instead of crashing.
+    const busy = turnResolvingRefusal(session, actor?.type);
+    if (busy) return json(busy, 200);
 
     // Human authority is the verified JWT's own seat, never a body-supplied realm name.
     let authenticatedUserId: string | null = null;
@@ -2845,23 +2847,38 @@ async function executeDisbandStack(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { stackId, stackName, returnedManpower } = payload;
+  const { stackId, stackName } = payload;
   if (!stackId) return { events: [], error: "Missing stackId" };
 
   const realm = await getRealm(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
+  const { data: storedStack, error: storedError } = await supabase.from("military_stacks").select("*")
+    .eq("session_id", sessionId).eq("player_name", actor.name).eq("id", stackId).maybeSingle();
+  if (storedError) throw storedError;
+  if (!isStackActive(storedStack)) return { events: [], error: "Active owned stack required" };
+  // Returned men come from the stored stack, never from the client body.
+  const returnedManpower = actualSoldiers([storedStack]);
 
-  await supabase.from("military_stacks").update({ is_active: false })
-    .eq("id", stackId).eq("player_name", actor.name);
+  // Inactive means out of the field too, so no subsystem can treat it as deployed.
+  const { data: updated, error: updError } = await supabase.from("military_stacks")
+    .update({ is_active: false, is_deployed: false, demobilized_turn: turnNumber })
+    .eq("id", stackId).eq("player_name", actor.name).eq("is_active", true).select("id").maybeSingle();
+  if (updError) throw updError;
+  if (!updated) return { events: [], error: "Armádu mezitím změnil jiný proces." };
 
+  // Same canonical workforce source as REMOBILIZE: manpower columns follow the remaining active stacks now,
+  // instead of waiting for the next process-turn.
+  const after = await readRealmWorkforce(supabase, sessionId, actor.name, realm.mobilization_rate ?? 0.1);
   await supabase.from("realm_resources").update({
-    manpower_committed: Math.max(0, (realm.manpower_committed || 0) - (returnedManpower || 0)),
+    manpower_committed: after.mobilized,
+    manpower_mobilized: after.mobilized,
+    manpower_pool: after.workforce,
   }).eq("id", realm.id);
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base, event_type: "military",
-    note: payload.note || `${actor.name} rozpustil ${stackName}.`,
-    importance: "normal", reference: payload,
+    note: payload.note || `${actor.name} rozpustil ${stackName ?? storedStack.name}.`,
+    importance: "normal", reference: { ...payload, returnedManpower },
   }], payload.chronicleText);
 }
 

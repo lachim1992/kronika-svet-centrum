@@ -2,6 +2,7 @@
 // Used by both command-dispatch (player MOVE_STACK) and ai-faction-turn (AI move_army).
 // Performs validation + atomic conditional update against (start_q, start_r) to prevent races.
 
+import { isStackActive, STACK_INACTIVE_TEXT } from "./stackState.ts";
 import {
   type Hex,
   type HexInfo,
@@ -34,13 +35,14 @@ export async function applyStackMove(
   // Load stack
   const { data: stack, error: stackErr } = await supabase
     .from("military_stacks")
-    .select("id, player_name, controller_player, hex_q, hex_r, grid_x, grid_y, moved_this_turn, is_deployed")
+    .select("id, player_name, controller_player, hex_q, hex_r, grid_x, grid_y, moved_this_turn, is_deployed, is_active")
     .eq("id", stackId)
     .eq("session_id", sessionId)
     .maybeSingle();
 
   if (stackErr || !stack) return { ok: false, error: "Stack nenalezen.", code: "STACK_NOT_FOUND" };
   if (stack.player_name !== actorName && stack.controller_player !== actorName) return { ok: false, error: "Tento stack není tvůj.", code: "NOT_OWNER" };
+  if (!isStackActive(stack)) return { ok: false, error: STACK_INACTIVE_TEXT, code: "STACK_INACTIVE" };
   if (!bypassMovedThisTurn && stack.moved_this_turn) {
     return { ok: false, error: "Tato jednotka se již tento tah přesunula.", code: "ALREADY_MOVED" };
   }
@@ -192,10 +194,11 @@ export async function applyStackMicroMove(
     return { ok: false, error: MICRO_BLOCK_TEXT.too_short, code: "PATH_INVALID" };
   }
   const { data: stack, error: stackErr } = await supabase.from("military_stacks")
-    .select("id, player_name, controller_player, grid_x, grid_y, hex_q, hex_r, parcel_index, moved_this_turn")
+    .select("id, player_name, controller_player, grid_x, grid_y, hex_q, hex_r, parcel_index, moved_this_turn, is_active")
     .eq("id", stackId).eq("session_id", sessionId).maybeSingle();
   if (stackErr || !stack) return { ok: false, error: "Armáda nenalezena.", code: "STACK_NOT_FOUND" };
   if (stack.player_name !== actorName && stack.controller_player !== actorName) return { ok: false, error: "Tato armáda není tvoje.", code: "NOT_OWNER" };
+  if (!isStackActive(stack)) return { ok: false, error: STACK_INACTIVE_TEXT, code: "STACK_INACTIVE" };
   // Passage rights are the owner's, even when a controller gives the order.
   const ownerName = stack.player_name;
   if (stack.moved_this_turn) return { ok: false, error: "Tato armáda se už v tomto kole pohnula.", code: "ALREADY_MOVED" };
@@ -232,7 +235,7 @@ export async function applyStackMicroMove(
   const dest = tileOfMicro(final);
   let upd = supabase.from("military_stacks")
     .update({ grid_x: dest.gridX, grid_y: dest.gridY, hex_q: dest.gridX, hex_r: dest.gridY, parcel_index: dest.parcelIndex, moved_this_turn: true })
-    .eq("id", stackId).eq("session_id", sessionId).eq("moved_this_turn", false);
+    .eq("id", stackId).eq("session_id", sessionId).eq("moved_this_turn", false).eq("is_active", true);
   upd = legacyGrid ? upd.is("grid_x", null).eq("hex_q", stack.grid_x).eq("hex_r", stack.grid_y) : upd.eq("grid_x", stack.grid_x).eq("grid_y", stack.grid_y);
   upd = stack.parcel_index === null ? upd.is("parcel_index", null) : upd.eq("parcel_index", stack.parcel_index);
   const { data: updated, error: updErr } = await upd.select("id").maybeSingle();

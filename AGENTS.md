@@ -39,3 +39,4 @@
 
 - Rural baseline growth and local migration are planned by ruralGameplay.ts only in commit-turn atomic world phase; economy uses one shared cell-local rural labor pool, never urban population inflation — prevents replay/catch-up and double staffing.
 - Map mount/refetch must never seed city parcels; founding and explicit rollout own footprints — viewing a world must not cause writes and cascading reloads.
+- `military_stacks.is_active=false` means inactive everywhere; field/move/siege checks use `_shared/stackState.ts` (`is_deployed` alone never counts) and DISBAND derives manpower server-side — one meaning, no client-trusted manpower.
