@@ -1,5 +1,14 @@
 # Economy implementation progress
 
+## 2026-11-18 — authoritative city commands and atomic subnodes
+
+- `BUILD_DISTRICT` now accepts only a canonical district key, verifies session/city/parcel ownership, derives all prices/capacities/effects server-side and rejects abstract production districts at parcel economy version 1+. `SET_DISTRICT_PRODUCTION` is legacy-only and validates the stored canonical blueprint. UI panels and map catalogues use the same catalogue; the duplicated old UI district catalogue was removed. Existing rows were not deleted.
+- `UPGRADE_SETTLEMENT` and `UPGRADE_INFRASTRUCTURE` derive targets and nonnegative prices from shared authoritative configurations, verify the seated player and use sequential CAS plus reserve debits. `chargeReserves` rejects negative and non-finite prices. `APPLY_DECREE_EFFECTS` fails closed because current client-written declarations/evaluation summaries cannot authorize rewards; CouncilTab no longer sends those rewards.
+- `economyAdapter` excludes abstract production districts only in parcel mode; intentional legacy mode and residential/stability behavior remain. New PostgreSQL RPC `build_subnode_atomic` serializes parcel attempts and atomically checks ownership, turn, capacity and funds, then creates the node/content and debits reserves. Migration `0037_atomic_build_subnode.sql` was applied and generated types updated; no game rows, turns or saved economies were changed.
+- Tests actually run: focused security/config/PostgreSQL set **60/60 passed**; final full `bunx vitest run --maxWorkers=4` **1180 passed / 3 skipped** (145 files passed, 1 skipped). `oj typecheck -b --noEmit`, `deno check supabase/functions/command-dispatch/index.ts`, `git diff --check` and the automatic preview build passed. The concurrency test proves one node, one slot and one debit from two competing attempts; spoofed payloads, foreign cities, negative costs, skipped levels and decree rewards are covered against the real edge handler.
+- Deployment: no edge-function deployment, frontend publication, live gameplay command, process-turn, commit-turn or economy refresh was performed. Next precise task: after separate approval, deploy command-dispatch and exercise these commands in an isolated test world; immediate decree rewards remain disabled until a server-owned decree-effect record exists.
+
+
 ## 2026-11-18 — tactical battle CP correction (non-economy follow-up)
 
 - Committed code: `b583e823` replaces the rejected 25/50/75 thresholds with 40/56/63. Shared `generalCommand.ts` returns 4 CP without a general or at skill 0–39, 5 at 40–55, 6 at 56–62 and 7 at 63–100. Army and field-battle panels use the same conversion and expose the threshold tooltip. Three battle test files were updated; the reserve-order fixture now targets a genuinely empty cell.

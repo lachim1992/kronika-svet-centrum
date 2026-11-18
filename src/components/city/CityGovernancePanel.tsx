@@ -11,9 +11,10 @@ import {
   Landmark, ScrollText, TrendingUp, ArrowUpCircle,
 } from "lucide-react";
 import {
-  DISTRICT_TYPES, FACTION_TYPES, RATION_POLICIES,
+  FACTION_TYPES, RATION_POLICIES,
   LABOR_KEYS, LABOR_LABELS, MAX_DISTRICTS, INFRA_UPGRADES, computeFactionPower,
 } from "@/lib/cityGovernance";
+import { availableDistrictBlueprints, storedDistrictBlueprint, type DistrictBlueprint } from "@/lib/cityDistricts";
 import CityDistrictMap from "@/components/city/CityDistrictMap";
 
 interface Props {
@@ -28,6 +29,7 @@ interface Props {
 
 const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, currentTurn, isOwner, onRefetch }: Props) => {
   const [districts, setDistricts] = useState<any[]>([]);
+  const [parcelEconomyVersion, setParcelEconomyVersion] = useState(0);
   const [factions, setFactions] = useState<any[]>([]);
   const [policies, setPolicies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,16 +42,18 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [dRes, fRes, pRes] = await Promise.all([
+    const [dRes, fRes, pRes, sRes] = await Promise.all([
       supabase.from("city_districts").select("*").eq("city_id", city.id).order("created_at"),
       supabase.from("city_factions").select("*").eq("city_id", city.id),
       supabase.from("city_policies").select("*").eq("city_id", city.id).eq("is_active", true),
+      supabase.from("game_sessions").select("parcel_economy_version").eq("id", sessionId).single(),
     ]);
+    setParcelEconomyVersion(Number(sRes.data?.parcel_economy_version || 0));
     setDistricts(dRes.data || []);
     setFactions(fRes.data || []);
     setPolicies(pRes.data || []);
     setLoading(false);
-  }, [city.id]);
+  }, [city.id, sessionId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -124,16 +128,15 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
     onRefetch?.();
   };
 
-  // ── Build district ──
-  const buildDistrict = async (typeKey: string) => {
+  // ── Build district: the server resolves every effect and price from districtKey ──
+  const buildDistrict = async (blueprint: DistrictBlueprint) => {
     if (districts.length >= maxDistricts) {
       toast.error(`Maximum ${maxDistricts} čtvrtí pro ${city.settlement_level}`);
       return;
     }
-    const tmpl = DISTRICT_TYPES[typeKey];
     if (!realm) { toast.error("Nedostupné zdroje"); return; }
-    const districtProdCost = tmpl.build_cost_wood + tmpl.build_cost_stone;
-    if ((realm.gold_reserve || 0) < tmpl.build_cost_wealth ||
+    const districtProdCost = (blueprint.build_cost_wood || 0) + (blueprint.build_cost_stone || 0);
+    if ((realm.gold_reserve || 0) < blueprint.build_cost_wealth ||
         (realm.production_reserve || 0) < districtProdCost) {
       toast.error("Nedostatek surovin!");
       return;
@@ -147,27 +150,9 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
       commandType: "BUILD_DISTRICT",
       commandPayload: {
         cityId: city.id,
-        cityName: city.name,
-        district: {
-          district_type: typeKey,
-          name: tmpl.label,
-          population_capacity: tmpl.population_capacity,
-          grain_modifier: tmpl.grain_modifier,
-          wealth_modifier: tmpl.wealth_modifier,
-          production_modifier: tmpl.production_modifier,
-          stability_modifier: tmpl.stability_modifier,
-          influence_modifier: tmpl.influence_modifier,
-          peasant_attraction: tmpl.peasant_attraction,
-          burgher_attraction: tmpl.burgher_attraction,
-          cleric_attraction: tmpl.cleric_attraction,
-          military_attraction: tmpl.military_attraction,
-          build_cost_wealth: tmpl.build_cost_wealth,
-          build_cost_wood: tmpl.build_cost_wood,
-          build_cost_stone: tmpl.build_cost_stone,
-          build_turns: tmpl.build_turns,
-          description: tmpl.description,
-        },
-        chronicleText: `V městě **${city.name}** byla zahájena výstavba nové čtvrti: **${tmpl.label}**. ${tmpl.description}`,
+        districtKey: blueprint.key,
+        basketKey: blueprint.district_type === "production" ? blueprint.baskets?.[0] : undefined,
+        chronicleText: `V městě **${city.name}** byla zahájena výstavba nové čtvrti: **${blueprint.name}**. ${blueprint.description}`,
       },
     });
     setSaving(false);
@@ -175,7 +160,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
       toast.error(res.error || "Nepodařilo se založit čtvrť");
       return;
     }
-    toast.success(`🏗️ Výstavba "${tmpl.label}" zahájena!`);
+    toast.success(`🏗️ Výstavba "${blueprint.name}" zahájena!`);
     onRefetch?.();
     fetchData();
   };
@@ -299,13 +284,13 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
           {districts.length > 0 && (
             <div className="space-y-2">
               {districts.map(d => {
-                const tmpl = DISTRICT_TYPES[d.district_type];
+                const tmpl = storedDistrictBlueprint(d);
                 const isBuilding = d.status === "building";
                 const turnsLeft = isBuilding ? (d.build_started_turn + d.build_turns - currentTurn) : 0;
                 return (
                   <div key={d.id} className={`p-3 rounded-lg border ${isBuilding ? "border-muted bg-muted/20" : "border-border"}`}>
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">{tmpl?.icon || "🏘️"}</span>
+                      <span className="text-lg">{tmpl?.district_type === "production" ? (tmpl.key === "farm_belt" ? "🌾" : "⚒️") : "🏘️"}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-display font-semibold">{d.name}</p>
                         <p className="text-[10px] text-muted-foreground">{d.description}</p>
@@ -339,19 +324,19 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                 <Plus className="h-3 w-3" />Založit novou čtvrť
               </p>
               <div className="grid grid-cols-2 gap-2">
-                {Object.entries(DISTRICT_TYPES).map(([key, d]) => (
+                {availableDistrictBlueprints(parcelEconomyVersion).map(blueprint => (
                   <button
-                    key={key}
-                    onClick={() => buildDistrict(key)}
+                    key={blueprint.key}
+                    onClick={() => buildDistrict(blueprint)}
                     disabled={saving}
                     className="p-2 rounded-lg border border-border hover:border-primary/50 text-left transition-colors"
                   >
-                    <p className="text-xs font-semibold">{d.icon} {d.label}</p>
-                    <p className="text-[9px] text-muted-foreground line-clamp-2">{d.description}</p>
+                    <p className="text-xs font-semibold">{blueprint.district_type === "production" ? "⚒️" : "🏘️"} {blueprint.name}</p>
+                    <p className="text-[9px] text-muted-foreground line-clamp-2">{blueprint.description}</p>
                     <div className="flex gap-1 mt-1 text-[9px] text-muted-foreground">
-                      <span>💰{d.build_cost_wealth}</span>
-                      <span>⚒️{d.build_cost_wood + d.build_cost_stone}</span>
-                      <span>⏱️{d.build_turns}k</span>
+                      <span>💰{blueprint.build_cost_wealth}</span>
+                      <span>⚒️{(blueprint.build_cost_wood || 0) + (blueprint.build_cost_stone || 0)}</span>
+                      <span>⏱️{blueprint.build_turns}k</span>
                     </div>
                   </button>
                 ))}
@@ -484,14 +469,10 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                           turnNumber: currentTurn,
                           actor: { name: currentPlayerName, type: "player" },
                           commandType: "UPGRADE_INFRASTRUCTURE",
-                          commandPayload: {
+                            commandPayload: {
                             cityId: city.id,
-                            cityName: city.name,
                             field: infra.field,
                             nextLevel: currentLevel + 1,
-                            costGold: cost.wealth,
-                            costProduction: cost.wood + cost.stone,
-                            label: infra.label,
                             chronicleText: `V městě **${city.name}** byla vylepšena infrastruktura: **${infra.label}** na úroveň ${currentLevel + 1}.`,
                           },
                         });

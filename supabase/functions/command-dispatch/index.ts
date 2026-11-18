@@ -38,7 +38,9 @@ import { FOUNDING_HAMLET_POPULATION } from "../_shared/foundingPopulation.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
-import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
+import { PRODUCTION_PER_RESIDENTIAL, districtBlueprint, storedDistrictBlueprint, districtBasketProblem } from "../_shared/cityDistricts.ts";
+import { settlementUpgradeDefinition, settlementUpgradeProblem } from "../_shared/settlementUpgrades.ts";
+import { infrastructureUpgradeByField, infrastructureUpgradeQuote } from "../_shared/cityInfrastructure.ts";
 import { templateSiteRole, DEPOSIT_REQUIRED, availableMacroReserve, macroReserveKey, type SiteRole } from "../_shared/ruralSites.ts";
 import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { generateTileParcels } from "../_shared/tileParcels.ts";
@@ -53,14 +55,6 @@ import { generalArmyCapacity } from "../_shared/generalCommand.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
-
-/** The 12 canonical demand baskets a production district may be pointed at. */
-const CANONICAL_BASKETS = new Set([
-  "staple_food", "basic_clothing", "tools", "fuel", "drinking_water", "storage_logistics",
-  "admin_supplies", "construction", "metalwork", "military_supply", "luxury_clothing", "feast",
-]);
-const resolveBasketKey = (raw: string) => (CANONICAL_BASKETS.has(raw) ? raw : "staple_food");
-
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -3259,41 +3253,19 @@ async function executeBuildSubnode(
     return { events: [], error: `Potřeba ${def.gold} zlata a ${def.production} produkce` };
   }
 
-  const { data: node, error: nodeError } = await supabase.from("province_nodes").insert({
-    session_id: sessionId, province_id: provinceId, city_id: parcelCityId,
-    name: String(payload.name || def.label).slice(0, 80), node_type: def.nodeType, node_tier: "micro",
-    node_subtype: subtype, node_class: "transit", hex_q: parcel.grid_x, hex_r: parcel.grid_y,
-    grid_x: parcel.grid_x, grid_y: parcel.grid_y, parcel_index: parcel.parcel_index,
-    controlled_by: actor.name, built_by: actor.name, built_turn: turnNumber, biome_at_build: tile.biome_family,
-    production_output: Number(def.resource.production || 0), wealth_output: Number(def.resource.wealth || 0),
-    food_value: Number(def.resource.supplies || 0), resource_output: def.resource,
-    capability_tags: def.capabilities, production_role: def.role,
-    flow_role: def.group === "trade" ? "producer" : def.group === "military" ? "regulator" : "producer",
-    fortification_level: def.group === "military" ? 1 : 0, is_active: true, upgrade_level: 1, max_upgrade_level: 3,
-
-  }).select("id").single();
-  if (nodeError || !node) return { events: [], error: nodeError?.message || "Subuzel se nepodařilo vytvořit" };
-
-  const { error: contentError } = await supabase.from("tile_parcel_contents").insert({
-    session_id: sessionId, parcel_id: parcelId, entity_type: "node", entity_id: node.id, slots_used: 1,
+  // Authorization, parcel capacity, node/content creation and reserve debit commit
+  // together. Competing commands cannot create an unpaid node or oversubscribe slots.
+  const { data: built, error: buildError } = await supabase.rpc("build_subnode_atomic", {
+    p_session: sessionId, p_player: actor.name, p_parcel: parcelId, p_city: parcelCityId,
+    p_province: provinceId, p_turn: turnNumber, p_name: String(payload.name || def.label).slice(0, 80),
+    p_subtype: subtype, p_def: def, p_cost_gold: def.gold, p_cost_production: def.production,
   });
-  if (contentError) { await supabase.from("province_nodes").delete().eq("id", node.id); return { events: [], error: contentError.message }; }
-
-  const { error: resourceError } = await supabase.from("realm_resources").update({
-    gold_reserve: Number(realm.gold_reserve || 0) - def.gold,
-    production_reserve: Number(realm.production_reserve || 0) - def.production,
-  }).eq("id", realm.id);
-  if (resourceError) {
-    await supabase.from("tile_parcel_contents").delete().eq("entity_type", "node").eq("entity_id", node.id);
-    await supabase.from("province_nodes").delete().eq("id", node.id);
-    return { events: [], error: resourceError.message };
-  }
-  await supabase.from("tile_parcels").update({ status: "occupied", owner_player: actor.name, land_use: def.group === "trade" ? "commercial" : def.group === "military" ? "military" : "industrial" }).eq("id", parcelId);
+  if (buildError || !built?.nodeId) return { events: [], error: buildError?.message || "Subuzel se nepodařilo vytvořit" };
 
   return insertEvents(supabase, commandId, [{ ...base, event_type: "construction", city_id: parcelCityId,
     note: `${actor.name} zahájil provoz ${def.label.toLowerCase()} na parcele ${parcel.parcel_index + 1}.`, importance: "normal",
-    reference: { parcelId, nodeId: node.id, subtype, gridX: parcel.grid_x, gridY: parcel.grid_y, costGold: def.gold, costProduction: def.production },
-  }], { nodeId: node.id });
+    reference: { parcelId, nodeId: built.nodeId, subtype, gridX: parcel.grid_x, gridY: parcel.grid_y, costGold: def.gold, costProduction: def.production },
+  }], { nodeId: built.nodeId });
 }
 
 /** UPGRADE_TILE_INFRASTRUCTURE — sequential trail, road, paved-road project on one macro cell. */
@@ -3686,24 +3658,33 @@ async function executeUpgradeBuilding(
   }], chronicleText, { buildingId, wonderId });
 }
 
-/**
- * BUILD_DISTRICT — deduct, insert city_districts.
- * Payload: { cityId, cityName, district (full template + values), chronicleText? }
- */
+/** BUILD_DISTRICT — payload identifies only city, optional parcel and canonical blueprint key. */
 async function executeBuildDistrict(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { cityId, cityName, district, chronicleText, parcelId, basketKey } = payload;
-  if (!cityId || !district) return { events: [], error: "Missing cityId or district" };
-  const isProduction = district.district_type === "production";
+  const { cityId, chronicleText, parcelId, basketKey } = payload;
+  const blueprint = districtBlueprint(String(payload.districtKey || ""));
+  if (!cityId || !blueprint) return { events: [], error: "Neplatná šablona čtvrti" };
+
+  const { data: session, error: sessionError } = await supabase.from("game_sessions")
+    .select("parcel_economy_version").eq("id", sessionId).single();
+  if (sessionError || !session) return { events: [], error: "Session not found" };
+  const isProduction = blueprint.district_type === "production";
+  if (isProduction && Number(session.parcel_economy_version || 0) >= 1) {
+    return { events: [], error: "Abstraktní produkční čtvrti jsou v parcelové ekonomice vypnuté — použij fyzické budovy a parcely" };
+  }
+
+  const { data: city, error: cityError } = await supabase.from("cities")
+    .select("id, name, owner_player").eq("id", cityId).eq("session_id", sessionId).maybeSingle();
+  if (cityError || !city) return { events: [], error: "Město nebylo nalezeno" };
+  if (city.owner_player !== actor.name) return { events: [], error: "Čtvrť lze založit jen ve vlastním městě" };
+
   let chosenBasket: string | null = null;
   if (isProduction) {
-    chosenBasket = resolveBasketKey(String(basketKey || district.baskets?.[0] || "staple_food"));
-    if (Array.isArray(district.baskets) && district.baskets.length > 0 && !district.baskets.includes(chosenBasket)) {
-      return { events: [], error: "Tato čtvrť neumí vyrábět zvolený koš" };
-    }
-    // One residential district staffs two production districts — the labour gate.
+    chosenBasket = String(basketKey || blueprint.baskets?.[0] || "");
+    const basketError = districtBasketProblem(blueprint, chosenBasket);
+    if (basketError) return { events: [], error: basketError };
     const { data: existing } = await supabase.from("city_districts")
       .select("district_type, status").eq("session_id", sessionId).eq("city_id", cityId)
       .in("status", ["completed", "building"]);
@@ -3713,51 +3694,46 @@ async function executeBuildDistrict(
       return { events: [], error: `Chybí pracovní síla — postav obytnou čtvrť (${production}/${residential * PRODUCTION_PER_RESIDENTIAL} obsazeno)` };
     }
   }
+
   const targetParcel = await getAvailableParcel(supabase, cityId, parcelId);
   if (parcelId && !targetParcel) return { events: [], error: "Vybraná parcela není volná" };
-
+  if (targetParcel && targetParcel.owner_player !== actor.name) return { events: [], error: "Na cizí parcele nelze stavět" };
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
-
-  const costGold = district.build_cost_wealth || 0;
-  const prodCost = (district.build_cost_wood || 0) + (district.build_cost_stone || 0);
-
-  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: "Nedostatek zlata" };
-  if ((realm.production_reserve || 0) < prodCost) return { events: [], error: "Nedostatek produkce" };
-
+  const costGold = blueprint.build_cost_wealth;
+  const prodCost = (blueprint.build_cost_wood || 0) + (blueprint.build_cost_stone || 0);
   const reserveIO = realmReserveIO(supabase, realm.id);
   const buildCost = { gold: costGold, production: prodCost };
   const charge = await chargeReserves(reserveIO, buildCost, 3, realm);
   if (charge.ok === false) return { events: [], error: charge.error };
 
-  const buildTurns = district.build_turns || 1;
+  const buildTurns = blueprint.build_turns;
   const { data: inserted, error: dErr } = await supabase.from("city_districts").insert({
     session_id: sessionId, city_id: cityId,
-    district_type: district.district_type, name: district.name,
-    population_capacity: district.population_capacity || 0,
-    grain_modifier: district.grain_modifier || 0,
-    wealth_modifier: district.wealth_modifier || 0,
-    production_modifier: district.production_modifier || 0,
-    stability_modifier: district.stability_modifier || 0,
-    influence_modifier: district.influence_modifier || 0,
-    peasant_attraction: district.peasant_attraction || 0,
-    burgher_attraction: district.burgher_attraction || 0,
-    cleric_attraction: district.cleric_attraction || 0,
-    military_attraction: district.military_attraction || 0,
+    district_type: blueprint.district_type, name: blueprint.name,
+    population_capacity: blueprint.population_capacity || 0,
+    grain_modifier: blueprint.grain_modifier || 0,
+    wealth_modifier: blueprint.wealth_modifier || 0,
+    production_modifier: blueprint.production_modifier || 0,
+    stability_modifier: blueprint.stability_modifier || 0,
+    influence_modifier: 0,
+    peasant_attraction: blueprint.peasant_attraction || 0,
+    burgher_attraction: blueprint.burgher_attraction || 0,
+    cleric_attraction: 0,
+    military_attraction: 0,
     build_cost_wealth: costGold,
-    build_cost_wood: district.build_cost_wood || 0,
-    build_cost_stone: district.build_cost_stone || 0,
+    build_cost_wood: blueprint.build_cost_wood || 0,
+    build_cost_stone: blueprint.build_cost_stone || 0,
     build_turns: buildTurns,
     build_started_turn: turnNumber,
     status: buildTurns <= 1 ? "completed" : "building",
     completed_turn: buildTurns <= 1 ? turnNumber : null,
-    description: district.description || null,
+    description: blueprint.description,
     basket_key: chosenBasket,
-    basket_output: isProduction ? (district.basket_output || 0) : 0,
-    basket_quality: district.basket_quality || 1,
-    demand_bonus: district.demand_bonus || 0,
-
+    basket_output: isProduction ? (blueprint.basket_output || 0) : 0,
+    basket_quality: blueprint.basket_quality || 1,
+    demand_bonus: blueprint.demand_bonus || 0,
   }).select("id").single();
 
   if (dErr) {
@@ -3765,7 +3741,7 @@ async function executeBuildDistrict(
     return { events: [], error: `District insert failed: ${dErr.message}` };
   }
   if (targetParcel) {
-    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "district", inserted.id, district.district_type || "residential");
+    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "district", inserted.id, blueprint.district_type);
     if (occupancyError) {
       await supabase.from("city_districts").delete().eq("id", inserted.id);
       await refundReserves(reserveIO, buildCost);
@@ -3777,9 +3753,9 @@ async function executeBuildDistrict(
     ...base,
     event_type: "construction",
     city_id: cityId,
-    note: `${actor.name} založil čtvrť ${district.name} v ${cityName}${chosenBasket ? ` — výroba: ${chosenBasket}` : ""}.`,
+    note: `${actor.name} založil čtvrť ${blueprint.name} v ${city.name}${chosenBasket ? ` — výroba: ${chosenBasket}` : ""}.`,
     importance: "normal",
-    reference: { districtId: inserted.id, districtName: district.name, cityId, parcelId: targetParcel?.id || null, basketKey: chosenBasket },
+    reference: { districtId: inserted.id, districtKey: blueprint.key, districtName: blueprint.name, cityId, parcelId: targetParcel?.id || null, basketKey: chosenBasket },
   }], chronicleText, { districtId: inserted.id });
 }
 
@@ -3793,24 +3769,31 @@ async function executeSetDistrictProduction(
 ): Promise<CommandResult> {
   const { districtId, basketKey } = payload;
   if (!districtId || !basketKey) return { events: [], error: "Missing districtId or basketKey" };
+  const { data: session } = await supabase.from("game_sessions").select("parcel_economy_version").eq("id", sessionId).single();
+  if (Number(session?.parcel_economy_version || 0) >= 1) {
+    return { events: [], error: "Abstraktní produkce čtvrtí je v parcelové ekonomice vypnutá" };
+  }
   const { data: district } = await supabase.from("city_districts")
     .select("id, name, city_id, district_type, cities!inner(name, owner_player)")
     .eq("session_id", sessionId).eq("id", districtId).maybeSingle();
   if (!district) return { events: [], error: "Čtvrť nenalezena" };
   if (district.cities?.owner_player !== actor.name) return { events: [], error: "Čtvrť patří jiné říši" };
-  if (district.district_type !== "production") return { events: [], error: "Jen produkční čtvrť lze nastavit na výrobu" };
-
-  const resolved = resolveBasketKey(String(basketKey));
-  const { error: uErr } = await supabase.from("city_districts").update({ basket_key: resolved }).eq("id", districtId);
+  const blueprint = storedDistrictBlueprint(district);
+  if (district.district_type !== "production" || !blueprint) return { events: [], error: "Neznámá produkční čtvrť" };
+  const chosen = String(basketKey);
+  const basketError = districtBasketProblem(blueprint, chosen);
+  if (basketError) return { events: [], error: basketError };
+  const { error: uErr } = await supabase.from("city_districts").update({ basket_key: chosen })
+    .eq("id", districtId).eq("session_id", sessionId);
   if (uErr) return { events: [], error: `Nastavení výroby selhalo: ${uErr.message}` };
 
   return insertEvents(supabase, commandId, [{
     ...base,
     event_type: "economy",
     city_id: district.city_id,
-    note: `${district.name} v ${district.cities?.name || "?"} přešla na výrobu ${resolved}.`,
+    note: `${district.name} v ${district.cities?.name || "?"} přešla na výrobu ${chosen}.`,
     importance: "minor",
-    reference: { districtId, basketKey: resolved },
+    reference: { districtId, basketKey: chosen },
   }]);
 }
 
@@ -3823,40 +3806,47 @@ async function executeUpgradeSettlement(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { cityId, cityName, nextLevel, nextSettlement, costs } = payload;
-  if (!cityId || !nextSettlement) return { events: [], error: "Missing cityId or nextSettlement" };
+  const { cityId } = payload;
+  if (!cityId) return { events: [], error: "Missing cityId" };
+  const { data: city, error: cityError } = await supabase.from("cities")
+    .select("id, name, owner_player, settlement_level, level, population_total, city_stability, local_grain_reserve")
+    .eq("id", cityId).eq("session_id", sessionId).maybeSingle();
+  if (cityError || !city) return { events: [], error: "Město nebylo nalezeno" };
+  if (city.owner_player !== actor.name) return { events: [], error: "Povýšit lze jen vlastní město" };
+  const definition = settlementUpgradeDefinition(city.settlement_level);
+  if (!definition) return { events: [], error: "Sídlo je na maximální úrovni nebo má neplatný stav" };
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
+  const requirementError = settlementUpgradeProblem(city, realm, definition);
+  if (requirementError) return { events: [], error: requirementError };
+  const cost = { gold: definition.costGold, production: definition.costProduction };
+  const nextLevel = definition.nextLabel;
+  const nextSettlement = definition.nextSettlement;
 
-  // Validate funds
-  if (costs?.production_reserve && (realm.production_reserve || 0) < costs.production_reserve) {
-    return { events: [], error: "Nedostatek produkce" };
-  }
-  if (costs?.gold_reserve && (realm.gold_reserve || 0) < costs.gold_reserve) {
-    return { events: [], error: "Nedostatek zlata" };
-  }
-
-  await supabase.from("cities").update({
+  // Lock the logical progression first. A concurrent upgrade can then win at most once.
+  const { data: upgraded, error: upgradeError } = await supabase.from("cities").update({
     settlement_level: nextSettlement,
     level: nextLevel,
-  }).eq("id", cityId);
+  }).eq("id", cityId).eq("session_id", sessionId).eq("settlement_level", definition.current)
+    .select("id").maybeSingle();
+  if (upgradeError || !upgraded) return { events: [], error: "Sídlo bylo mezitím změněno" };
 
-  if (costs && Object.keys(costs).length > 0) {
-    const update: any = {};
-    for (const [field, amount] of Object.entries(costs)) {
-      update[field] = Math.max(0, ((realm as any)[field] || 0) - (amount as number));
-    }
-    await supabase.from("realm_resources").update(update).eq("id", realm.id);
+  const reserveIO = realmReserveIO(supabase, realm.id);
+  const charge = await chargeReserves(reserveIO, cost, 3, realm);
+  if (charge.ok === false) {
+    await supabase.from("cities").update({ settlement_level: definition.current, level: city.level })
+      .eq("id", cityId).eq("session_id", sessionId).eq("settlement_level", nextSettlement);
+    return { events: [], error: charge.error };
   }
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "settlement_upgrade",
     city_id: cityId,
-    note: `${cityName} povýšeno na ${nextLevel}.`,
+    note: `${city.name} povýšeno na ${nextLevel}.`,
     importance: "critical",
-    reference: { cityId, cityName, nextLevel, nextSettlement },
+    reference: { cityId, cityName: city.name, nextLevel, nextSettlement, cost },
   }], payload.chronicleText);
 }
 
@@ -3865,89 +3855,12 @@ async function executeUpgradeSettlement(
  * Payload: { effects: [{ type, value }], chronicleText? }
  */
 async function executeApplyDecreeEffects(
-  supabase: any, base: any, actor: Actor, payload: any,
-  commandId: string, sessionId: string, turnNumber: number,
+  _supabase: any, _base: any, _actor: Actor, _payload: any,
+  _commandId: string, _sessionId: string, _turnNumber: number,
 ): Promise<CommandResult> {
-  const { effects } = payload;
-  if (!Array.isArray(effects)) return { events: [], error: "Missing effects array" };
-
-  const RESOURCE_FIELD_MAP: Record<string, string> = {
-    gold: "gold_reserve", wealth: "gold_reserve",
-    grain: "grain_reserve", supplies: "grain_reserve",
-    production: "production_reserve", manpower: "manpower_pool",
-  };
-  const IMMEDIATE = new Set(["gold", "wealth", "grain", "supplies", "production", "manpower", "stability"]);
-  const immediate = effects.filter((e: any) => IMMEDIATE.has(e.type));
-
-  const realm = await getRealmFull(supabase, sessionId, actor.name);
-  if (!realm) return { events: [], error: "Realm not found" };
-
-  const realmUpdates: Record<string, number> = {};
-  let stabilityDelta = 0;
-  for (const eff of immediate) {
-    if (eff.type === "stability") {
-      stabilityDelta += eff.value;
-    } else {
-      const field = RESOURCE_FIELD_MAP[eff.type];
-      if (field) {
-        const current = (realm as any)[field] || 0;
-        realmUpdates[field] = Math.max(0, current + eff.value);
-      }
-    }
-  }
-
-  if (Object.keys(realmUpdates).length > 0) {
-    await supabase.from("realm_resources").update(realmUpdates).eq("id", realm.id);
-  }
-
-  // Council backlash: forcing a decree against the council costs stability.
-  // Previously written straight from the UI; it belongs to the same command so a
-  // retry cannot apply the penalty twice.
-  const councilPenalty = Math.max(0, Math.round(Number(payload?.stabilityPenalty ?? 0)));
-  const totalStability = stabilityDelta - councilPenalty;
-
-  if (totalStability !== 0) {
-    const { data: cities } = await supabase.from("cities")
-      .select("id, city_stability").eq("session_id", sessionId).eq("owner_player", actor.name);
-    for (const c of (cities || [])) {
-      const newStab = Math.max(0, Math.min(100, (c.city_stability || 50) + totalStability));
-      await supabase.from("cities").update({ city_stability: newStab }).eq("id", c.id);
-    }
-  }
-
-  // Faction reactions: { [faction_type]: { satisfaction, loyalty } } deltas.
-  const factionImpacts = (payload?.factionImpacts && typeof payload.factionImpacts === "object")
-    ? payload.factionImpacts as Record<string, { satisfaction?: number; loyalty?: number }>
-    : {};
-  const impactedTypes = Object.keys(factionImpacts);
-  let factionsUpdated = 0;
-  if (impactedTypes.length > 0) {
-    const { data: cityIds } = await supabase.from("cities")
-      .select("id").eq("session_id", sessionId).eq("owner_player", actor.name);
-    const ids = (cityIds || []).map((c: any) => c.id);
-    if (ids.length > 0) {
-      const { data: factions } = await supabase.from("city_factions")
-        .select("id, faction_type, satisfaction, loyalty")
-        .eq("session_id", sessionId).in("city_id", ids);
-      for (const f of (factions || [])) {
-        const impact = factionImpacts[f.faction_type];
-        if (!impact) continue;
-        await supabase.from("city_factions").update({
-          satisfaction: Math.max(0, Math.min(100, Number(f.satisfaction || 0) + Number(impact.satisfaction || 0))),
-          loyalty: Math.max(0, Math.min(100, Number(f.loyalty || 0) + Number(impact.loyalty || 0))),
-        }).eq("id", f.id);
-        factionsUpdated++;
-      }
-    }
-  }
-
-  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-    ...base,
-    event_type: "decree",
-    note: payload.note || `${actor.name} aplikoval okamžité dopady dekretu.`,
-    importance: "normal",
-    reference: { effects: immediate, stability_penalty: councilPenalty, factions_updated: factionsUpdated },
-  }], payload.chronicleText);
+  // Council evaluations store summaries, while declarations are client-written narrative rows.
+  // Neither can authorize resources, stability or loyalty. Fail closed before any mutation.
+  return { events: [], error: "Okamžité efekty dekretu nejsou dostupné: chybí serverem ověřený uložený efekt dekretu" };
 }
 
 /**
@@ -4010,33 +3923,44 @@ async function executeUpgradeInfrastructure(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { cityId, cityName, field, nextLevel, costGold = 0, costProduction = 0, label, chronicleText } = payload;
-  if (!cityId || !field || typeof nextLevel !== "number") {
-    return { events: [], error: "Missing cityId, field or nextLevel" };
-  }
-  const ALLOWED = new Set(["irrigation_level", "market_level", "temple_level", "development_level"]);
-  if (!ALLOWED.has(field)) return { events: [], error: `Field ${field} not allowed` };
+  const { cityId, field, nextLevel, chronicleText } = payload;
+  const upgrade = infrastructureUpgradeByField(field);
+  if (!cityId || !upgrade) return { events: [], error: "Neplatná infrastruktura" };
+  const { data: city, error: cityError } = await supabase.from("cities")
+    .select("id, name, owner_player, irrigation_level, temple_level, market_level")
+    .eq("id", cityId).eq("session_id", sessionId).maybeSingle();
+  if (cityError || !city) return { events: [], error: "Město nebylo nalezeno" };
+  if (city.owner_player !== actor.name) return { events: [], error: "Vylepšit lze jen vlastní město" };
+  const currentLevel = city[upgrade.field];
+  const quote = infrastructureUpgradeQuote(upgrade, currentLevel, nextLevel);
+  if (typeof quote === "string") return { events: [], error: quote };
+  const infraCost = { gold: quote.costGold, production: quote.costProduction };
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
 
-  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: "Nedostatek zlata" };
-  if ((realm.production_reserve || 0) < costProduction) return { events: [], error: "Nedostatek produkce" };
+  // Sequential CAS prevents two simultaneous upgrades from buying the same level.
+  let levelUpdate = supabase.from("cities").update({ [upgrade.field]: quote.nextLevel })
+    .eq("id", cityId).eq("session_id", sessionId);
+  levelUpdate = currentLevel == null ? levelUpdate.is(upgrade.field, null) : levelUpdate.eq(upgrade.field, currentLevel);
+  const { data: upgraded, error: upgradeError } = await levelUpdate.select("id").maybeSingle();
+  if (upgradeError || !upgraded) return { events: [], error: "Úroveň infrastruktury byla mezitím změněna" };
 
-  await supabase.from("realm_resources").update({
-    gold_reserve: (realm.gold_reserve || 0) - costGold,
-    production_reserve: Math.max(0, (realm.production_reserve || 0) - costProduction),
-  }).eq("id", realm.id);
-
-  await supabase.from("cities").update({ [field]: nextLevel }).eq("id", cityId);
+  const reserveIO = realmReserveIO(supabase, realm.id);
+  const charge = await chargeReserves(reserveIO, infraCost, 3, realm);
+  if (charge.ok === false) {
+    await supabase.from("cities").update({ [upgrade.field]: currentLevel ?? 0 })
+      .eq("id", cityId).eq("session_id", sessionId).eq(upgrade.field, quote.nextLevel);
+    return { events: [], error: charge.error };
+  }
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "construction",
     city_id: cityId,
-    note: `${actor.name} vylepšil ${label || field} v ${cityName} na úroveň ${nextLevel}.`,
+    note: `${city.name}: ${upgrade.label} vylepšeno na úroveň ${quote.nextLevel} (−${quote.costGold} zlata, −${quote.costProduction} produkce).`,
     importance: "normal",
-    reference: { cityId, field, nextLevel },
+    reference: { cityId, field: upgrade.field, nextLevel: quote.nextLevel, costGold: quote.costGold, costProduction: quote.costProduction },
   }], chronicleText);
 }
 

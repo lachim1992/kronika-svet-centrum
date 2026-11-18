@@ -1,5 +1,14 @@
 # Map-first square-grid roadmap
 
+## Opravný balík autority příkazů a parcelových čtvrtí (2026-11-18)
+- [x] BUILD_DISTRICT / SET_DISTRICT_PRODUCTION: kanonický serverový katalog, vlastnictví a session, produkce fail-closed v parcel režimu; UI nabízí jen skutečně podporované typy.
+- [x] APPLY_DECREE_EFFECTS: žádné klientské surovinové přírůstky; bez serverem ověřitelného dekretu fail-closed. CouncilTab okamžité odměny neodesílá a oznámí, že nebyly uplatněny.
+- [x] UPGRADE_SETTLEMENT / UPGRADE_INFRASTRUCTURE: serverové ceny a úrovně, vlastnictví, CAS platby a odolnost proti záporným nákladům.
+- [x] BUILD_SUBNODE: `0037_atomic_build_subnode.sql` atomicky ověří vlastnictví, rezervy, kapacitu, uzel a obsazení parcely; PostgreSQL test dvou souběžných pokusů skončil jedním uzlem a jednou platbou.
+- [x] economyAdapter: produkční čtvrti jen v záměrném legacy režimu; obytná kapacita a stabilita beze změny, staré záznamy zachovány.
+- [x] Cílené testy 60/60 před posledním zobrazením; finální celá sada `bunx vitest run --maxWorkers=4` = **1180 passed / 3 skipped** (145 souborů passed, 1 skipped). `oj typecheck -b --noEmit`, `deno check supabase/functions/command-dispatch/index.ts` a automatický build prošly.
+- [ ] Edge deploy a živá herní akce záměrně nebyly provedeny. Migrace schématu 0037 byla aplikována bez změny herních řádků; frontend nebyl publikován. Další krok vyžaduje samostatné povolení nasazení command-dispatch. Okamžité efekty dekretů zůstávají fail-closed, dokud neexistuje serverem vlastněný uložený efekt dekretu.
+
 ## Taktické bitvy — dokončení a korekce CP (2026-11-18)
 - [x] Kód z `9e29c22e`: schválené efekty 7 forem a typový pohyb, skutečné vážené hodnocení AI, vysvětlení doktríny/rozkazů a volba formace při rozmístění; bez nového paralelního enginu.
 - [x] Korekce v `b583e823`: 4 CP bez generála a při skill 0–39, 5 CP při 40–55, 6 CP při 56–62, 7 CP při 63–100; referenční body 40/56/63 → 5/6/7. Sdílený server i UI používají stejný převod a oba panely mají nápovědu prahů.

@@ -13094,6 +13094,22 @@ export type Database = {
         Args: { p_session: string; p_turn: number }
         Returns: string
       }
+      build_subnode_atomic: {
+        Args: {
+          p_city: string
+          p_cost_gold: number
+          p_cost_production: number
+          p_def: Json
+          p_name: string
+          p_parcel: string
+          p_player: string
+          p_province: string
+          p_session: string
+          p_subtype: string
+          p_turn: number
+        }
+        Returns: Json
+      }
       buy_city_parcel: {
         Args: {
           p_city: string

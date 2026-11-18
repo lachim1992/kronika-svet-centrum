@@ -195,7 +195,7 @@ const DISTRICT_SPRITE: Record<string, string> = {
 
 
 /** District families live in a shared catalogue so the server validates the same numbers. */
-import { RESIDENTIAL_DISTRICTS, PRODUCTION_DISTRICTS, PRODUCTION_PER_RESIDENTIAL, type DistrictBlueprint } from "@/lib/cityDistricts";
+import { PRODUCTION_PER_RESIDENTIAL, availableDistrictBlueprints, type DistrictBlueprint } from "@/lib/cityDistricts";
 import { DEMAND_BASKETS } from "@/lib/goodsCatalog";
 import { BuildCatalogPanel } from "@/components/map/BuildCatalogPanel";
 import { useManagementReport } from "@/hooks/useManagementReport";
@@ -412,6 +412,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const pinchStartRef = useRef<{ distance: number; zoom: number; pan: { x: number; y: number }; center: { x: number; y: number } } | null>(null);
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; zoom: number; moved: boolean } | null>(null);
   const [tiles, setTiles] = useState<Tile[]>([]);
+  const [parcelEconomyVersion, setParcelEconomyVersion] = useState(0);
   const [cities, setCities] = useState<City[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [armies, setArmies] = useState<Army[]>([]);
@@ -514,7 +515,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }), []);
 
   const load = useCallback(async () => {
-    const [tileRes, cityRes, nodeRes, routeRes, tradeFlowRes, basketFlowRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, roadSegmentRes, roadProjectRes, templateRes, buildingRes, districtRes, hexPopulationRes] = await Promise.all([
+    const [tileRes, cityRes, nodeRes, routeRes, tradeFlowRes, basketFlowRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, roadSegmentRes, roadProjectRes, templateRes, buildingRes, districtRes, hexPopulationRes, sessionRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction, coastal").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, city_id, controlled_by, production_output, wealth_output, food_value, parcel_index, upgrade_level, infrastructure_level").eq("session_id", sessionId).eq("is_active", true),
@@ -533,7 +534,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("city_buildings").select("id, name, category, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
       supabase.from("hex_population").select("q, r, carrying_capacity, rural_population, mobile_population, last_resolved_turn").eq("session_id", sessionId).limit(4000),
+      supabase.from("game_sessions").select("parcel_economy_version").eq("id", sessionId).single(),
     ]);
+    setParcelEconomyVersion(Number(sessionRes.data?.parcel_economy_version || 0));
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
     // One animated line per physical corridor, but every movement along it stays
     // readable, so a click can list what actually travels there.
@@ -1547,7 +1550,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     if (!selectedParcel || !parcelBuildCity || parcelBuildCity.owner_player !== playerName) return;
     setBuildingAction(`district-${district.key}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_DISTRICT", commandPayload: {
-      cityId: parcelBuildCity.id, cityName: parcelBuildCity.name, parcelId: selectedParcel.id, district, basketKey,
+      cityId: parcelBuildCity.id, parcelId: selectedParcel.id, districtKey: district.key, basketKey,
     }});
     setBuildingAction(null);
     if (!result.ok) { toast.error(result.error || "Čtvrť se nepodařilo založit"); return; }
@@ -2842,6 +2845,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             ownCity={!!parcelBuildCity && parcelBuildCity.owner_player === playerName}
             cityName={parcelBuildCity?.name}
             freeDistrictSlots={labour.free}
+            allowProductionDistricts={availableDistrictBlueprints(parcelEconomyVersion).some(d => d.district_type === "production")}
             hasWater={!!selected?.has_river || !!selected?.coastal}
             treasury={{ gold: treasury.gold, production: treasury.production }}
             subnodeBlockReason={key => subnodeBlockReason({ key } as SubnodeOption)}
@@ -2855,7 +2859,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             }}
             terrainBlockReason={item => terrainReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome)}
             basketOptions={districtKey => {
-              const blueprint = PRODUCTION_DISTRICTS.find(d => d.key === districtKey);
+              const blueprint = availableDistrictBlueprints(parcelEconomyVersion).find(d => d.key === districtKey);
               const choices = blueprint?.baskets?.length ? blueprint.baskets : DEMAND_BASKETS.map(b => b.key);
               return choices.map(key => ({ key, label: DEMAND_BASKETS.find(b => b.key === key)?.label || key }));
             }}
@@ -2869,7 +2873,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const template = buildingTemplates.find(t => t.id === item.refId);
                 if (template) void buildOnParcel(template);
               } else if (item.kind === "district") {
-                const blueprint = [...RESIDENTIAL_DISTRICTS, ...PRODUCTION_DISTRICTS].find(d => d.key === item.refId);
+                const blueprint = availableDistrictBlueprints(parcelEconomyVersion).find(d => d.key === item.refId);
                 if (blueprint) void buildDistrict(blueprint, blueprint.district_type === "production" ? basketKey : undefined);
 
               } else {

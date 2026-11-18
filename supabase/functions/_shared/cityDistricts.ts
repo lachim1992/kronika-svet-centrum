@@ -80,9 +80,30 @@ export const PRODUCTION_DISTRICTS: DistrictBlueprint[] = [
 ];
 
 export const ALL_DISTRICTS = [...RESIDENTIAL_DISTRICTS, ...PRODUCTION_DISTRICTS];
+export const CANONICAL_DISTRICT_BASKETS = new Set([
+  "staple_food", "basic_clothing", "tools", "fuel", "drinking_water", "storage_logistics",
+  "admin_supplies", "construction", "metalwork", "military_supply", "luxury_clothing", "feast",
+]);
 
 export function districtBlueprint(key: string): DistrictBlueprint | undefined {
   return ALL_DISTRICTS.find(d => d.key === key);
+}
+
+/** New parcel-economy worlds offer housing only; legacy worlds retain their intentional production branch. */
+export function availableDistrictBlueprints(parcelEconomyVersion: unknown): DistrictBlueprint[] {
+  return Number(parcelEconomyVersion || 0) >= 1 ? RESIDENTIAL_DISTRICTS : ALL_DISTRICTS;
+}
+
+/** Older rows have no blueprint key, so their canonical name + category is the compatibility link. */
+export function storedDistrictBlueprint(row: { name?: string | null; district_type?: string | null }): DistrictBlueprint | undefined {
+  return ALL_DISTRICTS.find(d => d.name === row.name && d.district_type === row.district_type);
+}
+
+export function districtBasketProblem(blueprint: DistrictBlueprint, rawBasket: unknown): string | null {
+  const basket = String(rawBasket || "");
+  if (blueprint.district_type !== "production") return "Jen produkční čtvrť lze nastavit na výrobu";
+  if (!CANONICAL_DISTRICT_BASKETS.has(basket) || (blueprint.baskets?.length ? !blueprint.baskets.includes(basket) : false)) return "Tato čtvrť neumí vyrábět zvolený koš";
+  return null;
 }
 
 /** How many production districts the given number of residential districts can staff. */

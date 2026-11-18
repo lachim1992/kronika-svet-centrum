@@ -31,6 +31,13 @@ describe("reserve ledger (build/upgrade/district payment)", () => {
     expect(r.ok).toBe(true);
     expect(f.row.production_reserve).toBeCloseTo(30.041, 9);
   });
+  it.each([{ gold: -1, production: 0 }, { gold: 0, production: -1 }, { gold: NaN, production: 0 }, { gold: 0, production: Infinity }])("refuses invalid cost %o without a write", async cost => {
+    const f = fakeRow(80, 50);
+    const r = await chargeReserves(f.io, cost);
+    expect(r.ok).toBe(false);
+    expect(f.writes()).toBe(0);
+    expect(f.row).toMatchObject({ gold_reserve: 80, production_reserve: 50 });
+  });
   it("refuses when short and does not write", async () => {
     const f = fakeRow(80, 15.038);
     const r = await chargeReserves(f.io, { gold: 10, production: 20 });

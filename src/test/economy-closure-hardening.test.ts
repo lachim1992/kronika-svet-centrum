@@ -43,6 +43,32 @@ const run = async (t: Record<string, any[]>) => { const sb = fakeSb(t); await co
 const producerOf = (payload: any, id: string) => payload.result.snapshot.producers.find((p: any) => p.id === id);
 const bal = (payload: any, city: string, good: string) => payload.result.balances.find((b: any) => b.city === city && b.good === good);
 
+describe("parcel economy retires abstract district output without touching legacy saves", () => {
+  const setup = (version: number) => {
+    const t = baseTables();
+    t.game_sessions[0].parcel_economy_version = version;
+    t.cities = [cityRow("a", 0)];
+    t.goods = [goodRow("raw_grain", "staple_food", 2, "raw")];
+    t.production_recipes = [{ ...recipe("harvest_wheat", "raw_grain"), required_tags: ["farming"] }];
+    t.city_districts = [
+      { id: "homes", session_id: S, city_id: "a", name: "Obytná čtvrť", district_type: "residential", status: "completed", population_capacity: 400, stability_modifier: 1 },
+      { id: "farm", session_id: S, city_id: "a", name: "Hospodářský pás", district_type: "production", status: "completed", basket_key: "staple_food", basket_output: 6 },
+    ];
+    return t;
+  };
+  it("parcel mode creates no producer from the stored production district", async () => {
+    const payload = await run(setup(1));
+    expect(payload.result.snapshot.producers.filter((p: any) => p.channel === "district")).toHaveLength(0);
+    // The stored residential row remains visible to construction/housing logic.
+    expect(payload.result.snapshot.cities[0].constructionProjects).toBe(0);
+  });
+  it("intentional legacy mode still creates the same district producer", async () => {
+    const payload = await run(setup(0));
+    expect(payload.result.snapshot.producers.map((p: any) => p.id)).toContain("farm:harvest_wheat");
+    expect(producerOf(payload, "farm:harvest_wheat")?.channel).toBe("district");
+  });
+});
+
 /* ================================ P0 — missing input is unavailable ================================ */
 describe('P0 expectedInputCost: a missing input is unavailable, never free', () => {
   it('no local supply and no supplier → available=false, infinite cost (was {cost:0,source:"local"})', () => {

@@ -27,6 +27,8 @@ interface Props {
   cityName?: string;
   /** Free production-district slots from the city's housing. */
   freeDistrictSlots: number;
+  /** Abstract production districts exist only in intentional legacy sessions. */
+  allowProductionDistricts: boolean;
   /** Does the inspected cell touch a river or the coast? */
   hasWater: boolean;
   treasury: { gold: number; production: number };
@@ -90,10 +92,11 @@ export function BuildCatalogPanel(props: Props) {
   };
 
   const filtered = useMemo(() => catalog.filter(item => {
+    if (!props.allowProductionDistricts && item.kind === "district" && item.category === "district") return false;
     if (!matchesQuery(item, query)) return false;
     const blocked = !!blockedBy(item);
     return availability === "all" || (availability === "now" ? !blocked : blocked);
-  }), [catalog, query, availability, props.parcelBlock, props.ownCity, props.freeDistrictSlots, props.treasury.gold, props.hasWater, props.terrainBlockReason]);
+  }), [catalog, query, availability, props.allowProductionDistricts, props.parcelBlock, props.ownCity, props.freeDistrictSlots, props.treasury.gold, props.hasWater, props.terrainBlockReason]);
 
   const groups = useMemo(() => {
     const map = new Map<BuildCategory, CatalogItem[]>();

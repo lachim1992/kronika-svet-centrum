@@ -17,8 +17,12 @@ export const CAS_EPSILON = 1e-6;
 const n = (v: unknown) => Number(v ?? 0) || 0;
 
 export async function chargeReserves(io: ReserveIO, rawCost: ReserveCost, attempts = 3, first?: ReserveRow | null): Promise<ChargeResult> {
+  const gold = Number(rawCost.gold), production = Number(rawCost.production);
+  if (!Number.isFinite(gold) || !Number.isFinite(production) || gold < 0 || production < 0) {
+    return { ok: false, error: "Neplatná záporná nebo nečíselná cena" };
+  }
   // gold_reserve is an integer column: never charge a fraction (would fail the write).
-  const cost = { gold: Math.ceil(n(rawCost.gold) - CAS_EPSILON), production: n(rawCost.production) };
+  const cost = { gold: Math.ceil(gold - CAS_EPSILON), production };
   for (let i = 0; i < attempts; i++) {
     const cur = i === 0 && first ? first : await io.read();
     if (!cur) return { ok: false, error: "Realm not found" };

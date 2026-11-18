@@ -35,12 +35,13 @@ describe("phase 2: canonical writes live in command-dispatch", () => {
     expect(UPRISING).toMatch(/commandType: "RESOLVE_UPRISING"/);
   });
 
-  it("CouncilTab does not write factions or city stability directly", () => {
+  it("CouncilTab does not write factions, city stability or client-calculated rewards", () => {
     expect(COUNCIL).not.toMatch(/from\("city_factions"\)\s*\.update\(/);
     expect(COUNCIL).not.toMatch(/from\("cities"\)\s*\.update\(\{\s*city_stability/);
-    expect(COUNCIL).toMatch(/commandType: "APPLY_DECREE_EFFECTS"/);
-    expect(COUNCIL).toMatch(/factionImpacts/);
-    expect(COUNCIL).toMatch(/stabilityPenalty/);
+    expect(COUNCIL).not.toMatch(/commandType:\s*["']APPLY_DECREE_EFFECTS["']/);
+    expect(COUNCIL).not.toMatch(/factionImpacts\s*:/);
+    expect(COUNCIL).not.toMatch(/stabilityPenalty\s*:/);
+    expect(COUNCIL).toMatch(/nebyly uplatněny/);
   });
 
   it("neutral pacts are signed server-side", () => {
@@ -97,9 +98,11 @@ describe("phase 2: server handlers are complete and deterministic", () => {
     expect(body).toMatch(/status === "resolved"/);
   });
 
-  it("decree effects clamp faction values and never exceed bounds", () => {
-    const start = DISPATCH.indexOf("const factionImpacts");
-    const body = DISPATCH.slice(start, start + 1500);
-    expect(body).toMatch(/Math\.max\(0, Math\.min\(100,/);
+  it("decree effects fail closed before touching any browser-supplied reward", () => {
+    const start = DISPATCH.indexOf("async function executeApplyDecreeEffects");
+    const body = DISPATCH.slice(start, DISPATCH.indexOf("async function executeSetTradeIdeology", start));
+    expect(body).toContain("chybí serverem ověřený uložený efekt dekretu");
+    expect(body).not.toMatch(/\.update\(/);
+    expect(body).not.toMatch(/factionImpacts|stabilityPenalty|gold_reserve/);
   });
 });

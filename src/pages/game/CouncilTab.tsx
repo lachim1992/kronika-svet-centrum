@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { FACTION_TYPES } from "@/lib/cityGovernance";
-import { computeFactionReactions, computeVotingResult, computeDecreeImpacts, type FactionVote } from "@/lib/factionCouncil";
+import { computeFactionReactions, computeVotingResult, type FactionVote } from "@/lib/factionCouncil";
 import { TurnReportPanel } from "@/components/TurnReportPanel";
 
 interface Props {
@@ -94,36 +94,12 @@ const CouncilTab = ({
   const activeCrises = useMemo(() => worldCrises.filter(c => !c.resolved), [worldCrises]);
   const recentTrades = useMemo(() => trades.filter(t => t.turn_number >= currentTurn - 3), [trades, currentTurn]);
 
-  // ── Apply immediate (one-time) decree effects to realm/cities ──
+  // Immediate rewards have no server-verifiable decree store today. They stay narrative-only;
+  // APPLY_DECREE_EFFECTS rejects them fail-closed instead of trusting this browser payload.
   const IMMEDIATE_EFFECT_TYPES = new Set(["gold", "wealth", "grain", "supplies", "production", "manpower", "stability"]);
-  const RESOURCE_FIELD_MAP: Record<string, string> = {
-    gold: "gold_reserve", wealth: "gold_reserve",
-    grain: "grain_reserve", supplies: "grain_reserve",
-    production: "production_reserve", manpower: "manpower_pool",
-  };
-
-  const applyImmediateEffects = async (
-    effects: { type: string; value: number }[],
-    extra?: {
-      factionImpacts?: Record<string, { satisfaction: number; loyalty: number }>;
-      stabilityPenalty?: number;
-    },
-  ) => {
-    const immediate = effects.filter(e => IMMEDIATE_EFFECT_TYPES.has(e.type));
-    const factionImpacts = extra?.factionImpacts || {};
-    const stabilityPenalty = extra?.stabilityPenalty || 0;
-    if (immediate.length === 0 && Object.keys(factionImpacts).length === 0 && stabilityPenalty === 0) return;
-
-    const { dispatchCommand } = await import("@/lib/commands");
-    const res = await dispatchCommand({
-      sessionId,
-      turnNumber: currentTurn,
-      actor: { name: currentPlayerName, type: "player" },
-      commandType: "APPLY_DECREE_EFFECTS",
-      commandPayload: { effects: immediate, factionImpacts, stabilityPenalty },
-    });
-    if (!res.ok) {
-      toast.error(res.error || "Nepodařilo se aplikovat dopady dekretu");
+  const warnImmediateEffects = (effects: { type: string; value: number }[]) => {
+    if (effects.some(e => IMMEDIATE_EFFECT_TYPES.has(e.type))) {
+      toast.warning("Okamžité surovinové efekty zatím nejsou ověřitelné na serveru, proto nebyly uplatněny.");
     }
   };
 
@@ -368,11 +344,8 @@ const CouncilTab = ({
         }).catch(() => {});
       }
 
-      // Immediate effects + faction reactions in one canonical command.
-      const votes = computeFactionReactions(allFactions, decree.decreeType, decree.effects);
-      await applyImmediateEffects(decree.effects || [], {
-        factionImpacts: votes.length > 0 ? computeDecreeImpacts(votes) : {},
-      });
+      // No browser-supplied resource reward is applied without a server-verifiable decree.
+      warnImmediateEffects(decree.effects || []);
 
       // Log
       await supabase.from("world_action_log").insert({
@@ -507,17 +480,8 @@ const CouncilTab = ({
         }).catch(() => {});
       }
 
-      // Immediate effects, faction reactions and the council backlash all go
-      // through the single APPLY_DECREE_EFFECTS command (no direct UI writes).
-      const votingResult = factionVotes.length > 0 ? computeVotingResult(factionVotes) : null;
-      const factionImpacts = factionVotes.length > 0 ? computeDecreeImpacts(factionVotes) : {};
-      const stabilityPenalty = votingResult && !votingResult.approved ? votingResult.stabilityPenalty : 0;
-
-      await applyImmediateEffects(decreeEffects, { factionImpacts, stabilityPenalty });
-
-      if (stabilityPenalty > 0) {
-        toast.warning(`⚠ Dekret vynucen proti vůli rady! Stabilita snížena o ${stabilityPenalty}.`);
-      }
+      // Narrative and ongoing law text may be saved; immediate client-calculated rewards may not.
+      warnImmediateEffects(decreeEffects);
 
       // Write to world action log
       await supabase.from("world_action_log").insert({
@@ -581,8 +545,8 @@ const CouncilTab = ({
       const allEffects = lawDraft.effects;
       const ongoingEffects = allEffects.filter(e => !IMMEDIATE_EFFECT_TYPES.has(e.type));
 
-      // Apply immediate effects right away
-      await applyImmediateEffects(allEffects);
+      // Immediate effects are not server-verifiable for this draft and remain unapplied.
+      warnImmediateEffects(allEffects);
 
       // Only save ongoing effects as law
       if (ongoingEffects.length > 0) {

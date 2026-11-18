@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
-import { DISTRICT_TYPES, MAX_DISTRICTS } from "@/lib/cityGovernance";
+import { MAX_DISTRICTS } from "@/lib/cityGovernance";
+import { storedDistrictBlueprint } from "@/lib/cityDistricts";
 
 interface Props {
   districts: any[];
@@ -27,7 +28,8 @@ const CityDistrictMap = ({ districts, settlementLevel }: Props) => {
             </div>
           );
         }
-        const tmpl = DISTRICT_TYPES[d.district_type];
+        const tmpl = storedDistrictBlueprint(d);
+        const legacyIcon = ({ artisan: "⚒️", temple: "⛪", market: "🏪", military: "⚔️", farm: "🌾" } as Record<string, string>)[d.district_type];
         const isBuilding = d.status === "building";
         return (
           <div
@@ -38,7 +40,7 @@ const CityDistrictMap = ({ districts, settlementLevel }: Props) => {
                 : "border-border bg-card hover:border-primary/40"
             }`}
           >
-            <span className="text-xl">{tmpl?.icon || "🏘️"}</span>
+            <span className="text-xl">{tmpl ? (tmpl.district_type === "production" ? (tmpl.key === "farm_belt" ? "🌾" : "⚒️") : "🏘️") : (legacyIcon || "🏘️")}</span>
             <span className="text-[9px] font-display font-semibold text-center leading-tight line-clamp-1">
               {d.name}
             </span>
