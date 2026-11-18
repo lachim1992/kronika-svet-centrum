@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Swords, Wheat, Building2, AlertTriangle, MessageSquare, TrendingUp, Scroll, Loader2, Eye, EyeOff, Sparkles } from "lucide-react";
 import RichText from "@/components/RichText";
+import { FIELD_BATTLE_HISTORY_COLS, fieldBattlesHistory } from "../../supabase/functions/_shared/combatHistory";
 
 interface TurnReportItem {
   icon: React.ElementType;
@@ -51,15 +52,15 @@ const TurnReportPanel = ({ sessionId, playerName, currentTurn }: Props) => {
     const load = async () => {
       const [
         { data: events },
-        { data: battles },
+        { data: battleRows },
         { data: rumors },
         { data: buildings },
         { data: uprisings },
       ] = await Promise.all([
         supabase.from("game_events").select("event_type, note, importance, player")
           .eq("session_id", sessionId).eq("turn_number", lastTurn).eq("confirmed", true).limit(50),
-        supabase.from("battles").select("result, casualties_attacker, casualties_defender, defender_city_id")
-          .eq("session_id", sessionId).eq("turn_number", lastTurn).limit(20),
+        supabase.from("field_battles").select(FIELD_BATTLE_HISTORY_COLS)
+          .eq("session_id", sessionId).eq("started_turn", lastTurn).eq("status", "finished").limit(20),
         supabase.from("city_rumors").select("text, tone_tag, city_name")
           .eq("session_id", sessionId).eq("turn_number", lastTurn).eq("is_draft", false).limit(20),
         supabase.from("city_buildings").select("name, city_id")
@@ -69,9 +70,10 @@ const TurnReportPanel = ({ sessionId, playerName, currentTurn }: Props) => {
       ]);
 
       const result: TurnReportItem[] = [];
+      const battles = fieldBattlesHistory(battleRows);
 
-      for (const b of (battles || [])) {
-        const isVictory = b.result?.includes("victory");
+      for (const b of battles) {
+        const isVictory = b.result === "attacker";
         result.push({
           icon: Swords,
           category: "Bitva",

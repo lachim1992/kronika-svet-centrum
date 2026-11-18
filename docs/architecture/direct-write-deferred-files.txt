@@ -2,7 +2,6 @@
 # Dev tools (always exempt)
 src/components/dev/DevPlayerEditor.tsx
 # Deferred to Sprint B (movement/deployment commands)
-src/components/military/DeployBattlePanel.tsx
 src/components/WorldHexMap.tsx
 # Legacy migration (admin-only, deferred cleanup)
 src/lib/turnEngine.ts

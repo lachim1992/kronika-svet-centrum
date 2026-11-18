@@ -152,12 +152,10 @@ describe('Phase A residue — conserving transfers and guarded paths', () => {
     expect(src).not.toContain('distributePopLayers');
   });
 
-  it('resolve-battle and command-dispatch losses use the shared helper', () => {
-    for (const f of ['resolve-battle/index.ts', 'command-dispatch/index.ts']) {
-      const src = fn(f);
-      expect(src).toContain('applyPopulationLoss');
-      expect(src).not.toMatch(/population_peasants: Math\.max\(\d+,/);
-    }
+  it('commit-turn population losses use the shared helper', () => {
+    const src = fn('commit-turn/index.ts');
+    expect(src).toContain('applyPopulationLoss');
+    expect(src).not.toMatch(/population_peasants: Math\.max\(\d+,/);
   });
 
   it('founding creates the city and deducts local rural settlers through one atomic RPC', () => {

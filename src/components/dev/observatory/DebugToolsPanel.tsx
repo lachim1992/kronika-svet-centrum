@@ -199,7 +199,7 @@ const EDGE_FUNCTIONS = [
   { name: "compute-province-nodes", tables: ["hex_tiles", "province_nodes", "cities"], category: "spatial" },
   { name: "compute-province-routes", tables: ["province_nodes", "province_routes", "hex_tiles"], category: "spatial" },
   { name: "compute-hex-flows", tables: ["hex_tiles", "flow_paths"], category: "spatial" },
-  { name: "resolve-battle", tables: ["battles", "military_stacks", "military_units"], category: "military" },
+  { name: "command-dispatch", tables: ["field_battles", "military_stacks", "military_stack_composition", "sieges"], category: "military" },
   { name: "ai-faction-turn", tables: ["ai_factions", "cities", "game_events"], category: "ai" },
   { name: "ai-lore-generate", tables: ["wiki_entries", "game_events"], category: "ai" },
   { name: "wiki-generate", tables: ["wiki_entries"], category: "narrative" },

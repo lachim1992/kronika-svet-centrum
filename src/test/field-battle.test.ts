@@ -60,12 +60,13 @@ describe("unit catalogue", () => {
 
 describe("unit split", () => {
   it("keeps manpower exactly and types per composition row", () => {
-    const us = buildUnits("attacker", "s", 7981, [{ id: "i", unit_type: "PROFESSIONAL", manpower: 3990 }, { id: "a", unit_type: "ARCHERS", manpower: 1595 }, { id: "m", unit_type: "MILITIA", manpower: 2393 }], 70);
+    const us = buildUnits("attacker", "s", 7981, [{ id: "i", unit_type: "PROFESSIONAL", manpower: 3990 }, { id: "a", unit_type: "ARCHERS", manpower: 1595 }, { id: "m", unit_type: "MILITIA", manpower: 2396 }], 70);
     expect(us.reduce((s, x) => s + x.men, 0)).toBe(7981);
     expect(us.every(x => x.men <= 200)).toBe(true);
     expect(us.filter(x => x.compId === "a").reduce((s, x) => s + x.men, 0)).toBe(1595);
     expect(us.filter(x => x.compId === "i").every(x => x.type === "SWORDSMEN")).toBe(true);
-    expect(us.filter(x => x.compId === null).reduce((s, x) => s + x.men, 0)).toBe(3);
+    expect(us.every(x => x.compId !== null)).toBe(true);
+    expect(() => buildUnits("attacker", "bad", 201, [{ unit_type: "MILITIA", manpower: 200 }], 70)).toThrow(/does not match/);
   });
   it("snapshots a formation allowed for the type", () => {
     const us = buildUnits("attacker", "s", 400, [{ unit_type: "ARCHERS", manpower: 200 }, { unit_type: "SPEARMEN", manpower: 200 }], 70, "shieldwall");
@@ -232,11 +233,12 @@ describe("rounds", () => {
 });
 
 describe("command points and orders", () => {
-  it("4 CP base, +skill/3, max 7", () => { expect(commandPoints(null)).toBe(4); expect(commandPoints(6)).toBe(6); expect(commandPoints(10)).toBe(7); });
+  it("2 CP base, 0–100 skill /12.5, max 10", () => { expect(commandPoints(null)).toBe(2); expect(commandPoints(40)).toBe(5); expect(commandPoints(56)).toBe(6); expect(commandPoints(63)).toBe(7); expect(commandPoints(100)).toBe(10); });
   it("a group order costs 1 CP", () => {
     const us = [u("a", "attacker", 0, 0), u("b", "attacker", 0, 1), u("d", "defender", 9, 0)];
     expect(cpUsed([{ seq: 1, cmd: 1, key: "a", kind: "HOLD" }, { seq: 2, cmd: 1, key: "b", kind: "HOLD" }], us, "attacker")).toBe(1);
     expect(cpUsed([{ seq: 1, cmd: 1, key: "a", kind: "HOLD" }, { seq: 2, cmd: 2, key: "b", kind: "HOLD" }], us, "attacker")).toBe(2);
+    expect(cpUsed([{ seq: 1, cmd: 1, key: "a", kind: "MOVE", to: { x: 1, y: 0 } }, { seq: 2, cmd: 1, key: "b", kind: "MOVE", to: { x: 1, y: 1 } }], us, "attacker")).toBe(1);
   });
   it("type-specific order validation", () => {
     const us = [u("a", "attacker", 0, 0), u("d", "defender", 1, 0)];
@@ -258,7 +260,7 @@ describe("deployment and reserves", () => {
     const cav = us.filter(x => x.type === "LIGHT_CAVALRY"); expect(cav.every(x => x.y === 0 || x.y === 5)).toBe(true);
   });
   it("units that do not fit become reserve (not routed, not lost)", () => {
-    const us = autoDeploy(buildUnits("attacker", "a", 8000, [], 70), "attacker", [{ x: 0, y: 0 }, { x: 1, y: 0 }], { x: 0, y: 0 }, { x: 1, y: 0 });
+    const us = autoDeploy(buildUnits("attacker", "a", 8000, [{ unit_type: "MILITIA", manpower: 8000 }], 70), "attacker", [{ x: 0, y: 0 }, { x: 1, y: 0 }], { x: 0, y: 0 }, { x: 1, y: 0 });
     expect(us.filter(x => x.status === "reserve").length).toBe(4);
     const plan = settlementPlan(us, [{ id: "a", soldiers: 8000, power: 7600, morale: 70 }], [], UNIT_POWER_FACTOR);
     expect(plan.stackUpdates[0].soldiers).toBe(8000);
@@ -277,7 +279,7 @@ describe("deployment and reserves", () => {
 describe("AI", () => {
   it("is deterministic and respects CP", () => {
     const us = [...buildUnits("attacker", "a", 2000, [{ unit_type: "PROFESSIONAL", manpower: 1200 }, { unit_type: "ARCHERS", manpower: 400 }, { unit_type: "LIGHT_CAVALRY", manpower: 400 }], 70)];
-    const dep = autoDeploy(autoDeploy([...us, ...buildUnits("defender", "d", 2000, [], 70)], "attacker", field, { x: 0, y: 0 }, { x: 1, y: 0 }), "defender", field, { x: 1, y: 0 }, { x: 0, y: 0 });
+    const dep = autoDeploy(autoDeploy([...us, ...buildUnits("defender", "d", 2000, [{ unit_type: "MILITIA", manpower: 2000 }], 70)], "attacker", field, { x: 0, y: 0 }, { x: 1, y: 0 }), "defender", field, { x: 1, y: 0 }, { x: 0, y: 0 });
     const a = planAiOrders(dep, "defender", field, plain, 4), b = planAiOrders(dep, "defender", field, plain, 4);
     expect(a).toEqual(b); expect(a.length).toBeLessThanOrEqual(4); expect(a.length).toBeGreaterThan(0);
   });
@@ -285,7 +287,7 @@ describe("AI", () => {
     const us = [u("c", "defender", 5, 2, { type: "LIGHT_CAVALRY" }), u("w", "defender", 5, 4, { men: 40 }), u("ar", "attacker", 3, 2, { type: "ARCHERS", ammo: 6 }), u("s", "attacker", 4, 4)];
     const os = planAiOrders(us, "defender", field, plain, 4);
     expect(os.find(o => o.key === "c")).toMatchObject({ kind: "CHARGE", target: "ar" });
-    expect(os.find(o => o.key === "w")).toBeUndefined();
+    expect(os.find(o => o.key === "w")?.kind).not.toBe("ATTACK");
   });
 });
 

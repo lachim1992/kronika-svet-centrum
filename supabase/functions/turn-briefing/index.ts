@@ -1,5 +1,6 @@
 import { getServiceClient, loadWorldPremise, invokeAI } from "../_shared/ai-context.ts";
 import { buildBasketSnapshot } from "../_shared/basket-context.ts";
+import { FIELD_BATTLE_HISTORY_COLS, fieldBattlesHistory } from "../_shared/combatHistory.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,7 +47,7 @@ Deno.serve(async (req) => {
     // Gather all data from lastTurn in parallel
     const [
       { data: events },
-      { data: battles },
+      { data: battleRows },
       { data: rumors },
       { data: buildings },
       { data: uprisings },
@@ -57,8 +58,8 @@ Deno.serve(async (req) => {
     ] = await Promise.all([
       sb.from("game_events").select("event_type, note, importance, player, city_id")
         .eq("session_id", sessionId).eq("turn_number", lastTurn).eq("confirmed", true).limit(60),
-      sb.from("battles").select("result, casualties_attacker, casualties_defender, attacker_stack_id, defender_city_id, speech_text")
-        .eq("session_id", sessionId).eq("turn_number", lastTurn).limit(20),
+      sb.from("field_battles").select(FIELD_BATTLE_HISTORY_COLS)
+        .eq("session_id", sessionId).eq("started_turn", lastTurn).eq("status", "finished").limit(20),
       sb.from("city_rumors").select("text, tone_tag, city_name")
         .eq("session_id", sessionId).eq("turn_number", lastTurn).eq("is_draft", false).limit(15),
       sb.from("city_buildings").select("name, city_id, status")
@@ -74,6 +75,8 @@ Deno.serve(async (req) => {
       sb.from("cities").select("id, name, population_total, city_stability, owner_player, famine_turn, epidemic_active")
         .eq("session_id", sessionId).eq("owner_player", playerName),
     ]);
+
+    const battles = fieldBattlesHistory(battleRows);
 
     // Get watched city details
     const watchedReports: any[] = [];

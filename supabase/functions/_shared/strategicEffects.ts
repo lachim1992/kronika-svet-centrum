@@ -1,4 +1,4 @@
-/** Canonical strategic resource tier effects — one source for process-turn, resolve-battle and command-dispatch. */
+/** Canonical strategic resource tier effects — one source for process-turn and command-dispatch. */
 export const STRATEGIC_TIER_BONUSES: Record<string, Record<number, any>> = {
   iron: { 1: { combat_mult: 1.05 }, 2: { combat_mult: 1.12, heavy_infantry: true }, 3: { combat_mult: 1.20, elite_units: true } },
   horses: { 1: { mobility: 1.1 }, 2: { cavalry_doctrine: true, mobility: 1.2 }, 3: { cavalry_doctrine: true, mobility: 1.35 } },

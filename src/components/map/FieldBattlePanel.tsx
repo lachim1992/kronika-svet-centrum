@@ -11,6 +11,7 @@ import {
   type Cell, type FBUnit, type FBOrder, type FBEvent, type Side, type OrderKind, type BattleMeta,
 } from "../../../supabase/functions/_shared/fieldBattle";
 import { UNIT_TYPE_LABELS } from "../../../supabase/functions/_shared/unitTypes";
+import { generalArmyCapacity, generalMoraleLossReduction, generalRallyStrength } from "../../../supabase/functions/_shared/generalCommand";
 
 type ArmyLite = { id: string; name: string; player_name: string; soldiers: number; grid_x: number | null; grid_y: number | null; hex_q: number; hex_r: number; controller_player?: string | null };
 type Report = { round: number; events: FBEvent[]; winner: string | null; losses?: Record<string, { lost: number; byType: Record<string, number>; soldiers: number; morale: number }> };
@@ -104,7 +105,7 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
   const issue = useCallback(async (kind: OrderKind, extra: Record<string, unknown> = {}, keys = selected) => {
     if (!keys.length) { toast.info("Nejdřív vyber oddíly"); return; }
     if (battle && side) {
-      const cp = commandPoints((battle.meta ?? battle.last_report?.meta)?.generalSkill?.[side] ?? null);
+      const cp = commandPoints(battle.meta?.generalSkill?.[side] ?? null);
       const rest = (battle.orders ?? []).filter(o => !keys.includes(o.key));
       const next = [...rest, ...keys.map((key, i) => ({ seq: 1e9 + i, cmd: -1, key, kind } as FBOrder))];
       if (cpUsed(next, units, side) > cp) {
@@ -177,12 +178,12 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
     const shown = mine.filter(u => filter === "all" ? u.status !== "dead" : filter === "reserve" ? u.status === "reserve" : u.status === "ready" && (filter === "cav" ? isCavalry(u.type) : filter === "ranged" ? isRanged(u.type) : !isCavalry(u.type) && !isRanged(u.type)));
     const name = (key: string) => { const u = units.find(v => v.key === key); return u ? `${sideName(u.side)} · ${unitLabel(u)}` : key; };
     const orderOf = (key: string) => (battle.orders ?? []).find(o => o.key === key);
-    const cp = side ? commandPoints((battle.meta ?? battle.last_report?.meta)?.generalSkill?.[side] ?? null) : 0;
+    const cp = side ? commandPoints(battle.meta?.generalSkill?.[side] ?? null) : 0;
     const used = side ? cpUsed(battle.orders ?? [], units, side) : 0;
     const lead = units.find(u => u.key === selected[0]);
     const fighting = battle.status === "fighting";
     const initiative: Side = battle.round % 2 === 1 ? "attacker" : "defender";
-    const hasGeneral = side ? !!(battle.meta ?? battle.last_report?.meta)?.hasGeneral?.[side] : false;
+    const hasGeneral = side ? !!battle.meta?.hasGeneral?.[side] : false;
     const can = (k: OrderKind) => selected.length > 0 && selected.every(key => { const u = units.find(v => v.key === key); if (!u) return false;
       return k === "CHARGE" ? isCavalry(u.type) : k === "VOLLEY" ? ["ARCHERS", "SLINGERS", "JAVELINERS"].includes(u.type) && u.ammo >= 2 : k === "FORTIFY" ? u.type === "ENGINEERS" : k === "RALLY" ? hasGeneral && selected.length === 1 : u.status === "ready"; });
     const OB = ({ k, icon: I }: { k: OrderKind; icon: React.ElementType }) => <Button size="sm" variant={mode === k ? "default" : "outline"} className="h-7 px-2 text-[11px]" disabled={busy || !can(k) || !!battle.ready?.[side!]}
@@ -191,10 +192,15 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
       <p className="flex items-center gap-1 font-medium"><Swords className="h-3.5 w-3.5" /> Bitva: {sideName("attacker")} × {sideName("defender")}</p>
       <div className="grid grid-cols-2 gap-1">
         {(["attacker", "defender"] as Side[]).map(sd => { const c = count(sd); return <div key={sd} className={`border p-1 ${sd === side ? "border-primary/60" : "border-border"}`}>
-          <p className="truncate font-medium">{sd === "attacker" ? "Útočník" : "Obránce"}{battle.ready?.[sd] ? " ✓" : ""}{(battle.meta ?? battle.last_report?.meta)?.ai?.[sd] ? " · AI" : ""}</p>
+          <p className="truncate font-medium">{sd === "attacker" ? "Útočník" : "Obránce"}{battle.ready?.[sd] ? " ✓" : ""}{battle.meta?.ai?.[sd] ? " · AI" : ""}</p>
           <p className="text-muted-foreground">{c.men.toLocaleString("cs-CZ")} mužů · {c.ready} v poli · {c.reserve} záloha · {c.out} mimo</p>
         </div>; })}
       </div>
+      {side && <div className="border border-border p-1.5 text-muted-foreground">
+        {battle.meta?.hasGeneral?.[side] ? `Generál · schopnost ${battle.meta.generalSkill?.[side] ?? 0}/100` : "Bez generála"} · {cp} CP/kolo · kapacita {generalArmyCapacity(battle.meta?.hasGeneral?.[side] ? battle.meta.generalSkill?.[side] : null).toLocaleString()} · ztráty morálky −{Math.round(generalMoraleLossReduction(battle.meta?.hasGeneral?.[side] ? battle.meta.generalSkill?.[side] : null) * 100)} %
+        {battle.meta?.hasGeneral?.[side] ? ` · Rally +${generalRallyStrength(battle.meta.generalSkill?.[side])}` : " · Rally nedostupné"}
+        {battle.meta?.aiPlan?.[side] ? <span className="block">AI v2: {battle.meta.aiPlan[side]!.doctrine} · {battle.meta.aiPlan[side]!.reason}</span> : null}
+      </div>}
       <p className="text-muted-foreground">{battle.status === "deploying" ? "Fáze: rozmístění oddílů" : `Kolo ${battle.round}/${MAX_ROUNDS} · první jedná ${initiative === "attacker" ? "útočník" : "obránce"}`}
         {fighting && side ? ` · velení ${used}/${cp} bodů` : ""}</p>
       {mySides.length > 1 && <div className="flex gap-1">{mySides.map(sd => <Button key={sd} size="sm" variant={sd === side ? "default" : "outline"} className="h-7 flex-1"

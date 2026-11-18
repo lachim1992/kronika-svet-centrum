@@ -516,9 +516,9 @@ export function cityAccounts(i: CityAccountsInput) {
   // Their wages are a subset of total settled wages, never added on top. Legacy settlements without
   // a rural split are decomposed by rural share of producer payroll; before settlement, use imputed
   // rural producer payroll. Capital/ownership income remains with the urban owner account.
-  const ruralPopulation = pos(i.ruralPopulation);
+  const ruralPopulation = pos(i.ruralPopulation ?? 0);
   const ruralShare = i.population && i.population > 0 ? clamp01(ruralPopulation / i.population) : 0;
-  const ruralPayroll = pos(i.ruralProducerPayroll), totalPayroll = pos(i.producerPayroll);
+  const ruralPayroll = pos(i.ruralProducerPayroll ?? 0), totalPayroll = pos(i.producerPayroll ?? 0);
   const ruralWageCash = i.settledRuralWageIncome != null ? pos(i.settledRuralWageIncome)
     : settled != null ? pos(settled) * (totalPayroll > 0 ? clamp01(ruralPayroll / totalPayroll) : 0)
     : ruralPayroll;

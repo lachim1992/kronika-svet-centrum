@@ -1,4 +1,5 @@
 /** Field battle rules shared by command-dispatch and the map UI (all games). */
+import { generalCommandPoints, generalMoraleLossReduction, generalRallyStrength } from "./generalCommand.ts";
 export type Cell = { x: number; y: number };
 export const MEN_PER_EXTRA_SQUARE = 7200; // 36 micro-squares x 200 men
 export const MAX_BATTLEFIELD_SQUARES = 6;
@@ -8,6 +9,14 @@ export const battleInRange = (a: Cell, b: Cell) => Math.max(Math.abs(a.x - b.x),
 /** How many macro squares the attacker may choose, by total men on the field. */
 export const maxBattlefieldSquares = (totalMen: number) =>
   Math.min(MAX_BATTLEFIELD_SQUARES, 1 + Math.ceil(Math.max(0, totalMen) / MEN_PER_EXTRA_SQUARE));
+
+/** Smallest contiguous battlefield containing both macro cells. */
+export function minimalBattlefield(attacker: Cell, defender: Cell): Cell[] {
+  const cells = [{ ...attacker }];
+  if (attacker.x !== defender.x && attacker.y !== defender.y) cells.push({ x: defender.x, y: attacker.y });
+  if (attacker.x !== defender.x || attacker.y !== defender.y) cells.push({ ...defender });
+  return cells;
+}
 
 export function validateBattlefield(cells: Cell[], attacker: Cell, defender: Cell, totalMen: number): string | null {
   if (!Array.isArray(cells) || !cells.length) return "Vyber aspoň jedno makropole bojiště";
@@ -32,8 +41,8 @@ export const MICRO = 6;
 export const MEN_PER_UNIT = 200;
 export const MAX_ROUNDS = 40;
 export const ROUT_MORALE = 25;
-export const BASE_CP = 4;
-export const MAX_CP = 7;
+export const BASE_CP = 2;
+export const MAX_CP = 10;
 export type Side = "attacker" | "defender";
 export const otherSide = (s: Side): Side => s === "attacker" ? "defender" : "attacker";
 
@@ -123,21 +132,29 @@ export function upgradeUnit(u: any): FBUnit {
     fatigue: u.fatigue ?? 0, ammo: u.ammo ?? UNIT_STATS[type].ammo, quality: u.quality ?? 1, x: u.x ?? null, y: u.y ?? null, facing: u.facing ?? "n", status };
 }
 
-/** Split a stack into ≤200-man units, per composition row so every unit keeps its real type; manpower is preserved exactly.
- *  Soldiers not covered by the composition become untyped militia units (compId null). */
-export function buildUnits(side: Side, stackId: string, soldiers: number, composition: { id?: string; unit_type: string; manpower: number }[],
+/** Stored composition quality 0–100 → bounded combat multiplier 0.75–1.25 (quality 50 = 1.0). */
+export const qualityCombatMultiplier = (quality: number | null | undefined) => 0.75 + 0.005 * Math.max(0, Math.min(100, Number(quality ?? 50) || 0));
+
+/** Split a stack into ≤200-man units. Composition must account for every soldier exactly: no silent militia or losses. */
+export function buildUnits(side: Side, stackId: string, soldiers: number, composition: { id?: string; unit_type: string; manpower: number; quality?: number }[],
   morale: number, stackFormation?: string | null): FBUnit[] {
-  const out: FBUnit[] = []; let i = 0; let covered = 0; const total = Math.max(0, Math.floor(soldiers));
-  const push = (men: number, compId: string | null, sourceType: string | null) => {
-    const type = normalizeUnitType(sourceType);
-    out.push({ key: `${stackId}:${i++}`, side, stackId, compId, sourceType, type, formation: unitFormation(stackFormation, type), men, startMen: men,
-      morale, fatigue: 0, ammo: UNIT_STATS[type].ammo, quality: 1, x: null, y: null, facing: "n", status: "ready" });
-  };
+  if (!Number.isSafeInteger(soldiers) || soldiers < 0) throw new Error(`Invalid soldier count for ${stackId}`);
+  let sum = 0;
   for (const c of composition) {
-    let left = Math.min(Math.max(0, Math.floor(c.manpower)), total - covered); covered += left;
-    while (left > 0) { const men = Math.min(MEN_PER_UNIT, left); push(men, c.id ?? null, c.unit_type); left -= men; }
+    if (!Number.isSafeInteger(c.manpower) || c.manpower < 0) throw new Error(`Invalid composition manpower for ${stackId}`);
+    sum += c.manpower;
   }
-  for (let left = total - covered; left > 0; left -= MEN_PER_UNIT) push(Math.min(MEN_PER_UNIT, left), null, null);
+  if (sum !== soldiers) throw new Error(`Composition manpower ${sum} does not match stack soldiers ${soldiers} for ${stackId}`);
+  const out: FBUnit[] = []; let i = 0;
+  for (const c of composition) {
+    const type = normalizeUnitType(c.unit_type);
+    for (let left = c.manpower; left > 0;) {
+      const men = Math.min(MEN_PER_UNIT, left); left -= men;
+      out.push({ key: `${stackId}:${i++}`, side, stackId, compId: c.id ?? null, sourceType: c.unit_type, type,
+        formation: unitFormation(stackFormation, type), men, startMen: men, morale, fatigue: 0, ammo: UNIT_STATS[type].ammo,
+        quality: qualityCombatMultiplier(c.quality), x: null, y: null, facing: "n", status: "ready" });
+    }
+  }
   return out;
 }
 
@@ -197,14 +214,14 @@ export function autoDeploy(units: FBUnit[], side: Side, field: Cell[], own: Cell
 }
 
 // ── Command points ──
-export const commandPoints = (generalSkill: number | null | undefined) =>
-  generalSkill == null ? BASE_CP : Math.min(MAX_CP, BASE_CP + Math.floor(Math.max(0, Math.min(10, generalSkill)) / 3));
+export const commandPoints = (generalSkill: number | null | undefined) => generalCommandPoints(generalSkill);
 
 // ── Orders ──
 export type OrderKind = "MOVE" | "ATTACK" | "CHARGE" | "HOLD" | "VOLLEY" | "FORTIFY" | "RALLY" | "RESERVE";
 export type FBOrder = { seq: number; cmd: number; key: string; kind: OrderKind; to?: { x: number; y: number }; target?: string };
 export type BattleMeta = { rallyReadyRound?: Partial<Record<Side, number>>; fortified?: { x: number; y: number; side: Side; until: number }[];
-  hasGeneral?: Partial<Record<Side, boolean>>; generalSkill?: Partial<Record<Side, number | null>>; ai?: Partial<Record<Side, boolean>> };
+  hasGeneral?: Partial<Record<Side, boolean>>; generalSkill?: Partial<Record<Side, number | null>>; ai?: Partial<Record<Side, boolean>>;
+  aiPlan?: Partial<Record<Side, BattleAiPlan>>; combatMult?: Partial<Record<Side, number>> };
 export type FBEvent = { seq: number; key: string; kind: string; text: string; target?: string; lossesTarget?: number; lossesSelf?: number };
 
 /** Effective movement for this round: type + formation + terrain + fatigue, at least 1. */
@@ -218,6 +235,25 @@ export function moveRange(u: FBUnit, terrainAt: TerrainAt = () => "plain") {
 }
 /** Temporary playtest floor: every unit moves at least 4 cells. */
 export const MIN_MOVE = 4;
+
+/** Legal four-connected movement: water, battlefield edges and every occupied cell block the path, not only the destination. */
+export function reachableCells(u: FBUnit, units: FBUnit[], field: Cell[], terrainAt: TerrainAt = () => "plain") {
+  const out = new Map<string, Cell & { distance: number }>();
+  if (u.status !== "ready" || u.x === null) return out;
+  const occupied = new Set(units.filter(v => v.key !== u.key && v.status === "ready" && v.x !== null).map(v => `${v.x},${v.y}`));
+  const range = moveRange(u, terrainAt), queue: (Cell & { distance: number })[] = [{ x: u.x, y: u.y!, distance: 0 }];
+  const seen = new Set([`${u.x},${u.y}`]);
+  for (let i = 0; i < queue.length; i++) {
+    const at = queue[i];
+    for (const [dx, dy] of ORTHO) {
+      const next = { x: at.x + dx, y: at.y + dy, distance: at.distance + 1 }, key = `${next.x},${next.y}`;
+      if (next.distance > range || seen.has(key) || occupied.has(key) || !inBattlefield(field, next.x, next.y) || terrainAt(next.x, next.y) === "water") continue;
+      seen.add(key); out.set(key, next); queue.push(next);
+    }
+  }
+  return out;
+}
+
 const canDo = (u: FBUnit, kind: OrderKind) =>
   kind === "CHARGE" ? isCavalry(u.type) : kind === "VOLLEY" ? (u.type === "ARCHERS" || u.type === "SLINGERS" || u.type === "JAVELINERS")
   : kind === "FORTIFY" ? u.type === "ENGINEERS" : true;
@@ -240,12 +276,18 @@ export function orderProblem(units: FBUnit[], field: Cell[], key: string, o: { k
     if (!inBattlefield(field, o.to.x, o.to.y)) return "Cíl je mimo bojiště";
     if (terrainAt(o.to.x, o.to.y) === "water") return "Do vody nelze";
     const r = moveRange(u, terrainAt); if (manhattan(pos(u), o.to) > r) return `Oddíl dojde nejvýš ${r} políčka`;
+    if (!reachableCells(u, units, field, terrainAt).has(`${o.to.x},${o.to.y}`)) return "Cesta je blokovaná nepřátelemi, oddíly nebo terénem";
     return null;
   }
   if (o.kind === "ATTACK" || o.kind === "CHARGE" || o.kind === "VOLLEY") {
     const t = units.find(v => v.key === o.target); if (!t || t.side === u.side || t.status !== "ready") return "Neplatný cíl útoku";
     if (o.kind === "VOLLEY" && u.ammo < 2) return "Na salvu chybí munice (2)";
     if (o.kind === "VOLLEY" && cheb(pos(u), pos(t)) > UNIT_STATS[u.type].range) return "Cíl je mimo dostřel";
+    if (o.kind === "ATTACK") {
+      const d = cheb(pos(u), pos(t)), st = UNIT_STATS[u.type];
+      if (d > 1 && (st.ranged <= 0 || d > st.range)) return "Cíl je mimo dosah";
+      if (d > 1 && st.ranged > 0 && u.ammo < 1) return "Došla munice";
+    }
     if (o.kind === "CHARGE" && manhattan(pos(u), pos(t)) > moveRange(u, terrainAt) + 1) return "Cíl je pro náraz příliš daleko";
     return null;
   }
@@ -259,8 +301,8 @@ export function orderProblem(units: FBUnit[], field: Cell[], key: string, o: { k
 /** Server-side CP check: distinct command ids of a side must not exceed its command points. */
 export function cpUsed(orders: FBOrder[], units: FBUnit[], side: Side) {
   const sideOf = new Map(units.map(u => [u.key, u.side]));
-  // MOVE orders are temporarily free of command points (playtest).
-  return new Set(orders.filter(o => sideOf.get(o.key) === side && o.kind !== "MOVE").map(o => o.cmd)).size;
+  // Every order kind uses the same rule: one distinct command group = one CP, however many units it contains.
+  return new Set(orders.filter(o => sideOf.get(o.key) === side).map(o => o.cmd)).size;
 }
 
 // ── Deterministic RNG ──
@@ -283,7 +325,7 @@ export function supportDefense(units: FBUnit[], u: FBUnit) {
   const s = Math.min(0.15, n * 0.05); return u.formation === "loose" || u.formation === "skirmish" ? s / 2 : s;
 }
 export type HitCtx = { ranged: boolean; charge: boolean; volley: boolean; flank: Flank; holding: boolean; fortified: boolean; variance: number;
-  terrainAttacker: Terrain; terrainTarget: Terrain; support: number };
+  terrainAttacker: Terrain; terrainTarget: Terrain; support: number; attackMultiplier?: number };
 /** Casualties of one hit — the single combat formula. */
 export function casualties(a: FBUnit, t: FBUnit, c: HitCtx): number {
   const st = UNIT_STATS[a.type], ts = UNIT_STATS[t.type];
@@ -324,7 +366,7 @@ export function casualties(a: FBUnit, t: FBUnit, c: HitCtx): number {
   if (c.fortified) formDef += 0.25;
   const mitigation = Math.max(0.45, Math.min(1, 1 - ts.defense / 100 - ts.armor / 200 - terrDef - formDef - c.support));
   const volley = c.volley ? 1.3 : 1;
-  const raw = (a.men / MEN_PER_UNIT) * base * moraleF * fatigueF * a.quality * formAtk * terrAtk * matchup * FLANK[c.flank] * c.variance * mitigation * dmgMul * volley;
+  const raw = (a.men / MEN_PER_UNIT) * base * moraleF * fatigueF * a.quality * formAtk * terrAtk * matchup * FLANK[c.flank] * c.variance * mitigation * dmgMul * volley * (c.attackMultiplier ?? 1);
   return Math.min(t.men, Math.max(1, Math.round(raw)));
 }
 
@@ -349,12 +391,18 @@ export function resolveRound(units0: FBUnit[], orders: FBOrder[], field: Cell[],
   const holding = new Set(units.filter(u => u.status === "ready" && !orders.some(o => o.key === u.key && o.kind !== "HOLD")).map(u => u.key));
   const occupied = (x: number, y: number) => units.some(u => u.status === "ready" && u.x === x && u.y === y);
   const fortifiedAt = (u: FBUnit) => (meta.fortified ?? []).some(f => f.side === u.side && f.x === u.x && f.y === u.y);
-  const moraleHit = (t: FBUnit, amount: number) => { const m = t.type === "ELITE_GUARD" ? amount * 0.75 : amount; t.morale = Math.max(0, Math.round((t.morale - m) * 100) / 100); };
+  const moraleHit = (t: FBUnit, amount: number) => {
+    const elite = t.type === "ELITE_GUARD" ? 0.75 : 1;
+    const leadership = meta.hasGeneral?.[t.side] ? 1 - generalMoraleLossReduction(meta.generalSkill?.[t.side]) : 1;
+    const m = amount * elite * leadership;
+    t.morale = Math.max(0, Math.round((t.morale - m) * 100) / 100);
+  };
   const checkRout = (t: FBUnit) => { if (t.men <= 0) { t.men = 0; t.status = "dead"; } else if (t.status === "ready" && t.morale < ROUT_MORALE) t.status = "routed"; };
   const strike = (a: FBUnit, t: FBUnit, opts: { ranged: boolean; charge?: boolean; volley?: boolean }) => {
     const flank = flankOf(t, pos(a));
     const loss = casualties(a, t, { ranged: opts.ranged, charge: !!opts.charge, volley: !!opts.volley, flank, holding: holding.has(t.key), fortified: fortifiedAt(t),
-      variance: 0.9 + rand() * 0.2, terrainAttacker: terrainAt(a.x!, a.y!), terrainTarget: terrainAt(t.x!, t.y!), support: supportDefense(units, t) });
+      variance: 0.9 + rand() * 0.2, terrainAttacker: terrainAt(a.x!, a.y!), terrainTarget: terrainAt(t.x!, t.y!), support: supportDefense(units, t),
+      attackMultiplier: meta.combatMult?.[a.side] ?? 1 });
     t.men -= loss; const rl = (roundLoss.get(t.key) ?? 0) + loss; roundLoss.set(t.key, rl);
     let m = flank === "rear" ? 12 : flank === "side" ? 6 : 0;
     if (rl >= t.startMen * 0.1 && !lostMoraleFlag.has(t.key)) { lostMoraleFlag.add(t.key); m += 6; }
@@ -388,6 +436,7 @@ export function resolveRound(units0: FBUnit[], orders: FBOrder[], field: Cell[],
       const to = o.to!;
       if (!inBattlefield(field, to.x, to.y) || terrainAt(to.x, to.y) === "water" || manhattan(pos(u), to) > moveRange(u, terrainAt)) { events.push({ seq: o.seq, key: u.key, kind: "move_fail", text: "pohyb mimo dosah" }); continue; }
       if (occupied(to.x, to.y)) { events.push({ seq: o.seq, key: u.key, kind: "move_blocked", text: "cílové políčko je obsazené" }); continue; }
+      if (!reachableCells(u, units, field, terrainAt).has(`${to.x},${to.y}`)) { events.push({ seq: o.seq, key: u.key, kind: "move_blocked", text: "cesta je blokovaná" }); continue; }
       u.facing = faceTo(pos(u), to); u.x = to.x; u.y = to.y; u.fatigue = Math.min(100, u.fatigue + 8);
       events.push({ seq: o.seq, key: u.key, kind: "move", text: `přesun na ${to.x},${to.y}` }); continue;
     }
@@ -401,9 +450,10 @@ export function resolveRound(units0: FBUnit[], orders: FBOrder[], field: Cell[],
     if (o.kind === "RALLY") {
       const readyAt = meta.rallyReadyRound?.[u.side] ?? 0;
       if (!meta.hasGeneral?.[u.side] || round < readyAt) { events.push({ seq: o.seq, key: u.key, kind: "rally_fail", text: "shromáždění nelze" }); continue; }
-      let n = 0; for (const v of units) if (v.side === u.side && v.status === "ready" && v.x !== null && manhattan(pos(v), pos(u)) <= 3) { v.morale = Math.min(100, v.morale + 15); n++; }
+      const rally = generalRallyStrength(meta.generalSkill?.[u.side]);
+      let n = 0; for (const v of units) if (v.side === u.side && v.status === "ready" && v.x !== null && manhattan(pos(v), pos(u)) <= 3) { v.morale = Math.min(100, v.morale + rally); n++; }
       meta.rallyReadyRound = { ...(meta.rallyReadyRound ?? {}), [u.side]: round + 3 };
-      events.push({ seq: o.seq, key: u.key, kind: "rally", text: `generál shromáždil ${n} oddílů (+15 morálky)` }); continue;
+      events.push({ seq: o.seq, key: u.key, kind: "rally", text: `generál shromáždil ${n} oddílů (+${rally} morálky)` }); continue;
     }
     const t = o.target ? by.get(o.target) : undefined;
     if (!t || t.status !== "ready" || t.x === null) { events.push({ seq: o.seq, key: u.key, kind: "attack_void", target: o.target, text: "cíl už nebojuje" }); continue; }
@@ -411,10 +461,10 @@ export function resolveRound(units0: FBUnit[], orders: FBOrder[], field: Cell[],
       if (!isCavalry(u.type)) continue;
       const tt = terrainAt(t.x!, t.y!);
       if (tt === "forest" || tt === "village") { events.push({ seq: o.seq, key: u.key, kind: "charge_fail", target: t.key, text: "náraz do lesa/vesnice nelze" }); continue; }
-      const r = moveRange(u, terrainAt);
       const opp: Record<Facing, [number, number]> = { n: [0, 1], s: [0, -1], e: [-1, 0], w: [1, 0] };
+      const reachable = reachableCells(u, units, field, terrainAt);
       const cand = ORTHO.map(([dx, dy]) => ({ x: t.x! + dx, y: t.y! + dy, rear: opp[t.facing][0] === dx && opp[t.facing][1] === dy }))
-        .filter(c => (c.x === u.x && c.y === u.y) || (!occupied(c.x, c.y) && inBattlefield(field, c.x, c.y) && terrainAt(c.x, c.y) !== "water" && terrainAt(c.x, c.y) !== "forest" && manhattan(pos(u), c) <= r))
+        .filter(c => (c.x === u.x && c.y === u.y) || (reachable.has(`${c.x},${c.y}`) && !occupied(c.x, c.y) && terrainAt(c.x, c.y) !== "forest"))
         .map(c => ({ ...c, f: flankOf(t, c) })).sort((a, b) => FLANK[b.f] - FLANK[a.f] || manhattan(pos(u), a) - manhattan(pos(u), b) || a.y - b.y || a.x - b.x);
       const spot = cand[0];
       if (!spot) { events.push({ seq: o.seq, key: u.key, kind: "charge_fail", target: t.key, text: "k cíli není volná cesta" }); continue; }
@@ -459,49 +509,190 @@ export function timeoutWinner(units: FBUnit[]): Side | "draw" {
   if (a >= d * 1.15 && a > 0) return "attacker"; if (d >= a * 1.15 && d > 0) return "defender"; return "draw";
 }
 
-// ── Deterministic AI ──
-/** Heuristic AI orders for one side (no LLM): uses at most `cp` commands, deterministic for the same state. */
-export function planAiOrders(units: FBUnit[], side: Side, field: Cell[], terrainAt: TerrainAt, cp: number, startSeq = 1): FBOrder[] {
-  const mine = units.filter(u => u.side === side && u.status === "ready" && u.x !== null).sort((a, b) => a.key.localeCompare(b.key));
-  const foes = units.filter(u => u.side !== side && u.status === "ready" && u.x !== null);
-  if (!foes.length || !mine.length) return [];
-  const taken = new Set(units.filter(u => u.status === "ready" && u.x !== null).map(u => `${u.x},${u.y}`));
-  type Plan = { u: FBUnit; kind: OrderKind; target?: string; to?: { x: number; y: number }; score: number };
-  const plans: Plan[] = [];
-  const nearest = (u: FBUnit, list = foes) => list.slice().sort((a, b) => cheb(pos(u), pos(a)) - cheb(pos(u), pos(b)) || a.men - b.men || a.key.localeCompare(b.key))[0];
+// ── Deterministic Battle AI v2: doctrine + roles + legal utility-scored command groups ──
+export const BATTLE_DOCTRINES = ["hammer_anvil", "defensive_line", "cavalry_flank", "ranged_attrition", "forest_ambush", "center_breakthrough", "elastic_defense"] as const;
+export type BattleDoctrine = typeof BATTLE_DOCTRINES[number];
+export type TacticalRole = "center" | "left_wing" | "right_wing" | "ranged_support" | "reserve";
+export type BattleAiPlan = { version: 2; round: number; doctrine: BattleDoctrine; reason: string; strengthRatio: number;
+  roles: Record<string, TacticalRole>; reserveCalled: boolean };
+export const DOCTRINE_LABELS: Record<BattleDoctrine, string> = {
+  hammer_anvil: "Kladivo a kovadlina", defensive_line: "Obranná linie", cavalry_flank: "Jezdecký obchvat",
+  ranged_attrition: "Střelecké oslabení", forest_ambush: "Lesní léčka", center_breakthrough: "Průlom středu", elastic_defense: "Pružná obrana",
+};
+
+const battleMen = (units: FBUnit[], side: Side, readyOnly = false) => units.filter(u => u.side === side && (readyOnly ? u.status === "ready" : u.status === "ready" || u.status === "reserve"))
+  .reduce((sum, u) => sum + u.men * u.quality * (0.5 + u.morale / 200), 0);
+const meanMorale = (units: FBUnit[], side: Side) => {
+  const mine = units.filter(u => u.side === side && u.status === "ready"); return mine.length ? mine.reduce((s, u) => s + u.morale, 0) / mine.length : 0;
+};
+const fieldTerrains = (field: Cell[], terrainAt: TerrainAt) => field.flatMap(f => Array.from({ length: MICRO * MICRO }, (_, i) => terrainAt(f.x * MICRO + i % MICRO, f.y * MICRO + Math.floor(i / MICRO))));
+
+/** Doctrine is recomputed every round from actual troops, terrain, role, strength and morale. */
+export function selectBattleDoctrine(units: FBUnit[], side: Side, field: Cell[], terrainAt: TerrainAt): { doctrine: BattleDoctrine; reason: string; strengthRatio: number } {
+  const mine = units.filter(u => u.side === side && (u.status === "ready" || u.status === "reserve"));
+  const foes = units.filter(u => u.side !== side && (u.status === "ready" || u.status === "reserve"));
+  const ownPower = battleMen(units, side), enemyPower = battleMen(units, otherSide(side)), ratio = ownPower / Math.max(1, enemyPower);
+  const men = Math.max(1, mine.reduce((s, u) => s + u.men, 0)), count = (pred: (u: FBUnit) => boolean) => mine.filter(pred).reduce((s, u) => s + u.men, 0) / men;
+  const morale = meanMorale(units, side), terrains = fieldTerrains(field, terrainAt), open = terrains.filter(t => t === "plain" || t === "hills" || t === "village").length / Math.max(1, terrains.length);
+  const ownForest = mine.filter(u => u.x !== null && terrainAt(u.x, u.y!) === "forest").reduce((s, u) => s + u.men, 0) / men;
+  const ranged = count(u => isRanged(u.type) && u.ammo > 0), enemyRanged = foes.filter(u => isRanged(u.type) && u.ammo > 0).reduce((s, u) => s + u.men, 0);
+  const ownRangedMen = mine.filter(u => isRanged(u.type) && u.ammo > 0).reduce((s, u) => s + u.men, 0);
+  const cavalry = count(u => isCavalry(u.type)), mobile = count(u => isCavalry(u.type) || u.type === "SLINGERS" || u.type === "JAVELINERS" || u.type === "MILITIA");
+  const shock = count(u => u.type === "AXEMEN" || u.type === "SWORDSMEN" || u.type === "ELITE_GUARD" || u.type === "HEAVY_CAVALRY");
+  if (morale < 45 || ratio < 0.55) return { doctrine: "elastic_defense", reason: "nízká morálka nebo vážná početní nevýhoda", strengthRatio: ratio };
+  if (ownForest >= 0.25 && mobile >= 0.30) return { doctrine: "forest_ambush", reason: "les a dostatek lehkých či mobilních oddílů", strengthRatio: ratio };
+  if (ranged >= 0.35 && ownRangedMen >= 400 && (enemyRanged === 0 ? ownRangedMen >= 600 : ownRangedMen >= enemyRanged * 1.2)) return { doctrine: "ranged_attrition", reason: "střelecká převaha s dostupnou municí", strengthRatio: ratio };
+  if (cavalry >= 0.22 && open >= 0.55) return { doctrine: "cavalry_flank", reason: "silná jízda a vhodný otevřený terén", strengthRatio: ratio };
+  if (shock >= 0.40 && ratio >= 1.05) return { doctrine: "center_breakthrough", reason: "silná úderná pěchota a převaha", strengthRatio: ratio };
+  if (side === "defender" || ratio < 0.85 || open < 0.55) return { doctrine: "defensive_line", reason: "obrana, nevýhoda nebo uzavřený terén", strengthRatio: ratio };
+  return { doctrine: "hammer_anvil", reason: "vyvážené kombinované zbraně", strengthRatio: ratio };
+}
+
+export function assignTacticalRoles(units: FBUnit[], side: Side): Record<string, TacticalRole> {
+  const roles: Record<string, TacticalRole> = {}; let wing = 0;
+  const mine = units.filter(u => u.side === side && u.status !== "dead" && u.status !== "routed").sort((a, b) => a.key.localeCompare(b.key));
+  const line = mine.filter(u => !isCavalry(u.type) && !isRanged(u.type) && u.type !== "ENGINEERS");
   for (const u of mine) {
-    const st = UNIT_STATS[u.type];
-    const weak = u.men < u.startMen * 0.35 || u.morale < 35;
-    const adj = foes.filter(f => cheb(pos(u), pos(f)) <= 1).sort((a, b) => a.men - b.men || a.key.localeCompare(b.key));
-    if (weak) { plans.push({ u, kind: "HOLD", score: 1 }); continue; }
-    if (isRanged(u.type)) {
-      const inRange = foes.filter(f => cheb(pos(u), pos(f)) <= st.range && cheb(pos(u), pos(f)) > 1).sort((a, b) => a.men - b.men || a.key.localeCompare(b.key));
-      if (u.ammo >= 1 && inRange.length) { plans.push({ u, kind: u.ammo >= 2 && u.type !== "SLINGERS" ? "VOLLEY" : "ATTACK", target: inRange[0].key, score: 8 }); continue; }
-      if (adj.length) { plans.push({ u, kind: "ATTACK", target: adj[0].key, score: 5 }); continue; }
-      // keep distance: if nothing in range, step forward one square toward nearest enemy
-    }
-    if (isCavalry(u.type)) {
-      const archers = foes.filter(f => isRanged(f.type) && manhattan(pos(u), pos(f)) <= moveRange(u, terrainAt) + 1);
-      const tgt = (archers.length ? archers : foes.filter(f => manhattan(pos(u), pos(f)) <= moveRange(u, terrainAt) + 1 && f.type !== "SPEARMEN"))
-        .sort((a, b) => FLANK[flankOf(b, pos(u))] - FLANK[flankOf(a, pos(u))] || a.men - b.men || a.key.localeCompare(b.key))[0];
-      if (tgt && terrainAt(tgt.x!, tgt.y!) !== "forest") { plans.push({ u, kind: "CHARGE", target: tgt.key, score: 9 }); continue; }
-    }
-    if (u.type === "SPEARMEN" && foes.some(f => isCavalry(f.type) && cheb(pos(u), pos(f)) <= 4) && !adj.length) { plans.push({ u, kind: "HOLD", score: 2 }); continue; }
-    if (adj.length) { plans.push({ u, kind: "ATTACK", target: adj[0].key, score: 7 }); continue; }
-    const n = nearest(u); const r = moveRange(u, terrainAt);
-    let best: { x: number; y: number } | null = null; let bestD = cheb(pos(u), pos(n));
-    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) {
-      if (Math.abs(dx) + Math.abs(dy) > r || (!dx && !dy)) continue;
-      const c = { x: u.x! + dx, y: u.y! + dy };
-      if (taken.has(`${c.x},${c.y}`) || !inBattlefield(field, c.x, c.y) || terrainAt(c.x, c.y) === "water") continue;
-      const d = cheb(c, pos(n)); if (isRanged(u.type) && d < 2) continue;
-      if (d < bestD) { bestD = d; best = c; }
-    }
-    if (best) { taken.add(`${best.x},${best.y}`); plans.push({ u, kind: "MOVE", to: best, score: 4 }); }
+    if (u.status === "reserve" || u.morale < 35 || u.fatigue >= 85) roles[u.key] = "reserve";
+    else if (isRanged(u.type)) roles[u.key] = "ranged_support";
+    else if (isCavalry(u.type)) roles[u.key] = wing++ % 2 ? "right_wing" : "left_wing";
+    else if (line.length > 6 && line.indexOf(u) >= line.length - 2) roles[u.key] = "reserve";
+    else roles[u.key] = "center";
   }
-  // Each AI command is one CP; group identical moves are not needed — pick the highest-value orders.
-  const chosen = plans.filter(p => p.kind !== "HOLD").sort((a, b) => b.score - a.score || a.u.key.localeCompare(b.u.key)).slice(0, cp);
-  return chosen.map((p, i) => ({ seq: startSeq + i, cmd: startSeq + i, key: p.u.key, kind: p.kind, ...(p.to ? { to: p.to } : {}), ...(p.target ? { target: p.target } : {}) }));
+  return roles;
+}
+
+type AiEntry = { u: FBUnit; to?: Cell; target?: string };
+type AiCandidate = { kind: OrderKind; entries: AiEntry[]; score: number; signature: string };
+
+/** Authoritative server AI. No randomness or LLM: identical canonical inputs produce identical groups and doctrine. */
+export function planBattleAi(units: FBUnit[], side: Side, field: Cell[], terrainAt: TerrainAt, cp: number, startSeq = 1,
+  round = 1, meta: BattleMeta = {}, zoneOf?: (side: Side) => (x: number, y: number) => boolean): { orders: FBOrder[]; plan: BattleAiPlan } {
+  const selected = selectBattleDoctrine(units, side, field, terrainAt), doctrine = selected.doctrine;
+  const roles = assignTacticalRoles(units, side), mine = units.filter(u => u.side === side && u.status === "ready" && u.x !== null).sort((a, b) => a.key.localeCompare(b.key));
+  const reserves = units.filter(u => u.side === side && u.status === "reserve").sort((a, b) => a.key.localeCompare(b.key));
+  const foes = units.filter(u => u.side !== side && u.status === "ready" && u.x !== null);
+  const plan: BattleAiPlan = { version: 2, round, doctrine, reason: selected.reason, strengthRatio: Math.round(selected.strengthRatio * 1000) / 1000, roles, reserveCalled: false };
+  if (!mine.length || !foes.length || cp <= 0) return { orders: [], plan };
+  const ctx = { round, meta, zone: zoneOf?.(side) };
+  const valid = (entry: AiEntry, kind: OrderKind) => !orderProblem(units, field, entry.u.key, { kind, to: entry.to, target: entry.target }, terrainAt, ctx);
+  const threatenedRanged = mine.filter(u => isRanged(u.type) && foes.some(f => manhattan(pos(u), pos(f)) <= 3));
+  const exposed = (t: FBUnit) => !units.some(v => v.side === t.side && v.key !== t.key && v.status === "ready" && v.x !== null && manhattan(pos(v), pos(t)) <= 1);
+  const targetScore = (u: FBUnit, t: FBUnit) => {
+    let score = 100 - t.men / 20 - t.morale / 5;
+    if (isRanged(t.type)) score += exposed(t) ? 70 : 35;
+    if (threatenedRanged.some(r => manhattan(pos(r), pos(t)) <= 3)) score += 40;
+    if (u.type === "SPEARMEN" && isCavalry(t.type)) score += 45;
+    if (isCavalry(u.type) && isRanged(t.type)) score += 40;
+    if (isCavalry(u.type) && t.type === "SPEARMEN" && flankOf(t, pos(u)) === "front") score -= 65;
+    score += (FLANK[flankOf(t, pos(u))] - 1) * 60;
+    if (t.morale < 40 || t.men < t.startMen * 0.4) score += 25;
+    return score;
+  };
+  const candidates: AiCandidate[] = [], immediate = new Map<string, AiCandidate>(), engaged = new Set<string>();
+  const addImmediate = (u: FBUnit, kind: OrderKind, t: FBUnit, score: number) => {
+    const entry = { u, target: t.key }; if (!valid(entry, kind)) return false;
+    const signature = `${kind}:${t.key}`, existing = immediate.get(signature);
+    if (existing) { existing.entries.push(entry); existing.score = Math.max(existing.score, score) + 2; }
+    else immediate.set(signature, { kind, entries: [entry], score, signature });
+    engaged.add(u.key); return true;
+  };
+  for (const u of mine) {
+    const targets = foes.slice().sort((a, b) => targetScore(u, b) - targetScore(u, a) || a.key.localeCompare(b.key));
+    const weak = u.morale < 40 || u.fatigue >= 85 || u.men < u.startMen * 0.3;
+    if (weak) continue;
+    let done = false;
+    for (const t of targets.slice(0, 5)) {
+      const d = cheb(pos(u), pos(t));
+      if (isCavalry(u.type) && terrainAt(t.x!, t.y!) !== "forest" && terrainAt(t.x!, t.y!) !== "village") done = addImmediate(u, "CHARGE", t, targetScore(u, t) + 30);
+      if (!done && isRanged(u.type) && u.ammo > 0 && d <= UNIT_STATS[u.type].range) {
+        const kind: OrderKind = u.ammo >= 2 && (doctrine === "ranged_attrition" || t.men >= 100) ? "VOLLEY" : "ATTACK";
+        done = addImmediate(u, kind, t, targetScore(u, t) + (kind === "VOLLEY" ? 18 : 8));
+      }
+      if (!done && d <= 1) done = addImmediate(u, "ATTACK", t, targetScore(u, t) + 12);
+      if (done) break;
+    }
+  }
+  candidates.push(...immediate.values());
+
+  // Rally and fortify are real commands, selected only when valid and useful.
+  if (meta.hasGeneral?.[side] && round >= (meta.rallyReadyRound?.[side] ?? 0)) {
+    const average = meanMorale(units, side);
+    if (average < 68 || mine.some(u => u.morale < 40)) {
+      const leader = mine.slice().sort((a, b) => mine.filter(v => manhattan(pos(a), pos(v)) <= 3).length - mine.filter(v => manhattan(pos(b), pos(v)) <= 3).length || a.key.localeCompare(b.key))[0];
+      if (leader) candidates.push({ kind: "RALLY", entries: [{ u: leader }], score: average < 45 ? 220 : 125, signature: "leadership:rally" });
+    }
+  }
+  if (doctrine === "defensive_line" || doctrine === "elastic_defense" || doctrine === "forest_ambush") {
+    const engineers = mine.filter(u => u.type === "ENGINEERS" && !engaged.has(u.key));
+    if (engineers.length) candidates.push({ kind: "FORTIFY", entries: engineers.map(u => ({ u })), score: 105, signature: "engineers:fortify" });
+  }
+
+  // Meaningful reserve trigger: threatened ranged line, losing field strength, or round four of an aggressive plan.
+  const reserveTrigger = threatenedRanged.length > 0 || battleMen(units, side, true) < battleMen(units, otherSide(side), true) * 0.85
+    || (round >= 4 && ["hammer_anvil", "cavalry_flank", "center_breakthrough"].includes(doctrine));
+  if (reserves.length && reserveTrigger && zoneOf) {
+    const occupied = new Set(units.filter(u => u.status === "ready" && u.x !== null).map(u => `${u.x},${u.y}`));
+    const entries: AiEntry[] = [];
+    for (const u of reserves) {
+      let best: Cell | null = null, bestScore = -Infinity;
+      for (const f of field) for (let dx = 0; dx < MICRO; dx++) for (let dy = 0; dy < MICRO; dy++) {
+        const to = { x: f.x * MICRO + dx, y: f.y * MICRO + dy }, key = `${to.x},${to.y}`;
+        if (occupied.has(key) || !zoneOf(side)(to.x, to.y) || terrainAt(to.x, to.y) === "water") continue;
+        const anchor = threatenedRanged[0] ?? mine.find(v => roles[v.key] === "center") ?? mine[0];
+        const score = -manhattan(to, pos(anchor)) + (["forest", "hills", "village"].includes(terrainAt(to.x, to.y)) ? 3 : 0);
+        if (score > bestScore) { bestScore = score; best = to; }
+      }
+      if (best && valid({ u, to: best }, "RESERVE")) { entries.push({ u, to: best }); occupied.add(`${best.x},${best.y}`); }
+    }
+    if (entries.length) candidates.push({ kind: "RESERVE", entries, score: threatenedRanged.length ? 190 : 115, signature: "reserves:deploy" });
+  }
+
+  // Legal movement and withdrawals. Candidate destinations are scored, never nearest-target teleports.
+  for (const u of mine) {
+    if (engaged.has(u.key)) continue;
+    const nearest = foes.slice().sort((a, b) => cheb(pos(u), pos(a)) - cheb(pos(u), pos(b)) || a.key.localeCompare(b.key))[0];
+    const distance = cheb(pos(u), pos(nearest));
+    const weak = u.morale < 40 || u.fatigue >= 85 || u.men < u.startMen * 0.3;
+    if (!weak && (doctrine === "defensive_line" || doctrine === "elastic_defense") && distance > 4 && !threatenedRanged.length) continue;
+    let best: Cell | null = null, bestScore = -Infinity;
+    for (const to of reachableCells(u, units, field, terrainAt).values()) {
+      const nearestAfter = Math.min(...foes.map(f => cheb(to, pos(f))));
+      const terrain = terrainAt(to.x, to.y), defensive = terrain === "forest" || terrain === "hills" || terrain === "village" ? 5 : terrain === "marsh" ? -2 : 0;
+      let score = defensive;
+      if (weak || doctrine === "elastic_defense") score += nearestAfter * 9 + (u.morale < 35 ? 15 : 0);
+      else if (isRanged(u.type)) score += -Math.abs(nearestAfter - Math.min(3, UNIT_STATS[u.type].range - 1)) * 8 + (nearestAfter <= 1 ? -30 : 0);
+      else score += (distance - nearestAfter) * 12;
+      if (doctrine === "forest_ambush" && terrain === "forest") score += 14;
+      if (isCavalry(u.type)) score += (FLANK[flankOf(nearest, to)] - 1) * 25;
+      if (!isRanged(u.type) && threatenedRanged.length) score += Math.max(0, 20 - Math.min(...threatenedRanged.map(r => manhattan(to, pos(r)))) * 3);
+      score -= to.y * 1e-6 + to.x * 1e-9;
+      if (score > bestScore) { bestScore = score; best = to; }
+    }
+    if (best && valid({ u, to: best }, "MOVE")) candidates.push({ kind: "MOVE", entries: [{ u, to: best }], score: (weak ? 85 : 35) + bestScore, signature: `move:${u.key}` });
+  }
+
+  const usedUnits = new Set<string>(), plannedCells = new Set<string>(), accepted: AiCandidate[] = [];
+  for (const candidate of candidates.sort((a, b) => b.score - a.score || a.signature.localeCompare(b.signature))) {
+    if (accepted.length >= cp) break;
+    const entries = candidate.entries.filter(e => !usedUnits.has(e.u.key) && valid(e, candidate.kind)
+      && (!e.to || !plannedCells.has(`${e.to.x},${e.to.y}`)));
+    if (!entries.length) continue;
+    accepted.push({ ...candidate, entries });
+    for (const e of entries) { usedUnits.add(e.u.key); if (e.to) plannedCells.add(`${e.to.x},${e.to.y}`); }
+  }
+  const orders: FBOrder[] = []; let seq = startSeq;
+  accepted.forEach((candidate, cmdIndex) => {
+    if (candidate.kind === "RESERVE") plan.reserveCalled = true;
+    for (const entry of candidate.entries) orders.push({ seq: seq++, cmd: startSeq + cmdIndex, key: entry.u.key, kind: candidate.kind,
+      ...(entry.to ? { to: { x: entry.to.x, y: entry.to.y } } : {}), ...(entry.target ? { target: entry.target } : {}) });
+  });
+  return { orders, plan };
+}
+
+/** Compatibility wrapper for stateless scenario simulations; live battles persist planBattleAi metadata. */
+export function planAiOrders(units: FBUnit[], side: Side, field: Cell[], terrainAt: TerrainAt, cp: number, startSeq = 1): FBOrder[] {
+  return planBattleAi(units, side, field, terrainAt, cp, startSeq).orders;
 }
 
 // ── Settlement ──

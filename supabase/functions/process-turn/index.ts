@@ -1246,11 +1246,13 @@ Deno.serve(async (req) => {
     // PRESTIGE COMPUTATION (6 sub-types, hybrid)
     // ══════════════════════════════════════════
     // Military prestige: army size, battles won, strategic nodes
-    const { data: battlesWon } = await supabase.from("battles")
-      .select("id", { count: "exact", head: true })
-      .eq("session_id", sessionId)
-      .or(`attacker_stack_id.in.(${(stacks || []).map((s: any) => s.id).join(",")})`);
-    const battlesWonCount = battlesWon || 0;
+    const { data: battlesWon } = await supabase.from("field_battles")
+      .select("attacker_player, defender_player, last_report")
+      .eq("session_id", sessionId).eq("status", "finished")
+      .or(`attacker_player.eq."${playerName}",defender_player.eq."${playerName}"`);
+    const battlesWonCount = (battlesWon || []).filter((b: any) =>
+      (b.last_report?.winner === "attacker" && b.attacker_player === playerName) ||
+      (b.last_report?.winner === "defender" && b.defender_player === playerName)).length;
     const militaryPrestige = Math.min(100,
       Math.floor(totalArmySize / 500) +  // +1 per 500 soldiers
       (typeof battlesWonCount === 'number' ? battlesWonCount * 5 : 0) +  // +5 per victory

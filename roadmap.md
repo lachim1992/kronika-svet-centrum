@@ -1,5 +1,14 @@
 # Map-first square-grid roadmap
 
+## Legacy battle retirement + general command + Battle AI v2 — 2026-11-18
+- [x] Removed the abstract engine's UI, commands, functions and source/test/documentation references; preserved field battles, sieges, generals, recruitment and map/economy state. Deployed replacements; all three retired endpoints verified absent (404).
+- [x] Removed all obsolete pending decisions (live count 0) and applied `0035_general_command_atomic_field_settlement.sql`: unique general assignment, ownership/capacity RPC and strict atomic settlement; retired lobby removed from the turn-write allowlist.
+- [ ] Drop the two retired abstract tables and regenerate their remaining generated types. Blocker: workspace Agent permissions currently reject table drops; user must allow them. Live rows remain untouched (6 lobbies / 58 abstract battle rows).
+- [x] Shared 0–100 general command helpers, server-side stack capacity/ownership/uniqueness checks, recruitment-time general selection, morale leadership and composition/morale-only stack power.
+- [x] Canonical `field_battles.meta` on every write/read, real 0–100 composition quality mapped to 0.75–1.25, exact soldier validation and RPC-only/fail-closed final settlement.
+- [x] Deterministic server-side Battle AI v2 with seven doctrines, tactical roles, legal group/CP accounting, adaptive canonical plan state and representative AI-vs-AI tests.
+- [x] Full suite 1115 passed / 3 skipped (136 files passed, 1 skipped); TypeScript and changed-function Deno checks clean; production build passed. Updated command-dispatch, commit-turn, AI turn, process-turn, reporting and scenario functions deployed; command-dispatch/commit-turn verified reachable. No live turn, recruitment, battle, economy refresh or saved-game command was run.
+
 ## Editor mapy a izolované scénáře — 2026-11-18
 - [x] Samostatný editor s 2D izometrickou čtvercovou mapou a 6×6 mikropolíčky; terén, města, armády, cesty, suroviny a těžební stavby bez poplatků.
 - [x] Pravděpodobnostní vrstva surovin z kanonických biome/deposit pravidel; lokální uložení, import/export a historie úprav.
@@ -284,7 +293,7 @@
 ## Populace, migrace a prosperita tras (master)
 - [x] Fáze A: jediný kanonický writer populace, třídní invariant, mrtvý kód
 - [x] Fáze A residue: world-tick ztráty i migrace přes shared helpery
-- [x] Fáze A residue: resolve-battle ztráty drží total == součet vrstev
+- [x] Fáze A residue: bojové ztráty drží total == součet vrstev
 - [x] Fáze A residue: command-dispatch destruktivní ztráty přes shared helper
 - [x] Fáze A residue: zakládání města — TODO + testovací pojistka (převod až ve Fázi C)
 - [x] Fáze A residue: zrušit klientské volání process-turn mimo commit-turn
@@ -317,7 +326,7 @@
   - `_shared/diplomacyEnforcement.ts` = jediné místo pravidel (WAR_BLOCKING_PACTS, PASSAGE_PACTS, checkWarDeclaration, checkTerritoryAccess, deterministicSeed)
   - command-dispatch: DECLARE_WAR blokován platným spojenectvím/paktem o obraně/vazalstvím; pohyb (hexový i po cestě) blokován v míru bez otevřených hranic
   - ai-faction-turn: retry při 429/5xx + čestný fallback (frakce drží pozici, důvod zapsán do summary i world_action_log) místo pádu
-  - resolve-battle: seed bitvy deterministicky ze session/tahu/stacků, klientský seed ignorován; DiplomacyPanel a BattleLobbyPanel už negenerují náhodu
+  - fieldBattle: taktické kolo je deterministické z ID bitvy a kola, klientský seed ignorován
   - pracovní místa přeškálována na hlavy (ECONOMY.workersPerLaborUnit = 40), Test01 populace srovnána s bytovou kapacitou
   - testy: src/test/phase6-systems-depth.test.ts
 - [ ] Rozhodnuto: persistentní real-time režim opuštěn — world-tick/process-tick/action_queue/time_pools k odstranění
@@ -520,7 +529,7 @@ Aktuální autorita: docs/architecture/economy-contract.md. Údaje o konkrétní
 - [ ] Full cloned-world 20/200-turn harness through process-turn (PGlite) — still open.
 - [x] Runway guard ignores starter_economy buildings; deferred non-essential build dispatches affordable Farma/Pila same turn (deployed). Limitation: reserve illustration holds accrual constant; full solver long-run still open.
 - [x] UPGRADE_BUILDING authoritative quote (`quoteBuildingUpgrade`): template base × level cost_mult, template name/effects, legacy fail-closed, no client wonder flag, level CAS + funds CAS with rollback; deployed. Test upgrade-quote.test.ts.
-- [ ] Strategic iron/obsidian battle multipliers in resolve-battle (shared tier module) — not started.
+- [x] Strategic iron/obsidian multipliers in tactical fieldBattleCommand + fieldBattle casualties (shared tier module).
 - [ ] Marble build-cost discount in BUILD/UPGRADE — not started.
 - [x] Stitched 20/200-turn parcel world simulator (src/test/parcel-world-longrun.test.ts): real parcel ecology, goods solver, growth, runway chooser, live catalogue. Excludes battles, LLM AI, wage/tax SQL, route rebuild.
 - [ ] BALANCE BLOCKER (measured, not tuned): AI1 construction points fall to 0 by t20 (raw timber diverted to fuel, no stone parcel) → stuck at food 23 %/fuel 23 % from t50. Lambadagrad food 60 % at pop 673 even with one farm (capacity 7). Fuel falls below 50 % in all cities by t20. Needs owner decision: cheaper first farm / higher raw efficiency / fuel source — no constant changed without approval.

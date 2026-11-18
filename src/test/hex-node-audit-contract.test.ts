@@ -23,10 +23,11 @@ it('guild writer is behind fiscal buffering; refresh has no specialization accru
   expect(readFileSync('supabase/functions/refresh-economy/index.ts', 'utf8')).not.toContain('accrueGuildSpecialization');
 });it('strategic combat and marble build are wired to the shared module', () => {
   for (const f of ['Strategic resource → combat', 'Strategic resource → build costs']) expect(AUDIT_ITEMS.find(i => i.feature === f)?.status).toBe('implemented');
-  const battle = readFileSync('supabase/functions/resolve-battle/index.ts', 'utf8');
+  const battle = readFileSync('supabase/functions/command-dispatch/fieldBattleCommand.ts', 'utf8');
   expect(battle).toContain('strategicCombatMult');
-  expect(battle).toContain('* attackerStrategicMult');
-  expect(battle).toContain('* defenderStrategicMult');
+  expect(battle).toContain('attacker: strategicCombatMult');
+  expect(battle).toContain('defender: strategicCombatMult');
+  expect(readFileSync('supabase/functions/_shared/fieldBattle.ts', 'utf8')).toContain('attackMultiplier: meta.combatMult');
   const cd = readFileSync('supabase/functions/command-dispatch/index.ts', 'utf8');
   expect(cd.match(/strategicBuildCostMult\(realm\)/g)?.length).toBe(2);
   expect(readFileSync('supabase/functions/process-turn/index.ts', 'utf8')).not.toContain('const STRATEGIC_TIER_BONUSES');

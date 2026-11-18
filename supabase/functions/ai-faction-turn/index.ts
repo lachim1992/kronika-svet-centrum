@@ -13,6 +13,7 @@ import { applyStackMove } from "../_shared/stackMovementCommand.ts";
 import { planShortHopToward } from "../_shared/movement.ts";
 import { buildFactionBriefing } from "./briefing.ts";
 import { generateValidActions } from "./actions.ts";
+import { minimalBattlefield } from "../_shared/fieldBattle.ts";
 
 // ═══════════════════════════════════════════
 // HEX MATH
@@ -2019,101 +2020,27 @@ async function executeAction(
         const ds = enemyStacks.find((s: any) => s.id === defenderStackId);
         defenderPlayer = ds?.player_name || null;
       }
-      let defenderIsHuman = false;
-      if (defenderPlayer) {
-        const { data: aiCheck } = await supabase.from("ai_factions")
-          .select("id").eq("session_id", sessionId).eq("faction_name", defenderPlayer)
-          .eq("is_active", true).maybeSingle();
-        defenderIsHuman = !aiCheck;
+      // All combat enters the retained authoritative tactical systems; no abstract lobby/queue fallback.
+      const commandType = defenderStackId ? "START_FIELD_BATTLE" : "START_SIEGE";
+      const commandPayload: Record<string, unknown> = { stackId: stack.id };
+      if (defenderStackId) {
+        const target = enemyStacks.find((s: any) => s.id === defenderStackId);
+        commandPayload.targetStackId = defenderStackId;
+        commandPayload.battlefield = minimalBattlefield(
+          { x: stack.grid_x ?? stack.hex_q, y: stack.grid_y ?? stack.hex_r },
+          { x: target.grid_x ?? target.hex_q, y: target.grid_y ?? target.hex_r },
+        );
+      } else commandPayload.cityId = defenderCityId;
+      const { data: started, error: startError } = await supabase.functions.invoke("command-dispatch", { body: {
+        sessionId, turnNumber: turn, actor: { name: factionName, type: "ai_faction" },
+        commandType, commandPayload, commandId: crypto.randomUUID(),
+      } });
+      if (startError || started?.error || started?.ok === false) {
+        const reason = startError?.message || started?.error || "command rejected";
+        console.warn(`[${factionName}] ${commandType} rejected: ${reason}`);
+        return `battle_rejected_${reason}`;
       }
-
-      const speechText = action.narrativeNote || `Za slávu ${factionName}!`;
-
-      // ── Determine attacker_intent (occupy / pillage / raze) ──
-      // Heuristic: based on AI personality + own manpower situation.
-      let attackerIntent: "occupy" | "pillage" | "raze" = "occupy";
-      if (defenderCityId) {
-        // Allow AI prompt to override via action.attackIntent
-        const explicit = (action.attackIntent || "").toString().toLowerCase();
-        if (["occupy", "pillage", "raze", "sack"].includes(explicit)) {
-          attackerIntent = explicit === "sack" ? "pillage" : (explicit as any);
-        } else {
-          const { data: factionRow } = await supabase.from("ai_factions")
-            .select("personality, disposition").eq("session_id", sessionId).eq("faction_name", factionName).maybeSingle();
-          const pers = (factionRow?.personality || "diplomatic").toLowerCase();
-          const aggressive = pers.includes("aggress") || pers.includes("milit") || pers.includes("conqu") || pers.includes("warrior");
-          const expansionist = pers.includes("expan") || pers.includes("hegem") || pers.includes("imperial");
-          // Sample own manpower
-          const { data: realmRow } = await supabase.from("realm_resources")
-            .select("manpower_pool, manpower_committed").eq("session_id", sessionId).eq("player_name", factionName).maybeSingle();
-          const mpFree = (realmRow?.manpower_pool || 0) - (realmRow?.manpower_committed || 0);
-          if (expansionist) attackerIntent = "occupy";
-          else if (aggressive && mpFree < 200) attackerIntent = "raze";
-          else if (aggressive) attackerIntent = "pillage";
-          else attackerIntent = "occupy";
-        }
-      }
-
-
-      // ── HUMAN DEFENDER → create battle_lobbies (gives player chance to react) ──
-      if (defenderIsHuman) {
-        const { data: lobby, error: lobbyErr } = await supabase.from("battle_lobbies").insert({
-          session_id: sessionId,
-          turn_number: turn,
-          attacker_stack_id: stack.id,
-          attacker_player: factionName,
-          defender_stack_id: defenderStackId,
-          defender_city_id: defenderCityId,
-          defender_player: defenderPlayer,
-          attacker_formation: "ASSAULT",
-          defender_formation: "DEFENSIVE",
-          attacker_speech: speechText,
-          attacker_ready: true,
-          defender_ready: false,
-          is_ai_attacker: true,
-          is_ai_defender: false,
-          status: "preparing",
-          attacker_intent: attackerIntent,
-          ai_responded_at: new Date().toISOString(),
-        }).select("id").single();
-        if (lobbyErr) {
-          console.warn(`[${factionName}] battle_lobby insert failed, falling back to action_queue:`, lobbyErr);
-        } else {
-          // Notify player via game_event so toast/notification shows
-          await supabase.from("game_events").insert({
-            session_id: sessionId, event_type: "battle_incoming", player: defenderPlayer,
-            turn_number: turn, confirmed: true, importance: "critical",
-            note: `⚔️ ${factionName} útočí na ${defenderCityId ? "tvé město" : "tvou armádu"}! Otevři Vojenský panel a připrav obranu.`,
-            truth_state: "canon", actor_type: "ai_faction",
-            reference: { lobby_id: lobby.id, attacker: factionName },
-          }).then(() => {}, () => {});
-          return `lobby_created_${defenderCityId ? "city" : "stack"}_lobby=${lobby.id}`;
-        }
-      }
-
-      // AI vs AI (or fallback): direct queue → auto-resolve in commit-turn
-      const seed = Date.now() + Math.floor(Math.random() * 100000);
-      await supabase.from("action_queue").insert({
-        session_id: sessionId,
-        player_name: factionName,
-        action_type: "battle",
-        status: "pending",
-        action_data: {
-          attacker_stack_id: stack.id,
-          defender_city_id: defenderCityId,
-          defender_stack_id: defenderStackId,
-          speech_text: speechText,
-          speech_morale_modifier: 0,
-          seed,
-          biome: "plains",
-          attacker_intent: attackerIntent,
-        },
-        completes_at: new Date().toISOString(),
-        created_turn: turn,
-        execute_on_turn: turn,
-      });
-
-      return `battle_queued_${defenderCityId ? "city" : "stack"}`;
+      return defenderStackId ? "field_battle_started" : "siege_started";
     }
 
     // ─── COMBINE STACKS (merge source INTO target on same hex) ───

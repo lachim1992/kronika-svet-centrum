@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse } from "../_shared/ai-context.ts";
+import { FIELD_BATTLE_HISTORY_COLS, fieldBattlesHistory } from "../_shared/combatHistory.ts";
 
 /**
  * World Chronicle Round (Batch B)
@@ -46,7 +47,7 @@ Deno.serve(async (req) => {
     const [
       { data: events },
       { data: fragments },
-      { data: battles },
+      { data: battleRows },
       { data: declarations },
       { data: completedBuildings },
       { data: rumors },
@@ -60,7 +61,7 @@ Deno.serve(async (req) => {
         .eq("turn_number", round).eq("confirmed", true),
       supabase.from("chronicle_entries").select("id, text, turn_from, source_type, references")
         .eq("session_id", sessionId).eq("turn_from", round).eq("source_type", "event_fragment"),
-      supabase.from("battles").select("*").eq("session_id", sessionId).eq("turn_number", round),
+      supabase.from("field_battles").select(FIELD_BATTLE_HISTORY_COLS).eq("session_id", sessionId).eq("started_turn", round).eq("status", "finished"),
       supabase.from("declarations").select("*").eq("session_id", sessionId)
         .eq("turn_number", round).eq("status", "published"),
       supabase.from("city_buildings").select("name, category, description, founding_myth, is_wonder")
@@ -78,6 +79,7 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId),
     ]);
 
+    const battles = fieldBattlesHistory(battleRows);
     const confirmedEvents = events || [];
     const eventIds = confirmedEvents.map((e: any) => e.id).filter(Boolean);
     const referencedEventIds: string[] = eventIds;

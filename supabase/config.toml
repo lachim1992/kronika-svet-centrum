@@ -120,9 +120,6 @@ verify_jwt = false
 [functions.generate-building]
 verify_jwt = false
 
-[functions.battle-speech]
-verify_jwt = false
-
 [functions.army-visualize]
 verify_jwt = false
 

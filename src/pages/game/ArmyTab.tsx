@@ -17,10 +17,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette, Check, Navigation, Route } from "lucide-react";
+import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette, Check, Route } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
-import DeployBattlePanel from "@/components/military/DeployBattlePanel";
+import { generalArmyCapacity, generalCommandPoints, generalMoraleLossReduction, generalRallyStrength } from "../../../supabase/functions/_shared/generalCommand";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
 const StrategicOverlay = lazy(() => import("@/components/StrategicOverlay"));
 
@@ -436,9 +436,6 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
           <TabsTrigger value="my-army" className="font-display text-xs gap-1">
             <Flag className="h-3 w-3" />Moje armáda
           </TabsTrigger>
-          <TabsTrigger value="deploy" className="font-display text-xs gap-1">
-            <Navigation className="h-3 w-3" />Nasazení
-          </TabsTrigger>
           <TabsTrigger value="strategic" className="font-display text-xs gap-1">
             <Route className="h-3 w-3" />Strategie
           </TabsTrigger>
@@ -574,6 +571,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
                           Schopnost: {g.skill}/100
                           {assigned && <> · Velí: {assigned.name}</>}
                         </p>
+                        <CommandStatLine skill={g.skill} />
                         {g.flavor_trait && <p className="text-xs italic text-muted-foreground">„{g.flavor_trait}"</p>}
                       </div>
                     </div>
@@ -625,17 +623,6 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
           />
         </TabsContent>
 
-        <TabsContent value="deploy" className="mt-3">
-          <DeployBattlePanel
-            sessionId={sessionId}
-            currentPlayerName={currentPlayerName}
-            currentTurn={currentTurn}
-            stacks={stacks}
-            cities={cities}
-            onRefresh={fetchMilitary}
-          />
-        </TabsContent>
-
         <TabsContent value="strategic" className="mt-3">
           <Suspense fallback={<div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
             <StrategicOverlay sessionId={sessionId} currentPlayerName={currentPlayerName} turnNumber={currentTurn} />
@@ -668,6 +655,8 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
         currentPlayerName={currentPlayerName}
         onRefresh={fetchMilitary}
         civIdentity={civIdentity}
+        generals={generals}
+        stacks={stacks}
       />
 
       {/* Create general dialog */}
@@ -727,6 +716,12 @@ function SummaryChip({ label, value, icon: Icon, highlight, tip }: { label: stri
   );
 }
 
+function CommandStatLine({ skill }: { skill: number | null }) {
+  return <p className="text-[11px] text-muted-foreground">
+    {skill == null ? "Bez generála" : `Schopnost ${skill}/100`} · {generalCommandPoints(skill)} CP/kolo · kapacita {generalArmyCapacity(skill).toLocaleString()} · ztráty morálky −{Math.round(generalMoraleLossReduction(skill) * 100)} % · {skill == null ? "Rally nedostupné" : `Rally +${generalRallyStrength(skill)}`}
+  </p>;
+}
+
 // ---- Stack Card ----
 function StackCard({ stack, general, onManage, civIdentity }: { stack: Stack; general?: General; onManage: () => void; civIdentity?: CivIdentityNames }) {
   const unitLabel = (type: string) => {
@@ -767,7 +762,7 @@ function StackCard({ stack, general, onManage, civIdentity }: { stack: Stack; ge
             <p className="text-2xl font-display font-bold text-primary">{stack.power}</p>
             <p className="text-[9px] text-muted-foreground flex items-center gap-0.5 justify-center">
               Síla
-              <InfoTip>Síla = Σ(muži × váha_typu × kvalita) × bonus_generála × morálka × formace. Váhy: Milice 0.8, Profesionálové 1.3. Formace: Jednotka ×1.0, Legie ×1.1, Armáda ×1.2.</InfoTip>
+              <InfoTip>Síla = Σ(muži × váha typu) × morálka. Generál nezvyšuje sílu; pomáhá kapacitou, velením a morálkou v polní bitvě.</InfoTip>
             </p>
           </div>
           <div className="flex-1 space-y-1">
@@ -832,6 +827,7 @@ function StackDetailDialog({
 
   const addedManpower = Object.values(reinforcements).reduce((s, v) => s + Math.max(0, v), 0);
   const addedGold = Object.entries(reinforcements).reduce((s, [type, count]) => s + Math.max(0, count) * (UNIT_GOLD_FACTOR[type] || 1), 0);
+  const commandCapacity = generalArmyCapacity(general?.skill ?? null);
 
   const canUpgradeLegion = stack.formation_type === "UNIT" && totalManpower >= LEGION_MIN_MANPOWER;
   const canUpgradeArmy = stack.formation_type === "LEGION" && totalManpower >= ARMY_MIN_MANPOWER && stack.general_id;
@@ -840,6 +836,7 @@ function StackDetailDialog({
     if (addedManpower <= 0) return;
     if (addedManpower > availableManpower) { toast.error("Nedostatek mužů"); return; }
     if (addedGold > (realm?.gold_reserve || 0)) { toast.error("Nedostatek zlata"); return; }
+    if (totalManpower + addedManpower > commandCapacity) { toast.error(`Kapacita armády je ${commandCapacity.toLocaleString()} mužů`); return; }
     setSaving(true);
 
     const res = await dispatchCommand({
@@ -973,6 +970,7 @@ function StackDetailDialog({
                   )}
                 </div>
               )}
+              <div className="mt-2 border-t border-border pt-2"><CommandStatLine skill={general?.skill ?? null} /></div>
             </CardContent>
           </Card>
 
@@ -1089,15 +1087,20 @@ function StackDetailDialog({
 
 // ---- Recruit Dialog (new stack from preset) ----
 function RecruitDialog({
-  open, onClose, realm, availableManpower, sessionId, currentPlayerName, onRefresh, civIdentity,
+  open, onClose, realm, availableManpower, sessionId, currentPlayerName, onRefresh, civIdentity, generals, stacks,
 }: {
   open: boolean; onClose: () => void; realm: RealmRes | null; availableManpower: number;
   sessionId: string; currentPlayerName: string; onRefresh: () => void; civIdentity?: CivIdentityNames;
+  generals: General[]; stacks: Stack[];
 }) {
   const [name, setName] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [manpowerCount, setManpowerCount] = useState<number>(400);
+  const [generalId, setGeneralId] = useState<string>("none");
   const [saving, setSaving] = useState(false);
+  const availableGenerals = generals.filter(g => !stacks.some(s => s.general_id === g.id));
+  const selectedGeneral = generalId === "none" ? null : availableGenerals.find(g => g.id === generalId) ?? null;
+  const commandCapacity = generalArmyCapacity(selectedGeneral?.skill ?? null);
 
   // Free-form pool: prefer canonical manpower_pool from realm; fall back to legacy availableManpower.
   const truePool = Math.max(0, (realm as any)?.manpower_pool ?? availableManpower ?? 0);
@@ -1119,6 +1122,7 @@ function RecruitDialog({
   const presetBaseline = preset ? preset.composition.reduce((s, c) => s + c.manpower, 0) : 400;
   const scale = preset ? manpowerCount / presetBaseline : 1;
   const scaledComposition = preset?.composition.map(c => ({ ...c, manpower: Math.max(1, Math.round(c.manpower * scale)) })) || [];
+  const scaledTotal = scaledComposition.reduce((sum, row) => sum + row.manpower, 0);
   const scaledGold = preset
     ? Math.round(preset.gold_override != null ? preset.gold_override * scale : scaledComposition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0))
     : 0;
@@ -1133,6 +1137,7 @@ function RecruitDialog({
     if (manpowerCount > truePool) { toast.error(`Nedostatek mužů (${manpowerCount} potřeba, ${truePool} v poolu)`); return; }
     if (scaledGold > (realm?.gold_reserve || 0)) { toast.error(`Nedostatek zlata (${scaledGold} potřeba)`); return; }
     if (scaledProd > (realm?.production_reserve || 0)) { toast.error(`Nedostatek produkční zásoby (${scaledProd} potřeba)`); return; }
+    if (scaledTotal > commandCapacity) { toast.error(`Velitel zvládne nejvýš ${commandCapacity.toLocaleString()} mužů`); return; }
 
     setSaving(true);
     try {
@@ -1140,13 +1145,14 @@ function RecruitDialog({
         sessionId,
         actor: { name: currentPlayerName },
         commandType: "RECRUIT_STACK",
-        commandPayload: { stackName: name.trim(), presetKey: selectedPreset, manpower: manpowerCount },
+          commandPayload: { stackName: name.trim(), presetKey: selectedPreset, manpower: manpowerCount, generalId: selectedGeneral?.id ?? null },
       });
       if (!result.ok) throw new Error(result.error || "Chyba při rekrutaci");
       toast.success(`${name.trim()} zřízen (${manpowerCount} mužů)!`);
       setName("");
       setSelectedPreset(null);
       setManpowerCount(400);
+      setGeneralId("none");
       onRefresh();
       onClose();
     } catch (e: any) {
@@ -1205,7 +1211,7 @@ function RecruitDialog({
           {/* Free-form manpower selector */}
           {(() => {
             // Slider must always be usable. If pool is 0, allow choosing intent up to a sensible cap.
-            const sliderMax = Math.max(truePool, 5000);
+            const sliderMax = Math.max(1, Math.min(Math.max(truePool, 5000), commandCapacity));
             const overPool = manpowerCount > truePool;
             const stepSize = Math.max(10, Math.round(sliderMax / 100));
             return (
@@ -1249,11 +1255,23 @@ function RecruitDialog({
             );
           })()}
 
-          <div className="text-xs text-muted-foreground">
-            Dostupní muži: {truePool.toLocaleString()} · Zlato: {realm?.gold_reserve || 0} · Produkční zásoba: {Math.floor(realm?.production_reserve || 0)}
+          <div className="space-y-2">
+            <p className="text-xs font-display font-semibold text-muted-foreground">Velitel armády (volitelné)</p>
+            <Select value={generalId} onValueChange={value => { setGeneralId(value); const g = value === "none" ? null : availableGenerals.find(x => x.id === value); const cap = generalArmyCapacity(g?.skill ?? null); if (manpowerCount > cap) setManpowerCount(cap); }}>
+              <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Bez generála · kapacita 2 000</SelectItem>
+                {availableGenerals.map(g => <SelectItem key={g.id} value={g.id}>{g.name} · schopnost {g.skill} · kapacita {generalArmyCapacity(g.skill).toLocaleString()}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <CommandStatLine skill={selectedGeneral?.skill ?? null} />
           </div>
 
-          <Button onClick={handleCreate} disabled={saving || !name.trim() || !selectedPreset || manpowerCount <= 0 || manpowerCount > truePool || scaledGold > (realm?.gold_reserve || 0) || scaledProd > (realm?.production_reserve || 0)} className="w-full font-display">
+          <div className="text-xs text-muted-foreground">
+            Dostupní muži: {truePool.toLocaleString()} · Zlato: {realm?.gold_reserve || 0} · Produkční zásoba: {Math.floor(realm?.production_reserve || 0)} · Kapacita armády: {commandCapacity.toLocaleString()}
+          </div>
+
+          <Button onClick={handleCreate} disabled={saving || !name.trim() || !selectedPreset || manpowerCount <= 0 || manpowerCount > truePool || scaledTotal > commandCapacity || scaledGold > (realm?.gold_reserve || 0) || scaledProd > (realm?.production_reserve || 0)} className="w-full font-display">
             <Swords className="h-4 w-4 mr-1" />Zřídit jednotku ({manpowerCount.toLocaleString()} mužů)
           </Button>
         </div>

@@ -112,8 +112,8 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
       const [{ count: evtCount }, { count: battleCount }] = await Promise.all([
         supabase.from("game_events").select("id", { count: "exact", head: true })
           .eq("session_id", currentSessionId).eq("turn_number", lastTurn).eq("confirmed", true),
-        supabase.from("battles").select("id", { count: "exact", head: true })
-          .eq("session_id", currentSessionId).eq("turn_number", lastTurn),
+        supabase.from("field_battles").select("id", { count: "exact", head: true })
+          .eq("session_id", currentSessionId).eq("started_turn", lastTurn).eq("status", "finished"),
       ]);
       setNotifCount((evtCount || 0) + (battleCount || 0));
     };

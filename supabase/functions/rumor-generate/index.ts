@@ -11,6 +11,7 @@
  */
 
 import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse, getServiceClient } from "../_shared/ai-context.ts";
+import { FIELD_BATTLE_HISTORY_COLS, fieldBattlesHistory } from "../_shared/combatHistory.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -39,7 +40,7 @@ Deno.serve(async (req) => {
 
     const [
       { data: recentEvents },
-      { data: recentBattles },
+      { data: recentBattleRows },
       { data: recentDeclarations },
       { data: tensions },
       { data: worldMemories },
@@ -52,8 +53,8 @@ Deno.serve(async (req) => {
     ] = await Promise.all([
       supabase.from("game_events").select("id, event_type, player, note, location, result, importance, turn_number, city_id, truth_state")
         .eq("session_id", sessionId).gte("turn_number", recentWindow).eq("confirmed", true).order("turn_number", { ascending: false }).limit(30),
-      supabase.from("battles").select("id, attacker_stack_id, defender_stack_id, defender_city_id, result, casualties_attacker, casualties_defender, turn_number, biome")
-        .eq("session_id", sessionId).gte("turn_number", recentWindow).limit(10),
+      supabase.from("field_battles").select(FIELD_BATTLE_HISTORY_COLS)
+        .eq("session_id", sessionId).eq("status", "finished").gte("started_turn", recentWindow).limit(10),
       supabase.from("declarations").select("id, player_name, declaration_type, title, original_text, tone, turn_number")
         .eq("session_id", sessionId).gte("turn_number", recentWindow).eq("status", "published").limit(10),
       supabase.from("civ_tensions").select("player_a, player_b, total_tension, crisis_triggered, war_roll_triggered, turn_number")
@@ -82,7 +83,7 @@ Deno.serve(async (req) => {
       location: e.location, result: e.result, importance: e.importance, turn: e.turn_number,
     }));
 
-    const battlesSummary = (recentBattles || []).map(b => ({
+    const battlesSummary = fieldBattlesHistory(recentBattleRows).map(b => ({
       id: b.id, result: b.result, casualties_atk: b.casualties_attacker,
       casualties_def: b.casualties_defender, turn: b.turn_number, biome: b.biome,
     }));
@@ -222,7 +223,7 @@ Generuj ${targetCount} zvěstí. Vrať POUZE validní JSON pole.`;
     // ── Validate and insert rumors ──
     const validCityIds = new Set((cities || []).map(c => c.id));
     const validEventIds = new Set([...(recentEvents || []).map(e => e.id), ...(olderEvents || []).map(e => e.id)]);
-    const validBattleIds = new Set((recentBattles || []).map(b => b.id));
+    const validBattleIds = new Set((recentBattleRows || []).map((b: any) => b.id));
 
     let insertedCount = 0;
     for (const rumor of rumors) {

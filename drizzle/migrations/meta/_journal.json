@@ -246,6 +246,13 @@
       "when": 1795014301425,
       "tag": "0034_battle_system_v1_formations_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1795022027942,
+      "tag": "0035_general_command_atomic_field_settlement",
+      "breakpoints": true
     }
   ]
 }

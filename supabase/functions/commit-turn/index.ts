@@ -28,6 +28,7 @@ import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { constructionStep, notAdvancedIn } from "./constructionProgress.ts";
 import { resolveSiegeTurn, wallStrength } from "../_shared/siege.ts";
 import { loadSiegeUnits } from "../_shared/siegeState.ts";
+import { FIELD_BATTLE_HISTORY_COLS, fieldBattlesHistory } from "../_shared/combatHistory.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -140,80 +141,6 @@ Deno.serve(async (req) => {
     // interrupted ambiguously, fail closed rather than blindly replaying it.
     await supabase.from('turn_execution_guards').update({resumable:false}).eq('session_id',sessionId).eq('execution_token',acquired);
 
-    // ═══════════════════════════════════════════
-    // 2b. AUTO-RESOLVE UNRESOLVED BATTLE LOBBIES
-    // If a player didn't confirm readiness, resolve with current data.
-    // ═══════════════════════════════════════════
-    try {
-      const { data: unresolvedLobbies } = await supabase.from("battle_lobbies")
-        .select("*")
-        .eq("session_id", sessionId)
-        .eq("status", "preparing")
-        .eq("turn_number", turnNumber);
-
-      // First: trigger AI respond for any AI side that hasn't acted yet
-      const { data: aiFactionRows } = await supabase.from("ai_factions").select("faction_name").eq("session_id", sessionId).eq("is_active", true);
-      const aiPlayers = new Set((aiFactionRows || []).map((r: any) => r.faction_name));
-      for (const lb of (unresolvedLobbies || [])) {
-        try {
-          if (aiPlayers.has(lb.attacker_player) && !lb.attacker_ready) {
-            await supabase.functions.invoke("ai-battle-respond", { body: { lobby_id: lb.id, side: "attacker" } });
-          }
-          if (aiPlayers.has(lb.defender_player) && !lb.defender_ready) {
-            await supabase.functions.invoke("ai-battle-respond", { body: { lobby_id: lb.id, side: "defender" } });
-          }
-        } catch (aiErr) {
-          console.error(`AI battle respond failed for lobby ${lb.id}:`, aiErr);
-        }
-      }
-
-      let autoResolved = 0;
-      for (const lb of (unresolvedLobbies || [])) {
-        try {
-          if (lb.defender_city_id) {
-            const { data: city } = await supabase.from("cities")
-              .select("id, occupied_by, liberation_deadline_turn")
-              .eq("id", lb.defender_city_id)
-              .maybeSingle();
-
-            if (city?.occupied_by) {
-              await supabase.from("battle_lobbies").update({
-                status: "resolved",
-                resolved_at: new Date().toISOString(),
-              }).eq("id", lb.id);
-              continue;
-            }
-          }
-
-          await supabase.functions.invoke("resolve-battle", {
-            body: {
-              session_id: sessionId,
-              player_name: lb.attacker_player,
-              current_turn: turnNumber,
-              attacker_stack_id: lb.attacker_stack_id,
-              defender_city_id: lb.defender_city_id || null,
-              defender_stack_id: lb.defender_stack_id || null,
-              speech_text: lb.attacker_speech || null,
-              speech_morale_modifier: lb.attacker_speech_modifier || 0,
-              defender_speech_text: lb.defender_speech || null,
-              defender_speech_morale_modifier: lb.defender_speech_modifier || 0,
-              attacker_formation: lb.attacker_formation || "ASSAULT",
-              defender_formation: lb.defender_formation || "DEFENSIVE",
-              seed: Date.now() + autoResolved,
-              lobby_id: lb.id,
-            },
-          });
-          autoResolved++;
-        } catch (lbErr) {
-          console.error(`Auto-resolve lobby ${lb.id}:`, lbErr);
-        }
-      }
-      results.autoResolvedLobbies = { count: autoResolved };
-    } catch (e) {
-      console.error("Auto-resolve lobbies error:", e);
-      results.autoResolvedLobbies = { error: (e as Error).message };
-    }
-
     // 2c. MICRO SIEGES — one action per micro unit, attacker first then issue order; settled atomically and idempotently.
     try {
       const { data: sieges } = await supabase.from("sieges").select("*").eq("session_id", sessionId).eq("status", "active");
@@ -221,6 +148,7 @@ Deno.serve(async (req) => {
       for (const sg of sieges || []) {
         if (sg.last_resolved_turn !== null && sg.last_resolved_turn >= turnNumber) continue;
         const { data: city } = await supabase.from("cities").select("id, name, grid_x, grid_y, military_garrison, settlement_level, owner_player").eq("id", sg.city_id).single();
+        if (!city) throw new Error(`Siege city missing: ${sg.city_id}`);
         const units = await loadSiegeUnits(supabase, sg, city);
         if (!units.some(u => u.side === "attacker")) {
           await supabase.from("sieges").update({ status: "lifted", last_resolved_turn: turnNumber, last_report: { turn: turnNumber, lifted: true, events: [] } }).eq("id", sg.id).eq("status", "active");
@@ -367,42 +295,6 @@ Deno.serve(async (req) => {
             });
             factionResults[faction.faction_name] = factionData;
 
-            // 3b. Resolve any battles queued by this faction (sequential within faction)
-            const { data: pendingBattles } = await supabase.from("action_queue")
-              .select("id, action_data")
-              .eq("session_id", sessionId)
-              .eq("player_name", faction.faction_name)
-              .eq("action_type", "battle")
-              .eq("status", "pending")
-              .eq("execute_on_turn", turnNumber);
-
-            for (const battle of (pendingBattles || [])) {
-              try {
-                const bd = battle.action_data as any;
-                await supabase.functions.invoke("resolve-battle", {
-                  body: {
-                    session_id: sessionId,
-                    attacker_stack_id: bd.attacker_stack_id,
-                    defender_city_id: bd.defender_city_id || null,
-                    defender_stack_id: bd.defender_stack_id || null,
-                    speech_text: bd.speech_text || "",
-                    speech_morale_modifier: bd.speech_morale_modifier || 0,
-                    seed: bd.seed || Date.now(),
-                    biome: bd.biome || "plains",
-                    current_turn: turnNumber,
-                    player_name: faction.faction_name,
-                  },
-                });
-                await supabase.from("action_queue")
-                  .update({ status: "completed" })
-                  .eq("id", battle.id);
-              } catch (battleErr) {
-                console.error(`Battle resolution for ${faction.faction_name}:`, battleErr);
-                await supabase.from("action_queue")
-                  .update({ status: "failed" })
-                  .eq("id", battle.id);
-              }
-            }
             console.log(`[commit-turn] ai-faction ${faction.faction_name}: ${Date.now() - fStart}ms`);
             return { ok: true, name: faction.faction_name };
           } catch (e) {
@@ -1120,7 +1012,7 @@ Deno.serve(async (req) => {
           supabase.from("world_memories").select("*").eq("session_id", sessionId).eq("approved", true),
           supabase.from("event_annotations").select("*, game_events!inner(session_id, turn_number)")
             .eq("game_events.session_id", sessionId).eq("game_events.turn_number", closedTurn),
-          supabase.from("battles").select("*").eq("session_id", sessionId).eq("turn_number", closedTurn),
+          supabase.from("field_battles").select(FIELD_BATTLE_HISTORY_COLS).eq("session_id", sessionId).eq("started_turn", closedTurn).eq("status", "finished"),
           supabase.from("declarations").select("*").eq("session_id", sessionId)
             .eq("turn_number", closedTurn).eq("status", "published"),
           supabase.from("city_buildings").select("*").eq("session_id", sessionId)
@@ -1131,7 +1023,7 @@ Deno.serve(async (req) => {
 
         const confirmedEvents = turnEvents || [];
         const approvedMemories = (turnMemories || []).map((m: any) => ({ text: m.text, category: m.category }));
-        const battles = turnBattles || [];
+        const battles = fieldBattlesHistory(turnBattles);
         const declarations = turnDeclarations || [];
         const completedBuildings = turnBuildings || [];
         const rumors = turnRumors || [];
@@ -1299,8 +1191,8 @@ Deno.serve(async (req) => {
         ] = await Promise.all([
           supabase.from("game_events").select("id, event_type, city_id, location, note, importance, player")
             .eq("session_id", sessionId).eq("turn_number", closedTurnForRefs).eq("confirmed", true),
-          supabase.from("battles").select("id, result, defender_city_id, casualties_attacker, casualties_defender")
-            .eq("session_id", sessionId).eq("turn_number", closedTurnForRefs),
+          supabase.from("field_battles").select(FIELD_BATTLE_HISTORY_COLS)
+            .eq("session_id", sessionId).eq("started_turn", closedTurnForRefs).eq("status", "finished"),
           supabase.from("city_uprisings").select("id, city_id, status, escalation_level")
             .eq("session_id", sessionId).eq("turn_triggered", closedTurnForRefs),
         ]);
@@ -1325,7 +1217,7 @@ Deno.serve(async (req) => {
             impactScores[evt.city_id] = (impactScores[evt.city_id] || 0) + (IMPACT_MAP[evt.event_type] || 1);
           }
         }
-        for (const battle of (turnBattlesForRefs || [])) {
+        for (const battle of fieldBattlesHistory(turnBattlesForRefs)) {
           if (battle.defender_city_id) {
             refsToInsert.push({
               session_id: sessionId, entity_id: battle.defender_city_id, entity_type: "city",

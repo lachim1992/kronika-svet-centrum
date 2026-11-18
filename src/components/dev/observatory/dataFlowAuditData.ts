@@ -3,9 +3,9 @@
  * UPDATED 2026-04: Full v4.1 goods pipeline, Phase 4 social metrics.
  */
 
-export type Writer = "process-turn" | "world-tick" | "commit-turn" | "command-dispatch" | "UI" | "generate-civ-start" | "process-tick" | "city-seed" | "ai-faction-turn" | "council-session" | "collapse-chain" | "world-generate-init" | "declaration-effects" | "resolve-battle" | "compute-economy-flow" | "compute-province-nodes" | "check-victory" | "law-process" | "chronicle" | "wiki-generate" | "rumor-engine" | "backfill-wiki" | "academy-tick" | "games-resolve" | "explore-hex" | "backfill-economy-tags" | "compute-trade-flows" | "compute-hex-flows" | "compute-province-routes" | "recompute-all";
+export type Writer = "process-turn" | "world-tick" | "commit-turn" | "command-dispatch" | "UI" | "generate-civ-start" | "process-tick" | "city-seed" | "ai-faction-turn" | "council-session" | "collapse-chain" | "world-generate-init" | "declaration-effects" | "compute-economy-flow" | "compute-province-nodes" | "check-victory" | "law-process" | "chronicle" | "wiki-generate" | "rumor-engine" | "backfill-wiki" | "academy-tick" | "games-resolve" | "explore-hex" | "backfill-economy-tags" | "compute-trade-flows" | "compute-hex-flows" | "compute-province-routes" | "recompute-all";
 
-export type Reader = "process-turn" | "world-tick" | "commit-turn" | "UI" | "AI context" | "ai-faction-turn" | "council-session" | "check-victory" | "chronicle" | "compute-economy-flow" | "compute-province-nodes" | "cityprofile" | "resolve-battle" | "EconomyTab" | "compute-trade-flows" | "compute-province-routes" | "compute-hex-flows";
+export type Reader = "process-turn" | "world-tick" | "commit-turn" | "UI" | "AI context" | "ai-faction-turn" | "council-session" | "check-victory" | "chronicle" | "compute-economy-flow" | "compute-province-nodes" | "cityprofile" | "EconomyTab" | "compute-trade-flows" | "compute-province-routes" | "compute-hex-flows";
 
 export interface DataFlowEntry {
   table: string;
@@ -25,7 +25,7 @@ export const DATA_FLOW_AUDIT: DataFlowEntry[] = [
   { table: "cities", column: "population_burghers", writers: ["process-turn", "generate-civ-start"], readers: ["UI", "EconomyTab", "compute-economy-flow"], liveUsed: true },
   { table: "cities", column: "population_clerics", writers: ["process-turn", "generate-civ-start"], readers: ["UI", "EconomyTab", "compute-economy-flow"], liveUsed: true },
   { table: "cities", column: "population_warriors", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
-  { table: "cities", column: "city_stability", writers: ["world-tick"], readers: ["UI", "EconomyTab", "world-tick", "AI context", "resolve-battle"], liveUsed: true },
+  { table: "cities", column: "city_stability", writers: ["world-tick"], readers: ["UI", "EconomyTab", "world-tick", "AI context"], liveUsed: true },
   { table: "cities", column: "local_grain_reserve", writers: ["process-turn"], readers: ["UI", "EconomyTab", "process-turn"], liveUsed: true },
   { table: "cities", column: "famine_turn", writers: ["process-turn"], readers: ["UI", "EconomyTab", "world-tick", "process-turn"], liveUsed: true },
   { table: "cities", column: "famine_severity", writers: ["process-turn"], readers: ["world-tick", "process-turn"], liveUsed: true },
@@ -41,7 +41,7 @@ export const DATA_FLOW_AUDIT: DataFlowEntry[] = [
   { table: "cities", column: "vulnerability_score", writers: ["world-tick"], readers: ["AI context", "ai-faction-turn"], liveUsed: true },
   { table: "cities", column: "development_level", writers: ["world-tick"], readers: ["UI"], liveUsed: true },
   { table: "cities", column: "housing_capacity", writers: ["world-tick", "generate-civ-start"], readers: ["world-tick", "process-turn"], liveUsed: true },
-  { table: "cities", column: "military_garrison", writers: ["world-tick", "resolve-battle"], readers: ["world-tick", "UI", "EconomyTab"], liveUsed: true },
+  { table: "cities", column: "military_garrison", writers: ["world-tick"], readers: ["world-tick", "UI", "EconomyTab"], liveUsed: true },
   { table: "cities", column: "settlement_level", writers: ["process-turn"], readers: ["UI", "EconomyTab", "world-tick"], liveUsed: true },
   { table: "cities", column: "special_resource_type", writers: ["generate-civ-start", "world-generate-init"], readers: ["UI", "compute-province-nodes"], liveUsed: true },
   { table: "cities", column: "overcrowding_ratio", writers: ["world-tick"], readers: ["world-tick"], liveUsed: true },
@@ -64,7 +64,7 @@ export const DATA_FLOW_AUDIT: DataFlowEntry[] = [
   { table: "realm_resources", column: "faith", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
   { table: "realm_resources", column: "faith_growth", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
   { table: "realm_resources", column: "mobilization_rate", writers: ["command-dispatch"], readers: ["process-turn", "world-tick", "UI", "EconomyTab"], liveUsed: true },
-  { table: "realm_resources", column: "military_prestige", writers: ["process-turn", "resolve-battle"], readers: ["UI", "EconomyTab"], liveUsed: true },
+  { table: "realm_resources", column: "military_prestige", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
   { table: "realm_resources", column: "cultural_prestige", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
   { table: "realm_resources", column: "economic_prestige", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
   { table: "realm_resources", column: "sport_prestige", writers: ["games-resolve"], readers: ["UI", "EconomyTab"], liveUsed: true },
@@ -127,8 +127,8 @@ export const DATA_FLOW_AUDIT: DataFlowEntry[] = [
   { table: "provinces", column: "stability_avg", writers: ["world-tick"], readers: ["UI"], liveUsed: true },
 
   // === MILITARY ===
-  { table: "military_stacks", column: "total_strength", writers: ["command-dispatch", "resolve-battle"], readers: ["UI", "EconomyTab", "resolve-battle", "AI context"], liveUsed: true },
-  { table: "military_stacks", column: "morale", writers: ["world-tick", "resolve-battle"], readers: ["UI", "resolve-battle"], liveUsed: true },
+  { table: "military_stacks", column: "total_strength", writers: ["command-dispatch"], readers: ["UI", "EconomyTab", "AI context"], liveUsed: true },
+  { table: "military_stacks", column: "morale", writers: ["world-tick"], readers: ["UI"], liveUsed: true },
   { table: "military_stacks", column: "military_stack_composition", writers: ["command-dispatch"], readers: ["UI", "EconomyTab"], liveUsed: true },
 
   // === DISCOVERIES ===

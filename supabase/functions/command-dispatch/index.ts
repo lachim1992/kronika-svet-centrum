@@ -34,7 +34,6 @@ import { ensureCitySettlementNodes } from "../_shared/citySettlementNodes.ts";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
 import { FOUNDING_HAMLET_POPULATION } from "../_shared/foundingPopulation.ts";
 import { ensureSingleCapital } from "../_shared/capital.ts";
-import { applyPopulationLoss } from "../_shared/demographics.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL } from "../_shared/cityDistricts.ts";
@@ -47,7 +46,8 @@ import { initialWalls, siegeInRange } from "../_shared/siege.ts";
 import { loadSiegeUnits } from "../_shared/siegeState.ts";
 import { executeFieldBattleCommand } from "./fieldBattleCommand.ts";
 import { FORMATIONS } from "../_shared/fieldBattle.ts";
-import { FORMATION_PRESETS as SHARED_FORMATION_PRESETS, UNIT_GOLD_FACTOR as SHARED_GOLD, UNIT_PROD_FACTOR as SHARED_PROD, UNIT_POWER_FACTOR as SHARED_POWER, UNIT_TYPE_LABELS as SHARED_LABELS, presetRequirements, missingBuildings } from "../_shared/unitTypes.ts";
+import { FORMATION_PRESETS as SHARED_FORMATION_PRESETS, UNIT_GOLD_FACTOR as SHARED_GOLD, UNIT_PROD_FACTOR as SHARED_PROD, UNIT_TYPE_LABELS as SHARED_LABELS, presetRequirements, missingBuildings, computeStackPower } from "../_shared/unitTypes.ts";
+import { generalArmyCapacity } from "../_shared/generalCommand.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
@@ -482,9 +482,6 @@ async function executeCommand(
         importance: "normal",
         reference: payload,
       }], payload.chronicleText);
-
-    case "POST_BATTLE_DECISION":
-      return await executePostBattleDecision(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "DECLARE_WAR":
       return await executeDeclareWar(supabase, base, actor, payload, commandId, sessionId, turnNumber);
@@ -1481,237 +1478,6 @@ async function executeMoveStack(
 }
 
 // ═══════════════════════════════════════════
-// POST_BATTLE_DECISION — Occupy / Pillage / legacy Vassalize
-// ═══════════════════════════════════════════
-
-async function executePostBattleDecision(
-  supabase: any, base: any, actor: Actor, payload: any,
-  commandId: string, sessionId: string, turnNumber: number,
-): Promise<CommandResult> {
-  const { battleId, decision, cityId } = payload;
-  // decision: "occupy" | "pillage" | legacy "conquer" | "vassalize"
-  if (!battleId) return { events: [], error: "Missing battleId" };
-  if (!decision) return { events: [], error: "Missing decision" };
-  if (!cityId && decision !== "pursue") return { events: [], error: "Missing cityId" };
-
-  // Validate battle exists and belongs to actor
-  const { data: battle } = await supabase.from("battles")
-    .select("*").eq("id", battleId).eq("session_id", sessionId).single();
-  if (!battle) return { events: [], error: "Battle not found" };
-  if (battle.post_action !== "pending_decision") {
-    return { events: [], error: "Battle already resolved", status: 409 };
-  }
-
-  // Get the city (optional for "pursue")
-  let city: any = null;
-  if (cityId) {
-    const { data: c } = await supabase.from("cities")
-      .select("*").eq("id", cityId).eq("session_id", sessionId).single();
-    if (!c && decision !== "pursue") return { events: [], error: "City not found" };
-    city = c;
-  }
-
-  const previousOwner = city?.owner_player ?? null;
-  const cityName = city?.name ?? "—";
-  let chronicleText = "";
-  const sideEffects: Record<string, any> = { decision, cityId, previousOwner };
-
-  switch (decision) {
-    case "occupy":
-    case "conquer": {
-      const liberationDeadline = city.liberation_deadline_turn ?? (turnNumber + 5);
-      await supabase.from("cities").update({
-        status: "occupied",
-        occupied_by: actor.name,
-        occupation_turn: turnNumber,
-        liberation_deadline_turn: liberationDeadline,
-        city_stability: Math.max(0, (city.city_stability || 50) - 20),
-      }).eq("id", cityId);
-      chronicleText = `V roce ${turnNumber} upevnil **${actor.name}** okupaci města **${cityName}** (${previousOwner}). O osudu města rozhodne až konec okupační lhůty (kolo ${liberationDeadline}) nebo osvobození.`;
-      sideEffects.occupiedBy = actor.name;
-      sideEffects.occupationTurn = turnNumber;
-      sideEffects.liberationDeadlineTurn = liberationDeadline;
-      break;
-    }
-
-    case "pillage": {
-      // Calculate loot based on city development
-      const lootGold = Math.floor(50 + (city.development_level || 1) * 20 + (city.population_total || 1000) * 0.02);
-      const lootGrain = Math.floor((city.local_grain_reserve || 0) * 0.6);
-      const popLoss = Math.floor((city.population_total || 1000) * 0.25);
-
-      // Devastate the city
-      // INVARIANT 3: destructive losses go through the shared helper.
-      const { actualLoss: _sacked, ...sackedPop } = applyPopulationLoss(city, popLoss);
-      await supabase.from("cities").update({
-        status: "devastated",
-        devastated_round: turnNumber,
-        ruins_note: `Zpustošeno armádou ${actor.name} v roce ${turnNumber}.`,
-        ...sackedPop,
-        city_stability: Math.max(0, (city.city_stability || 50) - 30),
-        local_grain_reserve: Math.max(0, (city.local_grain_reserve || 0) - lootGrain),
-        development_level: Math.max(0, (city.development_level || 1) - 1),
-      }).eq("id", cityId);
-
-      // Give loot to attacker
-      const { data: realm } = await supabase.from("realm_resources")
-        .select("id, gold_reserve, grain_reserve")
-        .eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
-      if (realm) {
-        await supabase.from("realm_resources").update({
-          gold_reserve: (realm.gold_reserve || 0) + lootGold,
-          grain_reserve: (realm.grain_reserve || 0) + lootGrain,
-        }).eq("id", realm.id);
-      }
-
-      chronicleText = `V roce ${turnNumber} **${actor.name}** zpustošil město **${cityName}** (${previousOwner}). Kořist: ${lootGold} zlata, ${lootGrain} obilí. Obyvatelé oplakávají ${popLoss} mrtvých.`;
-      sideEffects.lootGold = lootGold;
-      sideEffects.lootGrain = lootGrain;
-      sideEffects.populationLoss = popLoss;
-      break;
-    }
-
-    case "vassalize": {
-      // City stays with owner but becomes vassal — tribute is tracked
-      await supabase.from("cities").update({
-        city_stability: Math.max(10, (city.city_stability || 50) - 15),
-        tags: [...(city.tags || []), `vassal_of:${actor.name}`],
-      }).eq("id", cityId);
-
-      // Create a tribute trade agreement via game_events reference
-      const tributeGold = Math.max(5, Math.floor((city.development_level || 1) * 8));
-
-      chronicleText = `V roce ${turnNumber} přijalo město **${cityName}** (${previousOwner}) vazalství pod **${actor.name}**. Roční tribut: ${tributeGold} zlata. Město si zachovává autonomii, ale pod stínem nového pána.`;
-      sideEffects.tributeGold = tributeGold;
-      sideEffects.vassalOf = actor.name;
-      break;
-    }
-
-    case "pursue": {
-      // Pronásledování poražené armády: vítěz utrpí drobné další ztráty,
-      // poražený dostane +50% extra ztrát + šance na rozprášení.
-      const defStackId = payload.defenderStackId;
-      const atkStackId = payload.attackerStackId;
-      if (!defStackId || !atkStackId) {
-        return { events: [], error: "Missing stack IDs for pursue" };
-      }
-      const { data: atk } = await supabase.from("military_stacks")
-        .select("*, military_stack_composition(*)")
-        .eq("id", atkStackId).maybeSingle();
-      const { data: def } = await supabase.from("military_stacks")
-        .select("*, military_stack_composition(*)")
-        .eq("id", defStackId).maybeSingle();
-      if (!atk || !def || !def.is_active) {
-        return { events: [], error: "Pursue not possible: stack inactive" };
-      }
-
-      const atkUnits = atk.unit_count || 0;
-      const atkLoss = Math.round(atkUnits * 0.10);
-      const atkRemaining = Math.max(0, atkUnits - atkLoss);
-      const defUnits = def.unit_count || 0;
-      const baseExtra = Math.round((battle.casualties_defender || 0) * 0.5);
-      const defLoss = Math.min(defUnits, baseExtra);
-      const defRemaining = Math.max(0, defUnits - defLoss);
-      const defWipe = defRemaining < defUnits * 0.3 || defRemaining <= 0;
-
-      // Apply attacker losses & morale penalty
-      const atkNewMorale = Math.max(0, (atk.morale || 50) - 10);
-      await supabase.from("military_stacks").update({
-        unit_count: atkRemaining, soldiers: atkRemaining,
-        power: Math.max(1, Math.round(atkRemaining * (0.5 + atkNewMorale / 200))),
-        morale: atkNewMorale,
-      }).eq("id", atkStackId);
-
-      // Apply defender losses (or wipe)
-      if (defWipe) {
-        await supabase.from("military_stacks").update({
-          is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0,
-        }).eq("id", defStackId);
-      } else {
-        await supabase.from("military_stacks").update({
-          unit_count: defRemaining, soldiers: defRemaining,
-          power: Math.max(1, Math.round(defRemaining * 0.5)),
-        }).eq("id", defStackId);
-      }
-
-      // Update manpower_committed for both players
-      if (atkLoss > 0 && atk.player_name) {
-        const { data: ar } = await supabase.from("realm_resources")
-          .select("manpower_committed").eq("session_id", sessionId).eq("player_name", atk.player_name).maybeSingle();
-        if (ar) await supabase.from("realm_resources").update({
-          manpower_committed: Math.max(0, (ar.manpower_committed || 0) - atkLoss),
-        }).eq("session_id", sessionId).eq("player_name", atk.player_name);
-      }
-      if (defLoss > 0 && def.player_name) {
-        const { data: dr } = await supabase.from("realm_resources")
-          .select("manpower_committed").eq("session_id", sessionId).eq("player_name", def.player_name).maybeSingle();
-        if (dr) await supabase.from("realm_resources").update({
-          manpower_committed: Math.max(0, (dr.manpower_committed || 0) - defLoss),
-        }).eq("session_id", sessionId).eq("player_name", def.player_name);
-      }
-
-      chronicleText = `V roce ${turnNumber} **${actor.name}** pronásledoval poraženou armádu **${def.name || def.player_name}**. ${defWipe ? `Armáda byla zničena (${defLoss} mrtvých). Vlastní ztráty: ${atkLoss}.` : `Dalších ${defLoss} obránců padlo. Vlastní ztráty pronásledování: ${atkLoss}.`}`;
-      sideEffects.pursueAttackerLoss = atkLoss;
-      sideEffects.pursueDefenderLoss = defLoss;
-      sideEffects.defenderWiped = defWipe;
-      // Note: cityId still tracked but pursue doesn't change city ownership
-      break;
-    }
-
-    default:
-      return { events: [], error: `Unknown decision: ${decision}` };
-  }
-
-  // Mark battle as resolved
-  await supabase.from("battles").update({
-    post_action: decision,
-    resolved_at: new Date().toISOString(),
-  }).eq("id", battleId);
-
-  // Add city rumor (skip for "pursue" — bitva mimo město)
-  if (decision !== "pursue") {
-    await safeInsert(supabase.from("city_rumors").insert({
-      session_id: sessionId, city_id: cityId, city_name: cityName,
-      turn_number: turnNumber, created_by: "system",
-      tone_tag: decision === "occupy" || decision === "conquer" ? "dramatic" : decision === "pillage" ? "alarming" : "tense",
-      text: decision === "occupy" || decision === "conquer"
-        ? `Město ${cityName} zůstává pod okupací ${actor.name}. Trvalá anexe ještě nenastala.`
-        : decision === "pillage"
-        ? `Hrůza! Armáda ${actor.name} zpustošila ${cityName}. Ruiny a popel jsou vše, co zbylo.`
-        : `Město ${cityName} se poddalo ${actor.name} jako vazal. Tribut bude placen výměnou za přežití.`,
-    }));
-  }
-
-  // World feed item
-  await safeInsert(supabase.from("world_feed_items").insert({
-    session_id: sessionId, turn_number: turnNumber, feed_type: "war",
-    text: chronicleText, player_source: actor.name,
-    related_entity_type: "city", related_entity_id: cityId,
-  }));
-
-  // Faction loyalty impacts in the city
-  if (decision !== "vassalize" && decision !== "pursue") {
-    const { data: factions } = await supabase.from("city_factions")
-      .select("id, loyalty, satisfaction").eq("city_id", cityId);
-    for (const f of (factions || [])) {
-      await supabase.from("city_factions").update({
-        loyalty: Math.max(0, (f.loyalty || 50) - (decision === "pillage" ? 25 : 15)),
-        satisfaction: Math.max(0, (f.satisfaction || 50) - (decision === "pillage" ? 30 : 10)),
-      }).eq("id", f.id);
-    }
-  }
-
-  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-    ...base,
-    event_type: "battle_outcome",
-    city_id: cityId,
-    note: `${actor.name} rozhodl o osudu města ${cityName}: ${decision === "occupy" || decision === "conquer" ? "Potvrzená okupace" : decision === "pillage" ? "Drancování" : "Vazalství"}.`,
-    importance: "critical",
-    reference: { battleId, decision, cityId, previousOwner, ...sideEffects },
-  }], chronicleText, sideEffects);
-}
-
-// ═══════════════════════════════════════════
 // DECLARE_WAR — create war record + stability penalties + event
 // ═══════════════════════════════════════════
 
@@ -1814,24 +1580,6 @@ const FORMATION_PRESETS = SHARED_FORMATION_PRESETS;
 const UNIT_GOLD_FACTOR: Record<string, number> = SHARED_GOLD;
 const UNIT_PROD_FACTOR: Record<string, number> = SHARED_PROD;
 
-// Combat power per soldier (used for stack.power on creation/reinforce)
-const UNIT_POWER_FACTOR: Record<string, number> = SHARED_POWER;
-
-function computeStackPower(
-  composition: Array<{ unit_type: string; manpower: number }>,
-  morale: number,
-  generalSkill = 0,
-): number {
-  let base = 0;
-  for (const c of composition) {
-    base += c.manpower * (UNIT_POWER_FACTOR[c.unit_type] ?? 1.0);
-  }
-  // Morale 0..100 → 0.5..1.2 multiplier
-  const moraleMult = 0.5 + (Math.max(0, Math.min(100, morale)) / 100) * 0.7;
-  // General skill 0..10 → +0% .. +25% multiplier
-  const generalMult = 1 + (Math.max(0, Math.min(10, generalSkill)) / 10) * 0.25;
-  return Math.round(base * moraleMult * generalMult);
-}
 const UNIT_TYPE_LABELS: Record<string, string> = SHARED_LABELS;
 const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2, warriors: 0.9 };
 const DEFAULT_ACTIVE_POP_RATIO = 0.5;
@@ -1884,6 +1632,23 @@ async function executeRecruitStack(
     manpower: Math.max(1, Math.round(c.manpower * scale)),
   }));
   const totalManpower = scaledComposition.reduce((s, c) => s + c.manpower, 0);
+
+  // General identity, ownership, availability and capacity are always resolved server-side.
+  let selectedGeneral: { id: string; name: string; skill: number } | null = null;
+  const generalId = payload.generalId == null || payload.generalId === "" ? null : String(payload.generalId);
+  if (generalId) {
+    const { data: general, error: generalError } = await supabase.from("generals")
+      .select("id, name, skill").eq("id", generalId).eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
+    if (generalError) throw generalError;
+    if (!general) return { events: [], error: "Generál nepatří tvé říši nebo neexistuje" };
+    const { data: assigned, error: assignedError } = await supabase.from("military_stacks")
+      .select("id").eq("session_id", sessionId).eq("general_id", generalId).limit(1);
+    if (assignedError) throw assignedError;
+    if (assigned?.length) return { events: [], error: "Generál už velí jiné armádě" };
+    selectedGeneral = general;
+  }
+  const capacity = generalArmyCapacity(selectedGeneral?.skill ?? null);
+  if (totalManpower > capacity) return { events: [], error: `Armáda překračuje velitelskou kapacitu ${capacity} mužů` };
 
   // Building prerequisites by real completed building names (Kasárny, Kovárna, Střelnice, Jízdárna, Obléhací dílna).
   const required = presetRequirements(preset);
@@ -1941,7 +1706,7 @@ async function executeRecruitStack(
   const finalMorale = Math.min(100, adjustedMorale + disciplineBonus);
 
   // ── 1. Create stack ──
-  const stackPower = computeStackPower(scaledComposition, finalMorale, 0);
+  const stackPower = computeStackPower(scaledComposition, finalMorale);
   const { data: stack, error: stackErr } = await supabase.from("military_stacks").insert({
     session_id: sessionId, player_name: playerName, owner_player: playerName,
     name: stackName.trim(),
@@ -1949,6 +1714,7 @@ async function executeRecruitStack(
     soldiers: totalManpower,
     unit_count: totalManpower,
     power: stackPower,
+    general_id: selectedGeneral?.id ?? null,
     assignment: "idle",
   }).select("id").single();
 
@@ -3132,20 +2898,22 @@ async function executeAssignGeneral(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { stackId, stackName, generalId, generalName } = payload;
+  const { stackId, generalId } = payload;
   if (!stackId || !generalId) return { events: [], error: "Missing stackId or generalId" };
 
-  // Unassign general from any other stack first
-  await supabase.from("military_stacks").update({ general_id: null })
-    .eq("general_id", generalId).eq("session_id", sessionId);
-
-  await supabase.from("military_stacks").update({ general_id: generalId })
-    .eq("id", stackId).eq("player_name", actor.name);
+  // The RPC locks both armies, verifies actor/session ownership and releases the previous assignment atomically.
+  const { data: assignment, error: assignmentError } = await supabase.rpc("assign_general_to_stack", {
+    p_session: sessionId, p_actor: actor.name, p_stack: stackId, p_general: generalId,
+  });
+  if (assignmentError) return { events: [], error: assignmentError.message };
+  if (!assignment?.ok) return { events: [], error: assignment?.error || "Generála nelze přiřadit" };
+  const resolvedGeneralName = assignment.general_name;
+  const resolvedStackName = assignment.stack_name;
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base, event_type: "military",
-    note: payload.note || `${actor.name} jmenoval ${generalName} velitelem ${stackName}.`,
-    importance: "normal", reference: payload,
+    note: payload.note || `${actor.name} jmenoval ${resolvedGeneralName} velitelem ${resolvedStackName}.`,
+    importance: "normal", reference: { stackId, generalId, capacity: assignment.capacity },
   }], payload.chronicleText);
 }
 
@@ -3161,9 +2929,21 @@ async function executeReinforceStack(
   }
   const addedManpower = entries.reduce((sum,[,amount]) => sum + Number(amount),0);
   const addedGold = Math.round(entries.reduce((sum,[unit,amount]) => sum + Number(amount) * (UNIT_GOLD_FACTOR[unit] || 1),0));
-  const {data:ownedStack,error:ownedError} = await supabase.from('military_stacks').select('id,is_active').eq('session_id',sessionId).eq('player_name',actor.name).eq('id',stackId).maybeSingle();
+  const {data:ownedStack,error:ownedError} = await supabase.from('military_stacks').select('id,is_active,soldiers,morale,general_id').eq('session_id',sessionId).eq('player_name',actor.name).eq('id',stackId).maybeSingle();
   if(ownedError)throw ownedError;
   if(!ownedStack?.is_active)return {events:[],error:'Active owned stack required'};
+  let generalSkill: number | null = null;
+  if (ownedStack.general_id) {
+    const { data: general, error: generalError } = await supabase.from("generals").select("skill")
+      .eq("id", ownedStack.general_id).eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
+    if (generalError) throw generalError;
+    if (!general) return { events: [], error: "Velitel armády nebyl nalezen" };
+    generalSkill = general.skill;
+  }
+  const capacity = generalArmyCapacity(generalSkill);
+  if (Number(ownedStack.soldiers || 0) + addedManpower > capacity) {
+    return { events: [], error: `Posily překračují velitelskou kapacitu ${capacity} mužů` };
+  }
 
   const realm = await getRealm(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
@@ -3202,14 +2982,7 @@ async function executeReinforceStack(
     .select("unit_type, manpower")
     .eq("stack_id", stackId);
   const totalSoldiers = (updatedComps || []).reduce((s: number, c: any) => s + (c.manpower || 0), 0);
-  const { data: stackRow } = await supabase.from("military_stacks")
-    .select("morale, general_id").eq("id", stackId).maybeSingle();
-  let genSkill = 0;
-  if (stackRow?.general_id) {
-    const { data: gen } = await supabase.from("generals").select("skill").eq("id", stackRow.general_id).maybeSingle();
-    genSkill = gen?.skill || 0;
-  }
-  const newPower = computeStackPower(updatedComps || [], stackRow?.morale ?? 70, genSkill);
+  const newPower = computeStackPower(updatedComps || [], ownedStack.morale ?? 70);
   await supabase.from("military_stacks").update({
     soldiers: totalSoldiers, unit_count: totalSoldiers, power: newPower,
   }).eq("id", stackId);

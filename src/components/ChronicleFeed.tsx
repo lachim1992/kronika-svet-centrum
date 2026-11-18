@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { Tables } from "@/integrations/supabase/types";
 import { addWorldMemory } from "@/hooks/useGameSession";
 import { supabase } from "@/integrations/supabase/client";
+import { FIELD_BATTLE_HISTORY_COLS, fieldBattlesHistory } from "../../supabase/functions/_shared/combatHistory";
 import { dispatchCommand } from "@/lib/commands";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -158,7 +159,7 @@ const ChronicleFeed = ({
           eventIds.length > 0
             ? supabase.from("feed_comments").select("*").eq("session_id", sessionId).eq("target_type", "event").in("target_id", eventIds)
             : Promise.resolve({ data: [] }),
-          supabase.from("battles").select("*").eq("session_id", sessionId).eq("turn_number", turn),
+          supabase.from("field_battles").select(FIELD_BATTLE_HISTORY_COLS).eq("session_id", sessionId).eq("started_turn", turn).eq("status", "finished"),
           supabase.from("declarations").select("*").eq("session_id", sessionId).eq("turn_number", turn).eq("status", "published"),
           supabase.from("city_buildings").select("*").eq("session_id", sessionId).eq("completed_turn", turn),
           supabase.from("city_rumors").select("*").eq("session_id", sessionId).eq("turn_number", turn).eq("is_draft", false),
@@ -204,7 +205,7 @@ const ChronicleFeed = ({
             confirmedEvents: roundEvents,
             annotations: annotationsWithType.filter((a: any) => a.visibility !== "private"),
             worldMemories: approvedMemories,
-            battles: battlesData || [],
+            battles: fieldBattlesHistory(battlesData),
             declarations: declarationsData || [],
             completedBuildings: buildingsData || [],
             rumors: rumorsData || [],

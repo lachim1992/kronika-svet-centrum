@@ -1,4 +1,5 @@
 import { computeRouteTraversalProgress } from "./physics.ts";
+import { minimalBattlefield } from "./fieldBattle.ts";
 
 /**
  * TURN PROGRESS — army traversal, ambushes, sieges and node projects.
@@ -30,7 +31,7 @@ export async function advanceTurnProgress(
   // ── 1. Route-based army traversal ──
   const { data: travelingStacks } = await supabase
     .from("military_stacks")
-    .select("id, player_name, travel_progress, travel_departed_turn, travel_route_id, travel_target_node_id")
+    .select("id, player_name, travel_progress, travel_departed_turn, travel_route_id, travel_target_node_id, grid_x, grid_y, hex_q, hex_r, is_deployed")
     .eq("session_id", sessionId)
     .eq("is_active", true)
     .not("travel_route_id", "is", null);
@@ -84,7 +85,7 @@ export async function advanceTurnProgress(
 
     const { data: ambushStack } = await supabase
       .from("military_stacks")
-      .select("id, player_name, is_active")
+      .select("id, player_name, is_active, is_deployed, grid_x, grid_y, hex_q, hex_r")
       .eq("id", ambushRoute.ambush_stack_id)
       .maybeSingle();
     if (!ambushStack?.is_active) continue;
@@ -101,15 +102,15 @@ export async function advanceTurnProgress(
     await supabase.from("province_routes")
       .update({ ambush_stack_id: null }).eq("id", stack.travel_route_id);
 
-    await supabase.from("battle_lobbies").insert({
-      session_id: sessionId,
-      attacker_player: ambushStack.player_name,
-      attacker_stack_id: ambushStack.id,
-      defender_player: stack.player_name,
-      defender_stack_id: stack.id,
-      status: "pending",
-      turn_number: currentTurn,
-    });
+    if (!ambushStack.is_deployed || !stack.is_deployed) continue;
+    const attacker = { x: ambushStack.grid_x ?? ambushStack.hex_q, y: ambushStack.grid_y ?? ambushStack.hex_r };
+    const defender = { x: stack.grid_x ?? stack.hex_q, y: stack.grid_y ?? stack.hex_r };
+    const { data: started, error: startError } = await supabase.functions.invoke("command-dispatch", { body: {
+      sessionId, turnNumber: currentTurn, actor: { name: ambushStack.player_name, type: "system" },
+      commandType: "START_FIELD_BATTLE", commandId: `route-ambush-${sessionId}-${currentTurn}-${stack.id}-${ambushStack.id}`,
+      commandPayload: { stackId: ambushStack.id, targetStackId: stack.id, battlefield: minimalBattlefield(attacker, defender) },
+    } });
+    if (startError || started?.error || started?.ok === false) throw new Error(startError?.message || started?.error || "Tactical ambush failed");
 
     await supabase.from("game_events").insert({
       session_id: sessionId,

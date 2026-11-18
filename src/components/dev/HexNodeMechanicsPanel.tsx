@@ -62,7 +62,7 @@ const CAUSAL_LINKS: CausalLink[] = [
   { from: "workforce_ratio", to: "production output", effect: "Node production × effective_workforce_ratio", status: "active", where: "process-turn" },
   // BLIND / PARTIAL
   { from: "civ_identity modifiers", to: "node production", effect: "production_modifier, wealth_modifier etc.", status: "partial", where: "physics.ts (defined) — NOT applied in compute-economy-flow" },
-  { from: "strategic_resource tier", to: "combat bonuses", effect: "gameplayEffects per tier (iron +10% etc.)", status: "blind", where: "economyFlow.ts (defined) — NOT consumed by resolve-battle" },
+  { from: "strategic_resource tier", to: "combat bonuses", effect: "iron × obsidian multiplier once per side", status: "active", where: "strategicEffects.ts + fieldBattleCommand.ts + fieldBattle.ts" },
   { from: "strategic_resource tier", to: "build cost discount", effect: "marble −10%/−20% build cost", status: "blind", where: "economyFlow.ts (defined) — NOT consumed by build logic" },
   { from: "node.bonusEffect text", to: "engine", effect: "Descriptive only; typed validated effects required", status: "planned", where: "nodeTypes.ts + buildValidation.ts" },
   { from: "preferredBiomes", to: "node placement AI", effect: "AI uses for suggestMajorType only, not economic bonus", status: "partial", where: "nodeTypes.ts → AI faction turn" },

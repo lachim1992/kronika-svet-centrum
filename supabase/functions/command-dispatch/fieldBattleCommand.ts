@@ -1,10 +1,11 @@
 // Field battle commands. Rules live only in _shared/fieldBattle.ts; this file loads state, authorises, and writes with rev CAS.
 import {
-  battleInRange, validateBattlefield, buildUnits, autoDeploy, inDeployZone, orderProblem, resolveRound, settlementPlan, planAiOrders,
+  battleInRange, validateBattlefield, buildUnits, autoDeploy, inDeployZone, orderProblem, resolveRound, settlementPlan, planBattleAi,
   commandPoints, cpUsed, seededRandom, terrainOfSubBiome, upgradeUnit, normalizeFormation, unitFormation,
   type FBUnit, type FBOrder, type Side, type BattleMeta, type Cell, type OrderKind, type TerrainAt,
 } from "../_shared/fieldBattle.ts";
 import { UNIT_POWER_FACTOR } from "../_shared/unitTypes.ts";
+import { strategicCombatMult } from "../_shared/strategicEffects.ts";
 
 type Res = { events: any[]; error?: string; sideEffects?: Record<string, any>; status?: number };
 const STACK_COLS = "id, name, player_name, controller_player, grid_x, grid_y, hex_q, hex_r, is_active, is_deployed, soldiers, morale, power, general_id, battle_formation";
@@ -19,8 +20,9 @@ const commander = (st: any) => st.controller_player || st.player_name;
 
 async function loadTerrain(supabase: any, sessionId: string, field: Cell[]): Promise<TerrainAt> {
   const gx = field.map(c => c.x), gy = field.map(c => c.y);
-  const { data } = await supabase.from("tile_parcels").select("grid_x, grid_y, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId)
+  const { data, error } = await supabase.from("tile_parcels").select("grid_x, grid_y, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId)
     .gte("grid_x", Math.min(...gx)).lte("grid_x", Math.max(...gx)).gte("grid_y", Math.min(...gy)).lte("grid_y", Math.max(...gy)).limit(5000);
+  if (error) throw new Error(`Terrain read failed: ${error.message}`);
   const m = new Map<string, string>();
   for (const p of data || []) m.set(`${p.grid_x * 6 + p.parcel_x},${p.grid_y * 6 + p.parcel_y}`, p.sub_biome);
   return (x, y) => terrainOfSubBiome(m.get(`${x},${y}`));
@@ -46,21 +48,31 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
       .or(`and(declaring_player.eq."${st.player_name}",target_player.eq."${en.player_name}"),and(declaring_player.eq."${en.player_name}",target_player.eq."${st.player_name}")`).limit(1);
     if (!war?.length) return { events: [], error: "Bitvu lze vyvolat jen s nepřítelem, se kterým jsi ve válce" };
     const field: Cell[] = battlefield.map((c: any) => ({ x: c.x, y: c.y }));
-    const { data: comp } = await supabase.from("military_stack_composition").select("id, stack_id, unit_type, manpower").in("stack_id", [st.id, en.id]).order("created_at").order("id");
+    const { data: comp, error: compError } = await supabase.from("military_stack_composition").select("id, stack_id, unit_type, manpower, quality").in("stack_id", [st.id, en.id]).order("created_at").order("id");
+    if (compError) return { events: [], error: `Composition read failed: ${compError.message}` };
     const genIds = [st.general_id, en.general_id].filter(Boolean);
-    const { data: gens } = genIds.length ? await supabase.from("generals").select("id, skill").in("id", genIds) : { data: [] };
+    const { data: gens, error: generalError } = genIds.length ? await supabase.from("generals").select("id, skill").in("id", genIds) : { data: [], error: null };
+    if (generalError) return { events: [], error: `General read failed: ${generalError.message}` };
     const skill = (g: string | null) => g ? ((gens || []).find((x: any) => x.id === g)?.skill ?? 0) : null;
     const ai = await aiNames(supabase, sessionId);
+    const { data: combatRealms, error: realmError } = await supabase.from("realm_resources")
+      .select("player_name, strategic_iron_tier, strategic_obsidian_tier").eq("session_id", sessionId).in("player_name", [st.player_name, en.player_name]);
+    if (realmError) return { events: [], error: `Strategic resource read failed: ${realmError.message}` };
+    const realmOf = (player: string) => (combatRealms || []).find((r: any) => r.player_name === player);
     const meta: BattleMeta = {
       hasGeneral: { attacker: !!st.general_id, defender: !!en.general_id },
       generalSkill: { attacker: skill(st.general_id), defender: skill(en.general_id) },
       ai: { attacker: ai.has(commander(st)), defender: ai.has(commander(en)) },
+      combatMult: { attacker: strategicCombatMult(realmOf(st.player_name)), defender: strategicCombatMult(realmOf(en.player_name)) },
       rallyReadyRound: {}, fortified: [],
     };
-    let units: FBUnit[] = [
-      ...buildUnits("attacker", st.id, st.soldiers, (comp || []).filter((c: any) => c.stack_id === st.id), st.morale ?? 70, st.battle_formation),
-      ...buildUnits("defender", en.id, en.soldiers, (comp || []).filter((c: any) => c.stack_id === en.id), en.morale ?? 70, en.battle_formation),
-    ];
+    let units: FBUnit[];
+    try {
+      units = [
+        ...buildUnits("attacker", st.id, st.soldiers, (comp || []).filter((c: any) => c.stack_id === st.id), st.morale ?? 70, st.battle_formation),
+        ...buildUnits("defender", en.id, en.soldiers, (comp || []).filter((c: any) => c.stack_id === en.id), en.morale ?? 70, en.battle_formation),
+      ];
+    } catch (e) { return { events: [], error: `Invalid army composition: ${(e as Error).message}` }; }
     const ready: Record<string, boolean> = {};
     if (meta.ai?.defender || meta.ai?.attacker) {
       const terrainAt = await loadTerrain(supabase, sessionId, field);
@@ -68,7 +80,8 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
       if (meta.ai.attacker) { units = autoDeploy(units, "attacker", field, a, d, terrainAt); ready.attacker = true; }
     }
     const { data: fb, error: fErr } = await supabase.from("field_battles").insert({ session_id: sessionId, attacker_player: st.player_name, defender_player: en.player_name,
-      attacker_stack_id: st.id, defender_stack_id: en.id, started_turn: turnNumber, battlefield: field, units, ready, last_report: { round: 0, events: [], winner: null, meta } }).select("id").single();
+      attacker_stack_id: st.id, defender_stack_id: en.id, started_turn: turnNumber, battlefield: field, units, ready, meta,
+      last_report: { round: 0, events: [], winner: null } }).select("id").single();
     if (fErr) return { events: [], error: fErr.code === "23505" ? "Některá z armád už bojuje" : fErr.message };
     return insertEvents(supabase, commandId, sessionId, turnNumber, [{
       ...base, event_type: "military", player: st.player_name, note: `${st.name} vyvolala bitvu s armádou ${en.name}.`, importance: "critical",
@@ -84,21 +97,24 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
   if (!att || !def) return { events: [], error: "Armáda bitvy chybí" };
   const stackOf = (s: Side) => s === "attacker" ? att : def;
   const field: Cell[] = fb.battlefield;
-  // Meta lives inside last_report.meta (no extra column needed); older rows may carry a meta column.
-  const meta: BattleMeta = fb.meta ?? fb.last_report?.meta ?? {};
+  // The dedicated column is canonical. An empty object is real state, never a fallback signal.
+  const meta: BattleMeta = fb.meta || {};
   let units: FBUnit[];
   if (fb.units) units = (fb.units as any[]).map(upgradeUnit);
   else {
-    const { data: comp } = await supabase.from("military_stack_composition").select("id, stack_id, unit_type, manpower").in("stack_id", [att.id, def.id]).order("created_at").order("id");
-    units = [...buildUnits("attacker", att.id, att.soldiers, (comp || []).filter((c: any) => c.stack_id === att.id), att.morale ?? 70, att.battle_formation),
-             ...buildUnits("defender", def.id, def.soldiers, (comp || []).filter((c: any) => c.stack_id === def.id), def.morale ?? 70, def.battle_formation)];
+    const { data: comp, error: compError } = await supabase.from("military_stack_composition").select("id, stack_id, unit_type, manpower, quality").in("stack_id", [att.id, def.id]).order("created_at").order("id");
+    if (compError) return { events: [], error: `Composition read failed: ${compError.message}` };
+    try {
+      units = [...buildUnits("attacker", att.id, att.soldiers, (comp || []).filter((c: any) => c.stack_id === att.id), att.morale ?? 70, att.battle_formation),
+               ...buildUnits("defender", def.id, def.soldiers, (comp || []).filter((c: any) => c.stack_id === def.id), def.morale ?? 70, def.battle_formation)];
+    } catch (e) { return { events: [], error: `Invalid army composition: ${(e as Error).message}` }; }
   }
   // v0 rows: snapshot formation once.
   for (const u of units) if (!(fb.units as any[] | null)?.find((x: any) => x.key === u.key)?.formation) u.formation = unitFormation(stackOf(u.side).battle_formation, u.type);
   const terrainAt = await loadTerrain(supabase, sessionId, field);
   const zoneOf = (s: Side) => (x: number, y: number) => inDeployZone(field, cellOf(stackOf(s)), cellOf(stackOf(s === "attacker" ? "defender" : "attacker")), x, y);
   const save = async (patch: any) => {
-    const { data, error } = await supabase.from("field_battles").update({ ...patch, rev: fb.rev + 1 }).eq("id", fb.id).eq("rev", fb.rev).neq("status", "finished").select("id");
+    const { data, error } = await supabase.from("field_battles").update({ ...patch, meta: patch.meta ?? meta, rev: fb.rev + 1 }).eq("id", fb.id).eq("rev", fb.rev).neq("status", "finished").select("id");
     if (error) return error.message; if (!data?.length) return "Bitva se mezitím změnila, zkus to znovu"; return null;
   };
   const side: Side | undefined = payload.side === "attacker" || payload.side === "defender" ? payload.side : undefined;
@@ -175,7 +191,11 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
   for (const s of ["attacker", "defender"] as Side[]) {
     if (!meta.ai?.[s] || ready[s]) continue;
     if (fb.status === "deploying") units = autoDeploy(units, s, field, cellOf(stackOf(s)), cellOf(stackOf(s === "attacker" ? "defender" : "attacker")), terrainAt);
-    else orders = [...orders, ...planAiOrders(units, s, field, terrainAt, cpOf(s), orders.reduce((m, o) => Math.max(m, o.seq, o.cmd ?? 0), 0) + 1)];
+    else {
+      const planned = planBattleAi(units, s, field, terrainAt, cpOf(s), orders.reduce((m, o) => Math.max(m, o.seq, o.cmd ?? 0), 0) + 1, fb.round, meta, zoneOf);
+      orders = [...orders, ...planned.orders];
+      meta.aiPlan = { ...(meta.aiPlan ?? {}), [s]: planned.plan };
+    }
     ready[s] = true;
   }
   if (!(ready.attacker && ready.defender)) { const err = await save({ ready, units, orders }); return err ? { events: [], error: err } : { events: [] }; }
@@ -187,29 +207,20 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
   const r = resolveRound(units, orders, field, terrainAt, seededRandom(`${fb.id}:${fb.round}`), fb.round, meta, zoneOf);
   const report = { round: fb.round, events: r.events, winner: r.winner };
   if (!r.winner) {
-    let next = { units: r.units, orders: [] as FBOrder[], ready: {} as Record<string, boolean>, round: fb.round + 1, last_report: { ...report, meta: r.meta } };
+    let next = { units: r.units, orders: [] as FBOrder[], ready: {} as Record<string, boolean>, round: fb.round + 1, meta: r.meta, last_report: report };
     const err = await save(next); return err ? { events: [], error: err } : { events: [] };
   }
   // Final settlement: battle state + stack losses + typed composition losses in ONE transaction, guarded by rev.
-  const { data: comps } = await supabase.from("military_stack_composition").select("id, stack_id, unit_type, manpower").in("stack_id", [att.id, def.id]);
+  const { data: comps, error: finalCompositionError } = await supabase.from("military_stack_composition").select("id, stack_id, unit_type, manpower").in("stack_id", [att.id, def.id]);
+  if (finalCompositionError) return { events: [], error: `Final composition read failed: ${finalCompositionError.message}` };
   const plan = settlementPlan(r.units, [att, def].map((s: any) => ({ id: s.id, soldiers: s.soldiers, power: s.power ?? 0, morale: s.morale ?? 70 })), comps || [], UNIT_POWER_FACTOR);
   const summary = { ...report, losses: Object.fromEntries(plan.stackUpdates.map(s => [s.id, { lost: s.lost, byType: s.lostByType, soldiers: s.soldiers, morale: s.morale }])) };
   const { data: settled, error: sErr } = await supabase.rpc("settle_field_battle", { p_battle: fb.id, p_rev: fb.rev,
-    p_patch: { units: r.units, last_report: { ...summary, meta: r.meta }, round: fb.round },
+    p_patch: { units: r.units, last_report: summary, meta: r.meta, round: fb.round },
     p_stacks: plan.stackUpdates.map(({ lost: _l, lostByType: _t, ...s }) => s), p_comps: plan.compUpdates });
-  let ok = settled;
-  if (sErr && /settle_field_battle|PGRST202|function/i.test(`${sErr.code} ${sErr.message}`)) {
-    // RPC not installed yet: claim the finish with a rev-guarded update first, so a retry can never apply losses twice.
-    const { data: claimed, error: cErr } = await supabase.from("field_battles").update({ units: r.units, last_report: { ...summary, meta: r.meta }, round: fb.round,
-      status: "finished", finished_at: new Date().toISOString(), rev: fb.rev + 1 }).eq("id", fb.id).eq("rev", fb.rev).neq("status", "finished").select("id");
-    if (cErr) return { events: [], error: cErr.message };
-    ok = !!claimed?.length;
-    if (ok) {
-      for (const { lost: _l, lostByType: _t, ...s } of plan.stackUpdates) await supabase.from("military_stacks").update(s).eq("id", s.id);
-      for (const c of plan.compUpdates) await supabase.from("military_stack_composition").update({ manpower: c.manpower }).eq("id", c.id);
-    }
-  } else if (sErr) return { events: [], error: sErr.message };
-  if (!ok) return { events: [], error: "Bitva se mezitím změnila, zkus to znovu" };
+  // The RPC is the only settlement path. Any failure leaves the battle and both armies untouched.
+  if (sErr) return { events: [], error: `Atomic settlement failed: ${sErr.message}` };
+  if (!settled) return { events: [], error: "Bitva se mezitím změnila, zkus to znovu" };
   const win = r.winner === "attacker" ? att.name : r.winner === "defender" ? def.name : null;
   const lost = (id: string) => plan.stackUpdates.find(s => s.id === id)?.lost ?? 0;
   return insertEvents(supabase, commandId, sessionId, turnNumber, [{

@@ -8,6 +8,7 @@
  */
 import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse } from "../_shared/ai-context.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { FIELD_BATTLE_HISTORY_COLS, fieldBattlesHistory } from "../_shared/combatHistory.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -80,9 +81,9 @@ Deno.serve(async (req) => {
 
     let battles: any[] = [];
     if (battleIds.length > 0) {
-      const { data } = await sb.from("battles").select("*")
-        .in("id", battleIds.slice(0, 20));
-      battles = data || [];
+      const { data } = await sb.from("field_battles").select(FIELD_BATTLE_HISTORY_COLS)
+        .in("id", battleIds.slice(0, 20)).eq("status", "finished");
+      battles = fieldBattlesHistory(data);
     }
 
     // Fetch world memories

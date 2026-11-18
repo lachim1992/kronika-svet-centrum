@@ -49,8 +49,7 @@ export const DB_TABLES: DBTable[] = [
   // MILITARY
   { name: "military_stacks", category: "military", keyColumns: ["session_id", "owner_player", "total_strength", "morale"], columnCount: 15, hasRLS: true, description: "Vojenské skupiny" },
   { name: "military_units", category: "military", keyColumns: ["stack_id", "unit_type", "count", "strength"], columnCount: 10, hasRLS: true, description: "Jednotky ve skupinách" },
-  { name: "battles", category: "military", keyColumns: ["session_id", "result", "casualties_attacker", "casualties_defender"], columnCount: 20, hasRLS: true, description: "Záznamy bitev" },
-  { name: "battle_lobbies", category: "military", keyColumns: ["session_id", "status", "attacker_player", "defender_player"], columnCount: 22, hasRLS: true, description: "Přípravné lobby bitev" },
+  { name: "field_battles", category: "military", keyColumns: ["session_id", "status", "attacker_player", "defender_player", "last_report"], columnCount: 18, hasRLS: true, description: "Taktické polní bitvy a jejich kanonické zprávy" },
   { name: "travel_orders", category: "military", keyColumns: ["session_id", "stack_id", "destination_q", "destination_r"], columnCount: 10, hasRLS: true, description: "Příkazy k přesunu armád" },
 
   // SOCIAL
@@ -117,9 +116,8 @@ export const DB_RELATIONS: DBRelation[] = [
   // Military
   { from: "military_stacks", fromCol: "session_id", to: "game_sessions", toCol: "id" },
   { from: "military_units", fromCol: "stack_id", to: "military_stacks", toCol: "id" },
-  { from: "battles", fromCol: "attacker_stack_id", to: "military_stacks", toCol: "id" },
-  { from: "battles", fromCol: "defender_stack_id", to: "military_stacks", toCol: "id" },
-  { from: "battle_lobbies", fromCol: "session_id", to: "game_sessions", toCol: "id" },
+  { from: "field_battles", fromCol: "attacker_stack_id", to: "military_stacks", toCol: "id" },
+  { from: "field_battles", fromCol: "defender_stack_id", to: "military_stacks", toCol: "id" },
 
   // Social
   { from: "city_factions", fromCol: "city_id", to: "cities", toCol: "id" },
@@ -168,8 +166,7 @@ export const DB_TABLE_COLUMNS: Record<string, string[]> = {
   action_queue: ["id","action_data","action_type","completes_at","created_at","created_turn","execute_on_turn","player_name","session_id","started_at","status"],
   ai_factions: ["id","created_at","disposition","faction_name","goals","is_active","personality","resources_snapshot","session_id"],
   ai_world_summaries: ["id","created_at","faction_name","key_facts","session_id","summary_text","summary_type","turn_range_from","turn_range_to"],
-  battle_lobbies: ["id","attacker_formation","attacker_player","attacker_ready","attacker_speech","attacker_speech_feedback","attacker_speech_modifier","attacker_stack_id","battle_id","created_at","defender_city_id","defender_formation","defender_player","defender_ready","defender_speech","defender_speech_feedback","defender_speech_modifier","defender_stack_id","resolved_at","session_id","status","surrender_accepted","surrender_offered_by","surrender_terms","turn_number","updated_at"],
-  battles: ["id","attacker_morale_snapshot","attacker_stack_id","attacker_strength_snapshot","biome","casualties_attacker","casualties_defender","created_at","defender_city_id","defender_morale_snapshot","defender_stack_id","defender_strength_snapshot","fortification_bonus","luck_roll","post_action","resolved_at","result","seed","session_id","speech_morale_modifier","speech_text","turn_number"],
+  field_battles: ["id","session_id","attacker_player","defender_player","attacker_stack_id","defender_stack_id","started_turn","battlefield","units","orders","ready","status","round","rev","meta","last_report","created_at","finished_at"],
   building_templates: ["id","build_turns","category","cost_iron","cost_stone","cost_wealth","cost_wood","created_at","description","effects","flavor_text","image_prompt","is_unique","level_data","max_level","name","required_settlement_level"],
   chronicle_entries: ["id","created_at","epoch_style","event_id","references","session_id","source_type","text","turn_from","turn_to"],
   chronicle_mentions: ["id","created_at","entity_id","entity_type","entry_id","session_id"],

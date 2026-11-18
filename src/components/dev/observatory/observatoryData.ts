@@ -421,7 +421,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     id: "chronicles", label: "📜 Kronika", type: "narrative_driver", status: "auto",
     playerFacing: true, usedByAI: true, readOnly: true, agency: "none",
     upstreamCount: 5, downstreamCount: 1, playerInfluenceScore: 2, aiDependencyScore: 6, uiSurfacingLevel: 9,
-    gaps: [], formula: "AI generates 800-1200 words from game_events + battles + rumors",
+    gaps: [], formula: "AI generates 800-1200 words from game_events + finished field_battles + rumors",
     description: "AI kronikář generuje záznamy z herních dat.",
     layers: ["narrative"],
   },

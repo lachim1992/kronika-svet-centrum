@@ -43,10 +43,9 @@ export function presetRequirements(p: Preset) {
   return [...new Set([...(p.requires_buildings ?? []), ...p.composition.flatMap(c => UNIT_REQUIRED_BUILDINGS[c.unit_type] ?? [])])];
 }
 
-/** Stack power: manpower × unit factor, morale 0..100 → ×0.5..1.2, general 0..10 → +0..25 %. */
-export function computeStackPower(composition: Array<{ unit_type: string; manpower: number }>, morale: number, generalSkill = 0): number {
+/** Strategic stack power: composition × unit factor and morale only. General skill never multiplies power. */
+export function computeStackPower(composition: Array<{ unit_type: string; manpower: number }>, morale: number): number {
   const base = composition.reduce((s, c) => s + c.manpower * (UNIT_POWER_FACTOR[c.unit_type] ?? 1.0), 0);
   const moraleMult = 0.5 + (Math.max(0, Math.min(100, morale)) / 100) * 0.7;
-  const generalMult = 1 + (Math.max(0, Math.min(10, generalSkill)) / 10) * 0.25;
-  return Math.round(base * moraleMult * generalMult);
+  return Math.round(base * moraleMult);
 }

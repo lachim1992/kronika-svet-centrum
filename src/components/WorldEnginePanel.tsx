@@ -107,7 +107,7 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
         { count: academyCount },
         { data: champData },
       ] = await Promise.all([
-        supabase.from("battles").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("field_battles").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("status", "finished"),
         supabase.from("game_events").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
         supabase.from("city_buildings").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("status", "completed"),
         supabase.from("trade_routes" as any).select("id", { count: "exact", head: true }).eq("session_id", sessionId),

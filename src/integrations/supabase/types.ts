@@ -13128,6 +13128,15 @@ export type Database = {
         }
         Returns: Json
       }
+      assign_general_to_stack: {
+        Args: {
+          p_actor: string
+          p_general: string
+          p_session: string
+          p_stack: string
+        }
+        Returns: Json
+      }
       assign_macro_province: {
         Args: {
           p_player: string
