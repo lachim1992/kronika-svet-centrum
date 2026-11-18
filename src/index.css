@@ -674,10 +674,10 @@
   }
 }
 
-/* Admin resource atlas: one hue per micro-square raw resource. */
+/* Admin resource atlas: high-contrast categorical colors, readable over terrain. */
 :root {
-  --res-grain: hsl(48 92% 55%); --res-stone: hsl(30 8% 62%); --res-timber: hsl(130 55% 28%); --res-fish: hsl(195 85% 52%);
-  --res-peat: hsl(25 45% 28%); --res-clay: hsl(18 70% 50%); --res-fibre: hsl(80 55% 70%); --res-game: hsl(0 55% 42%);
-  --res-resin: hsl(38 95% 40%); --res-wild_grapes: hsl(290 55% 45%); --res-olives: hsl(70 45% 38%); --res-iron: hsl(5 40% 30%);
-  --res-gold: hsl(45 100% 62%); --res-copper: hsl(160 60% 45%); --res-granite: hsl(330 15% 72%); --res-herbs: hsl(110 75% 55%);
+  --res-grain: hsl(48 100% 55%); --res-stone: hsl(210 8% 72%); --res-timber: hsl(155 75% 27%); --res-fish: hsl(195 95% 50%);
+  --res-peat: hsl(260 80% 62%); --res-clay: hsl(22 90% 55%); --res-fibre: hsl(80 75% 65%); --res-game: hsl(340 80% 48%);
+  --res-resin: hsl(35 100% 40%); --res-wild_grapes: hsl(300 75% 60%); --res-olives: hsl(95 50% 30%); --res-iron: hsl(5 90% 55%);
+  --res-gold: hsl(52 100% 76%); --res-copper: hsl(175 75% 38%); --res-granite: hsl(220 18% 48%); --res-herbs: hsl(120 80% 45%);
 }
