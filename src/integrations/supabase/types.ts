@@ -837,38 +837,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "battle_lobbies_attacker_stack_id_fkey"
-            columns: ["attacker_stack_id"]
-            isOneToOne: false
-            referencedRelation: "military_stacks"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "battle_lobbies_battle_id_fkey"
             columns: ["battle_id"]
             isOneToOne: false
             referencedRelation: "battles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "battle_lobbies_defender_city_id_fkey"
-            columns: ["defender_city_id"]
-            isOneToOne: false
-            referencedRelation: "cities"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "battle_lobbies_defender_stack_id_fkey"
-            columns: ["defender_stack_id"]
-            isOneToOne: false
-            referencedRelation: "military_stacks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "battle_lobbies_session_id_fkey"
-            columns: ["session_id"]
-            isOneToOne: false
-            referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -946,36 +918,7 @@ export type Database = {
           speech_text?: string | null
           turn_number?: number
         }
-        Relationships: [
-          {
-            foreignKeyName: "battles_attacker_stack_id_fkey"
-            columns: ["attacker_stack_id"]
-            isOneToOne: false
-            referencedRelation: "military_stacks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "battles_defender_city_id_fkey"
-            columns: ["defender_city_id"]
-            isOneToOne: false
-            referencedRelation: "cities"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "battles_defender_stack_id_fkey"
-            columns: ["defender_stack_id"]
-            isOneToOne: false
-            referencedRelation: "military_stacks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "battles_session_id_fkey"
-            columns: ["session_id"]
-            isOneToOne: false
-            referencedRelation: "game_sessions"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       building_templates: {
         Row: {
