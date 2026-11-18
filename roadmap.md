@@ -1,5 +1,12 @@
 # Map-first square-grid roadmap
 
+## Taktické bitvy — dokončení a korekce CP (2026-11-18)
+- [x] Kód z `9e29c22e`: schválené efekty 7 forem a typový pohyb, skutečné vážené hodnocení AI, vysvětlení doktríny/rozkazů a volba formace při rozmístění; bez nového paralelního enginu.
+- [x] Korekce v `b583e823`: 4 CP bez generála a při skill 0–39, 5 CP při 40–55, 6 CP při 56–62, 7 CP při 63–100; referenční body 40/56/63 → 5/6/7. Sdílený server i UI používají stejný převod a oba panely mají nápovědu prahů.
+- [x] Skutečně spuštěno: cílené `bunx vitest run src/test/general-command.test.ts src/test/field-battle.test.ts src/test/tactical-contract.test.ts --maxWorkers=4` = **78/78**; celá sada `bunx vitest run --maxWorkers=4` = **1158 passed / 3 skipped** (142 souborů passed, 1 skipped); `oj typecheck -b --noEmit` a `deno check` command-dispatch/scenario-simulate čisté; harness build OK.
+- [x] Nasazeno z commitu `b583e823`: command-dispatch SHA-256 `47a782dafdeed26dc53fee7560162ffb77b59a9f89066ff9ac99f0b350eefcc3`, scenario-simulate SHA-256 `472ff01c36ca633a80192ffec043e55082915bcab86dfb13e7f2a6a007df6631`. Prázdný command-dispatch požadavek vrátil kontrolované 400, scenario-simulate 401; žádný herní příkaz se neprovedl. Publikace `https://kronikaruv-stul.lovable.app` byla naplánována po zelených testech.
+- [ ] Živá bitva a mapa stále nejsou end-to-end ověřené: v JV72O7 se záměrně nespustila bitva ani tah a nezměnila se žádná herní data. Pro akceptaci je potřeba samostatná autorizovaná testovací bitva; není to blokér této CP korekce.
+
 ## JV72O7 — ekonomická pohoda a oprava editoru (2026-11-18)
 - [x] Opravit a v přihlášeném náhledu ověřit výběr a úpravy objektů v admin editoru na mapě. Tlačítko je portálem mimo překrývající pracovní plochu; město i dlaždice prokliknuty, dlaždice má viditelný výběr.
 - [x] Přes auditovaný admin zápis odstranit obě obří armády Player a Frakce 1; Player garda byla smazána, AI horda vyřazena kvůli historické FK, malý 101členný oddíl zůstal. Žádný generál nebyl změněn.

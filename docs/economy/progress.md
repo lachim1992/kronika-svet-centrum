@@ -1,5 +1,11 @@
 # Economy implementation progress
 
+## 2026-11-18 — tactical battle CP correction (non-economy follow-up)
+
+- Committed code: `b583e823` replaces the rejected 25/50/75 thresholds with 40/56/63. Shared `generalCommand.ts` returns 4 CP without a general or at skill 0–39, 5 at 40–55, 6 at 56–62 and 7 at 63–100. Army and field-battle panels use the same conversion and expose the threshold tooltip. Three battle test files were updated; the reserve-order fixture now targets a genuinely empty cell.
+- Tests actually run: targeted battle suite **78/78 passed**; full `bunx vitest run --maxWorkers=4` **1158 passed / 3 skipped** (142 files passed, 1 skipped); `oj typecheck -b --noEmit`, Deno checks for command-dispatch/scenario-simulate and the automatic preview build all passed.
+- Live deployment: command-dispatch and scenario-simulate deployed from that commit (source SHA-256 `47a782dafdeed26dc53fee7560162ffb77b59a9f89066ff9ac99f0b350eefcc3` and `472ff01c36ca633a80192ffec043e55082915bcab86dfb13e7f2a6a007df6631`). Empty fail-closed probes returned 400/401. Frontend publication was requested after green tests. No live battle, turn, economy refresh or JV72O7 game-data mutation was performed; live battle UI remains unverified.
+
 ## 2026-11-18 — JV72O7 live comfort/trade scenario + editor access
 
 - Scope: only session `d379caff-8992-48e2-9084-7c9d74acceb1` (JV72O7), still turn 18 with no resolving turn. Removed the 8,000-man Player army (deleted) and 7,978-composition-man AI army (deactivated because a legacy lobby FK prevents deletion); retained the separate active 101-soldier Player stack and all generals. All seven cities now have stability 100 and no persisted famine flag.
