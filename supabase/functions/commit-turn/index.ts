@@ -29,6 +29,7 @@ import { constructionStep, notAdvancedIn } from "./constructionProgress.ts";
 import { resolveSiegeTurn, wallStrength } from "../_shared/siege.ts";
 import { loadSiegeUnits } from "../_shared/siegeState.ts";
 import { FIELD_BATTLE_HISTORY_COLS, fieldBattlesHistory } from "../_shared/combatHistory.ts";
+import { legacyFoodTradeProblem } from "../_shared/legacyFood.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -449,6 +450,20 @@ Deno.serve(async (req) => {
           gold: "gold_reserve", grain: "grain_reserve",
           production: "production_reserve", wealth: "gold_reserve",
         };
+
+        const legacyFoodProblem = legacyFoodTradeProblem(offerR, reqR);
+        if (legacyFoodProblem) {
+          await supabase.from("trade_offers").update({
+            status: "rejected", responded_at: new Date().toISOString(),
+          }).eq("id", offer.id);
+          await safeInsert(supabase.from("chronicle_entries").insert({
+            session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+            text: `Obchodní nabídka byla odmítnuta: ${legacyFoodProblem}.`,
+            source_type: "event_fragment",
+          }));
+          offersRejected++;
+          continue;
+        }
 
         const aiHasRequested = (aiRealm?.[resMap[reqType] as keyof typeof aiRealm] as number || 0);
         const canAfford = aiHasRequested >= reqAmt * (offer.duration_turns || 1);

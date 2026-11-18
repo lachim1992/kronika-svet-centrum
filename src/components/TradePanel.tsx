@@ -14,9 +14,10 @@ import {
 } from "lucide-react";
 import { dispatchCommand } from "@/lib/commands";
 import {
-  TRADEABLE_RESOURCES, TRADE_RESOURCE_META, TRADE_STATUS_LABELS,
+  MANUAL_TRADEABLE_RESOURCES, TRADE_RESOURCE_META, TRADE_STATUS_LABELS,
   MAX_TRADE_ROUTES, computeTradeEfficiency,
 } from "@/lib/tradeConstants";
+import { legacyFoodTradeProblem } from "../../supabase/functions/_shared/legacyFood";
 
 interface Props {
   sessionId: string;
@@ -38,9 +39,9 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
   // New offer form state
   const [fromCityId, setFromCityId] = useState("");
   const [toCityId, setToCityId] = useState("");
-  const [offerRes, setOfferRes] = useState<string>("gold");
+  const [offerRes, setOfferRes] = useState<string>("production");
   const [offerAmt, setOfferAmt] = useState(5);
-  const [requestRes, setRequestRes] = useState<string>("grain");
+  const [requestRes, setRequestRes] = useState<string>("wealth");
   const [requestAmt, setRequestAmt] = useState(5);
   const [duration, setDuration] = useState(5);
   const [message, setMessage] = useState("");
@@ -107,6 +108,8 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
   const handleCreateOffer = async () => {
     if (!fromCityId || !toCityId) { toast.error("Vyberte obě města"); return; }
     if (offerAmt <= 0 && requestAmt <= 0) { toast.error("Zadejte množství"); return; }
+    const foodProblem = legacyFoodTradeProblem({ [offerRes]: offerAmt }, { [requestRes]: requestAmt });
+    if (foodProblem) { toast.error(foodProblem); return; }
     const targetCity = allCities.find(c => c.id === toCityId);
     if (!targetCity) return;
 
@@ -142,10 +145,12 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
   };
 
   const handleAcceptOffer = async (offer: any) => {
-    setSaving(true);
-    // Create trade route from this offer
     const offerR = offer.offer_resources || {};
     const reqR = offer.request_resources || {};
+    const foodProblem = legacyFoodTradeProblem(offerR, reqR);
+    if (foodProblem) { toast.error(foodProblem); return; }
+    setSaving(true);
+    // Create trade route from this offer
     const resType = Object.keys(offerR)[0] || "gold";
     const resAmt = offerR[resType] || 0;
     const retType = Object.keys(reqR)[0] || null;
@@ -284,6 +289,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
             {pendingIncoming.map(o => {
               const offerR = o.offer_resources || {};
               const reqR = o.request_resources || {};
+              const foodProblem = legacyFoodTradeProblem(offerR, reqR);
               return (
                 <div key={o.id} className="p-3 rounded-lg border border-primary/20 bg-primary/5">
                   <div className="flex items-center gap-2 mb-1.5">
@@ -310,8 +316,9 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
                   {o.message && (
                     <p className="text-[10px] text-muted-foreground italic mb-2">„{o.message}"</p>
                   )}
+                  {foodProblem && <p className="mb-2 text-[10px] text-destructive">{foodProblem}</p>}
                   <div className="flex gap-2">
-                    <Button size="sm" className="h-6 text-[10px] gap-1" onClick={() => handleAcceptOffer(o)} disabled={saving}>
+                    <Button size="sm" className="h-6 text-[10px] gap-1" onClick={() => handleAcceptOffer(o)} disabled={saving || Boolean(foodProblem)}>
                       <Check className="h-3 w-3" />Přijmout
                     </Button>
                     <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1" onClick={() => handleRejectOffer(o.id)} disabled={saving}>
@@ -407,7 +414,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-display flex items-center gap-2">
             <Plus className="h-4 w-4 text-primary" />Nová diplomatická obchodní nabídka
-            <InfoTip>Vytvořte nabídku obchodní trasy s jiným hráčem. Po přijetí se suroviny automaticky převádí každé kolo.</InfoTip>
+            <InfoTip>Nabídka směňuje produkci nebo bohatství. Potraviny se přesouvají pouze fyzickým obchodem se zbožím.</InfoTip>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -447,7 +454,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
                     <Select value={offerRes} onValueChange={setOfferRes}>
                       <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {TRADEABLE_RESOURCES.map(r => (
+                        {MANUAL_TRADEABLE_RESOURCES.map(r => (
                           <SelectItem key={r} value={r}>{TRADE_RESOURCE_META[r].icon} {TRADE_RESOURCE_META[r].label}</SelectItem>
                         ))}
                       </SelectContent>
@@ -461,7 +468,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
                     <Select value={requestRes} onValueChange={setRequestRes}>
                       <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {TRADEABLE_RESOURCES.map(r => (
+                        {MANUAL_TRADEABLE_RESOURCES.map(r => (
                           <SelectItem key={r} value={r}>{TRADE_RESOURCE_META[r].icon} {TRADE_RESOURCE_META[r].label}</SelectItem>
                         ))}
                       </SelectContent>

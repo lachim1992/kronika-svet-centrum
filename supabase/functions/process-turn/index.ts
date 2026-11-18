@@ -11,6 +11,7 @@ import { foodShortageImpact } from '../_shared/foodShortage.ts';
 import { routeUpkeepDueThisTurn } from '../_shared/routeUpkeep.ts';
 import { settleWages } from '../_shared/wageSettlement.ts';
 import { accrueGuildSpecialization } from '../_shared/guildSpecialization.ts';
+import { isLegacyFoodResource } from '../_shared/legacyFood.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1003,7 +1004,10 @@ Deno.serve(async (req) => {
         tradeGoldDelta += Math.round((route.gold_per_turn || 0) * efficiency) - tollTotal;
       }
       const isSender = route.from_player === playerName;
-      if (route.resource_type && route.amount_per_turn) {
+      if (isLegacyFoodResource(route.resource_type) || isLegacyFoodResource(route.return_resource_type)) {
+        // Historical food-labelled L3 routes must not turn a projection into gold or food.
+        logEntries.push(`🌾 Stará potravinová trasa s ${otherPlayer} je mimo fyzický obchod a nepřipisuje zlato ani potraviny`);
+      } else if (route.resource_type && route.amount_per_turn) {
         const amt = route.amount_per_turn || 0;
         if (isSender) {
           tradeGoldDelta -= Math.round(amt * 0.5);

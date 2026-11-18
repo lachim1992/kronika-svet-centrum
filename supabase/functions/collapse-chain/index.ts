@@ -217,16 +217,14 @@ Deno.serve(async (req) => {
       const updates: Record<string, any> = {};
       if (effects.stability !== 0) {
         // Fetch current stability, apply delta with floor at 0
-        const { data: city } = await sb.from("cities").select("city_stability, local_grain_reserve, famine_consecutive_turns").eq("id", cityId).single();
+        const { data: city } = await sb.from("cities").select("city_stability, famine_consecutive_turns").eq("id", cityId).single();
         if (city) {
           updates.city_stability = Math.max(0, Math.min(100, city.city_stability + effects.stability));
           if (effects.famine > 0) {
             updates.famine_consecutive_turns = (city.famine_consecutive_turns || 0) + effects.famine;
             updates.famine_turn = true;
           }
-          if (effects.wealth < 0) {
-            updates.local_grain_reserve = Math.max(0, city.local_grain_reserve + effects.wealth);
-          }
+          // Wealth shocks never delete physical food through the legacy grain projection.
         }
       }
       if (Object.keys(updates).length > 0) {

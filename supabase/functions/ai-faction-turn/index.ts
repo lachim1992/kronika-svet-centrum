@@ -14,6 +14,7 @@ import { planShortHopToward } from "../_shared/movement.ts";
 import { buildFactionBriefing } from "./briefing.ts";
 import { generateValidActions } from "./actions.ts";
 import { minimalBattlefield } from "../_shared/fieldBattle.ts";
+import { isLegacyFoodResource } from "../_shared/legacyFood.ts";
 
 // ═══════════════════════════════════════════
 // HEX MATH
@@ -2354,7 +2355,11 @@ async function executeAction(
     // ─── PROPOSE TRADE PACT (NPC-NPC or NPC-Player) ───
     case "propose_trade_pact": {
       if (!action.targetPlayer) return "missing_target";
-      const resourceType = action.description?.match(/(\w+)/)?.[1] || "grain";
+      const resourceType = action.description?.match(/(\w+)/)?.[1] || "gold";
+      // Legacy food routes never move canonical Goods lots and must not fabricate a food transfer.
+      if (isLegacyFoodResource(resourceType) || isLegacyFoodResource(action.resourceType)) {
+        return "legacy_food_transfer_unavailable";
+      }
 
       // Create trade route
       await supabase.from("trade_routes").insert({

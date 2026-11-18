@@ -340,15 +340,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ─── HARVEST: Grain production boost ───
+    // ─── HARVEST: civic effects only, never an invented food stock ───
     if (cfg.extra_effects === "grain_boost") {
-      // +25% grain production for 2 turns via a city tag or direct stat boost
-      await sb.from("cities").update({
-        local_grain_reserve: Math.round((city as any).local_grain_reserve * 1.25 + 50),
-        famine_severity: 0, famine_turn: false,
-      }).eq("id", city_id);
-      festivalResults.highlights.push(`🌾 Zásoby obilí posíleny o 25%. Hladomor zažehnán.`);
-      festivalResults.highlights.push(`Stabilita města +${cfg.stability_boost}. Rolníci slaví.`);
+      // TODO: a harvest food bonus needs a canonical Goods transaction with physical lots.
+      // The legacy local_grain_reserve projection is deliberately not incremented here.
+      festivalResults.highlights.push(`🌾 Rolníci slaví sklizeň; stabilita města +${cfg.stability_boost}.`);
     }
 
     // ─── TOURNAMENT: Military prestige + morale ───

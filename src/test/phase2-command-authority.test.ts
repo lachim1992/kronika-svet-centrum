@@ -100,7 +100,7 @@ describe("phase 2: server handlers are complete and deterministic", () => {
 
   it("decree effects fail closed before touching any browser-supplied reward", () => {
     const start = DISPATCH.indexOf("async function executeApplyDecreeEffects");
-    const body = DISPATCH.slice(start, DISPATCH.indexOf("async function executeSetTradeIdeology", start));
+    const body = DISPATCH.slice(start, DISPATCH.indexOf("async function executeSetRationPolicy", start));
     expect(body).toContain("chybí serverem ověřený uložený efekt dekretu");
     expect(body).not.toMatch(/\.update\(/);
     expect(body).not.toMatch(/factionImpacts|stabilityPenalty|gold_reserve/);

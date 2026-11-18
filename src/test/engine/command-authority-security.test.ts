@@ -17,6 +17,7 @@ function fixture(parcelEconomyVersion = 1) {
     tile_parcel_contents: [],
     province_hexes: [{ id: "hex", session_id: "s", grid_x: 0, grid_y: 0, province_id: "province", biome_family: "plains", coastal: false, has_river: false, is_passable: true, owner_player: "p" }],
     province_nodes: [], city_districts: [], game_events: [], world_action_log: [], chronicle_entries: [],
+    city_policies: [], city_uprisings: [],
   };
   const rpcCalls: { name: string; args: any }[] = [];
   const from = (table: string) => {
@@ -25,7 +26,7 @@ function fixture(parcelEconomyVersion = 1) {
     const filters: ((row: any) => boolean)[] = [];
     const execute = () => {
       let selected = rows.filter(row => filters.every(filter => filter(row)));
-      if (operation === "insert") {
+      if (operation === "insert" || operation === "upsert") {
         selected = (Array.isArray(payload) ? payload : [payload]).map(row => ({ id: `${table}-${++sequence}`, ...row }));
         rows.push(...selected);
       } else if (operation === "update") {
@@ -44,7 +45,7 @@ function fixture(parcelEconomyVersion = 1) {
         if (key === "lte") filters.push(row => Number(row[args[0]]) <= Number(args[1]));
         if (key === "is") filters.push(row => row[args[0]] === args[1]);
         if (key === "single" || key === "maybeSingle") single = true;
-        if (key === "insert" || key === "update" || key === "delete") { operation = String(key); payload = args[0]; }
+        if (key === "insert" || key === "upsert" || key === "update" || key === "delete") { operation = String(key); payload = args[0]; }
         return query;
       };
     } });
@@ -57,6 +58,19 @@ function fixture(parcelEconomyVersion = 1) {
     rpc: async (name: string, args: any) => {
       rpcCalls.push({ name, args });
       if (name === "build_subnode_atomic") return { data: { nodeId: "node-1", costGold: args.p_cost_gold, costProduction: args.p_cost_production }, error: null };
+      if (name === "occupy_city_parcel_atomic") {
+        const table = args.p_kind === "building" ? "city_buildings" : "city_districts";
+        const entity = tables[table].find(row => row.id === args.p_entity);
+        if (entity) entity.parcel_id = args.p_parcel;
+        const parcel = tables.tile_parcels.find(row => row.id === args.p_parcel);
+        if (parcel) {
+          parcel.status = "occupied";
+          parcel.land_use = args.p_land_use;
+          parcel[`${args.p_kind}_id`] = args.p_entity;
+        }
+        tables.tile_parcel_contents.push({ id: `content-${++sequence}`, session_id: args.p_session, parcel_id: args.p_parcel, entity_type: args.p_kind, entity_id: args.p_entity, slots_used: 1 });
+        return { data: { occupied: true }, error: null };
+      }
       return { data: null, error: null };
     },
   };
@@ -146,5 +160,35 @@ describe("authoritative construction and decree commands", () => {
     expect(f.rpcCalls[0]).toMatchObject({ name: "build_subnode_atomic", args: { p_session: "s", p_player: "p", p_city: "city", p_cost_gold: 35, p_cost_production: 45 } });
     expect(f.rpcCalls[0].args.p_def.resource).toEqual({ supplies: 4, production: 2 });
     expect(f.tables.province_nodes).toHaveLength(0); // only the transactional RPC may create it
+  });
+
+  it("applies a canonical ration policy only to the seated player's own city", async () => {
+    const f = fixture();
+    const result = await f.run("SET_RATION_POLICY", { cityId: "city", policyKey: "austerity", grain_effect: 9999 });
+    expect(result.status).toBe(200);
+    expect(f.tables.cities[0].ration_policy).toBe("austerity");
+    expect(f.tables.city_policies[0]).toMatchObject({ policy_value: "austerity", grain_effect: 5, stability_effect: -8, enacted_by: "p" });
+  });
+
+  it("rejects foreign or invented ration policies without a write", async () => {
+    const foreign = await fixture().run("SET_RATION_POLICY", { cityId: "foreign", policyKey: "austerity" });
+    expect(foreign.status).toBe(400);
+    const f = fixture();
+    const invalid = await f.run("SET_RATION_POLICY", { cityId: "city", policyKey: "free_grain" });
+    expect(invalid.status).toBe(400);
+    expect(f.tables.cities[0].ration_policy).toBeUndefined();
+    expect(f.tables.city_policies).toHaveLength(0);
+  });
+
+  it("fails closed for legacy grain loot without changing either projection", async () => {
+    const f = fixture();
+    f.tables.realm_resources[0].grain_reserve = 500;
+    f.tables.city_uprisings.push({ id: "uprising", session_id: "s", city_id: "city", city_name: "Vlastní", status: "pending", city_stability: 20, demands: [{ type: "open_stores", label: "Otevřít sklady" }] });
+    const result = await f.run("RESOLVE_UPRISING", { uprisingId: "uprising", concession: "open_stores" });
+    expect(result.status).toBe(400);
+    expect(result.body.error).toContain("fyzické zboží");
+    expect(f.tables.realm_resources[0]).toMatchObject({ grain_reserve: 500, production_reserve: 1000 });
+    expect(f.tables.city_uprisings[0].status).toBe("pending");
+    expect(f.tables.game_events).toHaveLength(0);
   });
 });

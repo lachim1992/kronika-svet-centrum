@@ -84,26 +84,23 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
 
   // ── Save ration policy ──
   const handleRation = async (key: string) => {
-    setSaving(true);
-    await supabase.from("cities").update({ ration_policy: key } as any).eq("id", city.id);
-    // Upsert policy record
     const preset = RATION_POLICIES[key];
-    await supabase.from("city_policies").upsert({
-      session_id: sessionId, city_id: city.id,
-      policy_category: "food", policy_key: "ration",
-      policy_value: key,
-      grain_effect: preset.grain_effect,
-      stability_effect: preset.stability_effect,
-      faction_impact: preset.faction_impact,
-      enacted_turn: currentTurn,
-      enacted_by: currentPlayerName,
-      description: preset.description,
-      is_active: true,
-    }, { onConflict: "city_id,policy_category,policy_key" });
-    toast.success(`Přídělový systém změněn na: ${preset.label}`);
+    if (!preset) { toast.error("Neplatný přídělový režim"); return; }
+    setSaving(true);
+    const { dispatchCommand } = await import("@/lib/commands");
+    const result = await dispatchCommand({
+      sessionId, turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "SET_RATION_POLICY",
+      commandPayload: { cityId: city.id, policyKey: key },
+    });
+    if (!result.ok) toast.error(result.error || "Přídělový režim se nepodařilo změnit");
+    else {
+      toast.success(`Přídělový systém změněn na: ${preset.label}`);
+      onRefetch?.();
+      fetchData();
+    }
     setSaving(false);
-    onRefetch?.();
-    fetchData();
   };
 
   // ── Save labor allocation ──

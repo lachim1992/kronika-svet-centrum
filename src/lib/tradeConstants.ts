@@ -4,6 +4,8 @@
  */
 
 export const TRADEABLE_RESOURCES = ["production", "wealth", "supplies"] as const;
+/** New L3 offers may exchange only ledger resources, never the legacy food projection. */
+export const MANUAL_TRADEABLE_RESOURCES = ["production", "wealth"] as const;
 export type TradeResource = (typeof TRADEABLE_RESOURCES)[number];
 
 export const TRADE_RESOURCE_META: Record<TradeResource, { label: string; icon: string }> = {

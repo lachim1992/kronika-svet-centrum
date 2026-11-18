@@ -1,5 +1,12 @@
 # Map-first square-grid roadmap
 
+## Druhý opravný balík — sklady, vazby parcel a migrace (2026-11-18)
+- [x] Legacy potraviny: příděly přes serverový SET_RATION_POLICY; open_stores a nové L3 food převody fail-closed; sváteční/kolapsové fiktivní zápisy odstraněny, staré food trasy už negenerují zlato. Historické řádky zachovány.
+- [x] Read-only audit našel 7 budov bez content, 6 rozporů parcel_id a 19 legacy ukazatelů (všech 13 vazeb JV72O7), 0 přeplněných parcel. Kandidátská SQL invariantů a atomická RPC obsazení jsou v `supabase/reconciliation/`; živé řádky nebyly opraveny.
+- [x] PostgreSQL test dvou souběžných staveb na kapacitě 1 vytvořil jednu vazbu a jedno obsazení; BUILD_SUBNODE nadále používá vlastní atomickou platbu/kapacitu z 0037.
+- [ ] Blokováno samostatným migračním povolením a chybějícím snapshotem 0025: zaregistrovat připravenou forward-only 0038 a rekonsiliovat 0016/0023/0024 platformním workflow. Inspekce nenabídla bezpečný repair plán; žurnál ani historické migrace nebyly ručně přepsány a produkční migrace neproběhla.
+- [x] Cílená sada **20/20**, finální celá sada **1189 passed / 3 skipped** (147 souborů passed, 1 skipped), typecheck, Deno check 6 funkcí a automatický build OK. Bez deploye, publikace, tahu, refresh/commit-turn a herních zápisů. Další přesný krok: po samostatném povolení aplikovat rekonsiliaci a teprve potom nasadit command-dispatch.
+
 ## Opravný balík autority příkazů a parcelových čtvrtí (2026-11-18)
 - [x] BUILD_DISTRICT / SET_DISTRICT_PRODUCTION: kanonický serverový katalog, vlastnictví a session, produkce fail-closed v parcel režimu; UI nabízí jen skutečně podporované typy.
 - [x] APPLY_DECREE_EFFECTS: žádné klientské surovinové přírůstky; bez serverem ověřitelného dekretu fail-closed. CouncilTab okamžité odměny neodesílá a oznámí, že nebyly uplatněny.

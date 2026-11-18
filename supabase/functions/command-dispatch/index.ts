@@ -55,6 +55,8 @@ import { generalArmyCapacity } from "../_shared/generalCommand.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
+import { rationPolicy } from "../_shared/rationPolicy.ts";
+import { LEGACY_FOOD_TRANSFER_ERROR } from "../_shared/legacyFood.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -514,6 +516,9 @@ async function executeCommand(
 
     case "SET_DISTRICT_PRODUCTION":
       return await executeSetDistrictProduction(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SET_RATION_POLICY":
+      return await executeSetRationPolicy(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "ASSIGN_CITY_PARCEL":
       return await executeAssignCityParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
@@ -3104,26 +3109,17 @@ async function getAvailableParcel(supabase: any, cityId: string, requestedParcel
   return null;
 }
 
-async function occupyParcel(supabase: any, sessionId: string, parcelId: string, kind: "building" | "district", entityId: string, landUse: string, worked = false) {
-  if (worked) {
-    // Worked land stays claimed/open; the rural site is bound through contents (DB trigger enforces rural-only, one per parcel).
-    const { error: e1 } = await supabase.from("city_buildings").update({ parcel_id: parcelId }).eq("id", entityId);
-    if (e1) return e1;
-    const { error: e2 } = await supabase.from("tile_parcel_contents").insert({ session_id: sessionId, parcel_id: parcelId, entity_type: kind, entity_id: entityId, slots_used: 1 });
-    return e2 || null;
-  }
-  const update = kind === "building"
-    ? { status: "occupied", land_use: landUse, building_id: entityId }
-    : { status: "occupied", land_use: landUse, district_id: entityId };
-  const { error: parcelError } = await supabase.from("tile_parcels").update(update).eq("id", parcelId).in("status", ["claimed", "occupied"]);
-  if (parcelError) return parcelError;
-  const { error: entityError } = await supabase.from(kind === "building" ? "city_buildings" : "city_districts")
-    .update({ parcel_id: parcelId }).eq("id", entityId);
-  if (entityError) return entityError;
-  const { error: contentError } = await supabase.from("tile_parcel_contents").insert({
-    session_id: sessionId, parcel_id: parcelId, entity_type: kind, entity_id: entityId, slots_used: 1,
+async function occupyParcel(
+  supabase: any, sessionId: string, playerName: string, parcelId: string,
+  kind: "building" | "district", entityId: string, landUse: string, worked = false,
+) {
+  // The RPC commits entity linkage, physical content and legacy tile projection together.
+  // Its parcel lock + DB capacity trigger protect against competing construction.
+  const { error } = await supabase.rpc("occupy_city_parcel_atomic", {
+    p_session: sessionId, p_player: playerName, p_parcel: parcelId,
+    p_kind: kind, p_entity: entityId, p_land_use: landUse, p_worked: worked,
   });
-  return contentError;
+  return error || null;
 }
 
 /**
@@ -3358,7 +3354,7 @@ async function executeAssignCityParcel(
   const { data: entity } = await supabase.from(table).select("id, category, district_type").eq("id", entityId).eq("city_id", cityId).maybeSingle();
   if (!entity) return { events: [], error: "Objekt nepatří do vybraného města" };
   const landUse = kind === "district" ? (entity.district_type || "residential") : categoryToLandUse(entity.category);
-  const occupancyError = await occupyParcel(supabase, sessionId, parcelId, kind, entityId, landUse);
+  const occupancyError = await occupyParcel(supabase, sessionId, actor.name, parcelId, kind, entityId, landUse);
   if (occupancyError) return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
   return insertEvents(supabase, commandId, [{ ...base, event_type: "city_planning", city_id: cityId, note: `${city.name} upravilo parcelní plán.`, importance: "minor", reference: { cityId, parcelId, buildingId, districtId } }]);
 }
@@ -3551,7 +3547,7 @@ async function executeBuildBuilding(
     return { events: [], error: `Insert failed: ${insertErr.message}` };
   }
   if (targetParcel) {
-    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category), targetParcel.claim_kind === "worked");
+    const occupancyError = await occupyParcel(supabase, sessionId, actor.name, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category), targetParcel.claim_kind === "worked");
     if (occupancyError) {
       await supabase.from("city_buildings").delete().eq("id", inserted.id);
       await refundReserves(reserveIO, buildCost);
@@ -3741,7 +3737,7 @@ async function executeBuildDistrict(
     return { events: [], error: `District insert failed: ${dErr.message}` };
   }
   if (targetParcel) {
-    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "district", inserted.id, blueprint.district_type);
+    const occupancyError = await occupyParcel(supabase, sessionId, actor.name, targetParcel.id, "district", inserted.id, blueprint.district_type);
     if (occupancyError) {
       await supabase.from("city_districts").delete().eq("id", inserted.id);
       await refundReserves(reserveIO, buildCost);
@@ -3861,6 +3857,44 @@ async function executeApplyDecreeEffects(
   // Council evaluations store summaries, while declarations are client-written narrative rows.
   // Neither can authorize resources, stability or loyalty. Fail closed before any mutation.
   return { events: [], error: "Okamžité efekty dekretu nejsou dostupné: chybí serverem ověřený uložený efekt dekretu" };
+}
+
+/** SET_RATION_POLICY — policy effects come from the shared server catalogue. */
+async function executeSetRationPolicy(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const cityId = String(payload?.cityId || "");
+  const selected = rationPolicy(payload?.policyKey);
+  if (!cityId || !selected) return { events: [], error: "Neplatný přídělový režim" };
+  const { data: city, error: cityError } = await supabase.from("cities")
+    .select("id, name, owner_player, ration_policy")
+    .eq("id", cityId).eq("session_id", sessionId).maybeSingle();
+  if (cityError || !city) return { events: [], error: "Město nebylo nalezeno" };
+  if (city.owner_player !== actor.name) return { events: [], error: "Příděly lze měnit jen ve vlastním městě" };
+
+  const { error: updateError } = await supabase.from("cities")
+    .update({ ration_policy: selected.key }).eq("id", cityId).eq("session_id", sessionId);
+  if (updateError) return { events: [], error: `Příděly nelze změnit: ${updateError.message}` };
+  const { policy } = selected;
+  const { error: policyError } = await supabase.from("city_policies").upsert({
+    session_id: sessionId, city_id: cityId,
+    policy_category: "food", policy_key: "ration", policy_value: selected.key,
+    grain_effect: policy.grain_effect, stability_effect: policy.stability_effect,
+    faction_impact: policy.faction_impact, enacted_turn: turnNumber,
+    enacted_by: actor.name, description: policy.description, is_active: true,
+  }, { onConflict: "city_id,policy_category,policy_key" });
+  if (policyError) {
+    await supabase.from("cities").update({ ration_policy: city.ration_policy })
+      .eq("id", cityId).eq("session_id", sessionId).eq("ration_policy", selected.key);
+    return { events: [], error: `Příděly nelze uložit: ${policyError.message}` };
+  }
+
+  return insertEvents(supabase, commandId, [{
+    ...base, event_type: "policy", city_id: cityId,
+    note: `${city.name}: ${policy.label}.`, importance: "minor",
+    reference: { cityId, policyKey: selected.key },
+  }]);
 }
 
 /**
@@ -5076,15 +5110,8 @@ async function executeResolveUprising(
       uprising_cooldown_until: effects.cooldown_until,
     }).eq("id", uprising.city_id);
   } else if (concession === "open_stores") {
-    await supabase.from("realm_resources")
-      .update({ grain_reserve: 0, production_reserve: 0 }).eq("id", realm.id);
-    effects.stores_emptied = true;
-    effects.cooldown_until = turnNumber + 5;
-    await supabase.from("cities").update({
-      famine_consecutive_turns: 0, famine_turn: false, famine_severity: 0,
-      city_stability: Math.min(100, stability + 30),
-      uprising_cooldown_until: effects.cooldown_until,
-    }).eq("id", uprising.city_id);
+    // TODO: enable only after a canonical Goods RPC can move physical food lots atomically.
+    return { events: [], error: LEGACY_FOOD_TRANSFER_ERROR };
   } else if (concession === "cede_city") {
     await supabase.from("cities").update({
       owner_player: "Nezávislé",

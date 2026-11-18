@@ -17,41 +17,8 @@ export const FACTION_TYPES: Record<string, {
   military: { label: "Vojenská družina", icon: "⚔️", baseSource: "military_garrison", description: "Ozbrojená síla. Požadují výzbroj a uznání." },
 };
 
-// ═══════════════════════════════════════════
-// POLICY PRESETS
-// ═══════════════════════════════════════════
-export const RATION_POLICIES: Record<string, {
-  label: string;
-  description: string;
-  grain_effect: number;
-  stability_effect: number;
-  faction_impact: Record<string, number>;
-}> = {
-  equal: {
-    label: "Rovný příděl",
-    description: "Každý dostane stejně. Spravedlivé, ale neefektivní.",
-    grain_effect: 0, stability_effect: 5,
-    faction_impact: { peasants: 5, burghers: 0, clergy: 0 },
-  },
-  elite: {
-    label: "Přednostní elita",
-    description: "Měšťané a klerici jí lépe. Více produktivity, méně spokojenosti lidu.",
-    grain_effect: 2, stability_effect: -5,
-    faction_impact: { peasants: -8, burghers: 5, clergy: 5 },
-  },
-  austerity: {
-    label: "Úsporný režim",
-    description: "Šetříme zásoby. Nižší spotřeba, ale lid reptá.",
-    grain_effect: 5, stability_effect: -8,
-    faction_impact: { peasants: -10, burghers: -5, clergy: -3 },
-  },
-  sacrifice: {
-    label: "Obětiny bohům",
-    description: "Část obilí obětujeme. Kněží jásají, lid hladoví.",
-    grain_effect: -8, stability_effect: 3,
-    faction_impact: { peasants: -5, burghers: -3, clergy: 15 },
-  },
-};
+// Policy presets are validated and applied by command-dispatch from one catalogue.
+export { RATION_POLICIES } from "../../supabase/functions/_shared/rationPolicy";
 
 export const LABOR_KEYS = ["farming", "crafting", "scribes", "canal"] as const;
 export const LABOR_LABELS: Record<string, { label: string; icon: string; tip: string }> = {

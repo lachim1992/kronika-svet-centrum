@@ -52,7 +52,7 @@ const CONCESSION_ICONS: Record<string, React.ElementType> = {
 
 const CONCESSION_DESCRIPTIONS: Record<string, string> = {
   pay_wealth: "Otevřete pokladnu a vyplaťte lid. Ztratíte % bohatství, ale získáte čas.",
-  open_stores: "Uvolníte VŠECHNY zásoby surovin. Hladomor okamžitě skončí, ale ekonomika bude zničena.",
+  open_stores: "Nedostupné: stará akce neumí bezpečně přesunout fyzické potraviny. Zvolte jiný ústupek.",
   cede_city: "Město přejde pod nezávislou správu. Ztratíte území, ale zachráníte říši.",
   abdicate: "Vzdáte se vlády. V singleplayeru konec hry, v multiplayeru ztráta vedení.",
   forced_secession: "Město se odtrhne samo — nejhorší výsledek eskalace.",
@@ -301,7 +301,8 @@ Vygeneruj hlas lidu a analýzu poradců.`;
                     <button
                       key={demand.type}
                       onClick={() => setSelectedConcession(demand.type)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                      disabled={demand.type === "open_stores"}
+                      className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left disabled:cursor-not-allowed disabled:opacity-55 ${
                         isSelected
                           ? isDangerous
                             ? "border-destructive/60 bg-destructive/10 ring-1 ring-destructive/30"
