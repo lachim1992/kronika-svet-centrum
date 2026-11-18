@@ -269,21 +269,43 @@
     transform-box: fill-box;
     transform-origin: center;
   }
-  .iso-battle-arrow { opacity: 0; animation: iso-arrow-flight .85s ease-in both; }
-  .iso-battle-strike { opacity: 0; animation: iso-battle-strike .55s ease-in-out both; }
-  .iso-battle-impact { opacity: 0; animation: iso-battle-impact .45s ease-out both; }
+  .iso-battle-arrow { opacity: 0; animation: iso-arrow-flight var(--arrow-duration, 1.8s) cubic-bezier(.35,.05,.3,1) both; }
+  .iso-battle-strike { opacity: 0; animation: iso-battle-strike 1.45s ease-in-out both; }
+  .iso-battle-draw { opacity: 0; animation: iso-battle-draw .75s ease-in-out both; }
+  .iso-battle-impact,
+  .iso-battle-impact-ring { opacity: 0; transform-box: fill-box; transform-origin: center; }
+  .iso-battle-impact { animation: iso-battle-impact .85s ease-out both; }
+  .iso-battle-impact-ring { animation: iso-battle-impact-ring .85s ease-out both; }
   .iso-city-walker { animation: iso-city-walk 9s ease-in-out infinite alternate; }
   @keyframes iso-arrow-flight {
-    0% { opacity: 1; transform: translate(0, 0); }
-    50% { opacity: 1; transform: translate(calc(var(--arrow-x) * .5), calc(var(--arrow-y) * .5 - 7px)); }
-    85% { opacity: 1; }
+    0% { opacity: 0; transform: translate(0, 0); }
+    8% { opacity: 1; }
+    50% { opacity: 1; transform: translate(calc(var(--arrow-x) * .5), calc(var(--arrow-y) * .5 - 14px)); }
+    92% { opacity: 1; }
     100% { opacity: 0; transform: translate(var(--arrow-x), var(--arrow-y)); }
   }
   @keyframes iso-battle-strike {
     0%, 100% { opacity: 0; transform: translate(0, 0); }
-    30%, 65% { opacity: 1; transform: translate(var(--strike-x), var(--strike-y)); }
+    12% { opacity: 1; transform: translate(calc(var(--strike-x) * -.2), calc(var(--strike-y) * -.2)); }
+    32% { opacity: 1; transform: translate(0, 0); }
+    58%, 72% { opacity: 1; transform: translate(var(--strike-x), var(--strike-y)); }
   }
-  @keyframes iso-battle-impact { 0% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes iso-battle-draw {
+    0%, 100% { opacity: 0; transform: translateX(0) scale(.85); }
+    18%, 55% { opacity: 1; transform: translateX(-1px) scale(1); }
+    78% { opacity: 1; transform: translateX(1px) scale(1.08); }
+  }
+  @keyframes iso-battle-impact {
+    0% { opacity: 0; transform: scale(.35); }
+    22% { opacity: 1; transform: scale(1.35); }
+    58% { opacity: .9; transform: scale(.95); }
+    100% { opacity: 0; transform: scale(1.65); }
+  }
+  @keyframes iso-battle-impact-ring {
+    0% { opacity: 0; transform: scale(.3); }
+    25% { opacity: .8; }
+    100% { opacity: 0; transform: scale(2.2); }
+  }
   @keyframes iso-city-walk { to { transform: translate(3px, 1.5px); } }
   @keyframes iso-hearth-glow {
     0%, 100% { opacity: .35; }
@@ -354,7 +376,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .iso-city-walker { animation: none; }
-    .iso-battle-arrow, .iso-battle-strike, .iso-battle-impact { animation: none; opacity: 0; }
+    .iso-battle-arrow, .iso-battle-strike, .iso-battle-draw, .iso-battle-impact, .iso-battle-impact-ring { animation: none; opacity: 0; }
     .iso-active-route { animation: none; }
     .iso-city-hearth { animation: none; opacity: .8; }
     .iso-construction-rise,

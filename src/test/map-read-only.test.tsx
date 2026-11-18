@@ -8,7 +8,7 @@ vi.mock("@/integrations/supabase/client", () => ({
     from: (table: string) => {
       read(table);
       const query: any = {};
-      for (const method of ["select", "eq", "limit", "not", "order", "in", "maybeSingle"])
+      for (const method of ["select", "eq", "neq", "or", "limit", "not", "order", "in", "maybeSingle"])
         query[method] = () => query;
       query.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve);
       return query;

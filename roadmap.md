@@ -4,7 +4,9 @@
 - [x] Menší kruhy, poloviční figurky, 18 vojáků + 2 velitelé a výrazná pohybová políčka.
 - [x] Budovy na 75 %, kamenná dlažba, drobné uličky a městský život bez změn herních dat.
 - [x] Animace nových vyhodnocených polních útoků: úder, luk, let šípů/salva, zásah; reduced-motion vypíná pohyb. Kosmetické přehrání, bez druhého resolveru.
-- [x] field-battle + micro-movement 62/62, automatický build OK; přihlášené otevření města (7 vrstev uliček) bez page errors, izolované vykreslení nové salvy (7 šípů). Žádné herní příkazy, migrace ani nasazení.
+- [x] Útoky se přehrávají jeden po druhém až po dokončení předchozího zásahu; delší rozmach, oblouk letu, stopa šípu a ozvěna zásahu. Salva počká na poslední šíp, další scéna má krátkou mezeru.
+- [x] Hradby ve světě i v 6×6 detailu obklopují jen koupené městské parcely (`claim_kind` urban/prázdné); nárokovaná využívaná půda (`worked`) zůstává mimo obvod.
+- [x] Cílená regrese 73/73 včetně časování animací a rozlišení parcel; tsgo a automatický build OK. Přihlášený read-only náhled mapy/měst bez page errors; Kwak má skutečnou worked parcelu mimo městskou buňku. Žádné herní příkazy, migrace ani nasazení.
 - [ ] Ostrý útok a poslední vítězný zásah nejsou ověřené; současné přehrání potřebuje otevřený panel aktivní polní bitvy. Animace obléhání není součástí tohoto průchodu.
 
 ## Taktické polní bitvy (2026-11-15)

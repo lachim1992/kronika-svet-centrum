@@ -21,6 +21,7 @@ import { rasterizeTerrain, type TerrainQuad, type TerrainSprite, type TerrainRas
 import { mapVisualVariation, polishedTerrainTint, polishedTerrainTintAlpha } from "@/lib/mapVisualPolish";
 import { mapCameraTransform, pinchMapCameraAt, zoomMapCameraAt } from "@/lib/mapCamera";
 import { completeParcelTerrain } from "@/lib/parcelTerrainFallback";
+import { walledUrbanParcels } from "@/lib/cityWalls";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
 import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
@@ -1404,7 +1405,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   /** Full 32-parcel survey of the cell the player is inspecting. */
   const renderTileParcels = (centerPoint: { x: number; y: number }) => {
     const cityOwned = tileParcels.filter(parcel => parcel.city_id);
-    const wallEdges = cityOwned.length ? footprintWallEdges(cityOwned, centerPoint) : [];
+    const wallEdges = footprintWallEdges(walledUrbanParcels(cityOwned), centerPoint);
     const holder = cityOwned[0]?.city_id ? cityById.get(cityOwned[0].city_id) : undefined;
     const holderColor = holder ? (holder.owner_player === playerName ? "var(--map-city-own)" : "var(--map-city-rival)") : "var(--map-city-own)";
     const hatchFill = holder && holder.owner_player !== playerName ? "url(#iso-city-hatch-rival)" : "url(#iso-city-hatch)";
@@ -1435,7 +1436,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </g>;
       })}
       {renderCityStreetLife(cityOwned.filter(p => p.claim_kind !== "worked"), centerPoint)}
-      {/* city land is ringed so the built-up block reads at a glance */}
+      {/* Purchased urban plots are ringed; worked territorial claims stay outside. */}
       {renderWallRun(wallEdges, holderColor, 2, "survey-wall", holder?.owner_player)}
       {(roadTier > 0 || selectedInfrastructure?.status === "building") && localRoadSegments(occupiedIndexes).map((segment, index) => {
         const centre = (point: { x: number; y: number }) => {
@@ -1765,7 +1766,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   /** City-held parcels of a cell: footprint, ramparts with towers, and houses. */
   const renderCityFootprint = (parcels: TileParcel[], centerPoint: { x: number; y: number }, own: boolean, owner?: string) => {
     const wallColor = own ? "var(--map-city-own)" : "var(--map-city-rival)";
-    const edges = footprintWallEdges(parcels, centerPoint);
+    const edges = footprintWallEdges(walledUrbanParcels(parcels), centerPoint);
     const occupied = parcels.filter(parcel => parcel.status === "occupied");
     return <g>
       {parcels.map(parcel => (
