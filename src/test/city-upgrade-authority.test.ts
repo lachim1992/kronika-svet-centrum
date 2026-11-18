@@ -9,6 +9,7 @@ describe("canonical city construction contracts", () => {
     expect(availableDistrictBlueprints(1)).toHaveLength(4);
     expect(availableDistrictBlueprints(1).every(d => d.district_type === "residential")).toBe(true);
     expect(availableDistrictBlueprints(0)).toHaveLength(9);
+    expect(availableDistrictBlueprints(2).every(d => d.district_type === "residential")).toBe(true);
   });
 
   it("district basket validation rejects forged and incompatible keys", () => {
@@ -48,7 +49,7 @@ describe("canonical city construction contracts", () => {
   it("settlement requirements come from stored city and realm values", () => {
     const hamlet = SETTLEMENT_UPGRADES.HAMLET;
     expect(settlementUpgradeProblem({ population_total: 1999, city_stability: 100, local_grain_reserve: 100 }, {}, hamlet)).toContain("2000");
-    expect(settlementUpgradeProblem({ population_total: 2000, city_stability: 50, local_grain_reserve: 20 }, { gold_reserve: 0, production_reserve: 0 }, hamlet)).toBeNull();
+    expect(settlementUpgradeProblem({ population_total: 2000, city_stability: 50, local_grain_reserve: 0 }, { gold_reserve: 0, production_reserve: 0 }, hamlet)).toBeNull();
     expect(Object.values(SETTLEMENT_UPGRADES).every(def => def.costGold >= 0 && def.costProduction >= 0)).toBe(true);
   });
 });

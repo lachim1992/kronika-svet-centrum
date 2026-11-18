@@ -25,7 +25,7 @@ function fixture(production:number,grain:number,refreshFails=false){
     }});return query;
   }};
   const handler=loadEdgeFunction('command-dispatch',{createClient:()=>db});
-  const recruit=()=>handler(new Request('https://local/command',{method:'POST',body:JSON.stringify({
+  const recruit=()=>handler(new Request('https://local/command',{method:'POST',headers:{authorization:'Bearer test-value'},body:JSON.stringify({
     sessionId:'s',turnNumber:1,actor:{name:'p',type:'ai_faction'},commandType:'RECRUIT_STACK',commandId:'one',
     commandPayload:{stackName:'Militia',presetKey:'militia',manpower:100}})}));
   return {realm,tables,recruit,refreshes};

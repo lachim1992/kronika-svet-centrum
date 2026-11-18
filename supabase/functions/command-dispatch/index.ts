@@ -6,7 +6,8 @@ import { validateBuildingUpgrade, quoteBuildingUpgrade } from '../_shared/upgrad
 import { strategicBuildCostMult, discountedCost } from '../_shared/strategicEffects.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUBNODE_DEFS as SHARED_SUBNODE_DEFS } from "../_shared/subnodeCatalog.ts";
-import { readRealmWorkforce, actualSoldiers } from '../_shared/manpower.ts';
+import { readRealmWorkforce, actualSoldiers, syncRealmMilitaryLedger } from '../_shared/manpower.ts';
+import { isInternalActorType, isTrustedInternalRequest } from '../_shared/internalActor.ts';
 import {
   computeAnnexCheck,
   DEFAULT_INFLUENCE,
@@ -98,6 +99,13 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // JSON actor.type is never authority. Only an authenticated service-role edge caller may
+    // act as system/AI or bypass the player turn gate; reject spoofing before any side effect.
+    const trustedInternal = isTrustedInternalRequest(req);
+    if (isInternalActorType(actor?.type) && !trustedInternal) {
+      return json({ error: "Interní aktér vyžaduje ověřené servisní volání" }, 403);
+    }
+
     // ── Validate session ──
     const { data: session, error: sessErr } = await supabase
       .from("game_sessions")
@@ -109,7 +117,7 @@ Deno.serve(async (req) => {
       return json({ error: "Session not found" }, 404);
     }
     // Expected busy state, not a failure: a normal 200 refusal so the client shows a notice instead of crashing.
-    const busy = turnResolvingRefusal(session, actor?.type);
+    const busy = turnResolvingRefusal(session, trustedInternal ? actor?.type : "player");
     if (busy) return json(busy, 200);
 
     // Human authority is the verified JWT's own seat, never a body-supplied realm name.
@@ -187,6 +195,7 @@ Deno.serve(async (req) => {
       "SET_DISTRICT_PRODUCTION", "BUILD_SUBNODE", "BUILD_ROAD_PATH",
       "UPGRADE_INFRASTRUCTURE", "UPGRADE_SETTLEMENT", "APPLY_DECREE_EFFECTS",
       "SET_TRADE_IDEOLOGY", "RECRUIT_STACK", "REINFORCE_STACK", "DISBAND_STACK",
+      "DEMOBILIZE_STACK", "REMOBILIZE_STACK",
     ]);
     if (!result.idempotent && TRADE_TOPOLOGY_COMMANDS.has(commandType)) {
       try {
@@ -943,7 +952,8 @@ async function executeCommand(
 
     // ─── Node-Trade v1 (Stage 6) ───
     case "MOBILIZE_MANPOWER":
-      return await executeMobilizeManpower(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+      // Dead legacy endpoint: recruitment is the only physical way to create soldiers.
+      return { events: [], error: "MOBILIZE_MANPOWER je vypnutý; použij RECRUIT_STACK nebo REINFORCE_STACK" };
 
     case "PROPOSE_TREATY":
       return await executeProposeTreaty(supabase, base, actor, payload, commandId, sessionId, turnNumber);
@@ -1731,17 +1741,13 @@ async function executeRecruitStack(
     }));
   }
 
-  // ── 3. Update realm: drain pool, bump mobilized + committed, drain gold/CAPEX ──
-  const newPool = Math.max(0, manpowerPool - totalManpower);
+  // ── 3. Recompute every HUD military field from the newly inserted active stack ──
   const newGold = (realm.gold_reserve || 0) - totalGold;
   const newProduction = Math.max(0, productionReserve - totalProdCost);
-  await supabase.from("realm_resources").update({
-    manpower_pool: newPool,
-    manpower_committed: currentWorkforce.mobilized + totalManpower,
-    manpower_mobilized: currentWorkforce.mobilized + totalManpower,
+  await syncRealmMilitaryLedger(supabase, sessionId, playerName, {
     gold_reserve: newGold,
     production_reserve: newProduction,
-  }).eq("id", realm.id);
+  });
 
   // ── 4. Chronicle ──
   const chronicleText = `${playerName} zřídil armádu **${stackName.trim()}** (${preset.label}). Síla: ${totalManpower} mužů, náklady: ${totalGold} zlata + ${totalProdCost} produkce. Morálka: ${finalMorale}.`;
@@ -2823,18 +2829,16 @@ async function executeRemobilizeStack(
   const available=await readRealmWorkforce(supabase,sessionId,actor.name,realm.mobilization_rate??0.1);
   if(manpower>available.workforce)return {events:[],error:`Nedostatek obyvatel: ${available.workforce}`};
 
-  await supabase.from("military_stacks").update({
+  const { data: reactivated, error: reactivateError } = await supabase.from("military_stacks").update({
     is_active: true,
     demobilized_turn: null,
     remobilize_ready_turn: null,
     morale: 30,
-  }).eq("id", stackId).eq("player_name", actor.name);
+  }).eq("id", stackId).eq("session_id", sessionId).eq("player_name", actor.name).eq("is_active", false).select("id").maybeSingle();
+  if (reactivateError) throw reactivateError;
+  if (!reactivated) return { events: [], error: "Armádu mezitím změnil jiný proces." };
 
-  await supabase.from("realm_resources").update({
-    manpower_committed: available.mobilized + manpower,
-    manpower_mobilized: available.mobilized + manpower,
-    manpower_pool: Math.max(0,available.workforce-manpower),
-  }).eq("id", realm.id);
+  await syncRealmMilitaryLedger(supabase, sessionId, actor.name);
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base, event_type: "military",
@@ -2847,39 +2851,58 @@ async function executeDisbandStack(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { stackId, stackName } = payload;
-  if (!stackId) return { events: [], error: "Missing stackId" };
+  return executeStackDeactivation(supabase, base, actor, payload, commandId, sessionId, turnNumber, "disband");
+}
+
+/** Shared by DISBAND_STACK and DEMOBILIZE_STACK; all manpower and timing come from stored rows. */
+async function executeStackDeactivation(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number, action: "disband" | "demobilize",
+): Promise<CommandResult> {
+  const rawIds = action === "demobilize" ? payload?.stackIds : [payload?.stackId];
+  if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.some(id => typeof id !== "string" || !id)) {
+    return { events: [], error: "Missing stackIds" };
+  }
+  const stackIds = rawIds as string[];
+  if (new Set(stackIds).size !== stackIds.length) return { events: [], error: "Duplicitní armády nejsou povoleny" };
 
   const realm = await getRealm(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
-  const { data: storedStack, error: storedError } = await supabase.from("military_stacks").select("*")
-    .eq("session_id", sessionId).eq("player_name", actor.name).eq("id", stackId).maybeSingle();
+  const { data: storedStacks, error: storedError } = await supabase.from("military_stacks").select("*")
+    .eq("session_id", sessionId).eq("player_name", actor.name).in("id", stackIds);
   if (storedError) throw storedError;
-  if (!isStackActive(storedStack)) return { events: [], error: "Active owned stack required" };
-  // Returned men come from the stored stack, never from the client body.
-  const returnedManpower = actualSoldiers([storedStack]);
+  if (!storedStacks || storedStacks.length !== stackIds.length) {
+    return { events: [], error: "Všechny armády musí existovat a patřit tvé říši v této hře" };
+  }
+  if (storedStacks.some((stack: any) => !isStackActive(stack))) {
+    return { events: [], error: "Demobilizovat lze jen aktivní vlastní armády" };
+  }
 
-  // Inactive means out of the field too, so no subsystem can treat it as deployed.
-  const { data: updated, error: updError } = await supabase.from("military_stacks")
-    .update({ is_active: false, is_deployed: false, demobilized_turn: turnNumber })
-    .eq("id", stackId).eq("player_name", actor.name).eq("is_active", true).select("id").maybeSingle();
-  if (updError) throw updError;
-  if (!updated) return { events: [], error: "Armádu mezitím změnil jiný proces." };
+  const returnedManpower = actualSoldiers(storedStacks);
+  const remobilizeReadyTurn = turnNumber + 3;
+  // One conditional statement changes only rows still active at write time.
+  const { data: updated, error: updateError } = await supabase.from("military_stacks").update({
+    is_active: false,
+    is_deployed: false,
+    demobilized_turn: turnNumber,
+    remobilize_ready_turn: remobilizeReadyTurn,
+  }).eq("session_id", sessionId).eq("player_name", actor.name).eq("is_active", true).in("id", stackIds).select("id");
+  if (updateError) throw updateError;
+  if (!updated || updated.length !== stackIds.length) {
+    return { events: [], error: "Armádu mezitím změnil jiný proces." };
+  }
 
-  // Same canonical workforce source as REMOBILIZE: manpower columns follow the remaining active stacks now,
-  // instead of waiting for the next process-turn.
-  const after = await readRealmWorkforce(supabase, sessionId, actor.name, realm.mobilization_rate ?? 0.1);
-  await supabase.from("realm_resources").update({
-    manpower_committed: after.mobilized,
-    manpower_mobilized: after.mobilized,
-    manpower_pool: after.workforce,
-  }).eq("id", realm.id);
-
+  await syncRealmMilitaryLedger(supabase, sessionId, actor.name);
+  const stackNames = storedStacks.map((stack: any) => String(stack.name || stack.id));
+  const verb = action === "demobilize" ? "demobilizoval" : "rozpustil";
+  const note = `${actor.name} ${verb} ${stackNames.join(", ")} (${returnedManpower} mužů).`;
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-    ...base, event_type: "military",
-    note: payload.note || `${actor.name} rozpustil ${stackName ?? storedStack.name}.`,
-    importance: "normal", reference: { ...payload, returnedManpower },
-  }], payload.chronicleText);
+    ...base,
+    event_type: "military",
+    note,
+    importance: "normal",
+    reference: { stackIds, stackNames, returnedManpower, demobilizedTurn: turnNumber, remobilizeReadyTurn, action },
+  }], note, { stackIds, returnedManpower, remobilizeReadyTurn });
 }
 
 async function executeUpgradeFormation(
@@ -3005,12 +3028,9 @@ async function executeReinforceStack(
     soldiers: totalSoldiers, unit_count: totalSoldiers, power: newPower,
   }).eq("id", stackId);
 
-  await supabase.from("realm_resources").update({
-    manpower_committed: available.mobilized + addedManpower,
-    manpower_mobilized: available.mobilized + addedManpower,
-    manpower_pool: Math.max(0,available.workforce-addedManpower),
+  await syncRealmMilitaryLedger(supabase, sessionId, actor.name, {
     gold_reserve: (realm.gold_reserve || 0) - (addedGold || 0),
-  }).eq("id", realm.id);
+  });
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base, event_type: "military",
@@ -3023,29 +3043,7 @@ async function executeDemobilizeStack(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { stackIds, returnedManpower, readyTurn } = payload;
-  if (!stackIds || !Array.isArray(stackIds) || stackIds.length === 0) {
-    return { events: [], error: "Missing stackIds" };
-  }
-
-  const realm = await getRealm(supabase, sessionId, actor.name);
-  if (!realm) return { events: [], error: "Realm not found" };
-
-  await supabase.from("military_stacks").update({
-    is_active: false,
-    demobilized_turn: turnNumber,
-    remobilize_ready_turn: readyTurn || (turnNumber + 3),
-  }).in("id", stackIds).eq("player_name", actor.name);
-
-  await supabase.from("realm_resources").update({
-    manpower_committed: Math.max(0, (realm.manpower_committed || 0) - (returnedManpower || 0)),
-  }).eq("id", realm.id);
-
-  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-    ...base, event_type: "military",
-    note: payload.note || `${actor.name} demobilizoval ${stackIds.length} jednotek.`,
-    importance: "normal", reference: payload,
-  }], payload.chronicleText);
+  return executeStackDeactivation(supabase, base, actor, payload, commandId, sessionId, turnNumber, "demobilize");
 }
 
 async function executeSetMobilization(
@@ -3060,12 +3058,8 @@ async function executeSetMobilization(
   const realm = await getRealm(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
 
-  const update: any = { mobilization_rate: rate };
-  const workforce = await readRealmWorkforce(supabase,sessionId,actor.name,rate);
-  update.manpower_pool = workforce.workforce;
-  update.manpower_committed = workforce.mobilized;
-  update.manpower_mobilized = workforce.mobilized;
-  await supabase.from("realm_resources").update(update).eq("id", realm.id);
+  await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
+  await syncRealmMilitaryLedger(supabase, sessionId, actor.name);
 
   return insertEvents(supabase, commandId, [{
     ...base, event_type: "policy",
@@ -4681,45 +4675,8 @@ async function emitAnnexationRumor(
 
 // ═══════════════════════════════════════════════════════════════════════
 // Node-Trade v1 — Stage 6 handlers
-// MOBILIZE_MANPOWER, PROPOSE_TREATY, RESPOND_TREATY, CANCEL_TREATY
+// PROPOSE_TREATY, RESPOND_TREATY, CANCEL_TREATY. MOBILIZE_MANPOWER is retired fail-closed above.
 // ═══════════════════════════════════════════════════════════════════════
-
-async function executeMobilizeManpower(
-  supabase: any, base: any, actor: Actor, payload: any,
-  commandId: string, sessionId: string, turnNumber: number,
-): Promise<CommandResult> {
-  const requested = Math.max(0, Math.floor(Number(payload.amount || 0)));
-  if (requested <= 0) return { events: [], error: "Missing or invalid amount" };
-
-  const realm = await getRealmByActor(supabase, sessionId, actor, "id, manpower_pool, manpower_available, soldiers, total_population");
-  if (!realm) return { events: [], error: "Realm not found" };
-
-  const pool = Number(realm.manpower_pool ?? 0);
-  if (pool < requested) {
-    return { events: [], error: `Nedostatek manpower poolu (k dispozici: ${pool}, požadováno: ${requested}).` };
-  }
-
-  // Hard cap: total mobilized soldiers ≤ 20% of population (when known)
-  const pop = Number(realm.total_population ?? 0);
-  const currentSoldiers = Number(realm.soldiers ?? 0);
-  if (pop > 0 && currentSoldiers + requested > Math.floor(pop * 0.2)) {
-    return { events: [], error: `Hard cap: nelze mobilizovat víc než 20 % populace (limit ${Math.floor(pop * 0.2)}, nyní ${currentSoldiers}).` };
-  }
-
-  await supabase.from("realm_resources").update({
-    manpower_pool: pool - requested,
-    manpower_available: Number(realm.manpower_available ?? 0) + requested,
-    soldiers: currentSoldiers + requested,
-  }).eq("id", realm.id);
-
-  const note = `${actor.name} mobilizoval ${requested} obyvatel do vojenské služby. Celkem vojáků: ${currentSoldiers + requested}.`;
-  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-    ...base,
-    event_type: "mobilization",
-    note, importance: "normal",
-    reference: { amount: requested, total_soldiers: currentSoldiers + requested },
-  }], payload.chronicleText);
-}
 
 async function executeProposeTreaty(
   supabase: any, base: any, actor: Actor, payload: any,

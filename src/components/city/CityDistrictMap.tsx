@@ -1,18 +1,20 @@
 import { Badge } from "@/components/ui/badge";
 import { MAX_DISTRICTS } from "@/lib/cityGovernance";
-import { storedDistrictBlueprint } from "@/lib/cityDistricts";
+import { districtsTowardHousingLimit, isLegacyProductionDistrict, storedDistrictBlueprint } from "@/lib/cityDistricts";
 
 interface Props {
   districts: any[];
   settlementLevel: string;
+  parcelEconomyVersion?: number;
 }
 
 /** Schematic grid visualization of city districts */
-const CityDistrictMap = ({ districts, settlementLevel }: Props) => {
+const CityDistrictMap = ({ districts, settlementLevel, parcelEconomyVersion = 0 }: Props) => {
   const maxSlots = MAX_DISTRICTS[settlementLevel] || 2;
+  const countedDistricts = districtsTowardHousingLimit(districts, parcelEconomyVersion);
   const slots: (any | null)[] = [
     ...districts,
-    ...Array(Math.max(0, maxSlots - districts.length)).fill(null),
+    ...Array(Math.max(0, maxSlots - countedDistricts.length)).fill(null),
   ];
 
   return (
@@ -31,6 +33,7 @@ const CityDistrictMap = ({ districts, settlementLevel }: Props) => {
         const tmpl = storedDistrictBlueprint(d);
         const legacyIcon = ({ artisan: "⚒️", temple: "⛪", market: "🏪", military: "⚔️", farm: "🌾" } as Record<string, string>)[d.district_type];
         const isBuilding = d.status === "building";
+        const legacyProduction = isLegacyProductionDistrict(d, parcelEconomyVersion);
         return (
           <div
             key={d.id}
@@ -46,6 +49,8 @@ const CityDistrictMap = ({ districts, settlementLevel }: Props) => {
             </span>
             {isBuilding ? (
               <Badge variant="outline" className="text-[7px] h-3.5 px-1">🏗️ Stavba</Badge>
+            ) : legacyProduction ? (
+              <Badge variant="outline" className="text-[7px] h-3.5 px-1">Legacy — neaktivní</Badge>
             ) : (
               <span className="text-[8px] text-muted-foreground">👥{d.population_capacity}</span>
             )}

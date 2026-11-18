@@ -72,7 +72,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
   const sess=await query<any>('game_sessions',()=>sb.from('game_sessions').select('current_turn,resolving_turn,parcel_economy_version').eq('id',session).single());
-  const parcelMode=sess.parcel_economy_version===1||!!options.parcelPreview;
+  const parcelMode=Number(sess.parcel_economy_version??0)>=1||!!options.parcelPreview;
   if(parcelMode)db.tile_parcels=options.parcelPreview??await rows(sb,'tile_parcels',session);
   const turn=sess.resolving_turn??sess.current_turn;
   /**

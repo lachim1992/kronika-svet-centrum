@@ -80,7 +80,8 @@ const DemobilizeDialog = ({
       });
       if (!res.ok) { toast.error(res.error || "Demobilizace selhala"); setSaving(false); return; }
 
-      toast.success(`Demobilizováno ${toDisband.length} jednotek — ${totalReturned} mužů vráceno`);
+      const serverReturned = Number(res.sideEffects?.returnedManpower ?? totalReturned);
+      toast.success(`Demobilizováno ${toDisband.length} jednotek — ${serverReturned} mužů vráceno`);
       setSelectedIds(new Set());
       onDone();
       onClose();

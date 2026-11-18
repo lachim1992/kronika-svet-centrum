@@ -7,10 +7,14 @@ interface Props {
   realm: any;
 }
 
+export const activeUpkeepStacks = (armies: any[]) => armies.filter(stack => stack.is_active !== false);
+
 const MilitaryUpkeepPanel = ({ armies = [], realm }: Props) => {
-  const goldUpkeep = computeArmyGoldUpkeep(armies);
-  const foodUpkeep = computeArmyFoodUpkeep(armies);
-  const totalUnits = armies.reduce((s, stack) => s + getStackUnitCount(stack), 0);
+  // Defensive at the presentation boundary too: inactive history never incurs upkeep.
+  const activeArmies = activeUpkeepStacks(armies);
+  const goldUpkeep = computeArmyGoldUpkeep(activeArmies);
+  const foodUpkeep = computeArmyFoodUpkeep(activeArmies);
+  const totalUnits = activeArmies.reduce((s, stack) => s + getStackUnitCount(stack), 0);
   const mobRate = Math.round((realm?.mobilization_rate || 0) * 100);
 
   return (
@@ -50,10 +54,10 @@ const MilitaryUpkeepPanel = ({ armies = [], realm }: Props) => {
           <div>• Penalizace = (mob_rate − max_mob) × 2 (max 80%)</div>
         </div>
 
-        {armies.length > 0 && (
+        {activeArmies.length > 0 && (
           <div className="border-t border-border pt-3 space-y-1.5">
-            <h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Armádní svazy ({armies.length})</h5>
-            {armies.slice(0, 5).map((stack, i) => {
+            <h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Armádní svazy ({activeArmies.length})</h5>
+            {activeArmies.slice(0, 5).map((stack, i) => {
               const units = getStackUnitCount(stack);
               return (
                 <div key={stack.id || i} className="flex items-center justify-between text-xs">

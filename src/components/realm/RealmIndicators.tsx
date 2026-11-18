@@ -45,7 +45,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     const epidemicCities = cities.filter(c => c.epidemic_active);
     const lowStabilityCities = cities.filter(c => (c.city_stability || 50) < 30);
 
-    const availableManpower = (realm?.manpower_pool || 0) - (realm?.manpower_committed || 0);
+    const availableManpower = realm?.manpower_available ?? Math.max(0, (realm?.manpower_pool || 0));
     const mobRate = Math.round((realm?.mobilization_rate || 0.1) * 100);
 
     // Macro economy
@@ -244,7 +244,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
 
         <Card>
           <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-xs flex items-center gap-1"><Swords className="h-3 w-3" />Vojsko <InfoTip>K dispozici = manpower_pool − manpower_committed. Mobilizace = % populace pod zbraněmi. Nad 15% penalizuje produkci uzlů.</InfoTip></CardTitle>
+            <CardTitle className="text-xs flex items-center gap-1"><Swords className="h-3 w-3" />Vojsko <InfoTip>K dispozici = volná civilní pracovní síla po odečtení aktivních vojáků. Mobilizace = % populace pod zbraněmi. Nad 15% penalizuje produkci uzlů.</InfoTip></CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-1 text-xs space-y-1">
             <div className="flex justify-between">

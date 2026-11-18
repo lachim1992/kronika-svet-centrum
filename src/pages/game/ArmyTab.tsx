@@ -198,8 +198,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
   const maxMobPct = Math.round(wf.maxMobilization * 100);
   // Mobilization cap = how many can be mobilized at current rate
   const mobilizationCap = wf.mobilizationCapacity;
-  // Available manpower: canonical realm.manpower_pool is the SSOT (set by backend after recruit/refresh).
-  // Fallback to derived (cap − committed) only if the realm row is missing.
+  // Available manpower mirrors the canonical source-city calculation; the server revalidates it on every command.
   const availableManpower = wf.workforce;
   const isOverMobCap = mobRate > wf.maxMobilization;
   const overMobPenalty = isOverMobCap ? Math.round((mobRate - wf.maxMobilization) * 100) : 0;
@@ -1102,8 +1101,8 @@ function RecruitDialog({
   const selectedGeneral = generalId === "none" ? null : availableGenerals.find(g => g.id === generalId) ?? null;
   const commandCapacity = generalArmyCapacity(selectedGeneral?.skill ?? null);
 
-  // Free-form pool: prefer canonical manpower_pool from realm; fall back to legacy availableManpower.
-  const truePool = Math.max(0, (realm as any)?.manpower_pool ?? availableManpower ?? 0);
+  // Free-form pool: canonical free civilians, never total population or client-added soldiers.
+  const truePool = Math.max(0, (realm as any)?.manpower_available ?? availableManpower ?? 0);
 
   // Resolve civ-specific unit labels
   const unitLabel = (type: string) => {

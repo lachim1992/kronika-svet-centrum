@@ -13,6 +13,8 @@ import {
 import { computeWorkforceBreakdown } from "@/lib/economyConstants";
 import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, PRESTIGE_META, PRESTIGE_COMPONENTS, type StrategicResource, type PrestigeComponent, getFiscalIncome } from "@/lib/economyFlow";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
+import { dispatchCommand } from "@/lib/commands";
+import { toast } from "sonner";
 
 interface ResourceHUDProps {
   sessionId: string;
@@ -124,14 +126,24 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
       return;
     }
     const rate = requestedPct / 100;
-    await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
+    const result = await dispatchCommand({
+      sessionId, turnNumber: currentTurn, actor: { name: playerName },
+      commandType: "SET_MOBILIZATION", commandPayload: { rate },
+    });
+    if (!result.ok) { toast.error(result.error || "Změna mobilizace selhala"); return; }
     setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: rate }) : r);
+    fetchData();
   };
 
   const handleDemobilizeDone = async () => {
     if (pendingMobRate !== null) {
-      await supabase.from("realm_resources").update({ mobilization_rate: pendingMobRate }).eq("id", realm.id);
-      setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: pendingMobRate }) : r);
+      const rate = pendingMobRate;
+      const result = await dispatchCommand({
+        sessionId, turnNumber: currentTurn, actor: { name: playerName },
+        commandType: "SET_MOBILIZATION", commandPayload: { rate },
+      });
+      if (!result.ok) { toast.error(result.error || "Změna mobilizace selhala"); return; }
+      setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: rate }) : r);
       setPendingMobRate(null);
     }
     fetchData();

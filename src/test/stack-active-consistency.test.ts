@@ -39,7 +39,9 @@ describe("is_active=false means an inactive unit everywhere", () => {
     const cd = src("supabase/functions/command-dispatch/index.ts");
     const body = cd.slice(cd.indexOf("async function executeDisbandStack("), cd.indexOf("async function executeUpgradeFormation("));
     expect(body).not.toMatch(/payload\.returnedManpower|returnedManpower \|\| 0/);
-    expect(body).toMatch(/is_active: false, is_deployed: false/);
-    expect(body).toMatch(/readRealmWorkforce/);
+    expect(body).toMatch(/is_active: false,\s*is_deployed: false/);
+    expect(body).toMatch(/executeStackDeactivation/);
+    const shared = cd.slice(cd.indexOf("async function executeStackDeactivation("), cd.indexOf("async function executeUpgradeFormation("));
+    expect(shared).toMatch(/syncRealmMilitaryLedger/);
   });
 });

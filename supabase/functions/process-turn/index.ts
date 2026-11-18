@@ -2,7 +2,7 @@ import { STRATEGIC_TIER_BONUSES } from "../_shared/strategicEffects.ts";
 import { planFiscalWrites } from '../_shared/atomicWrites.ts';
 import { treasuryBreakdown } from '../_shared/treasury.ts';
 import { capitalStockDelta } from "../_shared/productMarket.ts";
-import { computeWorkforceBreakdown, actualSoldiers } from "../_shared/manpower.ts";
+import { computeWorkforceBreakdown, actualSoldiers, computeMilitaryLedgerPatch } from "../_shared/manpower.ts";
 import { promotedSettlementTier, applyPopulationLoss } from "../_shared/demographics.ts";
 import { TAX_MAX, laffer, governance, taxRevenue, sportFundingExpense as computeSportFunding } from '../_shared/fiscal.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -405,25 +405,19 @@ Deno.serve(async (req) => {
     const stacks=(sessionStacks||[]).filter((s: any)=>(s.owner_player??s.player_name)===playerName);
     const totalSoldiers = actualSoldiers(stacks || []);
     const mobRate = realm.mobilization_rate ?? 0.1;
-    const { activePopRaw, effectiveRatio, effectiveActivePop, mobilized, workforce, workforceRatio } =
-      computeWorkforceBreakdown(myCities, mobRate, activePopModifier, maxMobModifier, totalSoldiers);
+    const workforceBreakdown = computeWorkforceBreakdown(myCities, mobRate, activePopModifier, maxMobModifier, totalSoldiers);
+    const { activePopRaw, effectiveRatio, effectiveActivePop, mobilized, workforce, workforceRatio } = workforceBreakdown;
     const totalPopulation = myCities.reduce((n: number, c: any) => n + (c.population_total || 0), 0);
     const totalWarriors = myCities.reduce((n: number, c: any) => n + (c.population_warriors || 0), 0);
     const warriorRatio = totalPopulation > 0 ? totalWarriors / totalPopulation : 0;
     const mobProductionPenalty = mobilized * MOB_PRODUCTION_PENALTY_RATE;
     const mobWealthPenalty = mobilized * MOB_WEALTH_PENALTY_RATE;
 
-    const overMobilized = totalPopulation > 0 && totalSoldiers > Math.floor(totalPopulation * 0.10);
-    const upkeepMult = overMobilized ? 1.5 : 1.0;
-
-    let totalArmySize = 0, armyProductionUpkeep = 0, armyWealthUpkeep = 0;
-    for (const s of (stacks || [])) {
-      const men = actualSoldiers([s]);
-      totalArmySize += men;
-      // Parity formula: 0.3% gold + 0.4% food per soldier (× over-mobilization mult)
-      armyProductionUpkeep += Math.ceil(men * 0.004 * upkeepMult);
-      armyWealthUpkeep += Math.ceil(men * 0.003 * upkeepMult);
-    }
+    const militaryLedger = computeMilitaryLedgerPatch(myCities, stacks, workforceBreakdown);
+    const overMobilized = militaryLedger.over_mobilized;
+    const totalArmySize = totalSoldiers;
+    const armyProductionUpkeep = militaryLedger.military_food_upkeep;
+    const armyWealthUpkeep = militaryLedger.military_gold_upkeep;
 
     // Supply strain = army_size / logistic_capacity
     const currentCapacity = Math.max(5, totalCapacity * 2 + (infra?.roads_level || 0) * 2);
@@ -1559,7 +1553,6 @@ Deno.serve(async (req) => {
     const fiscalPatch = {
       grain_reserve: Math.round(globalGrainReserve),
       granary_capacity: adjustedGranary,
-      manpower_pool: manpowerPool,
       logistic_capacity: logisticCapacity,
       last_processed_turn: currentTurn,
       last_turn_grain_prod: Math.round(foodProduced), // Actual production; excludes imports/opening stock.
@@ -1579,12 +1572,8 @@ Deno.serve(async (req) => {
       supply_strain: Math.round(supplyStrain * 1000) / 1000,
       mobilization_production_penalty: Math.round(mobProductionPenalty * 10) / 10,
       mobilization_wealth_penalty: Math.round(mobWealthPenalty * 10) / 10,
-      // ── Stage 7: explicit manpower & military upkeep ledger ──
-      manpower_available: Math.max(0, Math.floor(manpowerPool - totalSoldiers)),
-      manpower_mobilized: Math.max(0, Math.floor(totalSoldiers)),
-      over_mobilized: overMobilized,
-      military_gold_upkeep: armyWealthUpkeep,
-      military_food_upkeep: armyProductionUpkeep,
+      // ── Stage 7: the same complete manpower/upkeep contract as military commands ──
+      ...militaryLedger,
       last_turn_faith_delta: Math.round(faithGrowth * 100) / 100,
       // Goods economy fiscal columns (fix: was tax_pop, correct column is tax_population)
       tax_population: goodsPopTax,

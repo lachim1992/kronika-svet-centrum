@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { loadEdgeFunction } from "./loadEdgeFunction";
 
-function fixture(parcelEconomyVersion = 1) {
+export function fixture(parcelEconomyVersion = 1) {
   let sequence = 0;
   const tables: Record<string, any[]> = {
     game_sessions: [{ id: "s", current_turn: 1, resolving_turn: null, parcel_economy_version: parcelEconomyVersion }],
@@ -75,10 +75,11 @@ function fixture(parcelEconomyVersion = 1) {
     },
   };
   const handler = loadEdgeFunction("command-dispatch", { createClient: () => db });
-  const run = async (commandType: string, commandPayload: any) => {
+  const run = async (commandType: string, commandPayload: any, options: { actor?: any; authorization?: string; resolvingTurn?: number | null } = {}) => {
+    tables.game_sessions[0].resolving_turn = options.resolvingTurn ?? null;
     const response = await handler(new Request("https://local/command", {
-      method: "POST", headers: { authorization: "Bearer verified" },
-      body: JSON.stringify({ sessionId: "s", turnNumber: 1, actor: { name: "forged-name", type: "player" }, commandType, commandId: `${commandType}-${++sequence}`, commandPayload }),
+      method: "POST", headers: { authorization: options.authorization || "Bearer verified" },
+      body: JSON.stringify({ sessionId: "s", turnNumber: 1, actor: options.actor || { name: "forged-name", type: "player" }, commandType, commandId: `${commandType}-${++sequence}`, commandPayload }),
     }));
     return { status: response.status, body: await response.json() };
   };

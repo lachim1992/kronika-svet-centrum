@@ -14,7 +14,7 @@ import {
   FACTION_TYPES, RATION_POLICIES,
   LABOR_KEYS, LABOR_LABELS, MAX_DISTRICTS, INFRA_UPGRADES, computeFactionPower,
 } from "@/lib/cityGovernance";
-import { availableDistrictBlueprints, storedDistrictBlueprint, type DistrictBlueprint } from "@/lib/cityDistricts";
+import { availableDistrictBlueprints, districtsTowardHousingLimit, isLegacyProductionDistrict, storedDistrictBlueprint, type DistrictBlueprint } from "@/lib/cityDistricts";
 import CityDistrictMap from "@/components/city/CityDistrictMap";
 
 interface Props {
@@ -80,6 +80,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
   };
 
   const maxDistricts = MAX_DISTRICTS[city.settlement_level] || 2;
+  const countedDistricts = districtsTowardHousingLimit(districts, parcelEconomyVersion);
   const currentRation = city.ration_policy || "equal";
 
   // ── Save ration policy ──
@@ -127,7 +128,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
 
   // ── Build district: the server resolves every effect and price from districtKey ──
   const buildDistrict = async (blueprint: DistrictBlueprint) => {
-    if (districts.length >= maxDistricts) {
+    if (countedDistricts.length >= maxDistricts) {
       toast.error(`Maximum ${maxDistricts} čtvrtí pro ${city.settlement_level}`);
       return;
     }
@@ -259,11 +260,11 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-display flex items-center gap-2">
               <Building2 className="h-4 w-4 text-primary" />Mapa čtvrtí
-              <Badge variant="secondary" className="text-[10px] ml-auto">{districts.length}/{maxDistricts}</Badge>
+              <Badge variant="secondary" className="text-[10px] ml-auto">{countedDistricts.length}/{maxDistricts}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <CityDistrictMap districts={districts} settlementLevel={city.settlement_level} />
+            <CityDistrictMap districts={districts} settlementLevel={city.settlement_level} parcelEconomyVersion={parcelEconomyVersion} />
           </CardContent>
         </Card>
       )}
@@ -283,6 +284,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
               {districts.map(d => {
                 const tmpl = storedDistrictBlueprint(d);
                 const isBuilding = d.status === "building";
+                const legacyProduction = isLegacyProductionDistrict(d, parcelEconomyVersion);
                 const turnsLeft = isBuilding ? (d.build_started_turn + d.build_turns - currentTurn) : 0;
                 return (
                   <div key={d.id} className={`p-3 rounded-lg border ${isBuilding ? "border-muted bg-muted/20" : "border-border"}`}>
@@ -296,11 +298,13 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                         <Badge variant="outline" className="text-[10px] shrink-0">
                           🏗️ {turnsLeft > 0 ? `${turnsLeft} kol` : "Dokončuje se"}
                         </Badge>
+                      ) : legacyProduction ? (
+                        <Badge variant="outline" className="text-[10px] shrink-0">Legacy — neaktivní</Badge>
                       ) : (
                         <Badge variant="secondary" className="text-[10px] shrink-0">Aktivní</Badge>
                       )}
                     </div>
-                    {!isBuilding && (
+                    {!isBuilding && !legacyProduction && (
                       <div className="flex gap-1.5 mt-1.5 flex-wrap">
                         {d.grain_modifier !== 0 && <Badge variant="outline" className="text-[9px]">🌾{d.grain_modifier > 0 ? "+" : ""}{d.grain_modifier}</Badge>}
                         {d.wealth_modifier !== 0 && <Badge variant="outline" className="text-[9px]">💰{d.wealth_modifier > 0 ? "+" : ""}{d.wealth_modifier}</Badge>}
@@ -315,7 +319,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
           )}
 
           {/* Build new district */}
-          {isOwner && districts.length < maxDistricts && (
+          {isOwner && countedDistricts.length < maxDistricts && (
             <div className="space-y-2">
               <p className="text-xs font-display font-semibold flex items-center gap-1">
                 <Plus className="h-3 w-3" />Založit novou čtvrť

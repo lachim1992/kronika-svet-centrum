@@ -1,5 +1,14 @@
 # Map-first square-grid roadmap
 
+## Konsolidovaný opravný balík — demobilizace, pohyb, manpower a autorita (2026-11-18)
+- [x] DEMOBILIZE_STACK a DISBAND_STACK sdílí serverovou aktivní-only demobilizaci; počet mužů jen z DB, kompletní HUD/upkeep přepočet z aktivních stacků a měst.
+- [x] Hexový pohyb odmítne stack deaktivovaný mezi načtením a zápisem; race test prokázal RACE_LOST a beze změny souřadnic.
+- [x] Interní actor typy pouze po service-role ověření před turn gate; parcel režim 0/1/2/preview, legacy production a food fail-closed, staré obilí není upgrade prerequisite.
+- [x] Jediná kapacitní trigger cesta prokázána PGlite souběhy building↔building i building↔subnode; read-only JV72O7 audit stále 7/6/5 vazeb, 0 session mismatch a 0 orphan content.
+- [x] Migrační fakta zdokumentována: 0016 mimo journal, 0023/0024 bajtově shodné, chybí 0025 snapshot. Kandidátská 0038 zůstává nepoužitá; žádný rewrite historie ani produkční migrace.
+- [x] Cílené ověření 78/78; celá sada **1219 passed / 3 skipped** (148 souborů passed, 1 skipped), `oj typecheck -b --noEmit`, Deno check command-dispatch/process-turn a build OK. Bez deploye, publikace, herního zápisu, refresh/commit-turn a posunu tahu (JV72O7 stále 21).
+- [ ] Blokováno samostatným povolením: bezpečně zrekonsiliovat 0025 snapshot a forward-only 0038/0016 platformním workflow, potom nasadit command-dispatch/process-turn a ověřit demobilizaci v izolované hře.
+
 ## Druhý opravný balík — sklady, vazby parcel a migrace (2026-11-18)
 - [x] Legacy potraviny: příděly přes serverový SET_RATION_POLICY; open_stores a nové L3 food převody fail-closed; sváteční/kolapsové fiktivní zápisy odstraněny, staré food trasy už negenerují zlato. Historické řádky zachovány.
 - [x] Read-only audit našel 7 budov bez content, 6 rozporů parcel_id a 19 legacy ukazatelů (všech 13 vazeb JV72O7), 0 přeplněných parcel. Kandidátská SQL invariantů a atomická RPC obsazení jsou v `supabase/reconciliation/`; živé řádky nebyly opraveny.

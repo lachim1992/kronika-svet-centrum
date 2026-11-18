@@ -29,5 +29,5 @@ it("if the turn starts closing between check and send, the server refusal is ret
 });
 it("command-dispatch answers the busy state with HTTP 200", () => {
   const src = require("node:fs").readFileSync("supabase/functions/command-dispatch/index.ts", "utf8");
-  expect(src).toMatch(/const busy = turnResolvingRefusal\(session, actor\?\.type\);\s*if \(busy\) return json\(busy, 200\);/);
+  expect(src).toMatch(/const busy = turnResolvingRefusal\(session, trustedInternal \? actor\?\.type : "player"\);\s*if \(busy\) return json\(busy, 200\);/);
 });

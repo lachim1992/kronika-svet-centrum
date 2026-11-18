@@ -120,7 +120,8 @@ export async function applyStackMove(
     .from("military_stacks")
     .update(positionUpdate)
     .eq("id", stackId)
-    .eq("session_id", sessionId);
+    .eq("session_id", sessionId)
+    .eq("is_active", true);
   updateQuery = gridKind === "square4"
     ? updateQuery.eq("grid_x", stackQ).eq("grid_y", stackR)
     : updateQuery.eq("hex_q", stackQ).eq("hex_r", stackR);

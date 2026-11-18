@@ -91,7 +91,16 @@ export function districtBlueprint(key: string): DistrictBlueprint | undefined {
 
 /** New parcel-economy worlds offer housing only; legacy worlds retain their intentional production branch. */
 export function availableDistrictBlueprints(parcelEconomyVersion: unknown): DistrictBlueprint[] {
-  return Number(parcelEconomyVersion || 0) >= 1 ? RESIDENTIAL_DISTRICTS : ALL_DISTRICTS;
+  return Number(parcelEconomyVersion ?? 0) >= 1 ? RESIDENTIAL_DISTRICTS : ALL_DISTRICTS;
+}
+
+/** Historical production rows stay visible but never consume a residential slot in parcel mode. */
+export function isLegacyProductionDistrict(row: { district_type?: string | null }, parcelEconomyVersion: unknown): boolean {
+  return Number(parcelEconomyVersion ?? 0) >= 1 && row.district_type === "production";
+}
+
+export function districtsTowardHousingLimit<T extends { district_type?: string | null }>(rows: T[], parcelEconomyVersion: unknown): T[] {
+  return rows.filter(row => !isLegacyProductionDistrict(row, parcelEconomyVersion));
 }
 
 /** Older rows have no blueprint key, so their canonical name + category is the compatibility link. */

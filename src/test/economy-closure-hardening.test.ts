@@ -39,7 +39,7 @@ const recipe = (key: string, out: string, inputs: any[] = [], role = inputs.leng
   ({ recipe_key: key, output_good_key: out, output_quantity: 1, input_items: inputs, labor_cost: 0.025, required_role: role, required_tags: [] });
 const road = (id: string, a: [number, number], b: [number, number], friction = 1, capacity = 200) =>
   ({ id, session_id: S, status: 'completed', from_x: a[0], from_y: a[1], to_x: b[0], to_y: b[1], friction, capacity });
-const run = async (t: Record<string, any[]>) => { const sb = fakeSb(t); await computeCanonicalEconomy(sb, S); return sb.saved.replace_goods_economy_projection.p_payload; };
+const run = async (t: Record<string, any[]>, options: { parcelPreview?: any[] } = {}) => { const sb = fakeSb(t); await computeCanonicalEconomy(sb, S, options); return sb.saved.replace_goods_economy_projection.p_payload; };
 const producerOf = (payload: any, id: string) => payload.result.snapshot.producers.find((p: any) => p.id === id);
 const bal = (payload: any, city: string, good: string) => payload.result.balances.find((b: any) => b.city === city && b.good === good);
 
@@ -66,6 +66,14 @@ describe("parcel economy retires abstract district output without touching legac
     const payload = await run(setup(0));
     expect(payload.result.snapshot.producers.map((p: any) => p.id)).toContain("farm:harvest_wheat");
     expect(producerOf(payload, "farm:harvest_wheat")?.channel).toBe("district");
+  });
+  it("every parcel version at or above 1 disables abstract production", async () => {
+    const payload = await run(setup(2));
+    expect(payload.result.snapshot.producers.filter((p: any) => p.channel === "district")).toHaveLength(0);
+  });
+  it("an explicit parcel preview also disables production in a version-0 save", async () => {
+    const payload = await run(setup(0), { parcelPreview: [] });
+    expect(payload.result.snapshot.producers.filter((p: any) => p.channel === "district")).toHaveLength(0);
   });
 });
 

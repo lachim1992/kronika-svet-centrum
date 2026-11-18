@@ -24,7 +24,7 @@ export function workforceLawModifiers(laws: any[]) {
 }
 
 /** Read current source rows; a cached manpower pool is never recruitment authority. */
-export async function readRealmWorkforce(sb:any,session:string,player:string,rate:number) {
+export async function readRealmMilitaryState(sb:any,session:string,player:string,rate:number) {
   async function all(table:string) {
     const result:any[]=[];
     for(let offset=0;;offset+=500){
@@ -33,10 +33,54 @@ export async function readRealmWorkforce(sb:any,session:string,player:string,rat
       result.push(...data);if(data.length<500)return result;
     }
   }
-  const [cities,stacks,laws]=await Promise.all(['cities','military_stacks','laws'].map(all));
+  const [allCities,allStacks,laws]=await Promise.all(['cities','military_stacks','laws'].map(all));
+  const cities=allCities.filter(c=>c.owner_player===player);
+  const stacks=allStacks.filter(s=>(s.owner_player??s.player_name)===player);
   const modifiers=workforceLawModifiers(laws.filter(l=>l.player_name===player));
-  const soldiers=actualSoldiers(stacks.filter(s=>(s.owner_player??s.player_name)===player));
-  return computeWorkforceBreakdown(cities.filter(c=>c.owner_player===player),rate,modifiers.active,modifiers.maxMobilization,soldiers);
+  const soldiers=actualSoldiers(stacks);
+  const breakdown=computeWorkforceBreakdown(cities,rate,modifiers.active,modifiers.maxMobilization,soldiers);
+  return { cities, stacks, breakdown };
+}
+
+export async function readRealmWorkforce(sb:any,session:string,player:string,rate:number) {
+  return (await readRealmMilitaryState(sb,session,player,rate)).breakdown;
+}
+
+/** One persisted HUD contract: pool and available are free civilians, mobilized is actual active soldiers. */
+export function computeMilitaryLedgerPatch(cities:any[],stacks:any[],breakdown:ReturnType<typeof computeWorkforceBreakdown>) {
+  const totalPopulation=cities.reduce((sum,c)=>sum+nonnegative(c.population_total),0);
+  const mobilized=actualSoldiers(stacks);
+  const overMobilized=totalPopulation>0&&mobilized>Math.floor(totalPopulation*0.10);
+  const upkeepMult=overMobilized?1.5:1;
+  let goldUpkeep=0,foodUpkeep=0;
+  for(const stack of stacks){
+    const men=actualSoldiers([stack]);
+    goldUpkeep+=Math.ceil(men*0.003*upkeepMult);
+    foodUpkeep+=Math.ceil(men*0.004*upkeepMult);
+  }
+  const free=Math.max(0,Math.floor(breakdown.workforce));
+  return {
+    manpower_pool:free,
+    manpower_available:free,
+    manpower_committed:Math.max(0,Math.floor(mobilized)),
+    manpower_mobilized:Math.max(0,Math.floor(mobilized)),
+    over_mobilized:overMobilized,
+    military_gold_upkeep:goldUpkeep,
+    military_food_upkeep:foodUpkeep,
+  };
+}
+
+/** Refresh every field read by the HUD from source rows after a military command. */
+export async function syncRealmMilitaryLedger(sb:any,session:string,player:string,extra:Record<string,unknown>={}) {
+  const {data:realm,error:realmError}=await sb.from('realm_resources').select('id,mobilization_rate')
+    .eq('session_id',session).eq('player_name',player).maybeSingle();
+  if(realmError)throw realmError;
+  if(!realm)throw new Error('Realm not found');
+  const {cities,stacks,breakdown}=await readRealmMilitaryState(sb,session,player,realm.mobilization_rate??0.1);
+  const patch={...computeMilitaryLedgerPatch(cities,stacks,breakdown),...extra};
+  const {error}=await sb.from('realm_resources').update(patch).eq('id',realm.id);
+  if(error)throw error;
+  return { breakdown, patch };
 }
 export function computeWorkforceBreakdown(cities: any[], mobilizationRate: number,
   activePopRatioModifier = 0, maxMobilizationModifier = 0, soldiers = 0) {
