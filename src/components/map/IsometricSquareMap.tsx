@@ -9,7 +9,7 @@ import sprTrees from "@/assets/map/spr-trees.png";
 import { isSandboxMode } from "@/hooks/useSandboxMode";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, ArrowUpRight, Castle, Check, Factory, Flag, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, Undo2, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Castle, Check, Factory, Flag, Gem, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,8 @@ import { FORMATIONS as FB_FORMATIONS, FORMATION_INFO as FB_FORMATION_INFO, norma
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
 import BattleAttackEffects from "./BattleAttackEffects";
+import { MICRO_RESOURCE_LABEL } from "../../../supabase/functions/_shared/microResources";
+import { ATLAS_KINDS, atlasColor, microAtlasCell } from "@/lib/resourceAtlas";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
 import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroRoute, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
@@ -450,6 +452,20 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [showLabels, setShowLabels] = useMapLayer("labels");
   const [showSubBiomes, setShowSubBiomes] = useMapLayer("subBiomes");
   const [showProvinces, setShowProvinces] = useMapLayer("provinces");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAtlas, setShowAtlas] = useState(false);
+  const [atlasFocus, setAtlasFocus] = useState<string | null>(null);
+  const [atlasDeposits, setAtlasDeposits] = useState<Map<string, { kind: any }[] | null> | null>(null);
+  useEffect(() => { let live = true; supabase.auth.getUser().then(async ({ data }) => {
+    if (!data.user) return; const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", data.user.id).eq("role", "admin");
+    if (live) setIsAdmin((roles || []).length > 0); }); return () => { live = false; }; }, []);
+  useEffect(() => {
+    if (!showAtlas || atlasDeposits) return;
+    supabase.functions.invoke("admin-resource-atlas", { body: { sessionId } }).then(({ data, error }) => {
+      if (error || !data?.tiles) { toast.error("Mapu surovin se nepodařilo načíst"); setShowAtlas(false); return; }
+      setAtlasDeposits(new Map((data.tiles as any[]).map(t => [`${t.x},${t.y}`, t.deposits])));
+    });
+  }, [showAtlas, atlasDeposits, sessionId]);
   const [provinceRows, setProvinceRows] = useState<{ id: string; name: string; owner_player: string | null }[]>([]);
   const [territoryDistricts, setTerritoryDistricts] = useState<{ id: string; city_id: string; owner_player: string; name: string; kind: string }[]>([]);
   const [districtMembers, setDistrictMembers] = useState<Map<string, string>>(new Map());
@@ -2442,6 +2458,20 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 </g>; })}
             </g>;
           })()}
+          {showAtlas && atlasDeposits && <g pointerEvents="none">
+            {sortedTiles.map(tile => {
+              if (tile.biome_family === "sea") return null;
+              const cell = tileCell(tile); const point = at(cell.a, cell.b);
+              const deposits = atlasDeposits.get(`${cell.a},${cell.b}`) ?? null;
+              return <g key={`atlas-${tile.id}`}>{subBiomesOf(tile, cell.a, cell.b).map(spec => {
+                const c = microAtlasCell(spec.subBiome, tile.biome_family, deposits);
+                const pick = atlasFocus ? c.all.find(x => x.kind === atlasFocus) : c.top ? { kind: c.top, p: c.p } : null;
+                if (!pick) return null;
+                return <polygon key={spec.parcelIndex} points={parcelQuad(point, spec.parcelX, spec.parcelY)} fill={atlasColor(pick.kind)}
+                  fillOpacity={.12 + .78 * pick.p} stroke="var(--map-label-edge)" strokeOpacity=".35" strokeWidth=".4" />;
+              })}</g>;
+            })}
+          </g>}
           {/* top-most drawing layer: sub-parcels of passable cells catch every click and drag */}
           {roadDraft.length > 0 && <g>
             {sortedTiles.map(tile => {
@@ -2474,6 +2504,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <Button size="icon" variant={showLabels ? "secondary" : "ghost"} aria-label={showLabels ? "Skrýt názvy měst" : "Zobrazit názvy měst"} aria-pressed={showLabels} onClick={() => setShowLabels(value => !value)}><Flag className={`h-4 w-4 ${showLabels ? "" : "opacity-40"}`} /></Button>
         <Button size="icon" variant={showSubBiomes ? "secondary" : "ghost"} aria-label={showSubBiomes ? "Skrýt subbiomy" : "Zobrazit subbiomy"} aria-pressed={showSubBiomes} onClick={() => setShowSubBiomes(value => !value)}><Grid3x3 className={`h-4 w-4 ${showSubBiomes ? "" : "opacity-40"}`} /></Button>
         <Button size="icon" variant={showProvinces ? "secondary" : "ghost"} aria-label={showProvinces ? "Skrýt hranice provincií" : "Zobrazit hranice provincií"} aria-pressed={showProvinces} onClick={() => setShowProvinces(value => !value)}><Shield className={`h-4 w-4 ${showProvinces ? "" : "opacity-40"}`} /></Button>
+        {isAdmin && <Button size="icon" variant={showAtlas ? "secondary" : "ghost"} aria-label={showAtlas ? "Skrýt mapu surovin" : "Admin: mapa surovin"} title="★ Admin: mapa surovin" aria-pressed={showAtlas} onClick={() => setShowAtlas(v => !v)}><Gem className={`h-4 w-4 ${showAtlas ? "" : "opacity-40"}`} /></Button>}
+      </div>
+      {showAtlas && <div className="map-floating-control absolute bottom-20 left-3 z-50 max-h-[70%] w-64 overflow-y-auto p-3 text-xs">
+        <div className="mb-1 flex items-center gap-2"><Gem className="h-4 w-4 text-primary" /><strong className="mr-auto">★ Mapa surovin</strong>
+          <Button size="icon" variant="ghost" className="h-6 w-6" aria-label="Zavřít mapu surovin" onClick={() => setShowAtlas(false)}><X className="h-3 w-3" /></Button></div>
+        {!atlasDeposits ? <div className="flex items-center gap-2 py-2"><Loader2 className="h-3 w-3 animate-spin" />Načítám…</div> : <>
+          <p className="mb-2 text-muted-foreground">Barva = surovina mikročtverce, sytost = pravděpodobnost (plná = jistá, slabá = vzácná šance). Bez filtru ukazuje nejlepší vzácnou šanci; jisté suroviny (obilí, kámen, dřevo, ryby, rašelina) jen tam, kde žádná šance není. Rudy a žula jen tam, kde je pod polem ložisko. Kliknutím na surovinu zobrazíš jen ji.</p>
+          <div className="grid grid-cols-2 gap-1">
+            {ATLAS_KINDS.map(kind => <button key={kind} type="button" onClick={() => setAtlasFocus(f => f === kind ? null : kind)}
+              className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left ${atlasFocus === kind ? "bg-secondary" : atlasFocus ? "opacity-50" : ""}`}>
+              <span className="h-3 w-3 shrink-0 rounded-sm border border-border" style={{ background: atlasColor(kind) }} />{MICRO_RESOURCE_LABEL[kind]}</button>)}
+          </div>
+          <div className="mt-2 flex items-center gap-1 text-muted-foreground"><span>10 %</span><span className="h-2 flex-1 rounded" style={{ background: "linear-gradient(90deg, hsl(var(--foreground) / .15), hsl(var(--foreground) / .9))" }} /><span>100 %</span></div>
+        </>}
+      </div>}
+      <div className="hidden">
       </div>
       <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>Čtvercová síť · izometrické zobrazení</span></div>
       {/* rendered straight into the page body: app chrome (tabs, docks) would swallow the clicks */}
