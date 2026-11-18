@@ -33,7 +33,7 @@ afterEach(async () => {
 
 describe("floating map detail window", () => {
   it("keeps its initial position and dragged header inside the viewport", () => {
-    expect(initialWindowPosition({ x: 1200, y: 900 })).toEqual({ x: 596, y: 76 });
+    expect(initialWindowPosition({ x: 1200, y: 900 })).toEqual({ x: 576, y: 76 });
     expect(clampWindowPosition({ x: -50, y: 1200 }, { x: 1200, y: 900 }, { x: 580, y: 700 })).toEqual({ x: 8, y: 848 });
   });
 

@@ -13,7 +13,7 @@ export function clampWindowPosition(point: WindowPoint, viewport: WindowPoint, w
   };
 }
 
-export function initialWindowPosition(viewport: WindowPoint, width = 580): WindowPoint {
+export function initialWindowPosition(viewport: WindowPoint, width = Math.min(Math.max(580, viewport.x / 2), viewport.x - 32)): WindowPoint {
   return clampWindowPosition(
     { x: viewport.x - width - 24, y: 76 },
     viewport,
@@ -65,7 +65,7 @@ export default function MapDetailWindow({
   }, [isMobile]);
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (isMobile || event.button !== 0 || !windowRef.current) return;
+    if (isMobile || event.button !== 0 || !windowRef.current || (event.target as HTMLElement).closest("button")) return;
     event.preventDefault();
     event.stopPropagation();
     const bounds = windowRef.current.getBoundingClientRect();
@@ -99,7 +99,7 @@ export default function MapDetailWindow({
       data-testid="map-detail-window"
       className={isMobile
         ? "map-tile-detail fixed inset-x-0 bottom-0 z-[70] flex max-h-[68vh] flex-col rounded-t-2xl border border-primary/25 bg-background/95 shadow-2xl backdrop-blur-xl"
-        : "map-tile-detail fixed z-[70] flex h-[min(780px,calc(100vh-96px))] w-[min(580px,calc(100vw-32px))] flex-col rounded-xl border border-primary/25 bg-background/95 shadow-2xl backdrop-blur-xl"}
+        : "map-tile-detail fixed z-[70] flex h-[calc(100vh-96px)] w-[min(max(580px,50vw),calc(100vw-32px))] flex-col rounded-xl border border-primary/25 bg-background/95 shadow-2xl backdrop-blur-xl"}
       style={isMobile ? undefined : { left: position.x, top: position.y }}
       onPointerDown={event => event.stopPropagation()}
       onClick={event => event.stopPropagation()}

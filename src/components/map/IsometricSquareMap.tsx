@@ -1420,7 +1420,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         const quad = parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y);
         const activeParcel = parcel.id === selectedParcelId;
         return <g key={parcel.id} role="button" tabIndex={0} className="cursor-pointer"
-          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); revealParcelDetail(); openStructureOnParcel(parcel.id); }}
+          onClick={event => { event.stopPropagation(); if (event.detail < 2 || dragRef.current?.moved) return; setSelectedParcelId(parcel.id); revealParcelDetail(); openStructureOnParcel(parcel.id); }}
           onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); revealParcelDetail(); openStructureOnParcel(parcel.id); } }}>
           <polygon points={quad} fill={fill}
             stroke={activeParcel ? "var(--map-focus)" : mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
@@ -2086,7 +2086,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 setArmyMoveTarget({ x: cell.a * MICRO_PER_TILE + px, y: cell.b * MICRO_PER_TILE + py });
                 return;
               }
-              focusTile(tile); }}
+              if (event.detail >= 2) focusTile(tile); }}
               className={roadDraft.length > 0 || armyMoveMode || battlePicking ? "cursor-crosshair" : "cursor-pointer"}>
 
               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={Array.isArray(terrainRaster) && terrainRaster.length ? "transparent" : colors[0]}
@@ -2246,7 +2246,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               }, undefined);
               if (fallbackTile) focusTile(fallbackTile, city.id);
             };
-            return <g key={city.id} data-map-city={city.id} role="button" aria-label={`Vstoupit do města ${city.name}`} tabIndex={0} transform={`translate(${point.x + seatOffset.x},${point.y + seatOffset.y - 16})`} className="cursor-pointer" pointerEvents={roadDraft.length > 0 ? "none" : "auto"} onClick={(event) => { event.stopPropagation(); openCityLayer(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCityLayer(); } }}>
+            return <g key={city.id} data-map-city={city.id} role="button" aria-label={`Vstoupit do města ${city.name}`} tabIndex={0} transform={`translate(${point.x + seatOffset.x},${point.y + seatOffset.y - 16})`} className="cursor-pointer" pointerEvents={roadDraft.length > 0 ? "none" : "auto"} onClick={(event) => { event.stopPropagation(); if (event.detail < 2 || dragRef.current?.moved) return; openCityLayer(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCityLayer(); } }}>
               <title>{city.name}</title>
               {showLabels && (zoom >= LABEL_ZOOM || own || cityLayerCityId === city.id) && (() => {
                 const labelScale = Math.max(.5, Math.min(1.25, 1 / zoom));
@@ -2363,7 +2363,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             return <g key={group.key} data-map-army={lead.id} role="button" tabIndex={0} aria-label={`Armáda ${lead.name}`}
               pointerEvents={roadDraft.length > 0 || armyMoveMode ? "none" : "auto"}
               className="cursor-pointer outline-none focus:outline-none"
-              onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
+              onClick={(event) => { event.stopPropagation(); if (event.detail >= 2 && !dragRef.current?.moved) openArmy(); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
               {(() => {
                 const total = group.list.reduce((sum, army) => sum + army.soldiers, 0);
