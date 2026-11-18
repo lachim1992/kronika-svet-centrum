@@ -798,6 +798,7 @@ async function executeCommand(
 
     case "START_FIELD_BATTLE":
     case "FIELD_BATTLE_DEPLOY":
+    case "FIELD_BATTLE_FORMATION":
     case "FIELD_BATTLE_ORDER":
     case "FIELD_BATTLE_READY":
       return await executeFieldBattleCommand(supabase, base, actor, commandType, payload || {}, commandId, sessionId, turnNumber, insertEventsWithChronicle);

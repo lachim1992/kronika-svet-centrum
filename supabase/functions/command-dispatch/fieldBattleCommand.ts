@@ -1,7 +1,7 @@
 // Field battle commands. Rules live only in _shared/fieldBattle.ts; this file loads state, authorises, and writes with rev CAS.
 import {
   battleInRange, validateBattlefield, buildUnits, autoDeploy, inDeployZone, orderProblem, resolveRound, settlementPlan, planBattleAi,
-  commandPoints, cpUsed, seededRandom, terrainOfSubBiome, upgradeUnit, normalizeFormation, unitFormation,
+  commandPoints, cpUsed, applyFormation, seededRandom, terrainOfSubBiome, upgradeUnit, normalizeFormation, unitFormation,
   type FBUnit, type FBOrder, type Side, type BattleMeta, type Cell, type OrderKind, type TerrainAt,
 } from "../_shared/fieldBattle.ts";
 import { UNIT_POWER_FACTOR } from "../_shared/unitTypes.ts";
@@ -119,6 +119,20 @@ export async function executeFieldBattleCommand(supabase: any, base: any, actor:
   };
   const side: Side | undefined = payload.side === "attacker" || payload.side === "defender" ? payload.side : undefined;
   const cpOf = (s: Side) => commandPoints(meta.generalSkill?.[s] ?? null);
+
+  if (commandType === "FIELD_BATTLE_FORMATION") {
+    if (fb.status !== "deploying") return { events: [], error: "Formaci lze měnit jen při přípravě bitvy" };
+    if (!side) return { events: [], error: "Chybí strana" };
+    if (!controls(stackOf(side))) return { events: [], error: "Tuto stranu neovládáš" };
+    if (fb.ready?.[side]) return { events: [], error: "Strana už je připravena" };
+    const keys: string[] = Array.isArray(payload.keys) ? payload.keys.map(String).slice(0, 120) : [];
+    if (!keys.length) return { events: [], error: "Vyber oddíly" };
+    const r = applyFormation(units, side, keys, String(payload.formation ?? ""));
+    if (!r.accepted.length) return { events: [], error: r.rejected[0]?.reason ?? "Formaci nelze" };
+    units = r.units;
+    const err = await save({ units });
+    return err ? { events: [], error: err } : { events: [], sideEffects: { fieldBattle: { accepted: r.accepted, rejected: r.rejected } } };
+  }
 
   if (commandType === "FIELD_BATTLE_DEPLOY") {
     if (fb.status !== "deploying") return { events: [], error: "Rozmístění už skončilo, zálohu přivolej rozkazem" };

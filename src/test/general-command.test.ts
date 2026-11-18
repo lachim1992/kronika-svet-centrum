@@ -10,13 +10,17 @@ const unit = (key: string, side: "attacker" | "defender", x: number | null, y: n
 
 describe("canonical general command on the 0–100 skill scale", () => {
   it("uses exact CP examples and clamps outliers", () => {
-    expect(generalCommandPoints(null)).toBe(2);
-    expect(generalCommandPoints(40)).toBe(5);
-    expect(generalCommandPoints(56)).toBe(6);
-    expect(generalCommandPoints(63)).toBe(7);
-    expect(generalCommandPoints(100)).toBe(10);
-    expect(generalCommandPoints(1000)).toBe(10);
-    expect(generalCommandPoints(-10)).toBe(2);
+    expect(generalCommandPoints(null)).toBe(4);
+    expect(generalCommandPoints(0)).toBe(4);
+    expect(generalCommandPoints(24)).toBe(4);
+    expect(generalCommandPoints(25)).toBe(5);
+    expect(generalCommandPoints(49)).toBe(5);
+    expect(generalCommandPoints(50)).toBe(6);
+    expect(generalCommandPoints(74)).toBe(6);
+    expect(generalCommandPoints(75)).toBe(7);
+    expect(generalCommandPoints(100)).toBe(7);
+    expect(generalCommandPoints(1000)).toBe(7);
+    expect(generalCommandPoints(-10)).toBe(4);
   });
   it("uses per-stack capacity, not a realm mobilization pool", () => {
     expect(generalArmyCapacity(null)).toBe(2000);

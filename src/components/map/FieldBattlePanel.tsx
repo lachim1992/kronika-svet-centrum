@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
 import {
   battleInRange, cellKey, maxBattlefieldSquares, validateBattlefield, moveRange, commandPoints, cpUsed, inDeployZone, upgradeUnit,
-  UNIT_STATS, FORMATION_INFO, isCavalry, isRanged, MAX_ROUNDS,
+  UNIT_STATS, FORMATION_INFO, FORMATIONS, formationAllowed, DOCTRINE_LABELS, isCavalry, isRanged, MAX_ROUNDS,
   type Cell, type FBUnit, type FBOrder, type FBEvent, type Side, type OrderKind, type BattleMeta,
 } from "../../../supabase/functions/_shared/fieldBattle";
 import { UNIT_TYPE_LABELS } from "../../../supabase/functions/_shared/unitTypes";
@@ -199,8 +199,13 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
       {side && <div className="border border-border p-1.5 text-muted-foreground">
         {battle.meta?.hasGeneral?.[side] ? `Generál · schopnost ${battle.meta.generalSkill?.[side] ?? 0}/100` : "Bez generála"} · {cp} CP/kolo · kapacita {generalArmyCapacity(battle.meta?.hasGeneral?.[side] ? battle.meta.generalSkill?.[side] : null).toLocaleString()} · ztráty morálky −{Math.round(generalMoraleLossReduction(battle.meta?.hasGeneral?.[side] ? battle.meta.generalSkill?.[side] : null) * 100)} %
         {battle.meta?.hasGeneral?.[side] ? ` · Rally +${generalRallyStrength(battle.meta.generalSkill?.[side])}` : " · Rally nedostupné"}
-        {battle.meta?.aiPlan?.[side] ? <span className="block">AI v2: {battle.meta.aiPlan[side]!.doctrine} · {battle.meta.aiPlan[side]!.reason}</span> : null}
       </div>}
+      {(["attacker", "defender"] as Side[]).map(sd => { const p = battle.meta?.aiPlan?.[sd]; if (!p) return null;
+        return <div key={sd} className="border border-border p-1.5 text-muted-foreground" data-ai-plan={sd}>
+          <p className="font-medium text-foreground">AI {sd === "attacker" ? "útočníka" : "obránce"} · kolo {p.round}: {DOCTRINE_LABELS[p.doctrine] ?? p.doctrine}</p>
+          <p>Proč: {p.reason} · poměr sil {p.strengthRatio}</p>
+          {p.explanation?.length ? <ul className="list-inside list-disc">{p.explanation.map((e, i) => <li key={i}>{e}</li>)}</ul> : null}
+        </div>; })}
       <p className="text-muted-foreground">{battle.status === "deploying" ? "Fáze: rozmístění oddílů" : `Kolo ${battle.round}/${MAX_ROUNDS} · první jedná ${initiative === "attacker" ? "útočník" : "obránce"}`}
         {fighting && side ? ` · velení ${used}/${cp} bodů` : ""}</p>
       {mySides.length > 1 && <div className="flex gap-1">{mySides.map(sd => <Button key={sd} size="sm" variant={sd === side ? "default" : "outline"} className="h-7 flex-1"
@@ -225,11 +230,19 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
                   <span className="shrink-0 text-muted-foreground">{u.status === "dead" ? "padl" : u.status === "routed" ? "prchá" : u.status === "reserve" ? "záloha" : battle.status === "deploying" ? (u.x === null ? "nerozmístěn" : "✓") : o ? `#${o.cmd ?? o.seq} ${ORDER_LABEL[o.kind] ?? o.kind}` : "drží"}</span></span>
                 <span className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
                   <span className="h-1 w-10 bg-muted"><span className="block h-1 bg-primary" style={{ width: `${u.morale}%` }} /></span>{u.morale} %
-                  · únava {u.fatigue}{st.ammo > 0 ? ` · munice ${u.ammo}/${st.ammo}` : ""} · {FORMATION_INFO[u.formation]?.label}
+                  · {typeLabel(u.type)} · pohyb {moveRange(u)} · únava {u.fatigue}{st.ammo > 0 ? ` · munice ${u.ammo}/${st.ammo}` : ""} · {FORMATION_INFO[u.formation]?.label}
                 </span>
               </span>
             </label>; })}
         </div>
+        {battle.status === "deploying" && selected.length > 0 && !battle.ready?.[side] && <div className="space-y-1" data-formation-picker>
+          <p className="font-medium">Formace pro {selected.length} vybraných</p>
+          <div className="flex flex-wrap gap-1">{FORMATIONS.map(f => { const ok = selected.some(k => { const u = units.find(v => v.key === k); return !!u && formationAllowed(f, u.type); });
+            const current = selected.every(k => units.find(v => v.key === k)?.formation === f);
+            return <Button key={f} size="sm" variant={current ? "default" : "outline"} className="h-7 px-2 text-[11px]" disabled={busy || !ok} title={FORMATION_INFO[f].text}
+              onClick={() => void send("FIELD_BATTLE_FORMATION", { keys: selected, formation: f })}>{FORMATION_INFO[f].label}</Button>; })}</div>
+          {lead && <p className="text-[10px] text-muted-foreground">{FORMATION_INFO[lead.formation].label}: {FORMATION_INFO[lead.formation].text}</p>}
+        </div>}
         {fighting && <div className="flex flex-wrap gap-1">
           <OB k="MOVE" icon={Move} /><OB k="ATTACK" icon={Crosshair} /><OB k="CHARGE" icon={Zap} /><OB k="VOLLEY" icon={Crosshair} />
           <OB k="HOLD" icon={Pause} /><OB k="FORTIFY" icon={Hammer} /><OB k="RALLY" icon={Megaphone} />

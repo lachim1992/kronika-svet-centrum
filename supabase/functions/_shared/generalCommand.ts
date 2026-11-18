@@ -1,7 +1,7 @@
 /** Canonical general command conversions. General skill is always stored on a 0–100 scale. */
-export const NO_GENERAL_CP = 2;
+export const NO_GENERAL_CP = 4;
 export const NO_GENERAL_ARMY_CAPACITY = 2_000;
-export const MAX_GENERAL_CP = 10;
+export const MAX_GENERAL_CP = 7;
 export const MAX_GENERAL_ARMY_CAPACITY = 12_000;
 
 export function clampGeneralSkill(skill: number | null | undefined): number {
@@ -9,10 +9,10 @@ export function clampGeneralSkill(skill: number | null | undefined): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
 }
 
-/** 2 CP without a general; 5/6/7/10 CP at skill 40/56/63/100. */
+/** 4 CP without a general; skill 0–24 => 4, 25–49 => 5, 50–74 => 6, 75–100 => 7. */
 export function generalCommandPoints(skill: number | null | undefined): number {
   if (skill == null) return NO_GENERAL_CP;
-  return Math.min(MAX_GENERAL_CP, NO_GENERAL_CP + Math.floor(clampGeneralSkill(skill) / 12.5));
+  return Math.min(MAX_GENERAL_CP, NO_GENERAL_CP + Math.floor(clampGeneralSkill(skill) / 25));
 }
 
 /** Per-stack capacity, never a realm-wide mobilization limit. */

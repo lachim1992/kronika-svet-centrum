@@ -101,18 +101,19 @@ describe("formations", () => {
     expect(hit({ type: "HEAVY_CAVALRY", formation: "wedge" }, {}, { charge: true })).toBeGreaterThan(hit({ type: "HEAVY_CAVALRY", formation: "line" }, {}, { charge: true }));
     expect(f("wedge", { flank: "rear" })).toBeGreaterThan(f("line", { flank: "rear" }));
   });
-  it("square halves cavalry charge", () => {
-    expect(hit({ type: "HEAVY_CAVALRY" }, { formation: "square" }, { charge: true })).toBeLessThan(hit({ type: "HEAVY_CAVALRY" }, { formation: "line" }, { charge: true }) * 0.6);
+  it("square: +20 % defence from every side, no hidden charge halving", () => {
+    const sq = hit({ type: "HEAVY_CAVALRY" }, { formation: "square" }, { charge: true }), none = hit({ type: "HEAVY_CAVALRY" }, { formation: "wedge" }, { charge: true });
+    expect(sq).toBeLessThan(none); expect(sq).toBeGreaterThan(none * 0.6);
   });
   it("skirmish +15% ranged, −20% melee defense", () => {
     expect(hit({ type: "ARCHERS", formation: "skirmish" }, {}, { ranged: true })).toBeGreaterThan(hit({ type: "ARCHERS", formation: "line" }, {}, { ranged: true }) - 1);
     expect(f("skirmish")).toBeGreaterThan(base);
   });
   it("movement modifiers", () => {
-    expect(moveRange(u("a", "attacker", 0, 0, { type: "SPEARMEN", formation: "shieldwall" }))).toBe(4);
+    expect(moveRange(u("a", "attacker", 0, 0, { type: "SPEARMEN", formation: "shieldwall" }))).toBe(1);
     expect(moveRange(u("a", "attacker", 0, 0, { type: "SLINGERS", formation: "skirmish" }))).toBe(4);
-    expect(moveRange(u("a", "attacker", 0, 0, { type: "LIGHT_CAVALRY" }), () => "forest")).toBe(4);
-    expect(moveRange(u("a", "attacker", 0, 0, { fatigue: 85 }))).toBe(4);
+    expect(moveRange(u("a", "attacker", 0, 0, { type: "LIGHT_CAVALRY" }), () => "forest")).toBe(3);
+    expect(moveRange(u("a", "attacker", 0, 0, { fatigue: 85 }))).toBe(1);
     expect(moveRange(u("a", "attacker", 0, 0, { type: "LIGHT_CAVALRY", formation: "skirmish" }))).toBe(5);
   });
 });
@@ -141,12 +142,12 @@ describe("matchups, flank, terrain", () => {
     expect(hit({ type: "ARCHERS" }, {}, { ranged: true, terrainAttacker: "hills" })).toBeGreaterThan(hit({ type: "ARCHERS" }, {}, { ranged: true }) - 1);
     expect(hit({ type: "LIGHT_CAVALRY" }, {}, { terrainAttacker: "marsh" })).toBeLessThan(hit({ type: "LIGHT_CAVALRY" }, {}));
   });
-  it("orthogonal support only, max 15%, halved for loose", () => {
+  it("orthogonal support only, max 15%, identical for loose", () => {
     const t = u("t", "defender", 5, 5);
     const ns = [u("n1", "defender", 6, 5), u("n2", "defender", 4, 5), u("n3", "defender", 5, 6), u("n4", "defender", 5, 4), u("d", "defender", 6, 6)];
     expect(supportDefense([t, ...ns], t)).toBeCloseTo(0.15);
     expect(supportDefense([t, ns[4]], t)).toBe(0);
-    const l = u("t", "defender", 5, 5, { formation: "loose" }); expect(supportDefense([l, ns[0]], l)).toBeCloseTo(0.025);
+    const l = u("t", "defender", 5, 5, { formation: "loose" }); expect(supportDefense([l, ns[0]], l)).toBeCloseTo(0.05);
   });
 });
 
@@ -211,7 +212,7 @@ describe("rounds", () => {
   });
   it("move bounds and occupied cells", () => {
     const us = [u("a", "attacker", 2, 2), u("b", "attacker", 3, 2)];
-    expect(orderProblem(us, field, "a", { kind: "MOVE", to: { x: 7, y: 2 } })).toMatch(/nejvýš 4/);
+    expect(orderProblem(us, field, "a", { kind: "MOVE", to: { x: 7, y: 2 } })).toMatch(/nejvýš 2/);
     expect(orderProblem(us, field, "a", { kind: "MOVE", to: { x: 2, y: 9 } })).toMatch(/mimo bojiště/);
     const r = resolveRound(us, [{ seq: 1, cmd: 1, key: "a", kind: "MOVE", to: { x: 3, y: 2 } }], field, plain, () => .5, 1);
     expect(r.events[0].kind).toBe("move_blocked");
@@ -233,7 +234,7 @@ describe("rounds", () => {
 });
 
 describe("command points and orders", () => {
-  it("2 CP base, 0–100 skill /12.5, max 10", () => { expect(commandPoints(null)).toBe(2); expect(commandPoints(40)).toBe(5); expect(commandPoints(56)).toBe(6); expect(commandPoints(63)).toBe(7); expect(commandPoints(100)).toBe(10); });
+  it("4 CP base, 4–7 by skill quartile", () => { expect(commandPoints(null)).toBe(4); expect(commandPoints(40)).toBe(5); expect(commandPoints(56)).toBe(6); expect(commandPoints(80)).toBe(7); expect(commandPoints(100)).toBe(7); });
   it("a group order costs 1 CP", () => {
     const us = [u("a", "attacker", 0, 0), u("b", "attacker", 0, 1), u("d", "defender", 9, 0)];
     expect(cpUsed([{ seq: 1, cmd: 1, key: "a", kind: "HOLD" }, { seq: 2, cmd: 1, key: "b", kind: "HOLD" }], us, "attacker")).toBe(1);
@@ -281,7 +282,7 @@ describe("AI", () => {
     const us = [...buildUnits("attacker", "a", 2000, [{ unit_type: "PROFESSIONAL", manpower: 1200 }, { unit_type: "ARCHERS", manpower: 400 }, { unit_type: "LIGHT_CAVALRY", manpower: 400 }], 70)];
     const dep = autoDeploy(autoDeploy([...us, ...buildUnits("defender", "d", 2000, [{ unit_type: "MILITIA", manpower: 2000 }], 70)], "attacker", field, { x: 0, y: 0 }, { x: 1, y: 0 }), "defender", field, { x: 1, y: 0 }, { x: 0, y: 0 });
     const a = planAiOrders(dep, "defender", field, plain, 4), b = planAiOrders(dep, "defender", field, plain, 4);
-    expect(a).toEqual(b); expect(a.length).toBeLessThanOrEqual(4); expect(a.length).toBeGreaterThan(0);
+    expect(a).toEqual(b); expect(new Set(a.map(o => o.cmd)).size).toBeLessThanOrEqual(4); expect(a.length).toBeGreaterThan(0);
   });
   it("cavalry targets archers; weak units hold", () => {
     const us = [u("c", "defender", 5, 2, { type: "LIGHT_CAVALRY" }), u("w", "defender", 5, 4, { men: 40 }), u("ar", "attacker", 3, 2, { type: "ARCHERS", ammo: 6 }), u("s", "attacker", 4, 4)];
