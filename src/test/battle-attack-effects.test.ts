@@ -20,4 +20,13 @@ describe("battle attack playback", () => {
     expect(volley.impactDelay).toBeCloseTo(volley.launchDelay + volley.arrowFlight + .6);
     expect(melee.delay).toBeGreaterThan(volley.impactDelay);
   });
+
+  it("separates preparation, action and impact and leaves a clear pause between scenes", () => {
+    const [shot, next] = battleEffectSchedule(["shoot", "attack"]);
+
+    expect(shot.launchDelay - shot.delay).toBeCloseTo(.9);
+    expect(shot.impactDelay).toBeCloseTo(shot.launchDelay + shot.arrowFlight + .2);
+    expect(shot.duration - (shot.impactDelay - shot.delay)).toBeCloseTo(.85);
+    expect(next.delay - (shot.delay + shot.duration)).toBeCloseTo(.55);
+  });
 });

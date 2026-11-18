@@ -22,9 +22,10 @@ const RANGED = new Set(["shoot", "volley"]);
 const PROJECTILES: Record<string, number> = { shoot: 3, volley: 7 };
 const ARROW_FLIGHT = 1.8;
 const ARROW_STAGGER = .1;
-const DRAW_TIME = .65;
+const DRAW_TIME = .75;
+const PREPARATION_HOLD = .15;
 const IMPACT_TIME = .85;
-const SCENE_GAP = .35;
+const SCENE_GAP = .55;
 
 /** Each committed attack gets its own scene; the next starts only after the previous impact fades. */
 export function battleEffectSchedule(kinds: string[]): BattleEffectTiming[] {
@@ -32,7 +33,7 @@ export function battleEffectSchedule(kinds: string[]): BattleEffectTiming[] {
   return kinds.map(kind => {
     const ranged = RANGED.has(kind);
     const projectileCount = PROJECTILES[kind] ?? 0;
-    const launchOffset = ranged ? DRAW_TIME : 0;
+    const launchOffset = ranged ? DRAW_TIME + PREPARATION_HOLD : 0;
     const impactOffset = ranged
       ? launchOffset + ARROW_FLIGHT + Math.max(0, projectileCount - 1) * ARROW_STAGGER
       : .95;

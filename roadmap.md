@@ -4,10 +4,10 @@
 - [x] Menší kruhy, poloviční figurky, 18 vojáků + 2 velitelé a výrazná pohybová políčka.
 - [x] Budovy na 75 %, kamenná dlažba, drobné uličky a městský život bez změn herních dat.
 - [x] Animace nových vyhodnocených polních útoků: úder, luk, let šípů/salva, zásah; reduced-motion vypíná pohyb. Kosmetické přehrání, bez druhého resolveru.
-- [x] Útoky se přehrávají jeden po druhém až po dokončení předchozího zásahu; delší rozmach, oblouk letu, stopa šípu a ozvěna zásahu. Salva počká na poslední šíp, další scéna má krátkou mezeru.
+- [x] Útoky se přehrávají jeden po druhém až po dokončení předchozího zásahu; delší rozmach, oblouk letu, stopa šípu a ozvěna zásahu. Rozmach střelby má samostatnou 0,15 s pauzu před letem, salva počká na poslední šíp a další scéna začne až po 0,55 s mezeře.
 - [x] Hradby ve světě i v 6×6 detailu obklopují jen koupené městské parcely (`claimed/occupied` + `claim_kind` urban/prázdné pro legacy); nárokovaná využívaná půda (`worked`) zůstává mimo obvod.
 - [x] Dokončovací oprava: světové načtení parcel nově čte i `claim_kind` (původně sloupec chyběl, takže `worked` mohl projít jako neznámý/městský stav); samotný filtr zároveň vyžaduje kanonické `claimed/occupied`.
-- [x] Původní cílená regrese 73/73; nová dokončovací sada 13/13 včetně oddělených testů koupených vs. `worked` parcel, světového čtení `claim_kind` a sekvenčního časování. `oj typecheck -b --noEmit` i ruční `bun run build` prošly (jen existující varování o velikosti chunků/PostCSS/Browserslist).
+- [x] Finální cílená sada 15/15 včetně oddělených testů koupených vs. `worked` parcel, pouhých makro/provincních nároků, světového čtení `claim_kind` a časování příprava→akce→dopad→pauza. `oj typecheck -b --noEmit` i ruční `bun run build` prošly (jen existující varování o velikosti chunků/PostCSS/Browserslist).
 - [x] Přihlášený read-only náhled JV72O7: světové čtení obsahuje `claim_kind`, 51 držení = 50 městských + 1 `worked`; Kwak detail otevřen, žádné page errors, žádný neblokovaný herní zápis. Žádné herní příkazy, tahy, refresh, migrace, nasazení ani publikace.
 - [ ] Ostrý útok a poslední vítězný zásah nejsou ověřené, protože tento průchod zakazuje herní příkazy; sekvenční časování je ověřené testy, nikoli živým bojem. Animace obléhání není součástí tohoto průchodu.
 
