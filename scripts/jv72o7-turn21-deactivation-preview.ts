@@ -4,9 +4,9 @@ import { produced, resolveGoodsEconomy, type Snapshot } from "../supabase/functi
 import { actualSoldiers } from "../supabase/functions/_shared/manpower";
 import fixture from "../src/test/fixtures/jv72o7-turn21-committed-snapshot.json";
 
-// Current DB rows (read with SELECT on 2026-11-18 18:52 UTC): all three stacks is_active=false.
+// Current DB rows after the scoped 2026-11-18 normalization: all inactive and not deployed.
 export const CURRENT_STACKS = [
-  { player_name: "Player", name: "Armáda Player", is_active: false, is_deployed: true, soldiers: 1000 },
+  { player_name: "Player", name: "Armáda Player", is_active: false, is_deployed: false, soldiers: 1000 },
   { player_name: "Player", name: "pojebemtoooo", is_active: false, is_deployed: false, soldiers: 101 },
   { player_name: "AI Frakce 1", name: "Železná horda", is_active: false, is_deployed: false, soldiers: 7373 },
 ];

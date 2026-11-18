@@ -22,6 +22,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
 import { GENERAL_CP_RULE_TEXT, generalArmyCapacity, generalCommandPoints, generalMoraleLossReduction, generalRallyStrength } from "../../../supabase/functions/_shared/generalCommand";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
+import { useManagementReport } from "@/hooks/useManagementReport";
+import { currentFamineCityCount } from "@/lib/militaryReadiness";
 const StrategicOverlay = lazy(() => import("@/components/StrategicOverlay"));
 
 const UNIT_ICONS: Record<string, React.ElementType> = {
@@ -107,7 +109,6 @@ interface RealmRes {
   granary_capacity: number;
   last_turn_grain_prod: number;
   last_turn_grain_cons: number;
-  famine_city_count: number;
 }
 
 interface Props {
@@ -184,6 +185,8 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
   // Compute workforce breakdown using new model
   // Resolve effective owner name: prefer realm.player_name (canonical), fall back to currentPlayerName.
   const effectiveOwnerName = (realm as any)?.player_name || currentPlayerName;
+  const { data: managementReportResult } = useManagementReport(sessionId, effectiveOwnerName, currentTurn);
+  const famineCityCount = currentFamineCityCount(managementReportResult?.report?.subsistence);
   let myCities = cities.filter(c => c.owner_player === effectiveOwnerName);
   // Fallback: if no match (mismatched display name vs city owner), try currentPlayerName explicitly.
   if (myCities.length === 0 && effectiveOwnerName !== currentPlayerName) {
@@ -211,13 +214,19 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
   };
 
   const grainNet = realm ? realm.last_turn_grain_prod - realm.last_turn_grain_cons : 0;
+  const hasCurrentFamine = famineCityCount !== null && famineCityCount > 0;
   const readiness = realm
-    ? realm.famine_city_count > 0 || realm.gold_reserve <= 0
+    ? hasCurrentFamine || realm.gold_reserve <= 0
       ? "crisis"
       : grainNet < 0 || realm.gold_reserve < 50
         ? "strained"
         : "stable"
     : "stable";
+  const readinessDetail = readiness === "crisis"
+    ? hasCurrentFamine ? `Hladomor v ${famineCityCount} městech` : "Bankrot"
+    : famineCityCount === null
+      ? "Obživa: aktuální zpráva není k dispozici"
+      : readiness === "strained" ? "Nízké zásoby" : "Vše v pořádku";
 
   const readinessConfig = {
     stable: { label: "Stabilní", icon: CheckCircle2, className: "text-accent" },
@@ -321,8 +330,8 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
           <span className={`text-xs font-display font-semibold ${readinessConfig[readiness].className}`}>
             {readinessConfig[readiness].label}
           </span>
-          <span className="text-[8px] text-muted-foreground">
-            {readiness === "crisis" ? "Hladomor nebo bankrot" : readiness === "strained" ? "Nízké zásoby" : "Vše v pořádku"}
+          <span className="text-[8px] text-muted-foreground" title={managementReportResult?.reportTurn ? `Obživa podle uzavřeného tahu ${managementReportResult.reportTurn}` : undefined}>
+            {readinessDetail}
           </span>
         </div>
       </div>

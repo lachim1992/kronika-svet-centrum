@@ -77,7 +77,7 @@ export const DATA_FLOW_AUDIT: DataFlowEntry[] = [
   { table: "realm_resources", column: "last_turn_grain_cons", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
   { table: "realm_resources", column: "last_turn_grain_net", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
   { table: "realm_resources", column: "granary_capacity", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
-  { table: "realm_resources", column: "famine_city_count", writers: ["process-turn"], readers: ["UI", "EconomyTab"], liveUsed: true },
+  { table: "realm_resources", column: "famine_city_count", writers: ["process-turn"], readers: [], liveUsed: false, notes: "Historická projekce; UI čte aktuální subsistence report." },
   { table: "realm_resources", column: "goods_production_value", writers: ["compute-economy-flow"], readers: ["process-turn", "UI"], liveUsed: true, notes: "v4.1: Goods layer production aggregate" },
   { table: "realm_resources", column: "goods_supply_volume", writers: ["compute-economy-flow"], readers: ["process-turn", "UI"], liveUsed: true, notes: "v4.1: Goods layer supply aggregate" },
   { table: "realm_resources", column: "goods_wealth_fiscal", writers: ["compute-economy-flow"], readers: ["process-turn", "UI"], liveUsed: true, notes: "v4.1: Goods layer fiscal aggregate" },

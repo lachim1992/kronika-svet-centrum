@@ -1,5 +1,13 @@
 # Map-first square-grid roadmap
 
+## JV72O7 — regionální substituce, armádní projekce a hladomor (2026-11-18)
+- [x] Read-only audit turnu 21 potvrdil fuel 59,1 %, tři neaktivní stacky a pět měst `food_status=ok`; bez process-turn a refresh-economy.
+- [x] Cross-city substituce nově pokrývá `critical_need` i `basic_need`; `nutritionOnly` zůstává jen pro kritické potřeby. Testy dvou měst kontrolují fyzický tok, odpojení, ztrátu, rezervy, kvalitu, demand channels, determinismus a double-count; JV72O7 fixture požaduje fuel >59,1 % a jídlo/vodu 100 %.
+- [x] Sdílený disband přepočet všech manpower/upkeep polí už existoval z předchozího balíku; přidána regrese posledního stacku a fiskální bezezměny. V JV72O7 byl pouze jeden historický neaktivní řádek normalizován na `is_deployed=false`; všechny tři stacky zůstaly.
+- [x] Armádní readiness používá aktuální subsistence report, nikoli stale `famine_city_count`; process-turn a fiskální writer nebyly změněny.
+- [x] Testy přidány, ale záměrně nespuštěny; vlastní diff a `git diff --check` zkontrolovány, ekonomický progress aktualizován, jediný výsledný commit bez mezilehlých commitů.
+- [ ] GitHub Actions CI musí nezávisle ověřit typecheck, edge typecheck, testy a build; přesné výsledky zatím nejsou k dispozici. Deploy/publikace nebyly provedeny a committed ledger turnu 21 zůstal beze změny.
+
 ## Konsolidovaný opravný balík — demobilizace, pohyb, manpower a autorita (2026-11-18)
 - [x] DEMOBILIZE_STACK a DISBAND_STACK sdílí serverovou aktivní-only demobilizaci; počet mužů jen z DB, kompletní HUD/upkeep přepočet z aktivních stacků a měst.
 - [x] Hexový pohyb odmítne stack deaktivovaný mezi načtením a zápisem; race test prokázal RACE_LOST a beze změny souřadnic.

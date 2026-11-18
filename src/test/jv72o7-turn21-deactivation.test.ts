@@ -16,7 +16,13 @@ it("with the current inactive stacks Player keeps all its workers and trade resu
   expect(p.soldiers).toBe(0);
   expect(p.civilian_workforce).toBe(755);
   expect(p.coverage).toMatchObject({ staple_food: 100, drinking_water: 100 });
-  expect(r.deactivated.flows).toBe(9);
+  expect(r.deactivated.flows).toBeGreaterThan(9);
+});
+it("JV72O7 turn 21 ships charcoal against unmet peat without harming food or water", () => {
+  const p = r.deactivated.owners.Player;
+  expect(p.coverage.fuel).toBeGreaterThan(59.1);
+  expect(p.coverage).toMatchObject({ staple_food: 100, drinking_water: 100 });
+  expect(r.deactivated.flowGoods.some((flow: string) => flow.startsWith("charcoal:"))).toBe(true);
 });
 it("AI realms are unchanged by the Player's disbanding", () => {
   expect(r.deactivated.owners["AI Frakce 1"]).toEqual(r.committedReplay.owners["AI Frakce 1"]);

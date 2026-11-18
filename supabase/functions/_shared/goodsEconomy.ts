@@ -945,18 +945,19 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   }
   // Imports can satisfy a different final good in the same basket too.
   substitute();
-  // Basket-level subsistence trade: a city still short of a CRITICAL-need good (staple food)
-  // may import a nutritious substitute from reachable sources — survival has physical priority
-  // over product preference. transfer() still enforces routes, capacity, reserves, margins and
-  // losses; nothing is created, and the following substitute() pass settles the imported units
+  // Basket-level subsistence trade: a city still short of a CRITICAL or BASIC need may import
+  // a substitute from reachable sources. Nutrition equivalence remains exclusive to critical
+  // needs; fuel/clothing retain preference friction. transfer() enforces routes, capacity,
+  // reserves, margins and losses; nothing is created, and substitute() settles imported units
   // against the deficit with shifted demand provenance (no double counting).
   for(const c of cities)for(const g of goods){
-    if(basketSpec(g.basket)?.class!=='critical_need')continue;
+    const demandClass=basketSpec(g.basket)?.class;
+    if(demandClass!=='critical_need'&&demandClass!=='basic_need')continue;
     let missing=Math.max(0,stock(c.id,g.key).demand-stock(c.id,g.key).consumed_household-stock(c.id,g.key).consumed_state);
     if(missing<C.minLot)continue;
     for(const sub of goods.filter(s=>s.key!==g.key&&s.basket===g.basket&&s.substitutability>0&&(s.finalUse??s.stage!=='intermediate'))){
       if(missing<C.minLot)break;
-      const eff=substitutionEfficiency(g,sub,{nutritionOnly:true});if(eff<=0)continue;
+      const eff=substitutionEfficiency(g,sub,{nutritionOnly:demandClass==='critical_need'});if(eff<=0)continue;
       const wanted=missing/eff;
       for(const s of inputSources(c,sub)){if(missing<C.minLot)break;const sb=stock(s.id,sub.key);
         missing-=transfer(s,c,sub,wanted,'regional_redistribution',[s.id],sb.demand*C.reserveTurns)*eff;}
@@ -966,7 +967,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         if(missing<C.minLot)break;}
     }
     // Settle this city's substitutes right away so a later city cannot re-export
-    // the units this one just imported to cover its own critical needs.
+    // the units this one just imported to cover its own needs.
     substitute();
   }
   substitute();

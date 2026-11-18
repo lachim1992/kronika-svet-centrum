@@ -8,6 +8,7 @@ import { activeUpkeepStacks } from "../components/economy/MilitaryUpkeepPanel";
 import { computeArmyFoodUpkeep, computeArmyGoldUpkeep } from "../lib/economyConstants";
 import { districtsTowardHousingLimit, isLegacyProductionDistrict } from "../../supabase/functions/_shared/cityDistricts";
 import { SETTLEMENT_UPGRADES, settlementUpgradeProblem } from "../../supabase/functions/_shared/settlementUpgrades";
+import { currentFamineCityCount } from "../lib/militaryReadiness";
 
 function militaryFixture() {
   const f = fixture(2);
@@ -56,6 +57,20 @@ describe("server-authoritative stack deactivation", () => {
     expect(f.tables.game_events[0].reference.returnedManpower).toBe(120);
     expect(f.tables.military_stacks.find(s => s.id === "a")).toMatchObject({ is_active: false, is_deployed: false, remobilize_ready_turn: 4 });
     expect(f.tables.realm_resources[0]).toMatchObject({ manpower_committed: 90, manpower_available: 910 });
+  });
+
+  it("DISBAND of the last active stack clears every military projection without touching fiscal reserves", async () => {
+    const f = militaryFixture();
+    f.tables.military_stacks = f.tables.military_stacks.filter(stack => ["a", "old", "foreign"].includes(stack.id));
+    Object.assign(f.tables.realm_resources[0], { gold_reserve: 321, grain_reserve: 45, production_reserve: 67 });
+    const result = await f.run("DISBAND_STACK", { stackId: "a", returnedManpower: 999999 });
+    expect(result.status).toBe(200);
+    expect(actualSoldiers(f.tables.military_stacks.filter(stack => stack.player_name === "p"))).toBe(0);
+    expect(f.tables.realm_resources[0]).toMatchObject({
+      manpower_pool: 1000, manpower_available: 1000, manpower_committed: 0, manpower_mobilized: 0,
+      over_mobilized: false, military_gold_upkeep: 0, military_food_upkeep: 0,
+      gold_reserve: 321, grain_reserve: 45, production_reserve: 67,
+    });
   });
 
   it("rejects duplicate, missing, inactive and foreign stacks before mutation", async () => {
@@ -132,6 +147,15 @@ describe("canonical manpower and inactive upkeep", () => {
     const source = readFileSync("src/components/layout/ResourceHUD.tsx", "utf8");
     expect(source).not.toMatch(/from\("realm_resources"\)\.update/);
     expect(source.match(/commandType: "SET_MOBILIZATION"/g)).toHaveLength(2);
+  });
+
+  it("army readiness uses current committed subsistence instead of a stale famine aggregate", () => {
+    expect(currentFamineCityCount(Array.from({ length: 5 }, () => ({ food_status: "ok" })))).toBe(0);
+    expect(currentFamineCityCount([{ food_status: "ok" }, { food_status: "famine" }])).toBe(1);
+    expect(currentFamineCityCount(undefined)).toBeNull();
+    const source = readFileSync("src/pages/game/ArmyTab.tsx", "utf8");
+    expect(source).not.toMatch(/realm\.famine_city_count/);
+    expect(source).toContain("currentFamineCityCount(managementReportResult?.report?.subsistence)");
   });
 });
 
