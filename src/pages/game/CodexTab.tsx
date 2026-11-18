@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { Tables } from "@/integrations/supabase/types";
 import WorldCodex from "@/components/WorldCodex";
 import WikiPanel from "@/components/WikiPanel";
 import WondersPanel from "@/components/WondersPanel";
@@ -17,8 +18,8 @@ interface Props {
   cities: any[];
   wonders: any[];
   greatPersons: any[];
-  resources: any[];
-  armies: any[];
+  realmResources: Tables<"realm_resources">[];
+  militaryStacks: Tables<"military_stacks">[];
   chronicles: any[];
   currentPlayerName: string;
   currentTurn: number;
@@ -34,7 +35,7 @@ interface Props {
 
 const CodexTab = ({
   sessionId, session, events, memories, players, cities, wonders, greatPersons,
-  resources, armies, chronicles, currentPlayerName, currentTurn, myRole,
+  realmResources, militaryStacks, chronicles, currentPlayerName, currentTurn, myRole,
   worldFoundation, entityIndex, onRefetch, onEventClick, onEntityClick,
   codexEntityTarget, onClearEntityTarget,
 }: Props) => {
@@ -140,7 +141,7 @@ const CodexTab = ({
         </TabsContent>
 
         <TabsContent value="leaderboards" className="mt-3">
-          <LeaderboardsPanel players={players} cities={cities} resources={resources} armies={armies} wonders={wonders} events={events} chronicles={chronicles} />
+          <LeaderboardsPanel players={players} cities={cities} realmResources={realmResources} militaryStacks={militaryStacks} wonders={wonders} events={events} chronicles={chronicles} />
         </TabsContent>
       </Tabs>
     </div>

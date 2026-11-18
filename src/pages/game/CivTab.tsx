@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import FactionDesigner from "@/components/FactionDesigner";
 import CivilizationDNA from "@/components/CivilizationDNA";
 import CivIdentityPreview from "@/components/CivIdentityPreview";
@@ -20,15 +21,14 @@ interface Props {
   players: any[];
   cities: any[];
   wonders: any[];
-  armies: any[];
-  militaryStacks: any[];
+  realmResources: Tables<"realm_resources">[];
+  militaryStacks: Tables<"military_stacks">[];
   entityTraits: any[];
   civilizations: any[];
   declarations: any[];
   worldCrises: any[];
   secretObjectives: any[];
   cityStates: any[];
-  resources: any[];
   chronicles: any[];
   currentPlayerName: string;
   currentTurn: number;
@@ -37,8 +37,8 @@ interface Props {
 }
 
 const CivTab = ({
-  sessionId, session, events, memories, players, cities, wonders, armies, militaryStacks, entityTraits,
-  civilizations, declarations, worldCrises, secretObjectives, cityStates, resources, chronicles,
+  sessionId, session, events, memories, players, cities, wonders, realmResources, militaryStacks, entityTraits,
+  civilizations, declarations, worldCrises, secretObjectives, cityStates, chronicles,
   currentPlayerName, currentTurn, myRole, onRefetch,
 }: Props) => {
   const [identityData, setIdentityData] = useState<any>(null);
@@ -135,7 +135,7 @@ const CivTab = ({
             <span className="flex items-center gap-2"><Trophy className="h-4 w-4 text-primary" />Žebříčky</span>
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4">
-            <LeaderboardsPanel players={players} cities={cities} resources={resources} armies={armies} wonders={wonders} events={events} chronicles={chronicles} />
+            <LeaderboardsPanel players={players} cities={cities} realmResources={realmResources} militaryStacks={militaryStacks} wonders={wonders} events={events} chronicles={chronicles} />
           </AccordionContent>
         </AccordionItem>
 

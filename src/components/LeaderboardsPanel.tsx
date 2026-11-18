@@ -4,8 +4,8 @@ import { Trophy, Castle, Coins, Swords, Landmark, Flame } from "lucide-react";
 
 type GamePlayer = Tables<"game_players">;
 type City = Tables<"cities">;
-type PlayerResource = Tables<"player_resources">;
-type MilitaryCapacity = Tables<"military_capacity">;
+type RealmResource = Tables<"realm_resources">;
+type MilitaryStack = Tables<"military_stacks">;
 type Wonder = Tables<"wonders">;
 type GameEvent = Tables<"game_events">;
 type ChronicleEntry = Tables<"chronicle_entries">;
@@ -17,8 +17,8 @@ const CITY_LEVEL_SCORE: Record<string, number> = {
 interface LeaderboardsPanelProps {
   players: GamePlayer[];
   cities: City[];
-  resources: PlayerResource[];
-  armies: MilitaryCapacity[];
+  realmResources: RealmResource[];
+  militaryStacks: MilitaryStack[];
   wonders: Wonder[];
   events: GameEvent[];
   chronicles: ChronicleEntry[];
@@ -30,7 +30,7 @@ interface RankedPlayer {
   detail: string;
 }
 
-const LeaderboardsPanel = ({ players, cities, resources, armies, wonders, events, chronicles }: LeaderboardsPanelProps) => {
+const LeaderboardsPanel = ({ players, cities, realmResources, militaryStacks, wonders, events, chronicles }: LeaderboardsPanelProps) => {
   const playerNames = players.map(p => p.player_name);
 
   // 1. Biggest cities
@@ -41,18 +41,18 @@ const LeaderboardsPanel = ({ players, cities, resources, armies, wonders, events
     return { name: pn, score, detail: `${playerCities.length} měst${topCity ? ` (${topCity.name})` : ""}` };
   }).sort((a, b) => b.score - a.score);
 
-  // 2. Richest empires
+  // 2. Economic strength — canonical fiscal income, not mixed stockpiles or household income
   const wealthRanking: RankedPlayer[] = playerNames.map(pn => {
-    const playerRes = resources.filter(r => r.player_name === pn);
-    const totalSurplus = playerRes.reduce((s, r) => s + (r.income - r.upkeep), 0);
-    const totalStockpile = playerRes.reduce((s, r) => s + r.stockpile, 0);
-    return { name: pn, score: totalSurplus + totalStockpile, detail: `+${totalSurplus}/kolo, 📦${totalStockpile}` };
+    const realm = realmResources.find(r => r.player_name === pn);
+    const totalWealth = realm?.total_wealth ?? 0;
+    return { name: pn, score: totalWealth, detail: "Fiskální příjem / kolo" };
   }).sort((a, b) => b.score - a.score);
 
-  // 3. Biggest armies
+  // 3. Biggest armies — soldiers in active canonical stacks
   const armyRanking: RankedPlayer[] = playerNames.map(pn => {
-    const active = armies.filter(a => a.player_name === pn && a.status === "Aktivní");
-    return { name: pn, score: active.length, detail: `${active.length} aktivních legií` };
+    const activeStacks = militaryStacks.filter(stack => stack.player_name === pn && stack.is_active);
+    const soldiers = activeStacks.reduce((sum, stack) => sum + (stack.soldiers ?? 0), 0);
+    return { name: pn, score: soldiers, detail: `${activeStacks.length} aktivních stacků` };
   }).sort((a, b) => b.score - a.score);
 
   // 4. Cultural glory (wonders + chronicles)
@@ -71,7 +71,7 @@ const LeaderboardsPanel = ({ players, cities, resources, armies, wonders, events
 
   const boards = [
     { title: "Největší města", icon: <Castle className="h-5 w-5" />, data: cityRanking },
-    { title: "Nejbohatší říše", icon: <Coins className="h-5 w-5" />, data: wealthRanking },
+    { title: "Ekonomická síla", icon: <Coins className="h-5 w-5" />, data: wealthRanking },
     { title: "Největší armády", icon: <Swords className="h-5 w-5" />, data: armyRanking },
     { title: "Kulturní sláva", icon: <Landmark className="h-5 w-5" />, data: cultureRanking },
     { title: "Nejaktivnější válečníci", icon: <Flame className="h-5 w-5" />, data: raidRanking },
