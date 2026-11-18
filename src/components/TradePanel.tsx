@@ -17,7 +17,7 @@ import {
   MANUAL_TRADEABLE_RESOURCES, TRADE_RESOURCE_META, TRADE_STATUS_LABELS,
   MAX_TRADE_ROUTES, computeTradeEfficiency,
 } from "@/lib/tradeConstants";
-import { legacyFoodTradeProblem } from "../../supabase/functions/_shared/legacyFood";
+import { legacyFoodTradeProblem } from "@/lib/legacyFood";
 
 interface Props {
   sessionId: string;
