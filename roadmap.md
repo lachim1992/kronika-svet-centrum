@@ -14,7 +14,8 @@
 - [x] Vyvolání bitvy a výběr makropolí (všechny hry)
 - [x] Rozmístění, bitevní kola, rozkazy, terén/typy/boky/morálka (v1)
 - [x] Battle System v1 v kódu: 11 typů, 7 formací, terén, CP, skupinové rozkazy, zálohy, AI, typové ztráty, nábor
-- [ ] Nasadit: migrace supabase/migrations/20261115160000_battle_system_v1.sql + command-dispatch (čeká na pokyn uživatele)
+- [x] Nasazeno 2026-11-18: obsah připravené battle_system_v1 migrace aplikován jako `drizzle/migrations/0034_battle_system_v1_formations_settlement.sql`; živé omezení přijímá všech 7 forem + legacy column, field_battles.meta existuje a settle_field_battle smí volat jen service_role. command-dispatch nasazen (zdroj SHA-256 a6d56b325b2ebdcf4ba4fc631e7fdc935328ced5a800db59ef2b3ebf5b90a0a0); SET_BATTLE_FORMATION odmítnutí vrací HTTP 200 ok:false.
+- [x] Regrese 57/57, tsgo + deno check čisté; živé přihlášení neplatné formace vrátilo `{ok:false,error:"Neplatná formace"}` bez FunctionsHttpError a bez herního zápisu. Původní constraint pád je odstraněn u všech nových forem.
 - [ ] Ověřit celou bitvu ve hře po nasazení; ladění síly
 
 ## Přesun — neúplný terén náhledu (2026-11-15)

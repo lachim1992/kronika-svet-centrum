@@ -4302,6 +4302,7 @@ export type Database = {
           finished_at: string | null
           id: string
           last_report: Json | null
+          meta: Json
           orders: Json
           ready: Json
           rev: number
@@ -4321,6 +4322,7 @@ export type Database = {
           finished_at?: string | null
           id?: string
           last_report?: Json | null
+          meta?: Json
           orders?: Json
           ready?: Json
           rev?: number
@@ -4340,6 +4342,7 @@ export type Database = {
           finished_at?: string | null
           id?: string
           last_report?: Json | null
+          meta?: Json
           orders?: Json
           ready?: Json
           rev?: number
@@ -13347,6 +13350,16 @@ export type Database = {
       set_session_generation_status: {
         Args: { p_session: string; p_status: string }
         Returns: undefined
+      }
+      settle_field_battle: {
+        Args: {
+          p_battle: string
+          p_comps: Json
+          p_patch: Json
+          p_rev: number
+          p_stacks: Json
+        }
+        Returns: boolean
       }
       sync_session_player_names: {
         Args: { p_session: string }
