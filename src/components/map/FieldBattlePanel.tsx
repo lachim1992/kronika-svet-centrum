@@ -11,7 +11,7 @@ import {
   type Cell, type FBUnit, type FBOrder, type FBEvent, type Side, type OrderKind, type BattleMeta,
 } from "../../../supabase/functions/_shared/fieldBattle";
 import { UNIT_TYPE_LABELS } from "../../../supabase/functions/_shared/unitTypes";
-import { generalArmyCapacity, generalMoraleLossReduction, generalRallyStrength } from "../../../supabase/functions/_shared/generalCommand";
+import { GENERAL_CP_RULE_TEXT, generalArmyCapacity, generalMoraleLossReduction, generalRallyStrength } from "../../../supabase/functions/_shared/generalCommand";
 
 type ArmyLite = { id: string; name: string; player_name: string; soldiers: number; grid_x: number | null; grid_y: number | null; hex_q: number; hex_r: number; controller_player?: string | null };
 type Report = { round: number; events: FBEvent[]; winner: string | null; losses?: Record<string, { lost: number; byType: Record<string, number>; soldiers: number; morale: number }> };
@@ -196,7 +196,7 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
           <p className="text-muted-foreground">{c.men.toLocaleString("cs-CZ")} mužů · {c.ready} v poli · {c.reserve} záloha · {c.out} mimo</p>
         </div>; })}
       </div>
-      {side && <div className="border border-border p-1.5 text-muted-foreground">
+      {side && <div className="border border-border p-1.5 text-muted-foreground" title={GENERAL_CP_RULE_TEXT}>
         {battle.meta?.hasGeneral?.[side] ? `Generál · schopnost ${battle.meta.generalSkill?.[side] ?? 0}/100` : "Bez generála"} · {cp} CP/kolo · kapacita {generalArmyCapacity(battle.meta?.hasGeneral?.[side] ? battle.meta.generalSkill?.[side] : null).toLocaleString()} · ztráty morálky −{Math.round(generalMoraleLossReduction(battle.meta?.hasGeneral?.[side] ? battle.meta.generalSkill?.[side] : null) * 100)} %
         {battle.meta?.hasGeneral?.[side] ? ` · Rally +${generalRallyStrength(battle.meta.generalSkill?.[side])}` : " · Rally nedostupné"}
       </div>}

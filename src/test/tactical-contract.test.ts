@@ -94,8 +94,8 @@ describe("movement and terrain", () => {
 });
 
 describe("general and command points", () => {
-  it("4–7 CP, capacity 2000+100/skill max 12000, morale −25 % max, rally 15–20", () => {
-    expect([null, 0, 24, 25, 49, 50, 74, 75, 100].map(generalCommandPoints)).toEqual([4, 4, 4, 5, 5, 6, 6, 7, 7]);
+  it("4–7 CP at 40/56/63, capacity 2000+100/skill max 12000, morale −25 % max, rally 15–20", () => {
+    expect([null, 0, 39, 40, 55, 56, 62, 63, 100].map(generalCommandPoints)).toEqual([4, 4, 4, 5, 5, 6, 6, 7, 7]);
     expect(generalArmyCapacity(null)).toBe(2000); expect(generalArmyCapacity(37)).toBe(5700); expect(generalArmyCapacity(100)).toBe(12000);
     expect(generalMoraleLossReduction(100)).toBe(0.25); expect(generalMoraleLossReduction(null)).toBe(0);
     expect(generalRallyStrength(0)).toBe(15); expect(generalRallyStrength(100)).toBe(20);
@@ -116,7 +116,7 @@ describe("general and command points", () => {
     expect(orderProblem(us, field, "en", { kind: "FORTIFY" })).toBeNull();
     expect(orderProblem(us, field, "sw", { kind: "RALLY" }, plain, { meta: {} })).toMatch(/generálem/);
     expect(orderProblem(us, field, "sw", { kind: "RESERVE", to: { x: 0, y: 1 } })).toMatch(/záloze/);
-    expect(orderProblem(us, field, "rs", { kind: "RESERVE", to: { x: 0, y: 1 } }, plain, { zone: () => true })).toBeNull();
+    expect(orderProblem(us, field, "rs", { kind: "RESERVE", to: { x: 0, y: 3 } }, plain, { zone: () => true })).toBeNull();
     expect(orderProblem(us, field, "cv", { kind: "CHARGE", target: "foe" })).toBeNull();
     expect(orderProblem(us, field, "sw", { kind: "ATTACK", target: "foe" })).toBeNull();
   });

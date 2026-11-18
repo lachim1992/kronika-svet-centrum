@@ -20,7 +20,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette, Check, Route } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
-import { generalArmyCapacity, generalCommandPoints, generalMoraleLossReduction, generalRallyStrength } from "../../../supabase/functions/_shared/generalCommand";
+import { GENERAL_CP_RULE_TEXT, generalArmyCapacity, generalCommandPoints, generalMoraleLossReduction, generalRallyStrength } from "../../../supabase/functions/_shared/generalCommand";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
 const StrategicOverlay = lazy(() => import("@/components/StrategicOverlay"));
 
@@ -717,7 +717,7 @@ function SummaryChip({ label, value, icon: Icon, highlight, tip }: { label: stri
 }
 
 function CommandStatLine({ skill }: { skill: number | null }) {
-  return <p className="text-[11px] text-muted-foreground">
+  return <p className="text-[11px] text-muted-foreground" title={GENERAL_CP_RULE_TEXT}>
     {skill == null ? "Bez generála" : `Schopnost ${skill}/100`} · {generalCommandPoints(skill)} CP/kolo · kapacita {generalArmyCapacity(skill).toLocaleString()} · ztráty morálky −{Math.round(generalMoraleLossReduction(skill) * 100)} % · {skill == null ? "Rally nedostupné" : `Rally +${generalRallyStrength(skill)}`}
   </p>;
 }

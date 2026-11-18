@@ -10,15 +10,10 @@ const unit = (key: string, side: "attacker" | "defender", x: number | null, y: n
 
 describe("canonical general command on the 0–100 skill scale", () => {
   it("uses exact CP examples and clamps outliers", () => {
-    expect(generalCommandPoints(null)).toBe(4);
-    expect(generalCommandPoints(0)).toBe(4);
-    expect(generalCommandPoints(24)).toBe(4);
-    expect(generalCommandPoints(25)).toBe(5);
-    expect(generalCommandPoints(49)).toBe(5);
-    expect(generalCommandPoints(50)).toBe(6);
-    expect(generalCommandPoints(74)).toBe(6);
-    expect(generalCommandPoints(75)).toBe(7);
-    expect(generalCommandPoints(100)).toBe(7);
+    expect([null, 0, 39, 40, 55, 56, 62, 63, 100].map(generalCommandPoints)).toEqual([4, 4, 4, 5, 5, 6, 6, 7, 7]);
+    expect(generalCommandPoints(40)).toBe(5);
+    expect(generalCommandPoints(56)).toBe(6);
+    expect(generalCommandPoints(63)).toBe(7);
     expect(generalCommandPoints(1000)).toBe(7);
     expect(generalCommandPoints(-10)).toBe(4);
   });

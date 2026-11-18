@@ -234,7 +234,9 @@ describe("rounds", () => {
 });
 
 describe("command points and orders", () => {
-  it("4 CP base, 4–7 by skill quartile", () => { expect(commandPoints(null)).toBe(4); expect(commandPoints(40)).toBe(5); expect(commandPoints(56)).toBe(6); expect(commandPoints(80)).toBe(7); expect(commandPoints(100)).toBe(7); });
+  it("4 CP base, thresholds 40/56/63 and maximum 7", () => {
+    expect([null, 0, 39, 40, 55, 56, 62, 63, 100].map(commandPoints)).toEqual([4, 4, 4, 5, 5, 6, 6, 7, 7]);
+  });
   it("a group order costs 1 CP", () => {
     const us = [u("a", "attacker", 0, 0), u("b", "attacker", 0, 1), u("d", "defender", 9, 0)];
     expect(cpUsed([{ seq: 1, cmd: 1, key: "a", kind: "HOLD" }, { seq: 2, cmd: 1, key: "b", kind: "HOLD" }], us, "attacker")).toBe(1);

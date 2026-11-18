@@ -9,10 +9,16 @@ export function clampGeneralSkill(skill: number | null | undefined): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
 }
 
-/** 4 CP without a general; skill 0–24 => 4, 25–49 => 5, 50–74 => 6, 75–100 => 7. */
+export const GENERAL_CP_RULE_TEXT = "Velitelské body: bez generála nebo schopnost 0–39 = 4 CP; 40–55 = 5 CP; 56–62 = 6 CP; 63–100 = 7 CP.";
+
+/** 4 CP without a general; skill 0–39 => 4, 40–55 => 5, 56–62 => 6, 63–100 => 7. */
 export function generalCommandPoints(skill: number | null | undefined): number {
   if (skill == null) return NO_GENERAL_CP;
-  return Math.min(MAX_GENERAL_CP, NO_GENERAL_CP + Math.floor(clampGeneralSkill(skill) / 25));
+  const value = clampGeneralSkill(skill);
+  if (value >= 63) return MAX_GENERAL_CP;
+  if (value >= 56) return 6;
+  if (value >= 40) return 5;
+  return NO_GENERAL_CP;
 }
 
 /** Per-stack capacity, never a realm-wide mobilization limit. */
