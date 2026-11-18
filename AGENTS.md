@@ -39,4 +39,3 @@
 
 - Rural baseline growth and local migration are planned by ruralGameplay.ts only in commit-turn atomic world phase; economy uses one shared cell-local rural labor pool, never urban population inflation — prevents replay/catch-up and double staffing.
 - Map mount/refetch must never seed city parcels; founding and explicit rollout own footprints — viewing a world must not cause writes and cascading reloads.
-- The admin resource atlas map overlay reads true deposits only through the admin-only, read-only `admin-resource-atlas` function and colours micro-squares with `microResourceProbability` (`src/lib/resourceAtlas.ts`) — it never writes and never shows hidden geology to players.
