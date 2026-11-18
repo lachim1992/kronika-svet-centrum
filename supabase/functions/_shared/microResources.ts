@@ -64,6 +64,15 @@ export const MICRO_CHANCES: Record<string, Partial<Record<MicroResourceKind, num
 
 const MINERAL: Partial<Record<MicroResourceKind, DepositKind>> = { iron: "iron", gold: "gold", copper: "copper", granite: "granite", wild_grapes: "wild_grapes" };
 
+/** Public prospect probability for maps/editors: 1 for certain resources, otherwise the biome chance gated by macro geology. */
+export function microResourceProbability(kind: MicroResourceKind, subBiome: string | null | undefined,
+  macroBiome: string | null | undefined, macroDeposits: Deposit[]): number {
+  if (certainMicroResources(subBiome, macroBiome).includes(kind)) return 1;
+  const needs = MINERAL[kind];
+  if (needs && !macroDeposits.some(d => d.kind === needs)) return 0;
+  return MICRO_CHANCES[subBiome || ""]?.[kind] ?? 0;
+}
+
 function hash(s: string): number { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; }
 
 export interface MicroFinding { kind: MicroResourceKind; good: string | null; implemented: boolean; certain: boolean }

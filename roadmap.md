@@ -1,5 +1,12 @@
 # Map-first square-grid roadmap
 
+## Editor mapy a izolované scénáře — 2026-11-18
+- [x] Samostatný editor s 2D izometrickou čtvercovou mapou a 6×6 mikropolíčky; terén, města, armády, cesty, suroviny a těžební stavby bez poplatků.
+- [x] Pravděpodobnostní vrstva surovin z kanonických biome/deposit pravidel; lokální uložení, import/export a historie úprav.
+- [x] Izolovaná simulace boje přes sdílený `fieldBattle` resolver a fyzická kapacita těžby přes sdílená parcel/transport pravidla; žádné zápisy do živých her. Funkce `scenario-simulate` nasazena (zdroj SHA-256 `2f8f60344ec66ad7e21f248f3ab7d9ef393bec6f863905a1ffdfa92a727e7e2e`), bez DB migrace a přístupu k herním tabulkám.
+- [x] Regrese 74/74 ve 4 souborech, `oj typecheck -b --noEmit` a produkční build prošly (jen stávající varování o chunkách/PostCSS/Browserslist). Preview ověřilo malování lesa, přidání armády, 36 mikropolíček, potvrzení železné rudy, barevný terén, lokální uložení i živé simulace: bitva 37 kol s vítězem `army-west`, farma `raw_grain` 6,6/tah; nula page errors, nula neúspěšných requestů a nula zápisů do herních tabulek.
+- [x] Druhý uživatelův bod byl odvolán („to už jsem zapomněl, neřeš“). Omezení: simulace těžby uvádí fyzickou kapacitu při plném obsazení, nikoli kompletní ekonomický tah; editor zatím neexportuje scénář do živé hry.
+
 ## Město a bitevní vizuály — 2026-11-18
 - [x] Menší kruhy, poloviční figurky, 18 vojáků + 2 velitelé a výrazná pohybová políčka.
 - [x] Budovy na 75 %, kamenná dlažba, drobné uličky a městský život bez změn herních dat.

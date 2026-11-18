@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Plus, Users, LogOut, Scroll, Sparkles,
-  Clock, RotateCcw, Bot, Pen, UserPlus, Server,
+  Clock, RotateCcw, Bot, Pen, UserPlus, Server, Map as MapIcon,
 } from "lucide-react";
 import ChronicleHubLogo from "@/components/ChronicleHubLogo";
 import { toast } from "sonner";
@@ -268,7 +268,25 @@ const MyGames = () => {
           </button>
         </section>
 
-        {/* ====== SECTION C: Create New World ====== */}
+        {/* ====== SECTION C: Scenario Editor ====== */}
+        <section>
+          <button
+            onClick={() => navigate("/editor")}
+            className="w-full p-5 rounded-lg border-2 border-dashed border-primary/30 hover:border-primary/60 bg-primary/5 hover:bg-primary/10 transition-all group"
+          >
+            <div className="flex items-center justify-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center group-hover:bg-primary/25 transition-colors">
+                <MapIcon className="h-5 w-5 text-primary" />
+              </div>
+              <div className="text-left">
+                <p className="font-display font-bold text-lg text-foreground">Editor mapy a scénářů</p>
+                <p className="text-sm text-muted-foreground">Terén, města, armády, cesty, suroviny a bitvy v izolovaném sandboxu</p>
+              </div>
+            </div>
+          </button>
+        </section>
+
+        {/* ====== SECTION D: Create New World ====== */}
         <section className="space-y-3">
           {!showCreate ? (
             <>
@@ -312,7 +330,7 @@ const MyGames = () => {
           onCreated={handleGameCreated}
         />
 
-        {/* ====== SECTION D: Dev Admin Panel ====== */}
+        {/* ====== SECTION E: Dev Admin Panel ====== */}
         {isDev && (
           <section className="border-t border-border pt-6">
             <AdminWorldsPanel />

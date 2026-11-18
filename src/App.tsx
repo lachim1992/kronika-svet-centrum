@@ -10,6 +10,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Welcome from "./pages/Welcome";
 import MyGames from "./pages/MyGames";
 import Dashboard from "./pages/Dashboard";
+import ScenarioEditor from "./pages/ScenarioEditor";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const AppRoutes = () => {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/" element={<AuthGuard><Welcome /></AuthGuard>} />
           <Route path="/games" element={<AuthGuard><MyGames /></AuthGuard>} />
+          <Route path="/editor" element={<AuthGuard><ScenarioEditor /></AuthGuard>} />
           <Route path="/game/:sessionId" element={<AuthGuard><Dashboard /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
