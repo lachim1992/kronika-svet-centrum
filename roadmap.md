@@ -1,5 +1,12 @@
 # Map-first square-grid roadmap
 
+## Město a bitevní vizuály — 2026-11-18
+- [x] Menší kruhy, poloviční figurky, 18 vojáků + 2 velitelé a výrazná pohybová políčka.
+- [x] Budovy na 75 %, kamenná dlažba, drobné uličky a městský život bez změn herních dat.
+- [x] Animace nových vyhodnocených polních útoků: úder, luk, let šípů/salva, zásah; reduced-motion vypíná pohyb. Kosmetické přehrání, bez druhého resolveru.
+- [x] field-battle + micro-movement 62/62, automatický build OK; přihlášené otevření města (7 vrstev uliček) bez page errors, izolované vykreslení nové salvy (7 šípů). Žádné herní příkazy, migrace ani nasazení.
+- [ ] Ostrý útok a poslední vítězný zásah nejsou ověřené; současné přehrání potřebuje otevřený panel aktivní polní bitvy. Animace obléhání není součástí tohoto průchodu.
+
 ## Taktické polní bitvy (2026-11-15)
 - [x] Vytvořena Lambadagradská garda (Player, 8000, -8,1)
 - [x] Vyvolání bitvy a výběr makropolí (všechny hry)

@@ -18,7 +18,7 @@ type Battle = { id: string; rev?: number; battlefield: Cell[]; status: string; a
   units: FBUnit[] | null; orders: FBOrder[]; ready: Record<string, boolean>; round: number; last_report: (Report & { meta?: BattleMeta }) | null; meta?: BattleMeta | null; started_turn: number };
 export type BattleMode = OrderKind | null;
 export type FieldBattleView = { id: string; cells: Cell[]; units: FBUnit[]; orders: FBOrder[]; status: string; selectedKeys: string[]; activeSide: Side | null;
-  attackerPlayer: string; mode: BattleMode; zones: { own: Cell[]; enemy: Cell[] }; reach: { x: number; y: number }[]; reachKind: "move" | "range" | null };
+  attackerPlayer: string; mode: BattleMode; zones: { own: Cell[]; enemy: Cell[] }; reach: { x: number; y: number }[]; reachKind: "move" | "range" | null; reportRound: number; events: FBEvent[] };
 export type FieldBattleClick = { kind: "micro"; x: number; y: number; n: number; shift?: boolean } | { kind: "unit"; key: string; n: number; shift?: boolean };
 type Props = { sessionId: string; currentTurn: number; playerName: string; army: ArmyLite; armies: ArmyLite[];
   picked: Cell[]; picking: boolean; onPicking: (on: boolean, initial: Cell[]) => void; onBattlefield: (view: FieldBattleView | null) => void; mapClick?: FieldBattleClick | null };
@@ -85,7 +85,8 @@ export default function FieldBattlePanel({ sessionId, currentTurn, playerName, a
     }
     const squares = (sd: Side) => battle.battlefield.filter(c => zone(sd)(c.x * 6 + 2, c.y * 6 + 2));
     onBattlefield({ id: battle.id, cells: battle.battlefield, units, orders: battle.orders ?? [], status: battle.status, selectedKeys: selected, activeSide: side,
-      attackerPlayer: battle.attacker_player, mode, zones: side ? { own: squares(side), enemy: squares(side === "attacker" ? "defender" : "attacker") } : { own: [], enemy: [] }, reach, reachKind });
+      attackerPlayer: battle.attacker_player, mode, zones: side ? { own: squares(side), enemy: squares(side === "attacker" ? "defender" : "attacker") } : { own: [], enemy: [] }, reach, reachKind,
+      reportRound: battle.last_report?.round ?? 0, events: battle.last_report?.events ?? [] });
   }, [battle, units, onBattlefield, selected, side, mode, zone]);
   useEffect(() => () => { onBattlefield(null); onPicking(false, []); }, [onBattlefield, onPicking]);
 

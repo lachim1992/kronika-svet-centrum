@@ -115,6 +115,10 @@
     --map-city-base: hsl(147 22% 19%);
     --map-city-wall-light: hsl(35 20% 67%);
     --map-city-wall-dark: hsl(31 18% 46%);
+    --map-city-paving: hsl(205 8% 57%);
+    --map-city-paving-light: hsl(205 7% 66%);
+    --map-city-mortar: hsl(205 10% 39%);
+    --map-city-lane: hsl(40 12% 74%);
     --map-army-skin: hsl(24 45% 62%);
     --map-army-metal: hsl(210 10% 72%);
     --map-army-metal-dark: hsl(212 12% 38%);
@@ -265,6 +269,22 @@
     transform-box: fill-box;
     transform-origin: center;
   }
+  .iso-battle-arrow { opacity: 0; animation: iso-arrow-flight .85s ease-in both; }
+  .iso-battle-strike { opacity: 0; animation: iso-battle-strike .55s ease-in-out both; }
+  .iso-battle-impact { opacity: 0; animation: iso-battle-impact .45s ease-out both; }
+  .iso-city-walker { animation: iso-city-walk 9s ease-in-out infinite alternate; }
+  @keyframes iso-arrow-flight {
+    0% { opacity: 1; transform: translate(0, 0); }
+    50% { opacity: 1; transform: translate(calc(var(--arrow-x) * .5), calc(var(--arrow-y) * .5 - 7px)); }
+    85% { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--arrow-x), var(--arrow-y)); }
+  }
+  @keyframes iso-battle-strike {
+    0%, 100% { opacity: 0; transform: translate(0, 0); }
+    30%, 65% { opacity: 1; transform: translate(var(--strike-x), var(--strike-y)); }
+  }
+  @keyframes iso-battle-impact { 0% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes iso-city-walk { to { transform: translate(3px, 1.5px); } }
   @keyframes iso-hearth-glow {
     0%, 100% { opacity: .35; }
     50% { opacity: 1; }
@@ -333,6 +353,8 @@
     to { stroke-dashoffset: -6; }
   }
   @media (prefers-reduced-motion: reduce) {
+    .iso-city-walker { animation: none; }
+    .iso-battle-arrow, .iso-battle-strike, .iso-battle-impact { animation: none; opacity: 0; }
     .iso-active-route { animation: none; }
     .iso-city-hearth { animation: none; opacity: .8; }
     .iso-construction-rise,

@@ -36,6 +36,7 @@ import FieldBattlePanel, { type FieldBattleView, type FieldBattleClick } from "@
 import { FORMATIONS as FB_FORMATIONS, FORMATION_INFO as FB_FORMATION_INFO, normalizeFormation as fbNormalizeFormation } from "../../../supabase/functions/_shared/fieldBattle";
 import { ArmySquad, ArmyStandard, squadKind } from "@/components/map/ArmySquad";
 import ArmyMoveOverlay from "./ArmyMoveOverlay";
+import BattleAttackEffects from "./BattleAttackEffects";
 import { microSiteReason } from "../../../supabase/functions/_shared/microResources";
 import { MAX_MEN_PER_MICRO, MOVE_BUDGET, MICRO_PER_TILE, microKey, microOf, planMicroRoute, tileOfMicro, type Micro, type MicroTerrain } from "../../../supabase/functions/_shared/microMovement";
 import BuildingDetailSheet, { type BuildingTarget } from "@/components/map/BuildingDetailSheet";
@@ -1426,13 +1427,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             fillOpacity={mine ? (parcel.status === "occupied" ? .9 : .7) : parcel.buildable ? (parcel.status === "wild" ? .2 : .48) : .26}
             strokeOpacity={activeParcel ? 1 : mine ? .95 : .22} />
           {/* Strong, persistent hatching distinguishes city-used land from the idle survey grid. */}
-          {mine && <polygon points={quad} fill={hatchFill} opacity={parcel.status === "occupied" ? ".32" : ".5"} pointerEvents="none" />}
+          {mine && <polygon points={quad} fill={parcel.claim_kind === "worked" ? hatchFill : "url(#iso-city-paving)"} opacity={parcel.claim_kind === "worked" ? ".32" : ".95"} pointerEvents="none" />}
           <title>{`${parcel.region_name ? parcel.region_name + " · " : ""}${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}${mine ? ` · patří ${holder?.name || "městu"}` : ""}`}</title>
           {parcel.region_name && <text x={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.x + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.x) / 2}
             y={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.y + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.y) / 2}
             textAnchor="middle" fontSize="4" fontWeight="700" fill="var(--map-label)" pointerEvents="none">{parcel.region_name.length > 17 ? parcel.region_name.slice(0, 16) + "…" : parcel.region_name}</text>}
         </g>;
       })}
+      {renderCityStreetLife(cityOwned.filter(p => p.claim_kind !== "worked"), centerPoint)}
       {/* city land is ringed so the built-up block reads at a glance */}
       {renderWallRun(wallEdges, holderColor, 2, "survey-wall", holder?.owner_player)}
       {(roadTier > 0 || selectedInfrastructure?.status === "building") && localRoadSegments(occupiedIndexes).map((segment, index) => {
@@ -1713,7 +1715,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const renderParcelHouse = (parcel: TileParcel, centerPoint: { x: number; y: number }, index: number, building = false, progress = 100) => {
     const { a, b, c, d } = parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y);
     const cx = (a.x + b.x + c.x + d.x) / 4; const cy = (a.y + b.y + c.y + d.y) / 4;
-    const width = (b.x - a.x) * .52; const height = width * .78;
+    const width = (b.x - a.x) * .52 * .75; const height = width * .78;
     if (building) return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`} className="iso-construction-site">
       <path d={`M${-width} 2 L0 ${height * .5 + 2} L${width} 2 L0 ${-height * .5} Z`} fill="var(--map-city-wall-dark)" opacity=".36" />
       <g className="iso-construction-rise" style={{ "--construction-rise": `${Math.max(.18, progress / 100)}` } as CSSProperties}>
@@ -1742,6 +1744,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     </g>;
   };
 
+  /** Decorative alleys along parcel edges, not freight roads or economic infrastructure. */
+  const renderCityStreetLife = (parcels: TileParcel[], centerPoint: { x: number; y: number }) => <g pointerEvents="none" data-city-street-life>
+    {parcels.map((parcel, i) => {
+      const { a, b, d } = parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y);
+      const x = a.x * .25 + b.x * .75, y = a.y * .25 + b.y * .75;
+      return <g key={`lane-${parcel.id}`}>
+        <path d={`M${b.x} ${b.y} L${a.x} ${a.y} L${d.x} ${d.y}`} fill="none" stroke="var(--map-city-mortar)" strokeWidth="1.5" />
+        <path d={`M${b.x} ${b.y} L${a.x} ${a.y} L${d.x} ${d.y}`} fill="none" stroke="var(--map-city-lane)" strokeWidth=".8" />
+        {i % 2 === 0 && <g transform={`translate(${x},${y})`}><g className="iso-city-walker" style={{ animationDelay: `${-(i % 7)}s` }}>
+          <ellipse cy=".2" rx=".75" ry=".3" fill="var(--map-marker-edge)" opacity=".3" />
+          <path d="M-.35 0 L0 -1.6 L.35 0" fill={i % 4 === 0 ? "var(--map-city-rival)" : "var(--map-army-cloth)"} />
+          <circle cy="-1.8" r=".3" fill="var(--map-army-skin)" />
+        </g></g>}
+        {i % 4 === 1 && <g transform={`translate(${x - 1},${y})`}><path d="M-1 0 L1 1 L2 .5 L0 -.5 Z" fill="var(--map-army-wood)" stroke="var(--map-marker-edge)" strokeWidth=".2" /><circle cx="-.4" cy=".8" r=".35" fill="var(--map-army-metal-dark)" /><circle cx="1.2" cy="1.1" r=".35" fill="var(--map-army-metal-dark)" /></g>}
+      </g>;
+    })}
+  </g>;
+
   /** City-held parcels of a cell: footprint, ramparts with towers, and houses. */
   const renderCityFootprint = (parcels: TileParcel[], centerPoint: { x: number; y: number }, own: boolean, owner?: string) => {
     const wallColor = own ? "var(--map-city-own)" : "var(--map-city-rival)";
@@ -1750,10 +1770,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return <g>
       {parcels.map(parcel => (
         <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
-          fill={parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open) : "var(--map-parcel-open)"}
+          fill={parcel.claim_kind === "worked" ? "var(--map-parcel-open)" : "url(#iso-city-paving)"}
           stroke="var(--map-marker-edge)" strokeWidth=".25" strokeOpacity=".45"
-          fillOpacity={parcel.status === "occupied" ? .72 : .42} />
+          fillOpacity={parcel.claim_kind === "worked" ? .42 : .95} />
       ))}
+      {renderCityStreetLife(parcels.filter(p => p.claim_kind !== "worked"), centerPoint)}
       {renderWallRun(edges, wallColor, 2.2, "wall", owner)}
       {parcelsBackToFront(occupied).map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
     </g>;
@@ -2001,6 +2022,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       >
       <svg className="h-full w-full">
         <defs>
+          <pattern id="iso-city-paving" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="matrix(1 .5 -1 .5 0 0)">
+            <rect width="4" height="4" fill="var(--map-city-paving)" />
+            <path d="M0 0 H4 M0 2 H4 M0 4 H4 M2 0 V2 M0 2 V4 M4 2 V4" fill="none" stroke="var(--map-city-mortar)" strokeWidth=".25" />
+            <path d="M.3 .4 H1.7 M2.3 2.4 H3.7" stroke="var(--map-city-paving-light)" strokeWidth=".3" />
+          </pattern>
           <filter id="iso-shadow"><feDropShadow dx="0" dy="5" stdDeviation="4" floodOpacity=".35" /></filter>
           <pattern id="iso-city-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <rect width="6" height="6" fill="none" />
@@ -2283,6 +2309,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const ATTACKY = new Set(["ATTACK", "CHARGE", "VOLLEY"]);
             const TYPE_CZ: Record<string, string> = { MILITIA: "milice", SPEARMEN: "kopiníci", SWORDSMEN: "šermíři", AXEMEN: "sekerníci", ARCHERS: "lučištníci", SLINGERS: "prakovníci", JAVELINERS: "oštěpaři", LIGHT_CAVALRY: "lehká jízda", HEAVY_CAVALRY: "těžká jízda", ELITE_GUARD: "elitní garda", ENGINEERS: "ženisté" };
             return <g data-field-battle-units>
+              <BattleAttackEffects battleId={fieldBattle.id} round={fieldBattle.reportRound} events={fieldBattle.events} units={fieldBattle.units} project={microPoint} />
               {fieldBattle.reach.map((c, i) => {
                 const p = microPoint(c.x, c.y);
                 const dx = TILE_SIZE / MICRO_PER_TILE * .9, dy = dx / 2;

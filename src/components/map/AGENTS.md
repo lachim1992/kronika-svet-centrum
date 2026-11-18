@@ -1,0 +1,2 @@
+- Battle attack playback belongs to BattleAttackEffects and consumes only newly committed field-battle reports; never resolve combat or dispatch game commands from cosmetic animation.
+- City paving, alleyways and pedestrians are decorative layers over existing urban parcels, not physical transport capacity or additional population.
