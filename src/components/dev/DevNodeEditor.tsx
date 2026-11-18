@@ -107,7 +107,6 @@ const NODE_FIELD_GROUPS = [
     label: "Identita & Klasifikace", icon: MapPin,
     fields: [
       { key: "name", label: "Název", type: "text" },
-      { key: "label", label: "Label (zobrazovaný)", type: "text" },
       { key: "node_type", label: "Typ (legacy)", type: "select", options: UNIFIED_NODE_TYPES },
       { key: "node_subtype", label: "Subtyp (v4.1)", type: "select", options: ALL_SUBTYPES },
       { key: "node_tier", label: "Tier", type: "select", options: NODE_TIERS as string[] },
@@ -328,7 +327,7 @@ const DevNodeEditor = ({ sessionId, onRefetch }: Props) => {
     if (!selectedNodeId) return;
     setSaving(true);
     try {
-      const { id, biome, ...patch } = editedNode as any;
+      const { id, biome, label, ...patch } = editedNode as any;
       if (patch.node_class === "major") patch.is_major = true;
       else if (patch.node_class === "minor" || patch.node_class === "transit") patch.is_major = false;
       

@@ -76,7 +76,7 @@ const GoodsEconomyDebugPanel = ({ sessionId }: Props) => {
   const { data: inventoryData } = useQuery({
     queryKey: ["node-inventory", sessionId],
     queryFn: async () => {
-      const { data } = await supabase.from("node_inventory").select("*, province_nodes!inner(session_id, label, node_subtype)").limit(200);
+      const { data } = await supabase.from("node_inventory").select("*, province_nodes!inner(session_id, name, node_subtype)").limit(200);
       return (data || []).filter((d: any) => d.province_nodes?.session_id === sessionId);
     },
   });
