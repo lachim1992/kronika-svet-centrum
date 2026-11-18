@@ -46,19 +46,8 @@ export const ROAD_TIERS: readonly RoadTierDefinition[] = [
     friction: 1.0,
   },
   {
-    key: "road",
-    level: 2,
-    label: "Road",
-    cost: { gold: 65, production: 45 },
-    buildTurns: 2,
-    maintenance: { gold: 3, production: 1 },
-    capacity: 10,
-    speed: 1.5,
-    friction: 0.65,
-  },
-  {
     key: "paved",
-    level: 3,
+    level: 2,
     label: "Paved Road",
     cost: { gold: 120, production: 80 },
     buildTurns: 3,
@@ -73,13 +62,15 @@ const ROAD_TIER_BY_KEY = new Map(ROAD_TIERS.map(t => [t.key, t]));
 const ROAD_TIER_BY_LEVEL = new Map(ROAD_TIERS.map(t => [t.level, t]));
 
 export function roadTierByKey(key: RoadTierKey): RoadTierDefinition {
-  const tier = ROAD_TIER_BY_KEY.get(key);
+  // Historical "road" rows remain readable as the new paved tier.
+  const tier = ROAD_TIER_BY_KEY.get(key === "road" ? "paved" : key);
   if (!tier) throw new Error(`Unknown road tier key: ${key}`);
   return tier;
 }
 
 export function roadTierByLevel(level: number): RoadTierDefinition {
-  const tier = ROAD_TIER_BY_LEVEL.get(level);
+  // Level 3 was the old paved tier; level 2 is paved for all new construction.
+  const tier = ROAD_TIER_BY_LEVEL.get(level === 3 ? 2 : level);
   if (!tier) throw new Error(`Unknown road tier level: ${level}`);
   return tier;
 }

@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## Cesty — dvě úrovně, volný editor, napojení a mosty (2026-11-18)
+- [ ] Dvě samostatně stavitelné úrovně: stezka a dlážděná cesta; bez povinných postupných upgradů a bez zákazu návratu přes stejné pole.
+- [ ] Jemnější a realističtější vykreslení cest; automatické a lépe vykreslené mosty při každém překročení řeky.
+- [ ] Jednotná napojení: makropole je obslouženo průchodem cesty, města a zdroje cestou na políčku nebo vedle něj; toky ze zdrojů používají stejné zobrazení jako meziměstské toky.
+- [ ] Ruční kontrola vlastního diffu a jediný commit; bez testů/typechecku/buildu v Lovable, produkčních zápisů, nasazení, refresh-economy a posunu tahu.
+
 ## JV72O7 — regionální substituce, armádní projekce a hladomor (2026-11-18)
 - [x] Read-only audit turnu 21 potvrdil fuel 59,1 %, tři neaktivní stacky a pět měst `food_status=ok`; bez process-turn a refresh-economy.
 - [x] Cross-city substituce nově pokrývá `critical_need` i `basic_need`; `nutritionOnly` zůstává jen pro kritické potřeby. Testy dvou měst kontrolují fyzický tok, odpojení, ztrátu, rezervy, kvalitu, demand channels, determinismus a double-count; JV72O7 fixture požaduje fuel >59,1 % a jídlo/vodu 100 %.

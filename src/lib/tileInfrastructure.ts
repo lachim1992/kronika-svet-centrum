@@ -1,6 +1,6 @@
 import { ROAD_TIERS } from "@/lib/roadNetwork";
 
-const CZECH_LABELS: Record<number, string> = { 1: "Stezka", 2: "Cesta", 3: "Dlážděná cesta" };
+const CZECH_LABELS: Record<number, string> = { 1: "Stezka", 2: "Dlážděná cesta" };
 
 /** Compatibility view of the canonical road tiers for older map callers. */
 export const TILE_INFRASTRUCTURE_LEVELS = ROAD_TIERS.map(tier => ({

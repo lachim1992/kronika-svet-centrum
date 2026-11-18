@@ -1006,10 +1006,8 @@ async function executeBuildRoadPath(
   }));
   const level = Number(payload.level || 1);
   const tier = tileInfrastructureLevel(level);
-  if (!tier || path.length < 1 || path.length > 120) return { events: [], error: "Trasa musí mít 1 až 120 polí a úroveň 1–3" };
+  if (!tier || path.length < 1 || path.length > 120) return { events: [], error: "Trasa musí mít 1 až 120 polí a úroveň 1–2" };
   if (path.some((cell: any) => !Number.isInteger(cell.x) || !Number.isInteger(cell.y))) return { events: [], error: "Trasa obsahuje neplatné pole" };
-  const unique = new Set(path.map((cell: any) => `${cell.x},${cell.y}`));
-  if (unique.size !== path.length) return { events: [], error: "Trasa se nesmí vracet přes stejné pole" };
   for (let i = 1; i < path.length; i += 1) {
     if (Math.abs(path[i].x - path[i - 1].x) + Math.abs(path[i].y - path[i - 1].y) !== 1) return { events: [], error: "Cesta musí vést přes sousední pole" };
   }

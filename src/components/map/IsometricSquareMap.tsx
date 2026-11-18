@@ -1264,16 +1264,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const parcelBuildCity = selectedParcel?.city_id ? cityById.get(selectedParcel.city_id) : selectedCity;
   /** A neighbouring city of yours that may buy parcels on this cell. */
   const foreignOwner = selected?.owner_player && selected.owner_player !== playerName ? selected.owner_player : null;
-  /** A road is allowed wherever you already have a foothold: parcel, city seat or sub-node on the tile. */
-  const canBuildRoadHere = !!selected && !foreignOwner && (
-    selected.owner_player === playerName
-    || tileParcels.some(parcel => parcel.owner_player === playerName)
-    || selectedCity?.owner_player === playerName
-    || (selectedCell ? roadSegments.some(segment => segment.status === "completed" && (
-      (segment.from_x === selectedCell.a && segment.from_y === selectedCell.b)
-      || (segment.to_x === selectedCell.a && segment.to_y === selectedCell.b)
-    )) : false)
-    || (selectedCell ? nodes.some(node => { const cell = entityCell(node); return cell.a === selectedCell.a && cell.b === selectedCell.b && node.controlled_by === playerName; }) : false));
+  /** Any passable surveyed parcel can start a road; ownership limits only construction commands elsewhere. */
+  const canBuildRoadHere = !!selected && selected.is_passable !== false && selected.biome_family !== "sea";
   const expansionCity = useMemo(() => {
     if (!selectedCell || selectedCity || foreignOwner) return undefined;
     return cities.find(city => {
@@ -1907,7 +1899,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const startRoadDraft = () => {
     if (!selectedCell || !selectedParcel || parcelsLoading || !canBuildRoadHere) {
-      toast.error(parcelsLoading ? "Počkej na načtení podčtverců" : "Nejprve vyber vlastní podčtverec, město, subuzel nebo hotovou cestu");
+      toast.error(parcelsLoading ? "Počkej na načtení podčtverců" : "Nejprve vyber průchodný podčtverec");
       return;
     }
     const start: SubRoadCell = { gridX: selectedCell.a, gridY: selectedCell.b, parcelX: selectedParcel.parcel_x, parcelY: selectedParcel.parcel_y };
@@ -1928,7 +1920,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       const sameCell = (a: SubRoadCell, b: SubRoadCell) =>
         a.gridX === b.gridX && a.gridY === b.gridY && a.parcelX === b.parcelX && a.parcelY === b.parcelY;
       const existingIndex = current.findIndex(item => sameCell(item, next));
-      if (existingIndex >= 0) return current.slice(0, existingIndex + 1);
+      // Clicking the immediately previous cell is a convenient one-step undo.
+      if (existingIndex === current.length - 2) return current.slice(0, -1);
+      if (existingIndex >= 0 && existingIndex !== current.length - 1) return current;
 
       const passable = (cell: SubRoadCell) => {
         const tile = tileByCell.get(cellKey(cell.gridX, cell.gridY));
