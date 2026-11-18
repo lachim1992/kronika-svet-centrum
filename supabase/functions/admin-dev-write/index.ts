@@ -34,7 +34,12 @@ Deno.serve(async (req) => {
     if (!session) return json({ error: "Unknown session" }, 404);
 
     // Composition rows have no session_id: every targeted row's stack must belong to the session.
-    if (op.table === "military_stack_composition") {
+    if (op.table === "military_stack_composition" && op.action === "insert") {
+      const ids = [...new Set((Array.isArray(op.values) ? op.values : [op.values]).map(r => String((r as Record<string, unknown>).stack_id)))];
+      const { data: stacks, error: sErr } = await db.from("military_stacks").select("id").in("id", ids).eq("session_id", op.sessionId);
+      if (sErr) throw sErr;
+      if ((stacks || []).length !== ids.length) return json({ error: "Row outside session scope" }, 403);
+    } else if (op.table === "military_stack_composition") {
       let q = db.from("military_stack_composition").select("stack_id");
       for (const f of op.filters) q = applyFilter(q, f);
       const { data: rows, error } = await q;

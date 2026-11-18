@@ -97,8 +97,11 @@ export function validateAdminOp(body: unknown, userId: string): Result {
     if (action !== "update") return fail("game_sessions supports update only");
     filters.push({ op: "eq", column: "id", value: sessionId });
   } else if (scope === "composition") {
-    if (action === "insert" || action === "upsert") return fail("composition supports update/delete only");
-    if (!filters.some((f) => f.column === "id" || f.column === "stack_id")) return fail("composition requires id/stack_id filter");
+    if (action === "upsert") return fail("composition supports insert/update/delete only");
+    if (action === "insert") {
+      const rows = (Array.isArray(values) ? values : [values]) as Row[];
+      if (rows.some(r => typeof r.stack_id !== "string" || !UUID.test(r.stack_id))) return fail("composition insert needs stack_id");
+    } else if (!filters.some((f) => f.column === "id" || f.column === "stack_id")) return fail("composition requires id/stack_id filter");
   } else if (action === "update" || action === "delete") {
     const col = scope === "user" ? "user_id" : "session_id";
     if (!filters.some((f) => f.column === col)) filters.push({ op: "eq", column: col, value: scope === "user" ? userId : sessionId });

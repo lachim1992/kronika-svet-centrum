@@ -10,6 +10,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Welcome from "./pages/Welcome";
 import MyGames from "./pages/MyGames";
 import Dashboard from "./pages/Dashboard";
+import LiveGameEditor from "./pages/LiveGameEditor";
 import ScenarioEditor from "./pages/ScenarioEditor";
 import NotFound from "./pages/NotFound";
 
@@ -26,6 +27,7 @@ const AppRoutes = () => {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/" element={<AuthGuard><Welcome /></AuthGuard>} />
           <Route path="/games" element={<AuthGuard><MyGames /></AuthGuard>} />
+          <Route path="/game/:sessionId/editor" element={<AuthGuard><LiveGameEditor /></AuthGuard>} />
           <Route path="/editor" element={<AuthGuard><ScenarioEditor /></AuthGuard>} />
           <Route path="/game/:sessionId" element={<AuthGuard><Dashboard /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />

@@ -33,3 +33,13 @@ describe("admin-dev-write policy", () => {
     expect(r.ok && r.op.filters).toContainEqual({ op: "eq", column: "id", value: S });
   });
 });
+
+describe("admin-dev-write composition insert", () => {
+  const S2 = "28712ebe-18cd-45a6-89c3-10e25b7da2f0", U2 = "b6bbf6d8-b597-476d-8ed8-c8ccf1fb3186";
+  it("allows inserting units with a stack id", () => {
+    expect(validateAdminOp({ sessionId: S2, table: "military_stack_composition", action: "insert", values: [{ stack_id: S2, unit_type: "MILITIA", manpower: 200 }] }, U2).ok).toBe(true);
+  });
+  it("rejects unit inserts without a stack id", () => {
+    expect(validateAdminOp({ sessionId: S2, table: "military_stack_composition", action: "insert", values: { unit_type: "MILITIA", manpower: 200 } }, U2).ok).toBe(false);
+  });
+});
