@@ -48,7 +48,20 @@ function simulate(turns: number, invest: boolean) {
     const snap = { ...base, turn, cities, opening, producers: [...base.producers.filter((p: any) => !p.parcel), ...sources, ...extra] } as any;
     const r = resolveGoodsEconomy(snap);
     if (turn <= 3) expect(resolveGoodsEconomy(snap)).toEqual(r); // idempotent recompute = no re-credit
-    for (const b of r.balances) expect(b.opening + produced(b) + b.imported).toBeCloseTo(b.consumed_household + b.consumed_state + b.consumed_as_input + b.exported + b.stored + b.capex + b.lost_spoilage, 6);
+    // Every simulated turn must conserve finite physical quantities, not merely the sampled KPI turns.
+    for (const b of r.balances) {
+      const quantities = [
+        b.opening, produced(b), b.imported, b.consumed_household, b.consumed_state,
+        b.consumed_as_input, b.exported, b.stored, b.capex, b.lost_spoilage,
+      ];
+      for (const quantity of quantities) {
+        expect(Number.isFinite(quantity), `non-finite ledger quantity at turn ${turn} city ${b.city} good ${b.good}`).toBe(true);
+        expect(quantity, `negative physical quantity at turn ${turn} city ${b.city} good ${b.good}`).toBeGreaterThanOrEqual(-1e-8);
+      }
+      expect(b.opening + produced(b) + b.imported).toBeCloseTo(
+        b.consumed_household + b.consumed_state + b.consumed_as_input + b.exported + b.stored + b.capex + b.lost_spoilage, 6,
+      );
+    }
     for (const l of r.labor) expect(l.employed_total).toBeLessThanOrEqual(l.available_workforce + 1e-6);
     const sat = (city: string, basket: string) => { const bs = r.balances.filter(b => b.city === city && base.goods.find(g => g.key === b.good)?.basket === basket); const d = bs.reduce((s, b) => s + b.demand, 0); return d ? 1 - bs.reduce((s, b) => s + b.unmet_demand, 0) / d : 1; };
     // Fiscal credit (process-turn rule): reserve += Σ construction_points, once.
