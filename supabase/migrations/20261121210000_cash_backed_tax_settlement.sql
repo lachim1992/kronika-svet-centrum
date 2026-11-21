@@ -52,8 +52,15 @@ DECLARE
  BEGIN
  IF coalesce((SELECT private_cash_version FROM public.game_sessions WHERE id=p_session),0)<1 THEN RETURN; END IF;
  IF p_claims IS NULL OR jsonb_typeof(p_claims)<>'array' THEN RAISE EXCEPTION 'Cash tax claims unavailable'; END IF;
- -- Session lock already taken by apply_goods_fiscal_plan; never settle without it.
+ -- Cash tax can run only as part of the pending authoritative fiscal turn.
  PERFORM 1 FROM public.game_sessions WHERE id=p_session FOR UPDATE;
+ IF NOT EXISTS (SELECT 1 FROM public.realm_resources r JOIN public.game_sessions gs ON gs.id=r.session_id
+   WHERE r.session_id=p_session AND r.player_name=p_player
+     AND r.last_processed_turn=p_turn AND gs.resolving_turn=p_turn)
+ THEN RAISE EXCEPTION 'Cash tax outside authoritative fiscal turn'; END IF;
+ IF EXISTS(SELECT 1 FROM public.financial_cash_tax_flows
+    WHERE session_id=p_session AND turn_number=p_turn)
+ THEN RAISE EXCEPTION 'Cash tax for turn already settled'; END IF;
  SELECT * INTO STRICT treasury FROM public.realm_resources
  WHERE session_id=p_session AND player_name=p_player FOR UPDATE;
  SELECT gp.user_id INTO ctrl FROM public.game_players gp
