@@ -60,7 +60,7 @@ export default function FinancialSectorsPanel({ sessionId }: { sessionId: string
             <TableCell className="text-right font-mono">{f.status === 'unmatched' || f.status === 'no_price' ? '—' : money(Number(f.unpaid))}</TableCell>
             <TableCell className="text-xs">{({ settled: 'zaplaceno', partial: 'částečně', unfunded: 'nezafinancované', unmatched: 'neověřitelný prodávající', no_price: 'bez ceny', no_controller: 'bez správce' } as Record<string, string>)[f.status] ?? f.status}</TableCell></TableRow>)}
         </TableBody></Table></div>}
-      <FiscalCashSection realm={data.state.error ? undefined : data.state.data} stateError={!!data.state.error} />
+      <FiscalCashSection realm={data.state.error ? undefined : data.state.data} stateError={!!data.state.error} cashBacked={!!data.session.data && data.session.data.private_cash_version >= 1} />
       <PrivateSettlementSection snapshot={data.state.error ? undefined : (data.state.data?.computed_modifiers as any)?.wage_settlement}
         stateError={!!data.state.error} privateBalance={data.accounts.error ? null : (data.accounts.data ?? []).filter(a => a.sector === 'PRIVATE').reduce((t, a) => t + Number(a.balance), 0)}
         privateCount={data.accounts.data?.filter(a => a.sector === 'PRIVATE').length ?? 0} cityNames={new Map((data.capital.data ?? []).map(c => [c.city_id, c.city_name]))} />
@@ -111,7 +111,7 @@ function PrivateSettlementSection({ snapshot, stateError, privateBalance, privat
 }
 
 /** Read-only: tax is modelled as credited to STATE, not debited from any PRIVATE account. */
-function FiscalCashSection({ realm, stateError }: { realm: any; stateError: boolean }) {
+function FiscalCashSection({ realm, stateError, cashBacked }: { realm: any; stateError: boolean; cashBacked: boolean }) {
   const r = reconcileFiscalCash(realm);
   const v = (x: number | null) => x === null ? 'Nedostupné' : x.toFixed(2);
   const rows: [string, number | null][] = [
@@ -124,7 +124,8 @@ function FiscalCashSection({ realm, stateError }: { realm: any; stateError: bool
   ];
   return <div className="border-t border-border pt-3 space-y-2">
     <h4 className="text-sm font-semibold">Fiskální rekonciliace · jen čtení</h4>
-    <p className="text-xs text-muted-foreground">Daňové příjmy jsou zatím modelově připsané státní pokladně, ale nejsou debitované z účtů domácností ani podniků — nejde o podvojný zápis a nejsou to nové peníze. Skutečně zaplacená daň není zdrojově evidovaná, proto je Nedostupné.</p>
+    {cashBacked && <p role="alert" className="text-xs text-destructive font-semibold">Cash-backed režim je zapnutý, ale daňový přípis státu dosud nemá odpovídající skutečný odpis soukromému plátci. Peněžní oběh NENÍ účetně uzavřený.</p>}
+    <p className="text-xs text-muted-foreground">Legacy daň se připisuje státu bez doloženého odpisu plátci. Konzervace peněžní zásoby proto není prokázána; nejde o podvojně vypořádanou daň. Skutečně zaplacená hotovostní daň je nedostupná.</p>
     {stateError ? <p className="text-xs text-destructive">Stav říše nedostupný.</p> : !r.available ? <p className="text-xs text-muted-foreground">Rozpad pokladny v uloženém snapshotu chybí — Nedostupné.</p> : <>
       <Table><TableBody>{rows.map(([k, x]) => <TableRow key={k}><TableCell className="text-xs">{k}</TableCell><TableCell className="text-right font-mono">{v(x)}</TableCell></TableRow>)}</TableBody></Table>
       <ul className="text-xs space-y-1">{r.checks.map(c => <li key={c.key} className={c.ok === false ? 'text-destructive' : 'text-muted-foreground'}>{c.ok === null ? 'Nedostupné' : c.ok ? 'Mechanická kontrola OK' : 'Varování: neshoda'} · {c.key} · {c.detail}</li>)}</ul>
