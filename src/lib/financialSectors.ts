@@ -40,11 +40,11 @@ export async function fetchFinancialSectors(sessionId: string, userId: string) {
   ]);
   return { accounts, state, capital, stateTransfers, session, turnFlows, purchases };
 }
-/** Net amount actually paid out of STATE to a municipal account (funded minus remitted), from the ledger. */
+/** Ledger STATE grants (municipal funding or explicit pilot PRIVATE liquidity) vs remittances for one account (funded minus remitted), from the ledger. */
 export function municipalStateFlows(rows: { account_id: string; direction: string; amount: number }[], accountId: string) {
   let funded = 0, remitted = 0;
   for (const r of rows) if (r.account_id === accountId) {
-    if (r.direction === 'STATE_TO_MUNICIPAL') funded += Number(r.amount); else remitted += Number(r.amount);
+    if (r.direction === 'STATE_TO_MUNICIPAL' || r.direction === 'STATE_TO_PRIVATE') funded += Number(r.amount); else if (r.direction === 'MUNICIPAL_TO_STATE') remitted += Number(r.amount);
   }
   return { funded, remitted };
 }

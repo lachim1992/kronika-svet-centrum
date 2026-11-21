@@ -4523,6 +4523,7 @@ export type Database = {
           created_at: string
           direction: string
           id: string
+          purpose: string | null
           realm_id: string
           session_id: string
           state_gold_after: number
@@ -4537,6 +4538,7 @@ export type Database = {
           created_at?: string
           direction: string
           id?: string
+          purpose?: string | null
           realm_id: string
           session_id: string
           state_gold_after: number
@@ -4551,6 +4553,7 @@ export type Database = {
           created_at?: string
           direction?: string
           id?: string
+          purpose?: string | null
           realm_id?: string
           session_id?: string
           state_gold_after?: number

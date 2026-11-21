@@ -35,11 +35,11 @@ export default function FinancialSectorsPanel({ sessionId }: { sessionId: string
       {data.accounts.error && <p className="text-xs text-destructive">{data.accounts.error.message}</p>}
       {!!data.accounts.data?.length && <Table><TableHeader><TableRow><TableHead>Účet</TableHead><TableHead>Vlastník</TableHead><TableHead className="text-right">Hotovost nyní</TableHead><TableHead className="text-right">Ze státu / do státu</TableHead></TableRow></TableHeader>
         <TableBody>{data.accounts.data.map(a => {
-          const flows = a.sector === 'MUNICIPAL' && !data.stateTransfers.error ? municipalStateFlows(data.stateTransfers.data ?? [], a.id) : null;
+          const flows = (a.sector === 'MUNICIPAL' || a.sector === 'PRIVATE') && !data.stateTransfers.error ? municipalStateFlows(data.stateTransfers.data ?? [], a.id) : null;
           return <TableRow key={a.id}><TableCell className="break-words">{a.label}</TableCell><TableCell>{accountKindLabel(a)}</TableCell><TableCell className="text-right font-mono">{money(a.balance)}</TableCell>
-            <TableCell className="text-right font-mono text-xs">{a.sector !== 'MUNICIPAL' ? '—' : flows ? `${money(flows.funded)} / ${money(flows.remitted)}` : 'Nedostupné'}</TableCell></TableRow>;
+            <TableCell className="text-right font-mono text-xs">{a.sector === 'PRIVATE' ? (flows ? (flows.funded > 0 ? `státní dotace ${money(flows.funded)}` : '—') : 'Nedostupné') : a.sector !== 'MUNICIPAL' ? '—' : flows ? `${money(flows.funded)} / ${money(flows.remitted)}` : 'Nedostupné'}</TableCell></TableRow>;
         })}</TableBody></Table>}
-      <p className="text-xs text-muted-foreground">Hotovost nyní = skutečný účetní zůstatek. Ze státu / do státu = skutečně provedené převody se státní pokladnou. Fiskální příjem je modelovaný tok, kapitálová zásoba níže není hotovost.</p>
+      <p className="text-xs text-muted-foreground">Hotovost nyní = skutečný účetní zůstatek. Ze státu / do státu = skutečně provedené převody se státní pokladnou; u soukromých účtů jde o explicitní státní dotaci (pilotní likviditu), jediný legální zdroj jejich hotovosti. Fiskální příjem je modelovaný tok, kapitálová zásoba níže není hotovost.</p>
       <div className="border-t border-border pt-3 space-y-2"><h4 className="text-sm font-semibold">Soukromý peněžní oběh</h4>
         <p className="text-xs text-muted-foreground">Režim: {data.session.error ? 'Nedostupné' : (data.session.data?.private_cash_version ?? 0) >= 1 ? 'cash backed (mzdy a vlastnické výnosy jen ze skutečného zůstatku podniků)' : 'legacy/model (platby jsou jen modelované)'}</p>
         <p className="text-xs text-muted-foreground">Oběh NENÍ uzavřený: nákupy domácností se platí jen u zboží s doloženým místním prodávajícím; dovoz, zásoby z dřívějška a smíšený původ jsou neověřitelné a neplatí se. Daně nezapojeny. Účty začínají na nule, takže bez skutečné hotovosti zůstávají platby nezaplacené.</p>

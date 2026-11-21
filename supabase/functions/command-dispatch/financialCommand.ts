@@ -1,7 +1,8 @@
 /** Finance uses its own atomic SQL journal, not the gateway's best-effort event precheck.
+ * GRANT_PRIVATE_LIQUIDITY: explicit STATE gold_reserve -> own city-group PRIVATE account, opt-in sessions only (SQL enforces).
  * STATE has no account: FUND/REMIT move realm_resources.gold_reserve inside the same SQL transaction; only verified human seats can command new accounts.
  */
-export const FINANCIAL_COMMANDS = new Set(['CREATE_FINANCIAL_ACCOUNT', 'TRANSFER_FINANCIAL_FUNDS', 'FUND_MUNICIPAL_ACCOUNT', 'REMIT_MUNICIPAL_TO_STATE']);
+export const FINANCIAL_COMMANDS = new Set(['CREATE_FINANCIAL_ACCOUNT', 'TRANSFER_FINANCIAL_FUNDS', 'FUND_MUNICIPAL_ACCOUNT', 'REMIT_MUNICIPAL_TO_STATE', 'GRANT_PRIVATE_LIQUIDITY']);
 
 export async function executeFinancialCommand(
   db: any, sessionId: string, userId: string | null, commandId: string, commandType: string, args: unknown,
