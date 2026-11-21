@@ -372,6 +372,13 @@
       "when": 1795292600000,
       "tag": "0052_restore_atomic_parcel_occupancy",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1795292700000,
+      "tag": "0053_food_honey_meat_labels",
+      "breakpoints": true
     }
   ]
 }
