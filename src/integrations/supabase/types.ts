@@ -11097,6 +11097,72 @@ export type Database = {
           },
         ]
       }
+      state_import_purchases: {
+        Row: {
+          amount: number
+          command_id: string
+          counterparty: string
+          created_at: string
+          id: string
+          player_name: string
+          purpose: string
+          realm_id: string
+          resource_key: string
+          session_id: string
+          site_parcel_id: string
+          state_gold_after: number
+          state_gold_before: number
+          turn_number: number
+        }
+        Insert: {
+          amount: number
+          command_id: string
+          counterparty?: string
+          created_at?: string
+          id?: string
+          player_name: string
+          purpose: string
+          realm_id: string
+          resource_key: string
+          session_id: string
+          site_parcel_id: string
+          state_gold_after: number
+          state_gold_before: number
+          turn_number: number
+        }
+        Update: {
+          amount?: number
+          command_id?: string
+          counterparty?: string
+          created_at?: string
+          id?: string
+          player_name?: string
+          purpose?: string
+          realm_id?: string
+          resource_key?: string
+          session_id?: string
+          site_parcel_id?: string
+          state_gold_after?: number
+          state_gold_before?: number
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "state_import_purchases_realm_id_fkey"
+            columns: ["realm_id"]
+            isOneToOne: false
+            referencedRelation: "realm_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "state_import_purchases_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       structure_production_orders: {
         Row: {
           created_at: string
@@ -13848,6 +13914,21 @@ export type Database = {
       }
       set_food_specialization_v2: {
         Args: {
+          p_cost: number
+          p_key: string
+          p_mode: string
+          p_parcel: string
+          p_player: string
+          p_session: string
+          p_turn: number
+          p_x: number
+          p_y: number
+        }
+        Returns: Json
+      }
+      set_food_specialization_v3: {
+        Args: {
+          p_command: string
           p_cost: number
           p_key: string
           p_mode: string

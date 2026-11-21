@@ -620,7 +620,7 @@ async function executeCommand(
         if (kr) return { events: [], error: kr };
         kitCost = starterKitCost(foodResourceByKey.get(key)!)!;
       }
-      const { data, error } = await supabase.rpc("set_food_specialization_v2", { p_session: sessionId, p_player: actor.name, p_parcel: siteId, p_key: key, p_x: sx, p_y: sy, p_turn: turnNumber,
+      const { data, error } = await supabase.rpc("set_food_specialization_v3", { p_session: sessionId, p_command: String(commandId), p_player: actor.name, p_parcel: siteId, p_key: key, p_x: sx, p_y: sy, p_turn: turnNumber,
         p_mode: found ? "found" : "starter_kit", p_cost: kitCost });
       if (error) return { events: [], error: error.message };
       return { events: [], result: data } as any;
