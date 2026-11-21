@@ -365,6 +365,13 @@
       "when": 1795292478143,
       "tag": "0051_food_starter_kit_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1795292600000,
+      "tag": "0052_restore_atomic_parcel_occupancy",
+      "breakpoints": true
     }
   ]
 }
