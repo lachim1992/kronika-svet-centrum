@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { accountKindLabel, fetchFinancialSectors, municipalStateFlows, SECTOR_ROWS, sectorBalance } from '@/lib/financialSectors';
+import { reconcileWageSettlement } from '@/lib/privateSettlement';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const money = (value: number | null | undefined) => value == null ? 'Nedostupné' : value.toLocaleString('cs-CZ', { maximumFractionDigits: 3 });
@@ -39,6 +40,9 @@ export default function FinancialSectorsPanel({ sessionId }: { sessionId: string
             <TableCell className="text-right font-mono text-xs">{a.sector !== 'MUNICIPAL' ? '—' : flows ? `${money(flows.funded)} / ${money(flows.remitted)}` : 'Nedostupné'}</TableCell></TableRow>;
         })}</TableBody></Table>}
       <p className="text-xs text-muted-foreground">Hotovost nyní = skutečný účetní zůstatek. Ze státu / do státu = skutečně provedené převody se státní pokladnou. Fiskální příjem je modelovaný tok, kapitálová zásoba níže není hotovost.</p>
+      <PrivateSettlementSection snapshot={data.state.error ? undefined : (data.state.data?.computed_modifiers as any)?.wage_settlement}
+        stateError={!!data.state.error} privateBalance={data.accounts.error ? null : (data.accounts.data ?? []).filter(a => a.sector === 'PRIVATE').reduce((t, a) => t + Number(a.balance), 0)}
+        privateCount={data.accounts.data?.filter(a => a.sector === 'PRIVATE').length ?? 0} cityNames={new Map((data.capital.data ?? []).map(c => [c.city_id, c.city_name]))} />
       <div className="border-t border-border pt-3 space-y-2"><h4 className="text-sm font-semibold">Městský výrobní kapitál · ne pokladna</h4>
         {data.capital.error ? <p className="text-xs text-destructive">Kapitál nedostupný: {data.capital.error.message}</p> : !data.capital.data?.length ?
           <p className="text-xs text-muted-foreground">Žádný uložený kapitálový záznam</p> :
@@ -48,4 +52,39 @@ export default function FinancialSectorsPanel({ sessionId }: { sessionId: string
       </div>
     </>}
   </section>;
+}
+
+/** Modelled producer settlement from the committed turn snapshot; read-only, never part of ledger cash. */
+function PrivateSettlementSection({ snapshot, stateError, privateBalance, privateCount, cityNames }: {
+  snapshot: unknown; stateError: boolean; privateBalance: number | null; privateCount: number; cityNames: Map<string, string>;
+}) {
+  const rec = stateError ? null : reconcileWageSettlement(snapshot);
+  const t = rec?.totals;
+  return <div className="border-t border-border pt-3 space-y-2">
+    <h4 className="text-sm font-semibold">Dosavadní vypořádání soukromého sektoru (model, nikoli disponibilní účty)</h4>
+    <p className="text-xs text-muted-foreground">Hotovost výrobců je již existující modelový stav z uzávěrky tahu, ne nově vytvořené peníze. Není započtena do účetní hotovosti výše — nesčítejte ji se soukromými účty, šlo by o dvojí započtení.</p>
+    {!rec ? <p className="text-xs text-muted-foreground">Nedostupné</p> : <>
+      <p className="text-xs text-muted-foreground">Tah {rec.turn ?? 'Nedostupné'} · základ {rec.basis ?? 'Nedostupné'}</p>
+      <Table><TableBody>
+        <TableRow><TableCell>Hotovost výrobců (model, konec tahu)</TableCell><TableCell className="text-right font-mono">{money(t?.producer_cash_closing)}</TableCell></TableRow>
+        <TableRow><TableCell>Peněžní fond výrobců v tahu</TableCell><TableCell className="text-right font-mono">{money(t?.producer_cash_pool)}</TableCell></TableRow>
+        <TableRow><TableCell>Vyplacené mzdy</TableCell><TableCell className="text-right font-mono">{money(t?.wages_paid)}</TableCell></TableRow>
+        <TableRow><TableCell>Vyplacený výnos vlastníkům</TableCell><TableCell className="text-right font-mono">{money(t?.ownership_income_paid)}</TableCell></TableRow>
+        <TableRow><TableCell>Mzdové nedoplatky</TableCell><TableCell className="text-right font-mono">{money(t?.arrears_closing)}</TableCell></TableRow>
+        <TableRow><TableCell>Skutečné soukromé účty (ledger, {privateCount})</TableCell><TableCell className="text-right font-mono">{money(privateBalance)}</TableCell></TableRow>
+        <TableRow><TableCell>Modelová hotovost nezapočtená do účetní hotovosti</TableCell><TableCell className="text-right font-mono">{t?.producer_cash_closing == null ? 'Nedostupné' : money(t.producer_cash_closing)}</TableCell></TableRow>
+      </TableBody></Table>
+      {!rec.cities.length ? <p className="text-xs text-muted-foreground">Žádné městské záznamy</p> :
+        <Table><TableHeader><TableRow><TableHead>Město (klíč)</TableHead><TableHead className="text-right">Hotovost výrobců</TableHead><TableHead className="text-right">Mzdy</TableHead><TableHead className="text-right">Nedoplatky</TableHead><TableHead>Kontrola</TableHead></TableRow></TableHeader><TableBody>
+          {rec.cities.map((c, i) => <TableRow key={c.city ?? i}>
+            <TableCell className="break-all text-xs">{(c.city && cityNames.get(c.city)) || 'Město'}<br /><span className="font-mono text-muted-foreground">{c.city ?? 'Nedostupné'}</span></TableCell>
+            <TableCell className="text-right font-mono">{money(c.values.producer_cash_closing)}</TableCell>
+            <TableCell className="text-right font-mono">{money(c.values.wages_paid)}</TableCell>
+            <TableCell className="text-right font-mono">{money(c.values.arrears_closing)}</TableCell>
+            <TableCell className={c.status === 'ok' ? 'text-xs text-muted-foreground' : 'text-xs text-destructive'}>
+              {c.status === 'ok' ? 'Sedí' : c.status === 'mismatch' ? `Nesouhlasí o ${c.residual}` : `Chybí: ${c.missing.join(', ') || 'klíč města'}`}</TableCell>
+          </TableRow>)}
+        </TableBody></Table>}
+    </>}
+  </div>;
 }
