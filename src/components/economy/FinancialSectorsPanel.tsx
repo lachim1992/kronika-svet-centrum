@@ -115,7 +115,7 @@ function FiscalCashSection({ realm, stateError, cashBacked }: { realm: any; stat
   const r = reconcileFiscalCash(realm);
   const v = (x: number | null) => x === null ? 'Nedostupné' : x.toFixed(2);
   const rows: [string, number | null][] = [
-    ['Modelově připsaná daň (legacy, bez debetu plátce)', r.legacy_imputed_tax],
+    [(cashBacked ? 'Modelově vyměřená daň (nepřipsaná)' : 'Modelově připsaná daň (legacy, bez debetu plátce)'), r.legacy_imputed_tax],
     ['Skutečně zaplacená hotovostní daň', r.real_cash_tax_paid],
     ['Daň bez doloženého hotovostního zdroje', r.uncovered_tax_source],
     ['Pilíř: daň z obyvatel', r.pillars.pop_tax], ['Pilíř: domácí trh', r.pillars.domestic_market], ['Pilíř: zboží (cla, mýta, těžba)', r.pillars.goods_fiscal],
@@ -125,7 +125,7 @@ function FiscalCashSection({ realm, stateError, cashBacked }: { realm: any; stat
   return <div className="border-t border-border pt-3 space-y-2">
     <h4 className="text-sm font-semibold">Fiskální rekonciliace · jen čtení</h4>
     {cashBacked && <p role="alert" className="text-xs text-destructive font-semibold">Cash-backed režim je zapnutý, ale daňový přípis státu dosud nemá odpovídající skutečný odpis soukromému plátci. Peněžní oběh NENÍ účetně uzavřený.</p>}
-    <p className="text-xs text-muted-foreground">Legacy daň se připisuje státu bez doloženého odpisu plátci. Konzervace peněžní zásoby proto není prokázána; nejde o podvojně vypořádanou daň. Skutečně zaplacená hotovostní daň je nedostupná.</p>
+    <p className="text-xs text-muted-foreground">{cashBacked ? "V cash-backed režimu se modelová daň pouze vyměří, nikoliv automaticky připíše státu. Za skutečně zaplacené lze označit výhradně částky doložené soukromým debetem a státním kreditem v daňovém deníku. Nezmapované pilíře zůstávají neuhrazené." : "Legacy daň se připisuje státu bez doloženého odpisu plátci. Konzervace peněžní zásoby proto není prokázána; nejde o podvojně vypořádanou daň."}</p>
     {stateError ? <p className="text-xs text-destructive">Stav říše nedostupný.</p> : !r.available ? <p className="text-xs text-muted-foreground">Rozpad pokladny v uloženém snapshotu chybí — Nedostupné.</p> : <>
       <Table><TableBody>{rows.map(([k, x]) => <TableRow key={k}><TableCell className="text-xs">{k}</TableCell><TableCell className="text-right font-mono">{v(x)}</TableCell></TableRow>)}</TableBody></Table>
       <ul className="text-xs space-y-1">{r.checks.map(c => <li key={c.key} className={c.ok === false ? 'text-destructive' : 'text-muted-foreground'}>{c.ok === null ? 'Nedostupné' : c.ok ? 'Mechanická kontrola OK' : 'Varování: neshoda'} · {c.key} · {c.detail}</li>)}</ul>
