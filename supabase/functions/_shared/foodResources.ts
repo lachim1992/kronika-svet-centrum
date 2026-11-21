@@ -50,7 +50,8 @@ const f = (n: number, key: string, label: string, group: FoodGroup, biomes: Reco
   building: HarvestBuilding = 'Farma', harvestQty = 3, maxElevation?: number): FoodResource => ({
   n, key, label, group, temp, moisture, water, origin, building, maxElevation,
   biomes: Object.fromEntries(Object.entries(biomes).map(([k, v]) => [k, v / 100])),
-  good: `food_${key}`, harvest: `harvest_food_${key}`, harvestQty,
+  // The map source is a living colony; its market harvest is honey, not an edible beehive.
+  good: key === 'bees' ? 'food_honey' : `food_${key}`, harvest: `harvest_food_${key}`, harvestQty,
 });
 
 export const FOOD_RESOURCES: FoodResource[] = [
@@ -134,8 +135,13 @@ export const FOOD_DERIVED_GOODS: FoodGoodDef[] = [
   { key: 'mead', label: 'Medovina', basket: 'feast', stage: 'final', finalUse: true, price: 3.0, storable: true, tier: 'refined' },
 ];
 
+const ANIMAL_HARVEST_LABEL: Record<string,string> = {
+  cattle: 'Hovězí maso', sheep: 'Skopové maso', goats: 'Kozí maso', pigs: 'Vepřové maso',
+  chickens: 'Kuřecí maso', ducks_geese: 'Maso vodní drůbeže', bees: 'Med',
+};
+
 export const FOOD_RAW_GOODS: FoodGoodDef[] = FOOD_RESOURCES.map((r) => ({
-  key: r.good, label: r.label, basket: r.group === 'apiary' ? 'variety' : 'staple_food', stage: 'raw',
+  key: r.good, label: ANIMAL_HARVEST_LABEL[r.key] ?? r.label, basket: r.group === 'apiary' ? 'variety' : 'staple_food', stage: 'raw',
   // Honey and dates are edible as harvested; everything else needs processing.
   finalUse: r.key === 'bees' || r.key === 'dates', price: RAW_PRICE[r.group], storable: !RAW_PERISHABLE.has(r.group) || r.key === 'dates', tier: r.group === 'apiary' ? 'refined' : 'mass',
 }));
