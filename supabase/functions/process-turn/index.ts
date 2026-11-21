@@ -1550,6 +1550,9 @@ Deno.serve(async (req) => {
       army: armyWealthUpkeep, sport: sportFundingExpense, roads: routeUpkeepExpense, insolvencyRelief,
     });
     newGoldReserve = treasury.treasury_closing;
+    const wageSettlementResult: any = settleWages(currentTurn,
+      myCities.map((c: any) => ({ city: c.id, ...(accountsByCity.get(c.id) || {}) })),
+      (realm as any)?.computed_modifiers?.wage_settlement);
     const fiscalPatch = {
       grain_reserve: Math.round(globalGrainReserve),
       granary_capacity: adjustedGranary,
@@ -1601,9 +1604,13 @@ Deno.serve(async (req) => {
       // All computed gameplay modifiers for UI display
       computed_modifiers: {
         // Producer → household wage transfer (private; treasury_effect 0). Applied once with the fiscal guard.
-        wage_settlement: settleWages(currentTurn,
-          myCities.map((c: any) => ({ city: c.id, ...(accountsByCity.get(c.id) || {}) })),
-          (realm as any)?.computed_modifiers?.wage_settlement),
+        wage_settlement: wageSettlementResult,
+        // Requested cash claims only; SQL (settle_private_cash_turn) pays them from real business balances
+        // inside the same fiscal guard, and ignores them unless the session opted in (private_cash_version>=1).
+        private_cash_flows: (wageSettlementResult?.cities || []).flatMap((c: any) => [
+          { city: c.city, flow_type: 'WAGES', amount: Number(c.wages_paid) || 0 },
+          { city: c.city, flow_type: 'OWNERSHIP_INCOME', amount: Number(c.ownership_income_paid) || 0 },
+        ]),
         strategic: {
           combat_mult: Math.round(strategicBonuses.combat_mult * 1000) / 1000,
           wealth_mult: Math.round(strategicBonuses.wealth_mult * 1000) / 1000,

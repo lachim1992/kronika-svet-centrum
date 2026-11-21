@@ -40,6 +40,15 @@ export default function FinancialSectorsPanel({ sessionId }: { sessionId: string
             <TableCell className="text-right font-mono text-xs">{a.sector !== 'MUNICIPAL' ? '—' : flows ? `${money(flows.funded)} / ${money(flows.remitted)}` : 'Nedostupné'}</TableCell></TableRow>;
         })}</TableBody></Table>}
       <p className="text-xs text-muted-foreground">Hotovost nyní = skutečný účetní zůstatek. Ze státu / do státu = skutečně provedené převody se státní pokladnou. Fiskální příjem je modelovaný tok, kapitálová zásoba níže není hotovost.</p>
+      <div className="border-t border-border pt-3 space-y-2"><h4 className="text-sm font-semibold">Soukromý peněžní oběh</h4>
+        <p className="text-xs text-muted-foreground">Režim: {data.session.error ? 'Nedostupné' : (data.session.data?.private_cash_version ?? 0) >= 1 ? 'cash backed (mzdy a vlastnické výnosy jen ze skutečného zůstatku podniků)' : 'legacy/model (platby jsou jen modelované)'}</p>
+        <p className="text-xs text-muted-foreground">Nezapojeno: nákupy domácností → tržby podniků, daně. Bez tržeb zůstávají účty podniků nezafinancované a platby se evidují jako neuhrazené.</p>
+        {!!data.turnFlows.data?.length && <Table><TableHeader><TableRow><TableHead>Tah</TableHead><TableHead>Město</TableHead><TableHead>Tok</TableHead><TableHead className="text-right">Požadováno</TableHead><TableHead className="text-right">Zaplaceno</TableHead><TableHead>Stav</TableHead></TableRow></TableHeader><TableBody>
+          {data.turnFlows.data.map(f => <TableRow key={`${f.turn_number}-${f.city_id}-${f.flow_type}`}><TableCell>{f.turn_number}</TableCell><TableCell className="text-xs">{(data.capital.data ?? []).find(c => c.city_id === f.city_id)?.city_name ?? f.city_id}</TableCell>
+            <TableCell>{f.flow_type === 'WAGES' ? 'Mzdy' : 'Vlastnický výnos'}</TableCell><TableCell className="text-right font-mono">{money(Number(f.requested))}</TableCell><TableCell className="text-right font-mono">{money(Number(f.settled))}</TableCell>
+            <TableCell className="text-xs">{f.status === 'unfunded' ? 'nezafinancované' : f.status === 'partial' ? 'částečně' : f.status === 'no_controller' ? 'bez správce' : 'uhrazeno'}</TableCell></TableRow>)}
+        </TableBody></Table>}
+      </div>
       <PrivateSettlementSection snapshot={data.state.error ? undefined : (data.state.data?.computed_modifiers as any)?.wage_settlement}
         stateError={!!data.state.error} privateBalance={data.accounts.error ? null : (data.accounts.data ?? []).filter(a => a.sector === 'PRIVATE').reduce((t, a) => t + Number(a.balance), 0)}
         privateCount={data.accounts.data?.filter(a => a.sector === 'PRIVATE').length ?? 0} cityNames={new Map((data.capital.data ?? []).map(c => [c.city_id, c.city_name]))} />

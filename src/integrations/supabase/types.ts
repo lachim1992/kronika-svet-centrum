@@ -4308,6 +4308,7 @@ export type Database = {
       financial_accounts: {
         Row: {
           balance: number
+          city_group: boolean
           city_id: string | null
           controller_user_id: string
           created_at: string
@@ -4320,6 +4321,7 @@ export type Database = {
         }
         Insert: {
           balance?: number
+          city_group?: boolean
           city_id?: string | null
           controller_user_id: string
           created_at?: string
@@ -4332,6 +4334,7 @@ export type Database = {
         }
         Update: {
           balance?: number
+          city_group?: boolean
           city_id?: string | null
           controller_user_id?: string
           created_at?: string
@@ -4544,6 +4547,67 @@ export type Database = {
             columns: ["session_id", "source_account_id"]
             isOneToOne: false
             referencedRelation: "financial_accounts"
+            referencedColumns: ["session_id", "id"]
+          },
+        ]
+      }
+      financial_turn_flows: {
+        Row: {
+          city_id: string
+          created_at: string
+          flow_type: string
+          requested: number
+          session_id: string
+          settled: number
+          status: string
+          transfer_id: string | null
+          turn_number: number
+          unpaid: number
+        }
+        Insert: {
+          city_id: string
+          created_at?: string
+          flow_type: string
+          requested: number
+          session_id: string
+          settled: number
+          status: string
+          transfer_id?: string | null
+          turn_number: number
+          unpaid: number
+        }
+        Update: {
+          city_id?: string
+          created_at?: string
+          flow_type?: string
+          requested?: number
+          session_id?: string
+          settled?: number
+          status?: string
+          transfer_id?: string | null
+          turn_number?: number
+          unpaid?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_turn_flows_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_turn_flows_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_turn_flows_session_id_transfer_id_fkey"
+            columns: ["session_id", "transfer_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transfers"
             referencedColumns: ["session_id", "id"]
           },
         ]
@@ -4974,6 +5038,7 @@ export type Database = {
           parcel_economy_version: number
           player1_name: string
           player2_name: string
+          private_cash_version: number
           resolving_turn: number | null
           room_code: string
           tier: string
@@ -4998,6 +5063,7 @@ export type Database = {
           parcel_economy_version?: number
           player1_name?: string
           player2_name?: string
+          private_cash_version?: number
           resolving_turn?: number | null
           room_code: string
           tier?: string
@@ -5022,6 +5088,7 @@ export type Database = {
           parcel_economy_version?: number
           player1_name?: string
           player2_name?: string
+          private_cash_version?: number
           resolving_turn?: number | null
           room_code?: string
           tier?: string
@@ -13590,6 +13657,15 @@ export type Database = {
           p_stacks: Json
         }
         Returns: boolean
+      }
+      settle_private_cash_turn: {
+        Args: {
+          p_flows: Json
+          p_player: string
+          p_session: string
+          p_turn: number
+        }
+        Returns: undefined
       }
       sync_session_player_names: {
         Args: { p_session: string }
