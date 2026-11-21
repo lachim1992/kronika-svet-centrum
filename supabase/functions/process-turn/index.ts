@@ -1612,6 +1612,17 @@ Deno.serve(async (req) => {
       computed_modifiers: {
         // Producer → household wage transfer (private; treasury_effect 0). Applied once with the fiscal guard.
         wage_settlement: wageSettlementResult,
+        // Only these two pillars have identifiable cash payers at present.
+        // POLL uses each owned city's actual population and existing fiscal formula.
+        // DOMESTIC is assessed by SQL only on VERIFIED settled local purchase receipts.
+        // Market, transit and extraction remain assessed-only until payer provenance exists.
+        cash_tax_claims: cashBacked ? myCities.map((city: any) => ({
+          city: city.id,
+          poll_due: Math.max(0, Math.round(taxRevenue(
+            Number(city.population_total ?? 0), tr_poll, 'poll', govMod,
+            copperMult * goldMult * lawTaxMult))),
+          domestic_effective_rate: tr_domestic * laffer(tr_domestic, TAX_MAX.domestic) * govMod,
+        })) : null,
         cash_tax_assessment: cashBacked ? {
           status: "uncollected",
           assessed_total: totalWealthIncome,
