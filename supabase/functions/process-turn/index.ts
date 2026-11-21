@@ -188,8 +188,10 @@ Deno.serve(async (req) => {
       realm = newRealm;
     }
 
-    const { data: session } = await supabase.from("game_sessions").select("current_turn,resolving_turn").eq("id", sessionId).single();
+    const { data: session } = await supabase.from("game_sessions").select("current_turn,resolving_turn,private_cash_version").eq("id", sessionId).single();
     const currentTurn = session?.resolving_turn ?? session?.current_turn ?? 1;
+    // Opt-in cash-backed turns must not mint modelled tax without a payer debit.
+    const cashBacked = Number(session?.private_cash_version ?? 0) >= 1;
 
     // Idempotency — skip for recalcOnly (always recompute)
     if (!recalcOnly && realm.last_processed_turn >= currentTurn) {
@@ -877,8 +879,12 @@ Deno.serve(async (req) => {
     // Canonical 4-pillar sum (no double-counting): pop + domestic + goods_fiscal (market+transit+ext).
     const totalWealthIncome = pillarPopTax + pillarDomesticMarket + pillarGoodsFiscal;
     const wealthIncome = Math.max(0, Math.round(totalWealthIncome));
+    // Legacy tax is an imputed STATE credit. In cash-backed mode this credit is withheld
+    // until an actual private payer debit can be settled in the SAME fiscal transaction.
+    // Keeping assessed tax separate prevents the existing pilot from increasing money supply.
+    const creditedWealthIncome = cashBacked ? 0 : wealthIncome;
     const sportFundingPct = realm.sport_funding_pct || 0;
-    let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
+    let newGoldReserve = (realm.gold_reserve || 0) + creditedWealthIncome - armyWealthUpkeep;
 
     // ── Soft consequences of over-taxation: legitimacy decay + unrest pressure ──
     // Triggered when any pillar's nominal rate exceeds ~60% of its Laffer max (the "soft threshold").
@@ -1027,7 +1033,7 @@ Deno.serve(async (req) => {
     if (routeUpkeepExpense > 0) logEntries.push(`🛣️ Údržba cest: -${routeUpkeepExpense} zlata`);
 
     // Sport Funding — share of recurring fiscal income, NOT of the treasury stock.
-    const sportFundingExpense = computeSportFunding(wealthIncome, sportFundingPct, Math.max(0, newGoldReserve));
+    const sportFundingExpense = computeSportFunding(creditedWealthIncome, sportFundingPct, Math.max(0, newGoldReserve));
     newGoldReserve -= sportFundingExpense;
 
     // ══════════════════════════════════════════
@@ -1333,7 +1339,7 @@ Deno.serve(async (req) => {
       sportPrestige + geopoliticalPrestige + technologicalPrestige;
 
     // Continuous bonuses: +0.1% wealth per prestige point, +0.05% stability
-    const prestigeWealthBonus = Math.round(wealthIncome * totalPrestige * 0.001);
+    const prestigeWealthBonus = Math.round(creditedWealthIncome * totalPrestige * 0.001);
     newGoldReserve += prestigeWealthBonus;
 
     // Milestone bonuses applied as events
@@ -1546,7 +1552,7 @@ Deno.serve(async (req) => {
 
     const treasury = treasuryBreakdown({
       opening: Number(realm.gold_reserve || 0), closingBeforeRounding: newGoldReserve,
-      taxRevenue: totalWealthIncome, creditedTax: wealthIncome,
+      taxRevenue: cashBacked ? 0 : totalWealthIncome, creditedTax: creditedWealthIncome,
       tradeNet: tradeGoldDelta, tradeTolls: totalTollsPaid, prestigeBonus: prestigeWealthBonus,
       army: armyWealthUpkeep, sport: sportFundingExpense, roads: routeUpkeepExpense, insolvencyRelief,
     });
@@ -1606,6 +1612,17 @@ Deno.serve(async (req) => {
       computed_modifiers: {
         // Producer → household wage transfer (private; treasury_effect 0). Applied once with the fiscal guard.
         wage_settlement: wageSettlementResult,
+        cash_tax_assessment: cashBacked ? {
+          status: "uncollected",
+          assessed_total: totalWealthIncome,
+          assessed_pop: pillarPopTax,
+          assessed_domestic: pillarDomesticMarket,
+          assessed_market: pillarMarketTariff,
+          assessed_transit: pillarTransitToll,
+          assessed_extraction: pillarExtractionTax,
+          credited_to_state: 0,
+          reason: "No proven debit of a private taxpayer; modelled tax withheld",
+        } : null,
         // Requested cash claims only; SQL (settle_private_cash_turn) pays them from real business balances
         // inside the same fiscal guard, and ignores them unless the session opted in (private_cash_version>=1).
         // Payment candidates only; SQL bills just provable same-city sellers, from real household cash.
