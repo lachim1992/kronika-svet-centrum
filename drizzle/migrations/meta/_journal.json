@@ -330,6 +330,13 @@
       "when": 1795274990857,
       "tag": "0046_financial_stage2b3_state_private_liquidity",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795290956617,
+      "tag": "0047_cash_backed_tax_settlement",
+      "breakpoints": true
     }
   ]
 }
