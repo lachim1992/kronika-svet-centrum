@@ -4305,6 +4305,179 @@ export type Database = {
           },
         ]
       }
+      financial_accounts: {
+        Row: {
+          balance: number
+          city_id: string | null
+          controller_user_id: string
+          created_at: string
+          id: string
+          label: string
+          owner_kind: string
+          sector: string
+          session_id: string
+        }
+        Insert: {
+          balance?: number
+          city_id?: string | null
+          controller_user_id: string
+          created_at?: string
+          id?: string
+          label: string
+          owner_kind: string
+          sector: string
+          session_id: string
+        }
+        Update: {
+          balance?: number
+          city_id?: string | null
+          controller_user_id?: string
+          created_at?: string
+          id?: string
+          label?: string
+          owner_kind?: string
+          sector?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_accounts_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_accounts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_commands: {
+        Row: {
+          actor_user_id: string
+          arguments: Json
+          command_id: string
+          command_type: string
+          result: Json
+          session_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          arguments: Json
+          command_id: string
+          command_type: string
+          result: Json
+          session_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          arguments?: Json
+          command_id?: string
+          command_type?: string
+          result?: Json
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_commands_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_entries: {
+        Row: {
+          account_id: string
+          balance_after: number
+          delta: number
+          session_id: string
+          transfer_id: string
+        }
+        Insert: {
+          account_id: string
+          balance_after: number
+          delta: number
+          session_id: string
+          transfer_id: string
+        }
+        Update: {
+          account_id?: string
+          balance_after?: number
+          delta?: number
+          session_id?: string
+          transfer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_entries_session_id_account_id_fkey"
+            columns: ["session_id", "account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["session_id", "id"]
+          },
+          {
+            foreignKeyName: "financial_entries_session_id_transfer_id_fkey"
+            columns: ["session_id", "transfer_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transfers"
+            referencedColumns: ["session_id", "id"]
+          },
+        ]
+      }
+      financial_transfers: {
+        Row: {
+          actor_user_id: string
+          amount: number
+          command_id: string
+          created_at: string
+          destination_account_id: string
+          id: string
+          session_id: string
+          source_account_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          amount: number
+          command_id: string
+          created_at?: string
+          destination_account_id: string
+          id?: string
+          session_id: string
+          source_account_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          amount?: number
+          command_id?: string
+          created_at?: string
+          destination_account_id?: string
+          id?: string
+          session_id?: string
+          source_account_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transfers_session_id_destination_account_id_fkey"
+            columns: ["session_id", "destination_account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["session_id", "id"]
+          },
+          {
+            foreignKeyName: "financial_transfers_session_id_source_account_id_fkey"
+            columns: ["session_id", "source_account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["session_id", "id"]
+          },
+        ]
+      }
       flow_paths: {
         Row: {
           bottleneck_cost: number | null
@@ -13204,6 +13377,16 @@ export type Database = {
         }
       }
       end_story_session: { Args: { p_session: string }; Returns: Json }
+      execute_financial_command: {
+        Args: {
+          p_actor: string
+          p_args: Json
+          p_command: string
+          p_session: string
+          p_type: string
+        }
+        Returns: Json
+      }
       find_session_by_room_code: {
         Args: { p_code: string }
         Returns: {
@@ -13267,6 +13450,15 @@ export type Database = {
       read_economy_management: {
         Args: { p_player: string; p_session: string; p_turn: number }
         Returns: Json
+      }
+      read_financial_capital: {
+        Args: { p_session: string }
+        Returns: {
+          city_id: string
+          city_name: string
+          last_turn: number
+          stock: number
+        }[]
       }
       record_macro_survey: {
         Args: {

@@ -38,6 +38,7 @@ import PopulationPanel from "@/components/economy/PopulationPanel";
 import MarketsHub from "@/components/economy/MarketsHub";
 import TradeFlowExplorer from "@/components/economy/TradeFlowExplorer";
 import TreasuryHub from "@/components/economy/TreasuryHub";
+import FinancialSectorsPanel from '@/components/economy/FinancialSectorsPanel';
 import { getFiscalIncome } from "@/lib/economyFlow";
 
 // Dev-only debug tab (lazy)
@@ -284,6 +285,7 @@ const EconomyTab = ({
 
         {/* ═══ TREASURY TAB ═══ */}
         <TabsContent value="treasury" className="space-y-5 animate-fade-in">
+          <FinancialSectorsPanel sessionId={sessionId} />
           <TreasuryHub
             sessionId={sessionId}
             currentPlayerName={currentPlayerName}

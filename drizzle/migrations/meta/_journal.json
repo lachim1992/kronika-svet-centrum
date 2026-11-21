@@ -267,6 +267,34 @@
       "when": 1795030676296,
       "tag": "0037_atomic_build_subnode",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1795269134198,
+      "tag": "0038_financial_sectors_stage1",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795269280632,
+      "tag": "0039_financial_event_session_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795269532478,
+      "tag": "0040_financial_capital_read_boundary",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795269625872,
+      "tag": "0041_financial_explicit_client_grants",
+      "breakpoints": true
     }
   ]
 }

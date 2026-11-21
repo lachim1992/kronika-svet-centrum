@@ -1,5 +1,11 @@
 # Map-first square-grid roadmap
 
+## Finanční sektory — etapa 1 (2026-11-21)
+- [x] Audit aktuálního schématu a writerů; STATE pouze čte gold_reserve; existující mzdová hotovost není kopírována.
+- [x] Nové nulové účty MUNICIPAL / PRIVATE / ORGANIZATION, atomické ověřené převody a read-only přehled v Ekonomice i Dev; migrace 0038–0041 aplikované.
+- [x] Cílené regrese 39/39, skutečný PostgreSQL se čtyřmi spojeními 18/18; přihlášený read-only desktop/mobil ověřen, diff zkontrolován; jediný výsledný commit.
+- Odloženo mimo etapu 1: STATE převody, financování účtů, dluh, skutečné entity domácností/podniků/organizací a změny správy po dobytí; command-dispatch nebyl nasazen.
+
 ## Cesty — dvě úrovně, volný editor, napojení a mosty (2026-11-18)
 - [ ] Dvě samostatně stavitelné úrovně: stezka a dlážděná cesta; bez povinných postupných upgradů a bez zákazu návratu přes stejné pole.
 - [ ] Jemnější a realističtější vykreslení cest; automatické a lépe vykreslené mosty při každém překročení řeky.

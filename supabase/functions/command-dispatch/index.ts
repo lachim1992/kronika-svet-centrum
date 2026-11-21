@@ -58,6 +58,7 @@ import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reser
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
 import { rationPolicy } from "../_shared/rationPolicy.ts";
 import { LEGACY_FOOD_TRANSFER_ERROR } from "../_shared/legacyFood.ts";
+import { FINANCIAL_COMMANDS, executeFinancialCommand } from './financialCommand.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -141,6 +142,13 @@ Deno.serve(async (req) => {
     }
 
     const effectiveTurn = turnNumber ?? session.current_turn;
+
+    // Finance must bypass sandbox funding, generic event replay and derived refresh.
+    // The SQL transaction owns balances, its complete journal and its canonical event together.
+    if (FINANCIAL_COMMANDS.has(commandType)) {
+      const finance = await executeFinancialCommand(supabase, sessionId, authenticatedUserId, commandId, commandType, commandPayload);
+      return json(finance, finance.status || 200);
+    }
 
     // ── Sandbox (testing) mode ──
     // Removes the economic gate only: resources are topped up before the command

@@ -2572,7 +2572,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                     : "Z tohoto pole může začít nová trasa."}
               </p>
             </div>
-            {selectedRoadPlan?.bridges.length ? <span className="text-[10px] text-muted-foreground">Řeka · bude potřeba most</span> : null}
           </div>
           <Button className="mt-3 w-full" disabled={!!buildingAction || parcelsLoading || !selectedParcel || !canBuildRoadHere}
             onPointerDown={event => event.stopPropagation()}
