@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { computeStructuralBonuses } from "../_shared/physics.ts";
 import { ensureStarterEconomy } from "../_shared/starterEconomy.ts";
 import { applyParcelRollout } from "../_shared/parcelRollout.ts";
+import { seedNeutralCities } from "../_shared/neutralCitySeeder.ts";
 
 
 /** Lightweight alias for world-generate-init usage */
@@ -43,6 +44,8 @@ serve(async (req) => {
       top_profiles_count: 3,
       lazy_generate_on_open: true,
       dev_unlock_premium: true,
+      // Explicit opt-in: add 16 real independent, industrially specialized towns to a fresh world.
+      seed_16_neutral_cities: false,
     };
 
     const { data: existingCfg } = await supabase
@@ -948,7 +951,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       if (isCapital) playerFirstCity.add(ownerPlayer);
 
       const range = POP_RANGES.Osada;
-      const popTotal = range.min + Math.floor(Math.random() * (range.max - range.min));
+      const popTotal = isPlayerCity ? 100 : range.min + Math.floor(Math.random() * (range.max - range.min));
       const settlementLevel = "HAMLET";
       const template = POP_TEMPLATES[settlementLevel];
       const popPeasants = Math.round(popTotal * template.peasants);
@@ -1877,6 +1880,13 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
       const starter = await ensureStarterEconomy(supabase, sessionId, { turnNumber: 1 });
       await applyParcelRollout(supabase, sessionId);
       (counters as any).starterStructures = starter.reduce((n, r) => n + r.added.length, 0);
+      if (economic.seed_16_neutral_cities === true) {
+        // Opt-in only. Preflight refuses impossible climates/sites before any neutral insert.
+        // All neutral cities use the existing city/parcel/producer schema; no province_nodes proxies.
+        const neutral = await seedNeutralCities(supabase, sessionId);
+        if (neutral.length !== 16) throw new Error("Expected 16 full neutral economic cities, got " + neutral.length);
+        (counters as any).neutralEconomicCities = neutral.length;
+      }
     } catch (e) {
       console.warn("starter economy backfill failed:", e);
       throw e; // Never publish a ready world with missing physical city land.
