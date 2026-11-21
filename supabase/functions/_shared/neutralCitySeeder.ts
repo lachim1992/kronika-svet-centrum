@@ -210,26 +210,6 @@ export async function seedNeutralCities(db:any,sessionId:string) {
     const cap=await db.from("city_capital_stock").select("city_id").eq("session_id",sessionId).eq("city_id",cityId).maybeSingle();
     if(cap.error)throw cap.error;
     if(!cap.data){const cc=await db.from("city_capital_stock").insert({session_id:sessionId,city_id:cityId,stock:80});if(cc.error)throw cc.error;}
-    const seats=await seatCityOnParcels(db,{
-      sessionId,cityId,cityName:profile.name,ownerPlayer:owner,
-      gridX:macro.grid_x,gridY:macro.grid_y,population:200,turnNumber:1,
-    });
-    if(seats.seatIndex==null)throw Error("No seat for "+profile.name);
-    await one(db.from("cities").update({founded_parcel_index:seats.seatIndex}).eq("id",cityId).select("id").single(),"seat index");
-    const parcels=await ensureTileParcels(db,sessionId,macro.grid_x,macro.grid_y);
-    const cityUrban=parcels.filter((p:any)=>p.city_id===cityId&&p.status==="claimed"&&p.claim_kind!=="worked");
-    const residential=cityUrban.shift();
-    if(!residential)throw Error("Missing housing parcel for "+profile.name);
-    let district=(await db.from("city_districts").select("id,parcel_id").eq("city_id",cityId).eq("district_type","residential").maybeSingle()).data;
-    if(!district){
-      district=await one(db.from("city_districts").insert({
-        session_id:sessionId,city_id:cityId,district_type:"residential",name:"Obytná čtvrť",
-        population_capacity:400,current_population:200,status:"completed",completed_turn:1,
-        build_turns:0,build_started_turn:1,build_cost_wealth:0,build_cost_wood:0,build_cost_stone:0,
-      }).select("id,parcel_id").single(),"housing "+profile.name);
-    }
-    if(!district.parcel_id)await occupy(db,sessionId,owner,residential.id,"district",district.id,"residential");
-
     // Source industry always on its own real worked parcel, one active recipe per rural site.
     const sourceTpl=templates.get(resource.building);
     if(!sourceTpl)throw Error("Missing harvest building "+resource.building);
@@ -244,6 +224,27 @@ export async function seedNeutralCities(db:any,sessionId:string) {
       status:"claimed",claim_kind:"worked",land_use:"open",city_id:cityId,owner_player:owner,claimed_turn:1,
     }).eq("id",rural.id);
     if(claimed.error)throw claimed.error;
+    const seats=await seatCityOnParcels(db,{
+      sessionId,cityId,cityName:profile.name,ownerPlayer:owner,
+      gridX:macro.grid_x,gridY:macro.grid_y,population:200,turnNumber:1,
+    });
+    if(seats.seatIndex==null)throw Error("No seat for "+profile.name);
+    await one(db.from("cities").update({founded_parcel_index:seats.seatIndex}).eq("id",cityId).select("id").single(),"seat index");
+    const parcels=await ensureTileParcels(db,sessionId,macro.grid_x,macro.grid_y);
+    const cityUrban=(await ensureTileParcels(db,sessionId,macro.grid_x,macro.grid_y)).filter((p:any)=>p.city_id===cityId&&p.status==="claimed"&&p.claim_kind!=="worked");
+    const residential=cityUrban.shift();
+    if(!residential)throw Error("Missing housing parcel for "+profile.name);
+    let district=(await db.from("city_districts").select("id,parcel_id").eq("city_id",cityId).eq("district_type","residential").maybeSingle()).data;
+    if(!district){
+      district=await one(db.from("city_districts").insert({
+        session_id:sessionId,city_id:cityId,district_type:"residential",name:"Obytná čtvrť",
+        population_capacity:400,current_population:200,status:"completed",completed_turn:1,
+        build_turns:0,build_started_turn:1,build_cost_wealth:0,build_cost_wood:0,build_cost_stone:0,
+      }).select("id,parcel_id").single(),"housing "+profile.name);
+    }
+    if(!district.parcel_id)await occupy(db,sessionId,owner,residential.id,"district",district.id,"residential");
+
+
     await createCityBuilding(db,sessionId,cityId,owner,sourceTpl,rural.id,"worked",sourceTpl.name+" — "+profile.name);
     const fs=await db.from("food_specializations").upsert({
       session_id:sessionId,site_parcel_id:rural.id,owner_player:owner,resource_key:resource.key,
