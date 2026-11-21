@@ -12,6 +12,7 @@
  */
 
 import type { InputKind } from './inputKinds.ts';
+import { FOOD_DERIVED_GOODS, FOOD_RAW_GOODS, FOOD_RECIPES } from './foodResources.ts';
 export type ProductionRole = 'source' | 'processing' | 'urban' | 'guild' | 'producer';
 
 export interface CatalogRecipe {
@@ -43,6 +44,12 @@ export interface BuildingContract {
   levels: string[][];
   /** Coastal or river cell required (deterministic geography prerequisite). */
   requiresWater?: boolean;
+  /**
+   * Food-resource v1 recipes this structure MAY run once a field/herd specialization is chosen
+   * (one active specialization per site — never all at once). Not part of `levels`, so legacy
+   * economy runs are unchanged until the specialization mechanic activates them.
+   */
+  specializations?: string[];
 }
 
 // ───────────────────────────── goods ─────────────────────────────
@@ -92,6 +99,8 @@ export const GOODS: CatalogGood[] = [
   { key: 'fine_arms', basket: 'military_supply', stage: 'luxury', finalUse: true, household: false },
   { key: 'jewelry', basket: 'luxury_clothing', stage: 'luxury', finalUse: true, household: false },
   { key: 'ritual_goods', basket: 'admin_supplies', stage: 'luxury', finalUse: true, household: false },
+  // Food resources v1 (foodResources.ts is the authority).
+  ...[...FOOD_RAW_GOODS, ...FOOD_DERIVED_GOODS].map((g): CatalogGood => ({ key: g.key, basket: g.basket, stage: g.stage, finalUse: g.finalUse, household: false })),
 ];
 
 // ───────────────────────────── recipes ─────────────────────────────
@@ -168,6 +177,9 @@ export const RECIPES: CatalogRecipe[] = [
   r('craft_ritual', 'guild', ['ritual_craft'], 'ritual_goods', 1, [['raw_incense', 1], ['olive_oil', 1]]),
   r('embroider_fine', 'guild', ['weaving', 'master_craft'], 'textile_fine', 1, [['textile_basic', 2]]),
   r('age_wine', 'guild', ['fermenting', 'master_craft'], 'wine_luxury', 1, [['wine_standard', 2]]),
+  // Food resources v1
+  ...FOOD_RECIPES.map((f): CatalogRecipe => ({ key: f.key, role: f.role, tags: f.tags, output: f.output, qty: f.qty,
+    inputs: f.inputs.map((i) => ({ good: i.good, qty: i.qty, ...(i.kind ? { kind: i.kind } : {}) })) })),
 ];
 
 // ───────────────────────── producing structures ─────────────────────────
@@ -248,6 +260,13 @@ export const PRODUCTION_BUILDINGS: BuildingContract[] = [
     levels: [['craft_ritual'], [], []] },
 ];
 
+// Attach food-resource v1 specializations to the EXISTING structures (no new building types).
+for (const f of FOOD_RECIPES) {
+  const b = PRODUCTION_BUILDINGS.find((x) => x.name === f.building);
+  if (!b) throw new Error(`food recipe ${f.key} targets unknown building ${f.building}`);
+  (b.specializations ??= []).push(f.key);
+}
+
 export const recipeByKey = new Map(RECIPES.map((x) => [x.key, x]));
 export const goodByKey = new Map(GOODS.map((g) => [g.key, g]));
 
@@ -265,6 +284,7 @@ export function producersOfRecipe(recipeKey: string): { building: string; level:
   for (const b of PRODUCTION_BUILDINGS) {
     const level = b.levels.findIndex((keys) => keys.includes(recipeKey));
     if (level >= 0) out.push({ building: b.name, level: level + 1 });
+    else if (b.specializations?.includes(recipeKey)) out.push({ building: b.name, level: 1 });
   }
   return out;
 }
@@ -321,7 +341,7 @@ export function auditProductionCatalog(): string[] {
     if (!producersOfRecipe(recipe.key).length) errors.push(`recipe ${recipe.key} has no producing structure`);
   }
   for (const building of PRODUCTION_BUILDINGS) {
-    for (const key of recipesForLevel(building, building.levels.length)) {
+    for (const key of [...recipesForLevel(building, building.levels.length), ...(building.specializations ?? [])]) {
       const recipe = recipeByKey.get(key);
       if (!recipe) { errors.push(`${building.name} references unknown recipe ${key}`); continue; }
       if (!building.roles.includes(recipe.role)) errors.push(`${building.name} may not run ${key}: role ${recipe.role} not allowed`);

@@ -40,3 +40,4 @@
 - Rural baseline growth and local migration are planned by ruralGameplay.ts only in commit-turn atomic world phase; economy uses one shared cell-local rural labor pool, never urban population inflation — prevents replay/catch-up and double staffing.
 - Map mount/refetch must never seed city parcels; founding and explicit rollout own footprints — viewing a world must not cause writes and cascading reloads.
 - Finance: gateway → atomic SQL; STATE read-only to avoid cash duplication.
+- The 40 food map resources (P0 per sub-biome, climate windows, water rules, origin, harvest/processing chain) live only in `supabase/functions/_shared/foodResources.ts`; productionCatalog derives food goods/recipes from it and DB sync uses `effects.specialization_recipe_keys` (not `recipe_keys`) until per-site specialization exists — so no live session gains 40 free harvests.
