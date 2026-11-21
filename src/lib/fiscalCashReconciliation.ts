@@ -32,6 +32,12 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 
 export function reconcileFiscalCash(realm: { wealth_pop_tax?: unknown; wealth_domestic_market?: unknown; goods_wealth_fiscal?: unknown; computed_modifiers?: any } | null | undefined): FiscalCashReconciliation {
   const wb = realm?.computed_modifiers?.wealth_breakdown;
+  // For opt-in cash-backed turns, modelled assessment and actually collected tax
+  // are distinct. The cash-tax result is generated only by the atomic fiscal SQL.
+  const assessment = realm?.computed_modifiers?.cash_tax_assessment;
+  const cashSettlement = realm?.computed_modifiers?.cash_tax_settlement;
+  const assessedCash = num(assessment?.assessed_total);
+  const collectedCash = num(cashSettlement?.collected);
   const missing: string[] = [];
   const pick = (k: string) => { const v = num(wb?.[k]); if (v === null) missing.push(`wealth_breakdown.${k}`); return v; };
   const opening = pick('treasury_opening'), closing = pick('treasury_closing'), delta = pick('turn_fiscal_delta');
@@ -48,10 +54,13 @@ export function reconcileFiscalCash(realm: { wealth_pop_tax?: unknown; wealth_do
     ? { key: 'pillars=fiscal_revenue', ok: Math.abs(pSum - revenue) <= FISCAL_TOLERANCE, detail: `${pSum} vs ${revenue} (sloupce mohou pocházet z jiného přepočtu než snapshot)` }
     : { key: 'pillars=fiscal_revenue', ok: null, detail: 'Nedostupné — chybí pilíře nebo fiscal_revenue' });
   return {
-    available: !!wb && revenue !== null,
-    legacy_imputed_tax: revenue,
-    real_cash_tax_paid: null,
-    uncovered_tax_source: revenue,
+    available: (!!wb && revenue !== null) || assessedCash !== null,
+    // In cash-backed mode this is the *assessed* (not credited) model claim.
+    legacy_imputed_tax: assessedCash ?? revenue,
+    real_cash_tax_paid: collectedCash,
+    uncovered_tax_source: assessedCash !== null
+      ? (collectedCash === null ? assessedCash : Math.max(0, assessedCash - collectedCash))
+      : revenue,
     pillars, legacy, opening, closing, turn_fiscal_delta: delta,
     source_missing: missing, checks,
   };
