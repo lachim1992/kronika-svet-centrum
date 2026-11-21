@@ -1018,7 +1018,6 @@ async function executeBuildRoadPath(
     return { events: [], error: "Trasa podčtverců je neplatná" };
   }
   const globalSubKey = (cell: any) => `${cell.gridX * TILE_PARCEL_COLS + cell.parcelX},${cell.gridY * TILE_PARCEL_ROWS + cell.parcelY}`;
-  if (new Set(subPath.map(globalSubKey)).size !== subPath.length) return { events: [], error: "Trasa se nesmí vracet přes stejný podčtverec" };
   for (let i = 1; i < subPath.length; i += 1) {
     const previous = subPath[i - 1]; const current = subPath[i];
     const dx = Math.abs((current.gridX * TILE_PARCEL_COLS + current.parcelX) - (previous.gridX * TILE_PARCEL_COLS + previous.parcelX));
@@ -1044,24 +1043,6 @@ async function executeBuildRoadPath(
   const pathTiles = path.map((cell: any) => tileByKey.get(`${cell.x},${cell.y}`));
   if (pathTiles.some((tile: any) => !tile || tile.is_passable === false || tile.biome_family === "sea")) return { events: [], error: "Trasa vede přes neprůchodné nebo mořské pole" };
 
-  const start = path[0];
-  const startSub = subPath[0];
-  const startParcelIndex = startSub.parcelY * TILE_PARCEL_COLS + startSub.parcelX;
-  const [{ data: held }, { data: city }, { data: node }, { data: linkedRoad }, { data: linkedProject }] = await Promise.all([
-    supabase.from("tile_parcels").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("parcel_index", startParcelIndex).eq("owner_player", actor.name).limit(1),
-    supabase.from("cities").select("id, founded_parcel_index").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("owner_player", actor.name).eq("founded_parcel_index", startParcelIndex).limit(1),
-    supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("grid_x", start.x).eq("grid_y", start.y).eq("parcel_index", startParcelIndex).eq("controlled_by", actor.name).limit(1),
-    supabase.from("road_segments").select("id, sub_path_cells").eq("session_id", sessionId).eq("status", "completed").or(`and(from_x.eq.${start.x},from_y.eq.${start.y}),and(to_x.eq.${start.x},to_y.eq.${start.y})`),
-    supabase.from("road_projects").select("id, sub_path_cells").eq("session_id", sessionId).eq("status", "completed"),
-  ]);
-  const exactSegmentAnchor = (linkedRoad || []).some((segment: any) => {
-    const trace = Array.isArray(segment.sub_path_cells) ? segment.sub_path_cells : [];
-    return trace.length === 0 || trace.some((cell: any) => Number(cell.gridX) === startSub.gridX && Number(cell.gridY) === startSub.gridY && Number(cell.parcelX) === startSub.parcelX && Number(cell.parcelY) === startSub.parcelY);
-  });
-  const exactRoadAnchor = (linkedProject || []).some((project: any) => Array.isArray(project.sub_path_cells) && project.sub_path_cells.some((cell: any) =>
-    Number(cell.gridX) === startSub.gridX && Number(cell.gridY) === startSub.gridY && Number(cell.parcelX) === startSub.parcelX && Number(cell.parcelY) === startSub.parcelY));
-  if (!held?.length && !city?.length && !node?.length && !exactSegmentAnchor && !exactRoadAnchor) return { events: [], error: "Trasa musí začínat na tvé parcele, městském sídle, subuzlu nebo hotové cestě" };
-
   const edges = path.slice(1).map((to: any, index: number) => {
     const from = path[index];
     return from.x < to.x || (from.x === to.x && from.y < to.y)
@@ -1074,8 +1055,7 @@ async function executeBuildRoadPath(
   for (const edge of edges) {
     const existing = existingByEdge.get(`${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`);
     const where = `mezi poli ${edge.from_x},${edge.from_y} a ${edge.to_x},${edge.to_y}`;
-    if (existing && Number(existing.level) >= level) return { events: [], error: `Tady už cesta ${where} je (úroveň ${existing.level}) — vyber vyšší úroveň nebo veď trasu jinam.` };
-    if (level > 1 && (!existing || Number(existing.level) !== level - 1 || existing.status !== "completed")) return { events: [], error: `Vyšší úroveň lze postavit jen na dokončené cestě o stupeň nižší — ${where} taková cesta chybí.` };
+    if (existing && Number(existing.level) >= level) return { events: [], error: `Tady už cesta ${where} je (úroveň ${existing.level}) — existující úsek znovu nestavíš.` };
   }
 
   const riverSubCells = new Set<string>();
@@ -1089,10 +1069,11 @@ async function executeBuildRoadPath(
     riverChannelCells(sessionId, cell.x, cell.y, { ...tile, elevation: tile.mean_height }, neighbours)
       .forEach((sub: any) => riverSubCells.add(`${cell.x},${cell.y},${sub.x},${sub.y}`));
   });
-  const bridgeCount = subPath.filter((cell: any) => riverSubCells.has(`${cell.gridX},${cell.gridY},${cell.parcelX},${cell.parcelY}`)).length;
-  const terrainFactor = pathTiles.reduce((sum: number, tile: any) => sum + (["mountain", "mountains"].includes(tile.biome_family) ? 1.8 : tile.biome_family === "swamp" ? 1.5 : tile.biome_family === "hills" ? 1.25 : 1), 0) / pathTiles.length;
-  const length = edges.length;
-  const subLength = subPath.length - 1;
+  const bridgeCount = new Set(subPath.filter((cell: any) => riverSubCells.has(`${cell.gridX},${cell.gridY},${cell.parcelX},${cell.parcelY}`)).map(globalSubKey)).size;
+  const uniquePathTiles = [...new Map(path.map((cell: any, index: number) => [`${cell.x},${cell.y}`, pathTiles[index]])).values()];
+  const terrainFactor = uniquePathTiles.reduce((sum: number, tile: any) => sum + (["mountain", "mountains"].includes(tile.biome_family) ? 1.8 : tile.biome_family === "swamp" ? 1.5 : tile.biome_family === "hills" ? 1.25 : 1), 0) / uniquePathTiles.length;
+  const length = new Set(edges.map((edge: any) => `${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`)).size;
+  const subLength = Math.max(0, new Set(subPath.map(globalSubKey)).size - 1);
   const edgeEquivalent = subLength / TILE_PARCEL_COLS;
   const cost = {
     gold: Math.ceil(tier.gold * edgeEquivalent * terrainFactor + bridgeCount * 45),
@@ -1110,18 +1091,21 @@ async function executeBuildRoadPath(
   }).select("id").single();
   if (projectError || !project) return { events: [], error: projectError?.message || "Projekt cesty se nepodařilo založit" };
 
-  const segmentRows = edges.map((edge: any, index: number) => ({
-    session_id: sessionId, project_id: project.id, owner_player: actor.name, ...edge, level,
-    status: "building", progress: 0, capacity: tier.capacity,
-    speed: tier.speed,
-    friction: Number((terrainFactor * tier.friction).toFixed(3)),
-    maintenance: tier.maintenance.gold,
-    bridge_count: subPath.filter((cell: any) => (cell.gridX === path[index].x && cell.gridY === path[index].y) || (cell.gridX === path[index + 1].x && cell.gridY === path[index + 1].y))
-      .filter((cell: any) => riverSubCells.has(`${cell.gridX},${cell.gridY},${cell.parcelX},${cell.parcelY}`)).length,
-    path_cells: [path[index], path[index + 1]],
-    sub_path_cells: subPath.filter((cell: any) => (cell.gridX === path[index].x && cell.gridY === path[index].y) || (cell.gridX === path[index + 1].x && cell.gridY === path[index + 1].y)),
-    utilization: 0,
-  }));
+  const segmentRows = [...new Map(edges.map((edge: any, index: number) => {
+    const key = `${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`;
+    return [key, {
+      session_id: sessionId, project_id: project.id, owner_player: actor.name, ...edge, level,
+      status: "building", progress: 0, capacity: tier.capacity,
+      speed: tier.speed,
+      friction: Number((terrainFactor * tier.friction).toFixed(3)),
+      maintenance: tier.maintenance.gold,
+      bridge_count: new Set(subPath.filter((cell: any) => (cell.gridX === path[index].x && cell.gridY === path[index].y) || (cell.gridX === path[index + 1].x && cell.gridY === path[index + 1].y))
+        .filter((cell: any) => riverSubCells.has(`${cell.gridX},${cell.gridY},${cell.parcelX},${cell.parcelY}`)).map(globalSubKey)).size,
+      path_cells: [path[index], path[index + 1]],
+      sub_path_cells: subPath.filter((cell: any) => (cell.gridX === path[index].x && cell.gridY === path[index].y) || (cell.gridX === path[index + 1].x && cell.gridY === path[index + 1].y)),
+      utilization: 0,
+    }] as const;
+  })).values()];
   const segmentError = segmentRows.length
     ? (await supabase.from("road_segments").upsert(segmentRows, { onConflict: "session_id,from_x,from_y,to_x,to_y" })).error
     : null;

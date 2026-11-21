@@ -24,8 +24,8 @@ import { completeParcelTerrain } from "@/lib/parcelTerrainFallback";
 import { walledUrbanParcels } from "@/lib/cityWalls";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells, generateTileParcels, type TileParcelSpec } from "@/lib/tileParcels";
-import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
-import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDetour, subRoadPathBetween, tileBridgeCells, tileRoadBranches, tileRoadCells, tileRoadCost, type RoadStep, type SubRoadCell } from "@/lib/tileRoads";
+import { tileInfrastructureLevel } from "@/lib/tileInfrastructure";
+import { CARDINAL_STEPS, areSubRoadNeighbours, macroPathFromSubRoad, subRoadDetour, subRoadPathBetween, tileRoadCells, type RoadStep, type SubRoadCell } from "@/lib/tileRoads";
 import { parcelTransport } from "../../../supabase/functions/_shared/ruralSites";
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -781,47 +781,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [storedSubBiomesByCell, tileByCell, terrainOf, sessionId]);
 
 
-  /** Which borders a cell's road reaches: neighbours that carry a road or hold a settlement. */
-  const roadStepsOf = useCallback((a: number, b: number) => CARDINAL_STEPS.filter(step => {
-    const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
-    if (!neighbour || neighbour.is_passable === false || neighbour.biome_family === "sea") return false;
-    return !!infrastructureByCell.get(cellKey(a + step.dx, b + step.dy)) || !!cityByCell.get(cellKey(a + step.dx, b + step.dy));
-  }), [tileByCell, infrastructureByCell, cityByCell]);
-
-  /**
-   * Macro roads trace the very same sub-parcel channel as the opened parcel layer, and every
-   * sub-parcel where the trace meets the river is drawn (and charged) as a bridge.
-   */
-  const roadNetwork = useMemo(() => {
-    const segments: Array<{ id: string; from: { x: number; y: number }; to: { x: number; y: number }; level: number; building: boolean }> = [];
-    const bridges: Array<{ id: string; point: { x: number; y: number } }> = [];
-    infrastructure.forEach(item => {
-      const tile = tileByCell.get(cellKey(item.grid_x, item.grid_y));
-      if (!tile) return;
-      const steps = roadStepsOf(item.grid_x, item.grid_y);
-      const branches = tileRoadBranches(sessionId, item.grid_x, item.grid_y, steps);
-      branches.forEach((branch, branchIndex) => {
-        for (let index = 0; index < branch.length - 1; index += 1) {
-          segments.push({
-            id: `road-${item.id}-${branchIndex}-${index}`,
-            from: subPoint(item.grid_x, item.grid_y, branch[index].x, branch[index].y),
-            to: subPoint(item.grid_x, item.grid_y, branch[index + 1].x, branch[index + 1].y),
-            level: item.level || 1,
-            building: item.status === "building",
-          });
-        }
-      });
-      const neighbours = CARDINAL_STEPS.flatMap(step => {
-        const neighbour = tileByCell.get(cellKey(item.grid_x + step.dx, item.grid_y + step.dy));
-        return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
-      });
-      tileBridgeCells(sessionId, item.grid_x, item.grid_y, steps, terrainOf(tile), neighbours).forEach((cell, index) => {
-        bridges.push({ id: `bridge-${item.id}-${index}`, point: subPoint(item.grid_x, item.grid_y, cell.x, cell.y) });
-      });
-    });
-    return { segments, bridges };
-  }, [infrastructure, tileByCell, roadStepsOf, sessionId, subPoint, terrainOf]);
-
   /** Exact sub-parcel trace for every road edge; trade animation reuses this instead of drawing a parallel route. */
   const roadTraceByEdge = useMemo(() => {
     const traces = new Map<string, SubRoadCell[]>();
@@ -881,6 +840,46 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     [roadDraft, roadDraftLevel, buildRoadSurface, terrainRoadSurfaceByCell],
   );
 
+  /** Thin connected centre-lines replace the old whole-parcel road fill. */
+  const roadVisualNetwork = useMemo(() => {
+    const byGlobal = new Map<string, { gridX: number; gridY: number; parcelX: number; parcelY: number; level: number; draft: boolean }>();
+    roadSurfaceByCell.forEach((entry, key) => {
+      const [gridX, gridY] = key.split(",").map(Number);
+      entry.cells.forEach(sub => {
+        const globalX = gridX * TILE_PARCEL_COLS + sub.x;
+        const globalY = gridY * TILE_PARCEL_ROWS + sub.y;
+        const globalKey = `${globalX},${globalY}`;
+        const existing = byGlobal.get(globalKey);
+        if (!existing || entry.level > existing.level) byGlobal.set(globalKey, { gridX, gridY, parcelX: sub.x, parcelY: sub.y, level: entry.level, draft: entry.draft });
+        else if (entry.draft) existing.draft = true;
+      });
+    });
+    const segments: Array<{ id: string; from: { x: number; y: number }; to: { x: number; y: number }; level: number; draft: boolean; river: boolean }> = [];
+    const isRiver = (cell: { gridX: number; gridY: number; parcelX: number; parcelY: number }) => {
+      const tile = tileByCell.get(cellKey(cell.gridX, cell.gridY));
+      return !!tile && subBiomesOf(tile, cell.gridX, cell.gridY).some(spec => spec.parcelX === cell.parcelX && spec.parcelY === cell.parcelY && spec.subBiome === "river_channel");
+    };
+    byGlobal.forEach((cell, globalKey) => {
+      const [globalX, globalY] = globalKey.split(",").map(Number);
+      [[1, 0], [0, 1]].forEach(([dx, dy]) => {
+        const neighbour = byGlobal.get(`${globalX + dx},${globalY + dy}`);
+        if (!neighbour) return;
+        const from = subPoint(cell.gridX, cell.gridY, cell.parcelX, cell.parcelY);
+        const to = subPoint(neighbour.gridX, neighbour.gridY, neighbour.parcelX, neighbour.parcelY);
+        const level = Math.max(cell.level, neighbour.level);
+        const river = isRiver(cell) || isRiver(neighbour);
+        segments.push({ id: `${globalKey}>${globalX + dx},${globalY + dy}`, from, to, level, draft: cell.draft || neighbour.draft, river });
+      });
+    });
+    const bridges = segments.filter(segment => segment.river).map(segment => ({
+      id: `bridge-${segment.id}`,
+      point: { x: (segment.from.x + segment.to.x) / 2, y: (segment.from.y + segment.to.y) / 2 },
+      angle: Math.atan2(segment.to.y - segment.from.y, segment.to.x - segment.from.x) * 180 / Math.PI,
+      level: segment.level,
+      draft: segment.draft,
+    }));
+    return { segments, bridges };
+  }, [roadSurfaceByCell, tileByCell, subBiomesOf, subPoint]);
 
   const roadDraftSummary = useMemo(() => {
     const macroPath = macroPathFromSubRoad(roadDraft);
@@ -889,11 +888,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     if (!tier) return { bridges: 0, gold: 0, production: 0, turns: 0, macroLength: 0, subLength: 0 };
     const draftTiles = roadDraft.map(cell => tileByCell.get(cellKey(cell.gridX, cell.gridY))).filter((tile): tile is Tile => !!tile);
     const terrainFactor = draftTiles.length ? draftTiles.reduce((sum, tile) => sum + (["mountain", "mountains"].includes(tile.biome_family) ? 1.8 : tile.biome_family === "swamp" ? 1.5 : tile.biome_family === "hills" ? 1.25 : 1), 0) / draftTiles.length : 1;
-    const bridges = roadDraft.filter(sub => {
+    const bridges = new Set(roadDraft.filter(sub => {
       const tile = tileByCell.get(cellKey(sub.gridX, sub.gridY));
       return tile ? subBiomesOf(tile, sub.gridX, sub.gridY).some(spec => spec.parcelX === sub.parcelX && spec.parcelY === sub.parcelY && spec.subBiome === "river_channel") : false;
-    }).length;
-    const subLength = roadDraft.length - 1;
+    }).map(sub => `${sub.gridX * TILE_PARCEL_COLS + sub.parcelX},${sub.gridY * TILE_PARCEL_ROWS + sub.parcelY}`)).size;
+    const subLength = Math.max(0, new Set(roadDraft.map(sub => `${sub.gridX * TILE_PARCEL_COLS + sub.parcelX},${sub.gridY * TILE_PARCEL_ROWS + sub.parcelY}`)).size - 1);
     const macroLength = macroPath.length - 1;
     const edgeEquivalent = subLength / TILE_PARCEL_COLS;
     return { bridges, gold: Math.ceil(tier.gold * edgeEquivalent * terrainFactor + bridges * 45), production: Math.ceil(tier.production * edgeEquivalent * terrainFactor + bridges * 30), turns: tier.turns, macroLength, subLength };
@@ -901,9 +900,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const roadDraftBlock = useMemo(() => {
     if (roadDraft.length < 2) return "Nakresli alespoň dva sousední podčtverce.";
-    { const macro = macroPathFromSubRoad(roadDraft); if (new Set(macro.map(c => `${c.x},${c.y}`)).size !== macro.length) return "Trasa se nesmí vracet přes stejné pole — veď ji bez návratu do už projitého čtverce."; }
     if (treasury.gold < roadDraftSummary.gold || treasury.production < roadDraftSummary.production) return `Chybí zdroje: potřeba ${roadDraftSummary.gold} zlata a ${roadDraftSummary.production} produkce.`;
-    // Same rule as the server: an edge can host only one road, upgrades need the finished tier below.
+    // Same rule as the server: one physical road per macro edge; paved roads need no trail first.
     const byEdge = new Map<string, { level: number; status: string }>();
     roadSegments.forEach(segment => {
       const key = roadEdgeKey({ a: segment.from_x, b: segment.from_y }, { a: segment.to_x, b: segment.to_y });
@@ -916,8 +914,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       const to = { a: macroPath[i].x, b: macroPath[i].y };
       const existing = byEdge.get(roadEdgeKey(from, to));
       const where = `mezi poli ${from.a},${from.b} a ${to.a},${to.b}`;
-      if (existing && existing.level >= roadDraftLevel) return `Tady už cesta ${where} je (úroveň ${existing.level}) — zvol vyšší úroveň nebo veď trasu jinam.`;
-      if (roadDraftLevel > 1 && (!existing || existing.level !== roadDraftLevel - 1 || existing.status !== "completed")) return `Vyšší úroveň lze stavět jen na dokončené cestě o stupeň nižší — ${where} taková cesta chybí.`;
+      if (existing && existing.level >= roadDraftLevel) return `Tady už cesta ${where} je (úroveň ${existing.level}) — existující úsek znovu nestavíš.`;
     }
     return null;
   }, [roadDraft, roadDraftLevel, roadDraftSummary, treasury, roadSegments]);
@@ -1232,19 +1229,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }) : [];
   const selectedParcelUsed = selectedParcelContents.reduce((sum, item) => sum + item.slots_used, 0);
   const selectedInfrastructure = selectedCell ? infrastructure.find(item => item.grid_x === selectedCell.a && item.grid_y === selectedCell.b) : undefined;
-  /** Road trace of the inspected cell plus the bridges the next tier would have to pay for. */
-  const selectedRoadPlan = useMemo(() => {
-    if (!selected || !selectedCell) return null;
-    const steps = roadStepsOf(selectedCell.a, selectedCell.b);
-    const branches = tileRoadBranches(sessionId, selectedCell.a, selectedCell.b, steps);
-    const neighbours = CARDINAL_STEPS.flatMap(step => {
-      const neighbour = tileByCell.get(cellKey(selectedCell.a + step.dx, selectedCell.b + step.dy));
-      return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
-    });
-    const bridges = tileBridgeCells(sessionId, selectedCell.a, selectedCell.b, steps, terrainOf(selected), neighbours);
-    const tier = tileInfrastructureLevel((selectedInfrastructure?.level || 0) + 1);
-    return { branches, bridges, tier, cost: tier ? tileRoadCost(tier, bridges.length) : null };
-  }, [selected, selectedCell, roadStepsOf, sessionId, tileByCell, terrainOf, selectedInfrastructure]);
 
   const constructionByParcel = useMemo(() => new Map(constructionEntities.map(entity => [entity.parcel_id, entity])), [constructionEntities]);
   const constructionById = useMemo(() => new Map(constructionEntities.map(entity => [entity.id, entity])), [constructionEntities]);
@@ -1449,41 +1433,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       {renderCityStreetLife(cityOwned.filter(p => p.claim_kind !== "worked"), centerPoint)}
       {/* Purchased urban plots are ringed; worked territorial claims stay outside. */}
       {renderWallRun(wallEdges, holderColor, 2, "survey-wall", holder?.owner_player)}
-      {(roadTier > 0 || selectedInfrastructure?.status === "building") && localRoadSegments(occupiedIndexes).map((segment, index) => {
-        const centre = (point: { x: number; y: number }) => {
-          const corners = parcelCorners(centerPoint, point.x, point.y);
-          return { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
-        };
-        const from = centre(segment.from); const to = centre(segment.to);
-        const roadBuilding = selectedInfrastructure?.status === "building";
-        return <line key={`local-road-${index}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-          stroke="var(--map-route)" strokeWidth={roadTier === 3 ? 2.2 : roadTier === 2 ? 1.6 : 1}
-          strokeDasharray={roadBuilding || roadTier === 1 ? "2 1.5" : undefined} strokeLinecap="round" opacity=".95" pointerEvents="none"
-          className={roadBuilding ? "iso-construction-road" : undefined} />;
-      })}
-      {/* the through-road: same channel the macro map draws, with bridges over the river.
-          Roads only cross the sub-parcels — they never take a building slot, so a planned
-          trace is drawn even before the project is paid for. */}
-      {selectedRoadPlan?.branches.flatMap((branch, branchIndex) => {
-        const planned = roadTier === 0 && selectedInfrastructure?.status !== "building";
-        const centre = (sub: { x: number; y: number }) => {
-          const corners = parcelCorners(centerPoint, sub.x, sub.y);
-          return { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
-        };
-        return branch.slice(1).map((sub, index) => {
-          const from = centre(branch[index]); const to = centre(sub);
-          return <line key={`through-road-${branchIndex}-${index}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-            stroke="var(--map-route)" strokeWidth={planned ? 1.2 : roadTier === 3 ? 3 : roadTier === 2 ? 2.4 : 1.6}
-            strokeDasharray={planned || selectedInfrastructure?.status === "building" || roadTier === 1 ? "3 2" : undefined}
-            strokeLinecap="round" opacity={planned ? .4 : .95} pointerEvents="none" />;
-        });
-      })}
-      {selectedRoadPlan?.bridges.map((sub, index) => {
-        const corners = parcelCorners(centerPoint, sub.x, sub.y);
-        const point = { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
-        return <rect key={`bridge-${index}`} x={point.x - 4} y={point.y - 2} width="8" height="4" rx="1"
-          fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".6" pointerEvents="none" />;
-      })}
 
       {parcelsBackToFront(tileParcels.filter(parcel => parcel.status === "occupied" || (parcel.claim_kind === "worked" && parcelContents.some(item => item.parcel_id === parcel.id && item.entity_type === "building")))).map((parcel, index) => {
         const entity = constructionByParcel.get(parcel.id);
@@ -1941,15 +1890,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       }
 
 
-      // Keep the trace continuous: when a filled cell revisits the draft, cut back to it
-      // instead of skipping it — skipping would leave a gap the server rejects.
-      const result = [...current];
-      filled.forEach(cell => {
-        const seen = result.findIndex(item => sameCell(item, cell));
-        if (seen >= 0) result.splice(seen + 1);
-        else result.push(cell);
-      });
-      return result;
+      // Revisits are legal: a drawn loop stays a loop instead of being silently cut back.
+      return [...current, ...filled];
 
     });
   };
@@ -2062,9 +2004,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {Array.isArray(terrainRaster) && terrainRaster.map(chunk => <image key={chunk.url} href={chunk.url} x={chunk.x} y={chunk.y} width={chunk.w + .08} height={chunk.h + .08} preserveAspectRatio="none" pointerEvents="none" />)}
           {sortedTiles.map(tile => {
             const cell = tileCell(tile); const point = at(cell.a, cell.b); const colors = BIOMES[tile.biome_family] || BIOMES.plains;
-            const roadSurface = roadSurfaceByCell.get(cellKey(cell.a, cell.b));
-            const visibleRoadLevel = roadSurface?.level || 0;
-            const roadFill = visibleRoadLevel === 3 ? "var(--map-road-paved)" : visibleRoadLevel === 2 ? "var(--map-road-built)" : "var(--map-road-trail)";
             const active = selected?.id === tile.id;
             const holderCityId = cityByCell.get(cellKey(cell.a, cell.b));
             const inActiveCity = cityLayerCityId && holderCityId === cityLayerCityId;
@@ -2123,23 +2062,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 })}
               </g>}
 
-              {/* the road itself only paints the sub-parcels it runs through */}
-              {roadSurface && <g pointerEvents="none">
-                {/* outline pass: dark border shows only on the road's outer edge, so it reads raised */}
-                {roadSurface.cells.map(sub => (
-                  <polygon key={`road-edge-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
-                    fill="var(--map-marker-edge)" stroke="var(--map-marker-edge)" strokeWidth="1.2" strokeLinejoin="round" opacity=".28" />
-                ))}
-                {roadSurface.cells.map(sub => (
-                  <polygon key={`road-sub-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)}
-                    fill={`url(#${texId(texDirt)})`} stroke="none"
-                    opacity={roadSurface.draft ? .55 : .82} />
-                ))}
-                {visibleRoadLevel >= 2 && roadSurface.cells.map(sub => (
-                  <polygon key={`road-tint-${sub.x}-${sub.y}`} points={parcelQuad(point, sub.x, sub.y)} fill={roadFill} opacity=".25" />
-                ))}
-              </g>}
-
               {active && tileParcels.length > 0 && renderTileParcels(point)}
             </g>;
           })}
@@ -2170,14 +2092,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </g>
             ))}
           </g>}
-          {roadNetwork.segments.map(segment => {
-            const from = segment.from;
-            const end = segment.to;
-            const width = segment.level >= 3 ? 3.2 : segment.level === 2 ? 2.4 : 1.6;
-            return <g key={segment.id} pointerEvents="none">
-              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-marker-edge)" strokeWidth={width + 1} strokeLinecap="round" opacity=".25" />
-              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke={`url(#${texId(texDirt)})`} strokeWidth={width} strokeLinecap="round"
-                strokeDasharray={segment.building || segment.level === 1 ? "4 3" : undefined} opacity=".9" />
+          {roadVisualNetwork.segments.map(segment => {
+            const paved = segment.level >= 2;
+            const width = paved ? 1.15 : .62;
+            return <g key={segment.id} pointerEvents="none" opacity={segment.draft ? .58 : 1}>
+              <line x1={segment.from.x} y1={segment.from.y} x2={segment.to.x} y2={segment.to.y}
+                stroke="var(--map-road-edge)" strokeWidth={width + .55} strokeLinecap="round" opacity=".32" />
+              <line x1={segment.from.x} y1={segment.from.y} x2={segment.to.x} y2={segment.to.y}
+                stroke={paved ? "var(--map-road-paved)" : `url(#${texId(texDirt)})`} strokeWidth={width} strokeLinecap="round"
+                strokeDasharray={segment.draft || !paved ? "2.2 1.6" : undefined} opacity={paved ? .95 : .82} />
+              {paved && <line x1={segment.from.x} y1={segment.from.y} x2={segment.to.x} y2={segment.to.y}
+                stroke="var(--map-city-paving-light)" strokeWidth=".28" strokeLinecap="round" strokeDasharray=".75 .55" opacity=".72" />}
             </g>;
           })}
           {/* settlements sit above rivers and roads */}
@@ -2189,11 +2114,19 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const holderCity = cityById.get(cityByCell.get(cellKey(cell.a, cell.b)) || "");
             return <g key={`fp-${tile.id}`} pointerEvents="none">{renderCityFootprint(footprint, at(cell.a, cell.b), holderCity ? holderCity.owner_player === playerName : true, holderCity?.owner_player)}</g>;
           })}
-          {roadNetwork.bridges.map(bridge => {
+          {roadVisualNetwork.bridges.map(bridge => {
             const point = bridge.point;
-            return <g key={bridge.id} pointerEvents="none">
-              <rect x={point.x - 5} y={point.y - 2.6} width="10" height="5.2" rx="1.4" fill="var(--map-route)" stroke="var(--map-marker-edge)" strokeWidth=".8" />
-              <line x1={point.x - 5} y1={point.y - 2.6} x2={point.x + 5} y2={point.y - 2.6} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity=".8" />
+            const paved = bridge.level >= 2;
+            const length = paved ? 9.2 : 7.4;
+            const width = paved ? 3.2 : 2.5;
+            return <g key={bridge.id} pointerEvents="none" transform={`translate(${point.x},${point.y}) rotate(${bridge.angle})`} opacity={bridge.draft ? .6 : 1}>
+              <rect x={-length / 2} y={-width / 2 - .25} width={length} height={width + .5} rx=".8" fill="var(--map-bridge-shadow)" opacity=".34" />
+              <rect x={-length / 2} y={-width / 2} width={length} height={width} rx=".7"
+                fill={paved ? "var(--map-bridge-stone)" : "var(--map-bridge-wood)"} stroke="var(--map-road-edge)" strokeWidth=".45" />
+              <line x1={-length / 2} y1={-width / 2} x2={length / 2} y2={-width / 2} stroke="var(--map-road-edge)" strokeWidth=".42" />
+              <line x1={-length / 2} y1={width / 2} x2={length / 2} y2={width / 2} stroke="var(--map-road-edge)" strokeWidth=".42" />
+              {[-.25, 0, .25].map(offset => <line key={offset} x1={length * offset} y1={-width / 2 + .3} x2={length * offset} y2={width / 2 - .3}
+                stroke={paved ? "var(--map-city-mortar)" : "var(--map-road-edge)"} strokeWidth=".28" opacity=".7" />)}
             </g>;
           })}
           {!cityLayerCityId && showRoutes && routePolylines.map(route => {
@@ -2529,7 +2462,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           <select value={roadDraftLevel} onChange={event => setRoadDraftLevel(Number(event.target.value))} className="h-8 rounded border border-input bg-background px-2">
-            {[1, 2, 3].map(level => <option key={level} value={level}>{tileInfrastructureLevel(level)?.label}</option>)}
+            {[1, 2].map(level => <option key={level} value={level}>{tileInfrastructureLevel(level)?.label}</option>)}
           </select>
           <span className="text-muted-foreground">{roadDraftSummary.gold} zlata · {roadDraftSummary.production} produkce · {roadDraftSummary.turns} kol{roadDraftSummary.bridges ? ` · ${roadDraftSummary.bridges} mostů` : ""}</span>
           <Button size="sm" className="ml-auto" disabled={!!roadDraftBlock || !!buildingAction} title={roadDraftBlock || undefined} onClick={() => void confirmRoadDraft()}>
@@ -2537,7 +2470,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </Button>
         </div>
         {roadDraftBlock && <p className="mt-2 text-[11px] text-muted-foreground">{roadDraftBlock}</p>}
-        <p className="mt-1 text-[11px] text-muted-foreground">Vyznačená pole jsou dosah napojení tvých měst a uzlů — cesta v nich je připojí k síti. Klikat můžeš i přes mezeru, trasa se doplní sama.</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">Stezka stačí ke zdrojům; dlážděnou cestu postavíš přímo, bez postupného vylepšování. Města a zdroje se napojí z vlastního nebo sousedního pole. Trasa se může vracet přes stejná pole a přes řeku se automaticky připočte most.</p>
       </div>, document.body)}
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
 
