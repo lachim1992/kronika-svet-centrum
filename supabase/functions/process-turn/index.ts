@@ -1,3 +1,4 @@
+import { householdPurchaseCandidates } from "../_shared/householdPurchases.ts";
 import { STRATEGIC_TIER_BONUSES } from "../_shared/strategicEffects.ts";
 import { planFiscalWrites } from '../_shared/atomicWrites.ts';
 import { treasuryBreakdown } from '../_shared/treasury.ts';
@@ -1607,6 +1608,8 @@ Deno.serve(async (req) => {
         wage_settlement: wageSettlementResult,
         // Requested cash claims only; SQL (settle_private_cash_turn) pays them from real business balances
         // inside the same fiscal guard, and ignores them unless the session opted in (private_cash_version>=1).
+        // Payment candidates only; SQL bills just provable same-city sellers, from real household cash.
+        household_purchase_candidates: householdPurchaseCandidates(curLedgerRes.data?.result, myCities.map((c: any) => c.id)),
         private_cash_flows: (wageSettlementResult?.cities || []).flatMap((c: any) => [
           { city: c.city, flow_type: 'WAGES', amount: Number(c.wages_paid) || 0 },
           { city: c.city, flow_type: 'OWNERSHIP_INCOME', amount: Number(c.ownership_income_paid) || 0 },

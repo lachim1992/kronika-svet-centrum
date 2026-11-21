@@ -316,6 +316,13 @@
       "when": 1795273886024,
       "tag": "0044_private_cash_circuit_stage2b",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795274321290,
+      "tag": "0045_household_purchase_cash_stage2b2",
+      "breakpoints": true
     }
   ]
 }

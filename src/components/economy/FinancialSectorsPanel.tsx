@@ -42,13 +42,23 @@ export default function FinancialSectorsPanel({ sessionId }: { sessionId: string
       <p className="text-xs text-muted-foreground">Hotovost nyní = skutečný účetní zůstatek. Ze státu / do státu = skutečně provedené převody se státní pokladnou. Fiskální příjem je modelovaný tok, kapitálová zásoba níže není hotovost.</p>
       <div className="border-t border-border pt-3 space-y-2"><h4 className="text-sm font-semibold">Soukromý peněžní oběh</h4>
         <p className="text-xs text-muted-foreground">Režim: {data.session.error ? 'Nedostupné' : (data.session.data?.private_cash_version ?? 0) >= 1 ? 'cash backed (mzdy a vlastnické výnosy jen ze skutečného zůstatku podniků)' : 'legacy/model (platby jsou jen modelované)'}</p>
-        <p className="text-xs text-muted-foreground">Nezapojeno: nákupy domácností → tržby podniků, daně. Bez tržeb zůstávají účty podniků nezafinancované a platby se evidují jako neuhrazené.</p>
+        <p className="text-xs text-muted-foreground">Oběh NENÍ uzavřený: nákupy domácností se platí jen u zboží s doloženým místním prodávajícím; dovoz, zásoby z dřívějška a smíšený původ jsou neověřitelné a neplatí se. Daně nezapojeny. Účty začínají na nule, takže bez skutečné hotovosti zůstávají platby nezaplacené.</p>
         {!!data.turnFlows.data?.length && <Table><TableHeader><TableRow><TableHead>Tah</TableHead><TableHead>Město</TableHead><TableHead>Tok</TableHead><TableHead className="text-right">Požadováno</TableHead><TableHead className="text-right">Zaplaceno</TableHead><TableHead>Stav</TableHead></TableRow></TableHeader><TableBody>
           {data.turnFlows.data.map(f => <TableRow key={`${f.turn_number}-${f.city_id}-${f.flow_type}`}><TableCell>{f.turn_number}</TableCell><TableCell className="text-xs">{(data.capital.data ?? []).find(c => c.city_id === f.city_id)?.city_name ?? f.city_id}</TableCell>
             <TableCell>{f.flow_type === 'WAGES' ? 'Mzdy' : 'Vlastnický výnos'}</TableCell><TableCell className="text-right font-mono">{money(Number(f.requested))}</TableCell><TableCell className="text-right font-mono">{money(Number(f.settled))}</TableCell>
             <TableCell className="text-xs">{f.status === 'unfunded' ? 'nezafinancované' : f.status === 'partial' ? 'částečně' : f.status === 'no_controller' ? 'bez správce' : 'uhrazeno'}</TableCell></TableRow>)}
         </TableBody></Table>}
       </div>
+      {!!data.purchases.data?.length && <div className="space-y-1"><h4 className="text-sm font-semibold">Nákupy domácností</h4>
+        <Table><TableHeader><TableRow><TableHead>Tah</TableHead><TableHead>Město · zboží</TableHead><TableHead className="text-right">Fyzicky spotřebováno</TableHead><TableHead className="text-right">K úhradě</TableHead><TableHead className="text-right">Zaplaceno</TableHead><TableHead className="text-right">Nezaplaceno</TableHead><TableHead>Stav</TableHead></TableRow></TableHeader><TableBody>
+          {data.purchases.data.map(f => <TableRow key={`${f.turn_number}-${f.city_id}-${f.good_key}`}><TableCell>{f.turn_number}</TableCell>
+            <TableCell className="text-xs">{(data.capital.data ?? []).find(c => c.city_id === f.city_id)?.city_name ?? f.city_id} · {f.good_key}</TableCell>
+            <TableCell className="text-right font-mono">{money(Number(f.consumed))}</TableCell>
+            <TableCell className="text-right font-mono">{f.status === 'unmatched' || f.status === 'no_price' ? 'Nedostupné' : money(Number(f.bill))}</TableCell>
+            <TableCell className="text-right font-mono">{money(Number(f.settled))}</TableCell>
+            <TableCell className="text-right font-mono">{f.status === 'unmatched' || f.status === 'no_price' ? '—' : money(Number(f.unpaid))}</TableCell>
+            <TableCell className="text-xs">{({ settled: 'zaplaceno', partial: 'částečně', unfunded: 'nezafinancované', unmatched: 'neověřitelný prodávající', no_price: 'bez ceny', no_controller: 'bez správce' } as Record<string, string>)[f.status] ?? f.status}</TableCell></TableRow>)}
+        </TableBody></Table></div>}
       <PrivateSettlementSection snapshot={data.state.error ? undefined : (data.state.data?.computed_modifiers as any)?.wage_settlement}
         stateError={!!data.state.error} privateBalance={data.accounts.error ? null : (data.accounts.data ?? []).filter(a => a.sector === 'PRIVATE').reduce((t, a) => t + Number(a.balance), 0)}
         privateCount={data.accounts.data?.filter(a => a.sector === 'PRIVATE').length ?? 0} cityNames={new Map((data.capital.data ?? []).map(c => [c.city_id, c.city_name]))} />

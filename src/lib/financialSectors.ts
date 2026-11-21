@@ -28,7 +28,7 @@ export async function fetchFinancialSectors(sessionId: string, userId: string) {
   const seat = await supabase.from('game_players').select('player_name').eq('session_id', sessionId).eq('user_id', userId).maybeSingle();
   if (seat.error) throw seat.error;
   if (!seat.data) throw new Error('V této hře není dostupné vaše hráčské sedadlo.');
-  const [accounts, state, capital, stateTransfers, session, turnFlows] = await Promise.all([
+  const [accounts, state, capital, stateTransfers, session, turnFlows, purchases] = await Promise.all([
     supabase.from('financial_accounts').select('*').eq('session_id', sessionId).eq('controller_user_id', userId).order('created_at').order('id'),
     supabase.from('realm_resources').select('gold_reserve,total_wealth,computed_modifiers').eq('session_id', sessionId).eq('player_name', seat.data.player_name).maybeSingle(),
     supabase.rpc('read_financial_capital', { p_session: sessionId }),
@@ -36,8 +36,9 @@ export async function fetchFinancialSectors(sessionId: string, userId: string) {
     supabase.from('financial_state_transfers').select('account_id,direction,amount').eq('session_id', sessionId),
     supabase.from('game_sessions').select('private_cash_version').eq('id', sessionId).maybeSingle(),
     supabase.from('financial_turn_flows').select('*').eq('session_id', sessionId).order('turn_number', { ascending: false }).limit(60),
+    supabase.from('financial_purchase_flows').select('*').eq('session_id', sessionId).order('turn_number', { ascending: false }).limit(120),
   ]);
-  return { accounts, state, capital, stateTransfers, session, turnFlows };
+  return { accounts, state, capital, stateTransfers, session, turnFlows, purchases };
 }
 /** Net amount actually paid out of STATE to a municipal account (funded minus remitted), from the ledger. */
 export function municipalStateFlows(rows: { account_id: string; direction: string; amount: number }[], accountId: string) {

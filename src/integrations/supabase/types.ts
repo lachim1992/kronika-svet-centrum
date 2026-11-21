@@ -4436,6 +4436,83 @@ export type Database = {
           },
         ]
       }
+      financial_purchase_flows: {
+        Row: {
+          bill: number
+          city_id: string
+          consumed: number
+          created_at: string
+          good_key: string
+          seller_city_id: string | null
+          session_id: string
+          settled: number
+          status: string
+          transfer_id: string | null
+          turn_number: number
+          unit_price: number | null
+          unpaid: number
+        }
+        Insert: {
+          bill: number
+          city_id: string
+          consumed: number
+          created_at?: string
+          good_key: string
+          seller_city_id?: string | null
+          session_id: string
+          settled: number
+          status: string
+          transfer_id?: string | null
+          turn_number: number
+          unit_price?: number | null
+          unpaid: number
+        }
+        Update: {
+          bill?: number
+          city_id?: string
+          consumed?: number
+          created_at?: string
+          good_key?: string
+          seller_city_id?: string | null
+          session_id?: string
+          settled?: number
+          status?: string
+          transfer_id?: string | null
+          turn_number?: number
+          unit_price?: number | null
+          unpaid?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_purchase_flows_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_purchase_flows_seller_city_id_fkey"
+            columns: ["seller_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_purchase_flows_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_purchase_flows_session_id_transfer_id_fkey"
+            columns: ["session_id", "transfer_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transfers"
+            referencedColumns: ["session_id", "id"]
+          },
+        ]
+      }
       financial_state_transfers: {
         Row: {
           account_balance_after: number
@@ -13657,6 +13734,15 @@ export type Database = {
           p_stacks: Json
         }
         Returns: boolean
+      }
+      settle_household_purchases: {
+        Args: {
+          p_cands: Json
+          p_player: string
+          p_session: string
+          p_turn: number
+        }
+        Returns: undefined
       }
       settle_private_cash_turn: {
         Args: {
