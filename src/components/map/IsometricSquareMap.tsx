@@ -1870,7 +1870,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         a.gridX === b.gridX && a.gridY === b.gridY && a.parcelX === b.parcelX && a.parcelY === b.parcelY;
       const existingIndex = current.findIndex(item => sameCell(item, next));
       // Clicking the immediately previous cell is a convenient one-step undo.
-      if (existingIndex === current.length - 2) return current.slice(0, -1);
+      if (existingIndex >= 0 && existingIndex === current.length - 2) return current.slice(0, -1);
       if (existingIndex >= 0 && existingIndex !== current.length - 1) return current;
 
       const passable = (cell: SubRoadCell) => {
