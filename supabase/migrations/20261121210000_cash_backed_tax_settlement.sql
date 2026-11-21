@@ -37,8 +37,11 @@ ALTER TABLE public.financial_cash_tax_flows ENABLE ROW LEVEL SECURITY;
 CREATE POLICY financial_cash_tax_flows_read ON public.financial_cash_tax_flows
  FOR SELECT TO authenticated USING (EXISTS (
  SELECT 1 FROM public.financial_accounts a
+ JOIN public.game_players gp ON gp.session_id=a.session_id AND gp.user_id=a.controller_user_id
+ JOIN public.cities c ON c.id=a.city_id AND c.session_id=a.session_id
  WHERE a.session_id=financial_cash_tax_flows.session_id
  AND a.city_id=financial_cash_tax_flows.city_id
+ AND c.owner_player=gp.player_name
  AND a.city_group AND a.controller_user_id=auth.uid()));
 
 CREATE FUNCTION public.settle_cash_taxes(p_session uuid,p_player text,p_turn integer,p_claims jsonb)
@@ -74,9 +77,18 @@ DECLARE
     OR eff_dom IS NULL OR eff_dom='NaN'::numeric OR eff_dom<0 OR eff_dom>1
     OR NOT EXISTS (SELECT 1 FROM public.cities WHERE id=c AND session_id=p_session AND owner_player=p_player)
    THEN RAISE EXCEPTION 'Invalid cash tax assessment'; END IF;
-   SELECT round(coalesce(sum(settled),0)*eff_dom) INTO due_dom FROM public.financial_purchase_flows
-    WHERE session_id=p_session AND turn_number=p_turn AND seller_city_id=c
-      AND city_id=c AND status IN ('settled','partial');
+   -- Tax only actual paid, traceable household->business purchase transfers.
+   -- A synthetic or unmatched physical consumption row is never a cash tax base.
+   SELECT round(coalesce(sum(pf.settled),0)*eff_dom) INTO due_dom
+   FROM public.financial_purchase_flows pf
+   JOIN public.financial_transfers ft ON ft.session_id=pf.session_id
+    AND ft.id=pf.transfer_id AND ft.amount=pf.settled
+   JOIN public.financial_accounts buyer ON buyer.session_id=pf.session_id
+    AND buyer.id=ft.source_account_id AND buyer.city_id=c AND buyer.owner_kind='HOUSEHOLD' AND buyer.city_group
+   JOIN public.financial_accounts seller ON seller.session_id=pf.session_id
+    AND seller.id=ft.destination_account_id AND seller.city_id=c AND seller.owner_kind='BUSINESS' AND seller.city_group
+    WHERE pf.session_id=p_session AND pf.turn_number=p_turn AND pf.seller_city_id=c
+      AND pf.city_id=c AND pf.status IN ('settled','partial') AND pf.settled>0;
    IF due_dom>100000 THEN RAISE EXCEPTION 'Domestic cash tax assessment exceeds limit'; END IF;
    FOR pillar,due,kind,purpose IN
     SELECT 'POLL',due_poll,'HOUSEHOLD','cash_poll_tax'
