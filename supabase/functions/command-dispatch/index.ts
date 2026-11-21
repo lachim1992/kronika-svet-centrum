@@ -59,6 +59,7 @@ import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentit
 import { rationPolicy } from "../_shared/rationPolicy.ts";
 import { LEGACY_FOOD_TRANSFER_ERROR } from "../_shared/legacyFood.ts";
 import { FINANCIAL_COMMANDS, executeFinancialCommand } from './financialCommand.ts';
+import { foodSurveyFindings, specializationReason, isFoodFinding } from '../_shared/foodSpecialization.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -585,6 +586,31 @@ async function executeCommand(
       return { events: [], result: data } as any;
     }
 
+    case "SET_FOOD_SPECIALIZATION": {
+      const siteId = String(payload.parcelId || ""), key = String(payload.resourceKey || "");
+      const sx = Number(payload.sourceMicroX), sy = Number(payload.sourceMicroY);
+      if (!Number.isInteger(sx) || !Number.isInteger(sy)) return { events: [], error: "Neplatné zdrojové políčko" };
+      const { data: site } = await supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, owner_player, claim_kind").eq("session_id", sessionId).eq("id", siteId).maybeSingle();
+      if (!site) return { events: [], error: "Políčko neexistuje" };
+      const { data: b } = await supabase.from("city_buildings").select("template_id, effects").eq("parcel_id", siteId).eq("status", "completed").maybeSingle();
+      if (!b) return { events: [], error: "Na políčku není dokončená stavba" };
+      const { data: tpl } = await supabase.from("building_templates").select("effects").eq("id", (b as any).template_id).maybeSingle();
+      const specKeys = (((b as any).effects?.specialization_recipe_keys ?? (tpl as any)?.effects?.specialization_recipe_keys) || []).map(String);
+      const gx = Math.floor(sx / 6), gy = Math.floor(sy / 6), spi = (sy % 6) * 6 + (sx % 6);
+      const [{ data: src }, { data: surv }] = await Promise.all([
+        supabase.from("tile_parcels").select("sub_biome").eq("session_id", sessionId).eq("grid_x", gx).eq("grid_y", gy).eq("parcel_index", spi).maybeSingle(),
+        supabase.from("micro_surveys").select("findings").eq("session_id", sessionId).eq("player_name", actor.name).eq("micro_x", sx).eq("micro_y", sy).maybeSingle(),
+      ]);
+      const siteMicro: [number, number] = [site.grid_x * 6 + (site.parcel_index % 6), site.grid_y * 6 + Math.floor(site.parcel_index / 6)];
+      const reason = specializationReason({ resourceKey: key, siteOwner: site.owner_player, siteClaim: site.claim_kind, player: actor.name, specializationKeys: specKeys,
+        siteMicro, sourceMicro: [sx, sy], sourceSubBiome: (src as any)?.sub_biome ?? null,
+        discoveredAtSource: (((surv as any)?.findings) || []).some((f: any) => isFoodFinding(f, key)) });
+      if (reason) return { events: [], error: reason };
+      const { data, error } = await supabase.rpc("set_food_specialization", { p_session: sessionId, p_player: actor.name, p_parcel: siteId, p_key: key, p_x: sx, p_y: sy, p_turn: turnNumber });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: data } as any;
+    }
+
     case "ADD_FARM_FIELD": {
       const farmId = String(payload.farmParcelId || ""), fieldId = String(payload.fieldParcelId || "");
       const cols = "id, grid_x, grid_y, parcel_index, sub_biome, city_id, owner_player, claim_kind";
@@ -639,7 +665,11 @@ async function executeCommand(
         ({ data: truth } = await supabase.from("macro_deposits").select("deposits").eq("session_id", sessionId).eq("grid_x", x).eq("grid_y", y).single());
       }
       const mx = x * 6 + (pi % 6), my = y * 6 + Math.floor(pi / 6);
-      const findings = surveyMicroSquare(seed!.salt, mx, my, subBiome, hex.biome_family, (truth as any)?.deposits || []);
+      const elev = Number((hex as any).mean_height);
+      const findings = [...surveyMicroSquare(seed!.salt, mx, my, subBiome, hex.biome_family, (truth as any)?.deposits || []),
+        // Food resources: same private seed, real climate bands, water access and regional origin (never spoiled to clients).
+        ...foodSurveyFindings(seed!.salt, mx, my, { subBiome, tempBand: (hex as any).temp_band, moistureBand: (hex as any).moisture_band,
+          elevation: Number.isFinite(elev) ? (elev > 1 ? elev / 100 : elev) : null, hasRiver: !!(hex as any).has_river, coastal: !!(hex as any).coastal })] as any[];
       const { data, error } = await supabase.rpc("record_micro_survey", { p_session: sessionId, p_player: actor.name, p_x: mx, p_y: my,
         p_findings: findings, p_cost: MICRO_SURVEY_COST, p_turn: turnNumber });
       if (error) return { events: [], error: error.message };

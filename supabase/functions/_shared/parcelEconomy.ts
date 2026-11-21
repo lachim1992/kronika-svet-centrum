@@ -1,3 +1,4 @@
+import { foodRegrowth } from './foodSpecialization.ts';
 import { parcelTransport, siteSpecs, FREIGHT_RECIPES, MACRO_RESERVE_RECIPES, macroReserveKey, type RuralContext } from './ruralSites.ts';
 import type { Producer } from './goodsEconomy.ts';
 
@@ -79,7 +80,7 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
       const water = spec.recipe === 'draw_river_water';
       const initial = raw.capacity * (spec.renewable ? 5 : 40);
       // Coppiced woodland replenishes faster than wild food/game; finite pressure still caps extraction.
-      const regrowth = spec.recipe === 'fell_timber' ? 0.35 : 0.1;
+      const regrowth = foodRegrowth(spec.recipe) ?? (spec.recipe === 'fell_timber' ? 0.35 : 0.1);
       let remaining = water ? spec.capacity : Math.min(initial, Math.max(0, prior[id] ?? initial) + (spec.renewable ? spec.capacity * regrowth : 0));
       const macroKind = MACRO_RESERVE_RECIPES[spec.recipe]; let macro: string | undefined, grade = 0;
       if (macroKind) {

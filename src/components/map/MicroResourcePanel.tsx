@@ -43,7 +43,7 @@ export default function MicroResourcePanel({ sessionId, currentTurn, playerName,
       {loading ? <p className="text-muted-foreground">Načítám průzkum…</p>
         : failed ? <p className="text-destructive">Průzkum se nepodařilo načíst.</p>
         : findings ? <div className="flex flex-wrap gap-1">
-            {rare.length ? rare.map(f => <Badge key={f.kind} className="text-[10px]">{MICRO_RESOURCE_LABEL[f.kind]} · nalezeno{f.implemented ? "" : " (zatím bez výroby)"}</Badge>)
+            {rare.length ? rare.map(f => <Badge key={f.kind} className="text-[10px]">{MICRO_RESOURCE_LABEL[f.kind] ?? (f as any).label ?? f.kind} · nalezeno{f.implemented ? "" : " (zatím bez výroby)"}</Badge>)
               : <span className="text-muted-foreground">Průzkum nic vzácného nenašel.</span>}
           </div>
         : <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => void survey()}>

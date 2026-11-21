@@ -4,8 +4,9 @@
  * (same producer id parcel:{id}:{recipe}) with a bounded, levelled capacity — never stacked on top.
  */
 import { FIELD_RECIPES, fieldBonus } from './farmFields.ts';
+import { FOOD_RURAL_BASE, FOOD_FIELD_RECIPES } from './foodSpecialization.ts';
 export const RURAL_RECIPES = new Set(["fell_timber", "quarry_stone", "mine_iron", "harvest_wheat", "harvest_barley",
-  "herd_cattle", "harvest_grapes", "cut_peat", "catch_fish", "harvest_rice", "mine_gold"]);
+  "herd_cattle", "harvest_grapes", "cut_peat", "catch_fish", "harvest_rice", "mine_gold", ...Object.keys(FOOD_RURAL_BASE)]);
 /** Every rural output (crops, cattle, fish, grapes, timber, stone, ore, peat) must be hauled to the city market.
  * Subsistence grace comes only from the city's own macro cell (factor 1 "local"); river water is not freight. */
 export const FREIGHT_RECIPES = new Set(RURAL_RECIPES);
@@ -15,7 +16,7 @@ export const DEPOSIT_REQUIRED: Record<string, string> = { mine_iron: "iron", min
 export const MACRO_RESERVE_RECIPES: Record<string, string> = { mine_iron: "iron", mine_gold: "gold" };
 /** Lv1 site capacity per recipe (output units/turn before staffing). */
 export const RURAL_BASE: Record<string, number> = { fell_timber: 2.4, quarry_stone: 2, mine_iron: 1.5, harvest_wheat: 2.2,
-  harvest_barley: 2, herd_cattle: 1.2, harvest_grapes: 1.4, cut_peat: 1.4, catch_fish: 2, harvest_rice: 2.2, mine_gold: 0.6 };
+  harvest_barley: 2, herd_cattle: 1.2, harvest_grapes: 1.4, cut_peat: 1.4, catch_fish: 2, harvest_rice: 2.2, mine_gold: 0.6, ...FOOD_RURAL_BASE };
 export const FOOTPATH_FACTOR = 0.25;
 
 export type SiteRole = "rural" | "urban";
@@ -75,7 +76,7 @@ export function siteSpecs(natural: { recipe: string; capacity: number; jobs: num
   for (const recipe of (site?.recipeKeys || []).filter(k => RURAL_RECIPES.has(k))) {
     const need = DEPOSIT_REQUIRED[recipe];
     if (need && !deposits?.has(depositKey(site!.owner, x, y, need))) { blocked.push({ recipe, reason: `chybí potvrzené ložisko (${need})` }); continue; }
-    const bonus = FIELD_RECIPES.has(recipe) ? fieldBonus(site!.fields ?? 0) : { capacityFactor: 1, extraJobs: 0 };
+    const bonus = FIELD_RECIPES.has(recipe) || FOOD_FIELD_RECIPES.has(recipe) ? fieldBonus(site!.fields ?? 0) : { capacityFactor: 1, extraJobs: 0 };
     const cap = siteCapacity(recipe, site!.level) * bonus.capacityFactor, prev = specs.get(recipe);
     specs.set(recipe, { recipe, capacity: Math.max(cap, prev?.capacity ?? 0), jobs: Math.max(6, prev?.jobs ?? 0) * Math.max(1, site!.level) + bonus.extraJobs,
       renewable: !["mine_iron", "mine_gold", "quarry_stone", "cut_peat"].includes(recipe), site: true });

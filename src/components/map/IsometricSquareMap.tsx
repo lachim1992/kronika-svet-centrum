@@ -31,6 +31,7 @@ import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import FarmFieldPanel from "@/components/map/FarmFieldPanel";
+import FoodSpecializationPanel from "@/components/map/FoodSpecializationPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
 import SiegePanel, { type SiegeMapView } from "@/components/map/SiegePanel";
 import FieldBattlePanel, { type FieldBattleView, type FieldBattleClick } from "@/components/map/FieldBattlePanel";
@@ -2686,6 +2687,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             parcel={{ id: selectedParcel.id, grid_x: selectedCell.a, grid_y: selectedCell.b, parcel_index: selectedParcel.parcel_index, sub_biome: selectedParcel.sub_biome ?? null,
               city_id: selectedParcel.city_id ?? null, owner_player: (selectedParcel as any).owner_player ?? null, claim_kind: selectedParcel.claim_kind }}
             macroBiome={selected?.biome_family ?? null} onChanged={() => void load()} />}
+          {selectedCell && selectedParcel.id && selectedParcel.claim_kind === "worked" && <FoodSpecializationPanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName}
+            parcelId={selectedParcel.id} microX={selectedCell.a * 6 + (selectedParcel.parcel_index % 6)} microY={selectedCell.b * 6 + Math.floor(selectedParcel.parcel_index / 6)} onChanged={() => void load()} />}
           {selectedCell && selectedParcel.id && selectedParcel.claim_kind === "worked" && <CropPlantPanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName}
             parcel={{ id: selectedParcel.id, micro_x: selectedCell.a * 6 + (selectedParcel.parcel_index % 6), micro_y: selectedCell.b * 6 + Math.floor(selectedParcel.parcel_index / 6),
               sub_biome: selectedParcel.sub_biome ?? null, owner_player: (selectedParcel as any).owner_player ?? null, claim_kind: selectedParcel.claim_kind }}

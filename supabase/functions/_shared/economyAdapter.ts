@@ -38,7 +38,7 @@ async function query<T>(label:string,run:()=>Promise<{data:T;error:any}>):Promis
 async function rows(sb:any,table:string,session?:string){
   const out:any[]=[];
   // Tables without an id column page by their natural key (macro_deposits: one row per grid cell).
-  const orderBy=table==='goods'?['key']:table==='production_recipes'?['recipe_key']:table==='node_production_orders'?['node_id']:table==='macro_deposits'?['grid_x','grid_y']:['id'];
+  const orderBy=table==='goods'?['key']:table==='production_recipes'?['recipe_key']:table==='node_production_orders'?['node_id']:table==='macro_deposits'?['grid_x','grid_y']:table==='food_specializations'?['site_parcel_id']:['id'];
   for(let start=0;;start+=1000){
     const page=await query<any[]>(table,()=>{let q=sb.from(table).select('*');for(const col of orderBy)q=q.order(col,{ascending:true});q=q.range(start,start+999);if(session)q=q.eq('session_id',session);return q;});
     out.push(...page);if(page.length<1000)return out;}
@@ -51,6 +51,8 @@ async function rows(sb:any,table:string,session?:string){
  */
 export { normalizeStructureRoles, normalizeProductionContract, auditProductionContracts } from './productionContract.ts';
 import { CROP_RECIPE, isMature } from './cropSpread.ts';
+import { foodSiteRecipes, establishTurns, FOOD_BYPRODUCT_RECIPES } from './foodSpecialization.ts';
+import { foodResourceByKey, foodResourceByHarvest } from './foodResources.ts';
 import { normalizeStructureRoles, normalizeProductionContract } from './productionContract.ts';
 const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clothing',ritual:'luxury_clothing',prestige:'luxury_clothing'};
 const basket=(v:string)=>remap[v]||v;
@@ -220,9 +222,17 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const plantings=parcelMode?await rows(sb,'crop_plantings',session):[];
   const immature=new Set<string>(plantings.filter((c:any)=>!isMature(Number(c.planted_turn),turn)&&CROP_RECIPE[c.kind as keyof typeof CROP_RECIPE]).map((c:any)=>`${c.parcel_id}:${CROP_RECIPE[c.kind as keyof typeof CROP_RECIPE]}`));
   const fieldParcels=new Set<string>(liveFields.map((f:any)=>f.field_parcel_id));
+  // Food specializations: one chosen crop/herd per site, run only if the site's template offers it; yield after establishment.
+  const foodSpecs=parcelMode?await rows(sb,'food_specializations',session):[];
+  const foodSpecByParcel=new Map<string,any>(foodSpecs.map((f:any)=>[f.site_parcel_id,f]));
+  for(const f of foodSpecs as any[]){const r=foodResourceByKey.get(f.resource_key);if(r&&turn-Number(f.chosen_turn)<establishTurns(r))immature.add(`${f.site_parcel_id}:${r.harvest}`);}
   const ruralSites=db.city_buildings.filter((b:any)=>b.status==='completed'&&b.parcel_id&&workedIds.has(b.parcel_id)).map((b:any)=>{
     const t=db.building_templates.find((x:any)=>x.id===b.template_id);
-    return {parcelId:b.parcel_id,recipeKeys:(b.effects?.recipe_keys??t?.effects?.recipe_keys??[]).map(String),level:Number(b.current_level||1),fields:fieldCount.get(b.parcel_id)||0,
+    const base=(b.effects?.recipe_keys??t?.effects?.recipe_keys??[]).map(String);
+    const specKeys=(b.effects?.specialization_recipe_keys??t?.effects?.specialization_recipe_keys??[]).map(String);
+    const fs=foodSpecByParcel.get(b.parcel_id);
+    const owner=cities.find(c=>c.id===b.city_id)?.owner||'';
+    return {parcelId:b.parcel_id,recipeKeys:fs&&fs.owner_player===owner?foodSiteRecipes(base,specKeys,fs.resource_key):base,level:Number(b.current_level||1),fields:fieldCount.get(b.parcel_id)||0,
       owner:cities.find(c=>c.id===b.city_id)?.owner||''};});
   const ruralBuildingIds=new Set(db.city_buildings.filter((b:any)=>b.parcel_id&&workedIds.has(b.parcel_id)).map((b:any)=>b.id));
   const roadEdges=db.road_segments.filter((r:any)=>r.status==='completed').map((r:any)=>({from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`,owner:r.owner_player??null}));
@@ -321,6 +331,9 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
       [/stonecut|kamen/i,['stonecutting']],[/winery|vinař|tavern|hostin/i,['fermenting']]];
     return rules.flatMap(([match,tags])=>match.test(name)?tags:[]);
   };
+  // Food processing specializations are input-bound (never sources), so a whitelisted processor may run them on real stock.
+  const foodProcessingKeys=(effect:any)=>((effect?.specialization_recipe_keys||[]) as unknown[]).map(String)
+    .filter(k=>recipeByKey.has(k)&&!foodResourceByHarvest.has(k)&&!FOOD_BYPRODUCT_RECIPES.has(k));
   const contractNotes:{structure:string;notes:string[]}[]=[];
   for(const b of db.city_buildings.filter(b=>b.status==='completed')){
     // Rural sites on worked parcels run as their parcel's single physical source (ruralSites.ts), never as a second structure.
@@ -336,7 +349,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     const name=`${template?.key||''} ${template?.name||''} ${b.name||''}`;
     const tags=effect.capability_tags||facilityTags(name);
     structure(b.id,b.city_id,'facility',effect.basket_outputs||{},true,tags,
-      {recipeKeys:effect.recipe_keys,roles:effect.production_roles,level:b.current_level,order:structureOrder(b.id),jobs:effect.jobs_capacity,
+      {recipeKeys:effect.recipe_keys?[...effect.recipe_keys,...foodProcessingKeys(effect)]:effect.recipe_keys,roles:effect.production_roles,level:b.current_level,order:structureOrder(b.id),jobs:effect.jobs_capacity,
        allowSource:!!effect.recipe_keys||/well|aqueduct|studn|akvad|woodcut|lumber|dřev/i.test(name)});
   }
   // Abstract production districts are legacy-only. Parcel worlds use physical parcels/buildings;

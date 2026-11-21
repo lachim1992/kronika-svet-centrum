@@ -4842,6 +4842,39 @@ export type Database = {
           },
         ]
       }
+      food_specializations: {
+        Row: {
+          chosen_turn: number
+          owner_player: string
+          resource_key: string
+          session_id: string
+          site_parcel_id: string
+          source_micro_x: number
+          source_micro_y: number
+          updated_at: string
+        }
+        Insert: {
+          chosen_turn: number
+          owner_player: string
+          resource_key: string
+          session_id: string
+          site_parcel_id: string
+          source_micro_x: number
+          source_micro_y: number
+          updated_at?: string
+        }
+        Update: {
+          chosen_turn?: number
+          owner_player?: string
+          resource_key?: string
+          session_id?: string
+          site_parcel_id?: string
+          source_micro_x?: number
+          source_micro_y?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       game_chat: {
         Row: {
           channel: string
@@ -13794,6 +13827,18 @@ export type Database = {
       replace_goods_economy_projection: {
         Args: { p_payload: Json; p_session: string; p_turn: number }
         Returns: undefined
+      }
+      set_food_specialization: {
+        Args: {
+          p_key: string
+          p_parcel: string
+          p_player: string
+          p_session: string
+          p_turn: number
+          p_x: number
+          p_y: number
+        }
+        Returns: Json
       }
       set_session_generation_status: {
         Args: { p_session: string; p_status: string }
