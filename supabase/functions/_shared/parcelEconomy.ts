@@ -1,4 +1,4 @@
-import { foodRegrowth } from './foodSpecialization.ts';
+import { foodRegrowth, herdRole, herdGrowth, herdOutput, HERD_CARRYING_PER_CAPACITY, HERD_OPENING, FOOD_RURAL_BASE } from './foodSpecialization.ts';
 import { parcelTransport, siteSpecs, FREIGHT_RECIPES, MACRO_RESERVE_RECIPES, macroReserveKey, type RuralContext } from './ruralSites.ts';
 import type { Producer } from './goodsEconomy.ts';
 
@@ -82,6 +82,23 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
       // Coppiced woodland replenishes faster than wild food/game; finite pressure still caps extraction.
       const regrowth = foodRegrowth(spec.recipe) ?? (spec.recipe === 'fell_timber' ? 0.35 : 0.1);
       let remaining = water ? spec.capacity : Math.min(initial, Math.max(0, prior[id] ?? initial) + (spec.renewable ? spec.capacity * regrowth : 0));
+      // Living herds/flocks/colonies: one population per site (`herd:<parcel>`), shared by slaughter and by-products.
+      const hr = herdRole(spec.recipe);
+      if (hr) {
+        const herdKey = `herd:${p.id}:${hr.resource.key}`;
+        const carrying = HERD_CARRYING_PER_CAPACITY * raw.capacity * (FOOD_RURAL_BASE[hr.harvest] / (FOOD_RURAL_BASE[spec.recipe] || FOOD_RURAL_BASE[hr.harvest]));
+        const opening = Math.max(0, prior[herdKey] ?? carrying * HERD_OPENING[rural.herdStock?.get(p.id) ?? 'found']);
+        const grown = herdGrowth(Math.min(opening, carrying), carrying, hr.resource.group);
+        const cap = herdOutput(hr.role, grown, carrying, spec.capacity);
+        if (cap <= 0) continue;
+        out.push({ id, city: city.id, channel: 'facility', capacity: cap, jobs: spec.jobs,
+          recipe: { key: r.recipe_key, good: r.output_good_key, qty: Number(r.output_quantity), inputs: [], labor: Number(r.labor_cost), quality: 0, minQuality: 0 },
+          allocation: 1, staffing: 1, logistics: 1, mastery: 1, source: true, distinctive: false,
+          parcel: { id: p.id, grid_x: p.grid_x, grid_y: p.grid_y, index: p.parcel_index, sub_biome: p.sub_biome,
+            potential: raw.capacity, reservoir: cap, renewable: true, water: false, transport: { ...transport, applied: factor }, site: raw.site || false,
+            herd: { key: herdKey, role: hr.role, opening, grown, carrying } } as any });
+        continue;
+      }
       const macroKind = MACRO_RESERVE_RECIPES[spec.recipe]; let macro: string | undefined, grade = 0;
       if (macroKind) {
         macro = macroReserveKey(p.grid_x, p.grid_y, macroKind);
@@ -109,6 +126,10 @@ export function parcelClosing(producers: Producer[], diagnostics: { producer: st
   const realized = (id: string) => Number(diagnostics.find(d => d.producer === id)?.realized || 0);
   const out: ParcelEcology = Object.fromEntries(producers.filter(p => p.parcel).map(p => [p.id,
     Math.max(0, Number(p.parcel?.reservoir || 0) - realized(p.id))]));
+  // A herd closes once: grown population minus animals actually slaughtered (milk/eggs/honey never deplete it).
+  for (const p of producers) { const h = (p.parcel as any)?.herd; if (!h) continue; delete out[p.id];
+    if (!(h.key in out)) out[h.key] = Number(h.grown || 0);
+    if (h.role === 'slaughter') out[h.key] = Math.max(0, out[h.key] - realized(p.id)); }
   // Shared macro deposit closes once: opening reserve minus everything all its mines actually extracted. Never regrows.
   for (const p of producers) { const m = (p.parcel as any)?.macro; if (!m) continue;
     if (!(m in out)) out[m] = Number((p.parcel as any).macroStart || 0);

@@ -351,6 +351,13 @@
       "when": 1795291716605,
       "tag": "0049_food_specializations",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795292205695,
+      "tag": "0050_food_starter_kits",
+      "breakpoints": true
     }
   ]
 }

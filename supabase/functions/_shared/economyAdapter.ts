@@ -242,7 +242,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const macroTruth=parcelMode?await rows(sb,'macro_deposits',session):[];
   const reserves=new Map<string,{reserve:number;grade:number}>();
   for(const m of macroTruth as any[])for(const d of (m.deposits||[]))if(d.reserve!=null)reserves.set(`${m.grid_x},${m.grid_y}|${d.kind}`,{reserve:Number(d.reserve)||0,grade:Number(d.grade)||1});
-  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves,fieldParcels,immature}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
+  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves,fieldParcels,immature,herdStock:new Map(foodSpecs.map((f:any)=>[f.site_parcel_id,f.stock_mode==='starter_kit'?'starter_kit':'found']))}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
   const ruralAttached=ruralCatchments(db.province_hexes,cities);
   const ruralByCell=new Map<string,number>();
   for(const r of db.hex_population) {

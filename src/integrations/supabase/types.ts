@@ -4851,6 +4851,8 @@ export type Database = {
           site_parcel_id: string
           source_micro_x: number
           source_micro_y: number
+          stock_cost: number
+          stock_mode: string
           updated_at: string
         }
         Insert: {
@@ -4861,6 +4863,8 @@ export type Database = {
           site_parcel_id: string
           source_micro_x: number
           source_micro_y: number
+          stock_cost?: number
+          stock_mode?: string
           updated_at?: string
         }
         Update: {
@@ -4871,6 +4875,8 @@ export type Database = {
           site_parcel_id?: string
           source_micro_x?: number
           source_micro_y?: number
+          stock_cost?: number
+          stock_mode?: string
           updated_at?: string
         }
         Relationships: []
@@ -13831,6 +13837,20 @@ export type Database = {
       set_food_specialization: {
         Args: {
           p_key: string
+          p_parcel: string
+          p_player: string
+          p_session: string
+          p_turn: number
+          p_x: number
+          p_y: number
+        }
+        Returns: Json
+      }
+      set_food_specialization_v2: {
+        Args: {
+          p_cost: number
+          p_key: string
+          p_mode: string
           p_parcel: string
           p_player: string
           p_session: string

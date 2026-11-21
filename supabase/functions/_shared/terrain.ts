@@ -522,11 +522,16 @@ export function generateWorldTerrain(
       // Temperature: latitude-based + noise
       const latitudeFactor = 1 - Math.abs(ny) * 0.8; // warmer near equator (r=0)
       const tempNoise = fractalNoise(permTemp, q * 0.05, r * 0.05, 3, 2.0, 0.5) * 0.2;
-      const rawTemp = Math.max(0, Math.min(1, latitudeFactor * 0.7 + 0.15 + tempNoise));
+      // Climate v2: full 0..1 range so hot (T4) tropics and cold (T0) polar belts really exist, plus broad regional
+      // anomalies (warm basins, cold highlands) so climate zones form coherent regions rather than a flat gradient.
+      const tempRegion = fractalNoise(permTemp, q * 0.018 + 40, r * 0.018 + 40, 2, 2.0, 0.5) * 0.22;
+      const rawTemp = Math.max(0, Math.min(1, latitudeFactor * 1.1 - 0.12 + tempNoise * 1.3 + tempRegion));
 
       // Moisture: will be refined after ocean distance computation
       const moistNoise = fractalNoise(permMoist, q * 0.06, r * 0.06, 4, 2.0, 0.5);
-      const rawMoist = (moistNoise + 1) / 2; // normalize to 0-1
+      // Broad dry/wet regions (deserts, monsoon belts), stretched to use the whole 0..1 range.
+      const moistRegion = fractalNoise(permMoist, q * 0.02 + 90, r * 0.02 + 90, 2, 2.0, 0.5);
+      const rawMoist = Math.max(0, Math.min(1, 0.5 + moistNoise * 0.75 + moistRegion * 0.45));
 
       rawGrid.set(key, { height, rawMoist, rawTemp });
     }

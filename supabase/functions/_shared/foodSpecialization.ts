@@ -80,3 +80,49 @@ export function specializationReason(input: {
   if (!input.discoveredAtSource) return `Nejdřív musíš průzkumem najít ${r.label.toLowerCase()} na zdrojovém políčku.`;
   return null;
 }
+
+// ── Starter stock (seed / breeding stock / hives) ──────────────────────────────────────────────
+/** Groups that can be imported as seed or breeding stock; wild fish cannot be "planted". */
+export const STARTER_KIT_GROUPS = new Set<FoodGroup>(['cereal', 'legume', 'tuber', 'vegetable', 'fruit', 'livestock', 'poultry', 'apiary']);
+const KIT_COST: Partial<Record<FoodGroup, number>> = { cereal: 8, legume: 8, tuber: 8, vegetable: 8, fruit: 20, livestock: 40, poultry: 15, apiary: 20 };
+/** Gold paid from the state treasury for a starter kit (imported seed/stock); null = not importable. */
+export function starterKitCost(r: FoodResource): number | null { return STARTER_KIT_GROUPS.has(r.group) ? KIT_COST[r.group]! : null; }
+/** A kit may only be planted where the climate/biome actually allows the species (no deadlock without a find, no impossible crops). */
+export function starterKitReason(r: FoodResource | undefined, c: MicroContext): string | null {
+  if (!r) return 'Neznámý zdroj potravin.';
+  if (starterKitCost(r) == null) return 'Divoké ryby nelze dovézt jako osivo či chovný materiál.';
+  if (foodResourceChance(r, c) <= 0) return `${r.label}: na tomto políčku tomu nesvědčí podnebí ani půda.`;
+  return null;
+}
+
+// ── Living herds, flocks and bee colonies ──────────────────────────────────────────────────────
+/** Carrying capacity in herd units per unit of site output capacity (pasture/forage incl. attached fields). */
+export const HERD_CARRYING_PER_CAPACITY = 6;
+/** Breeding stock never slaughtered (share of carrying capacity). */
+export const HERD_BREEDING_FLOOR = 0.3;
+/** Opening herd as share of carrying capacity: own found wild stock vs imported starter kit. */
+export const HERD_OPENING = { found: 0.25, starter_kit: 0.1 } as const;
+const FEMALE_SHARE = 0.5;
+const BIRTHS_PER_FEMALE: Partial<Record<FoodGroup, number>> = { livestock: 0.5, poultry: 1.2, apiary: 0.8 };
+export type HerdRole = 'slaughter' | 'byproduct' | 'colony';
+/** Which living population a recipe draws on (null = not a herd recipe). */
+export function herdRole(recipe: string): { role: HerdRole; resource: FoodResource; harvest: string } | null {
+  for (const r of FOOD_RESOURCES) {
+    if (!['livestock', 'poultry', 'apiary'].includes(r.group)) continue;
+    if (r.harvest === recipe) return { role: r.group === 'apiary' ? 'colony' : 'slaughter', resource: r, harvest: r.harvest };
+    if (FOOD_BYPRODUCT[r.key] === recipe) return { role: 'byproduct', resource: r, harvest: r.harvest };
+  }
+  return null;
+}
+/** Reproduction: births limited by females (half the herd) and by remaining pasture (logistic, never above K). */
+export function herdGrowth(herd: number, carrying: number, group: FoodGroup): number {
+  if (!(herd > 0) || !(carrying > 0)) return 0;
+  const births = FEMALE_SHARE * herd * (BIRTHS_PER_FEMALE[group] ?? 0.4) * Math.max(0, 1 - herd / carrying);
+  return Math.min(carrying, herd + births);
+}
+/** Output this turn from the living population. Slaughter keeps breeding stock; milk/eggs/honey scale with living animals/colonies. */
+export function herdOutput(role: HerdRole, herd: number, carrying: number, capacity: number): number {
+  if (!(herd > 0) || !(carrying > 0)) return 0;
+  if (role === 'slaughter') return Math.max(0, Math.min(capacity, herd - HERD_BREEDING_FLOOR * carrying));
+  return capacity * Math.min(1, herd / carrying);
+}

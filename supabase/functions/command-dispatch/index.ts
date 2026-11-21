@@ -59,7 +59,8 @@ import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentit
 import { rationPolicy } from "../_shared/rationPolicy.ts";
 import { LEGACY_FOOD_TRANSFER_ERROR } from "../_shared/legacyFood.ts";
 import { FINANCIAL_COMMANDS, executeFinancialCommand } from './financialCommand.ts';
-import { foodSurveyFindings, specializationReason, isFoodFinding } from '../_shared/foodSpecialization.ts';
+import { foodSurveyFindings, specializationReason, isFoodFinding, starterKitCost, starterKitReason } from '../_shared/foodSpecialization.ts';
+import { foodResourceByKey } from '../_shared/foodResources.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -604,9 +605,23 @@ async function executeCommand(
       const siteMicro: [number, number] = [site.grid_x * 6 + (site.parcel_index % 6), site.grid_y * 6 + Math.floor(site.parcel_index / 6)];
       const reason = specializationReason({ resourceKey: key, siteOwner: site.owner_player, siteClaim: site.claim_kind, player: actor.name, specializationKeys: specKeys,
         siteMicro, sourceMicro: [sx, sy], sourceSubBiome: (src as any)?.sub_biome ?? null,
-        discoveredAtSource: (((surv as any)?.findings) || []).some((f: any) => isFoodFinding(f, key)) });
+        discoveredAtSource: true });
       if (reason) return { events: [], error: reason };
-      const { data, error } = await supabase.rpc("set_food_specialization", { p_session: sessionId, p_player: actor.name, p_parcel: siteId, p_key: key, p_x: sx, p_y: sy, p_turn: turnNumber });
+      // Source of the stock: own survey find, or an imported starter kit (seed / breeding stock / hives) paid from the treasury.
+      const found = (((surv as any)?.findings) || []).some((f: any) => isFoodFinding(f, key));
+      const useKit = payload.starterKit === true;
+      let kitCost = 0;
+      if (!found) {
+        if (!useKit) return { events: [], error: `Nejdřív musíš průzkumem najít ${foodResourceByKey.get(key)?.label.toLowerCase() ?? 'zdroj'} na zdrojovém políčku, nebo koupit startovní osivo/chovný materiál.` };
+        const { data: hx } = await supabase.from("province_hexes").select("temp_band, moisture_band, mean_height, has_river, coastal").eq("session_id", sessionId).eq("grid_x", gx).eq("grid_y", gy).maybeSingle();
+        const elev = Number((hx as any)?.mean_height);
+        const kr = starterKitReason(foodResourceByKey.get(key), { subBiome: (src as any)?.sub_biome ?? null, tempBand: (hx as any)?.temp_band, moistureBand: (hx as any)?.moisture_band,
+          elevation: Number.isFinite(elev) ? (elev > 1 ? elev / 100 : elev) : null, hasRiver: !!(hx as any)?.has_river, coastal: !!(hx as any)?.coastal } as any);
+        if (kr) return { events: [], error: kr };
+        kitCost = starterKitCost(foodResourceByKey.get(key)!)!;
+      }
+      const { data, error } = await supabase.rpc("set_food_specialization_v2", { p_session: sessionId, p_player: actor.name, p_parcel: siteId, p_key: key, p_x: sx, p_y: sy, p_turn: turnNumber,
+        p_mode: found ? "found" : "starter_kit", p_cost: kitCost });
       if (error) return { events: [], error: error.message };
       return { events: [], result: data } as any;
     }
