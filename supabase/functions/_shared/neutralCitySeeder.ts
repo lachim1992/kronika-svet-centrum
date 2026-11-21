@@ -62,6 +62,7 @@ export async function planNeutralCities(db:any, sessionId:string) {
   const map=new Map<string,Macro>((terrainRes.data||[]).filter((m:Macro)=>Number.isInteger(m.grid_x)&&Number.isInteger(m.grid_y)).map((m:Macro)=>[XY(m.grid_x,m.grid_y),m]));
   const current=(citiesRes.data||[]).map((c:any)=>({grid_x:Number(c.grid_x??c.province_q),grid_y:Number(c.grid_y??c.province_r)}));
   const used=[...current];
+  const existingByOwner=new Map((citiesRes.data||[]).filter((c:any)=>String(c.owner_player||'').startsWith('Neutral:')).map((c:any)=>[c.owner_player,c]));
   const materialized=new Map<string,ReturnType<typeof generateTileParcels>>();
   function micro(h:Macro) {
     const key=XY(h.grid_x,h.grid_y);
@@ -79,6 +80,14 @@ export async function planNeutralCities(db:any, sessionId:string) {
   const assignments:Array<{profile:NeutralCityProfile;macro:Macro;resource:FoodResource}>=[];
   const blocked:string[]=[];
   for(const profile of NEUTRAL_CITY_PROFILES){
+    const existing=existingByOwner.get('Neutral:'+profile.code) as any;
+    if(existing){
+      const priorMacro=map.get(XY(Number(existing.grid_x??existing.province_q),Number(existing.grid_y??existing.province_r)));
+      const priorResource=foodResourceByKey.get(profile.resources[0]);
+      if(!priorMacro||!priorResource){blocked.push(profile.name+': pre-existing neutral has invalid world location');continue;}
+      assignments.push({profile,macro:priorMacro,resource:priorResource});
+      continue;
+    }
     // The site requires usable microground; choose by REAL climate/sub-biome, not by a label.
     const possible:Candidate[]=[];
     for(const h of map.values()){
@@ -120,7 +129,7 @@ export async function planNeutralCities(db:any, sessionId:string) {
   return {assignments,blocked,existing:current.length};
 }
 
-async function one<T>(promise:PromiseLike<{data:T|null;error?:any}>,operation:string):Promise<T>{
+async function one(promise:any,operation:string):Promise<any>{
   const r=await promise;
   if(r.error)throw Error(operation+": "+String(r.error.message||r.error));
   if(!r.data)throw Error(operation+": missing row");
@@ -177,6 +186,20 @@ export async function seedNeutralCities(db:any,sessionId:string) {
       }).select("id,name").single(),"create "+profile.name);
     }
     const cityId=String(city.id);
+    const existingSpecCheck=await db.from("food_specializations").select("resource_key")
+      .eq("session_id",sessionId).eq("owner_player",owner).limit(1);
+    if(existingSpecCheck.error)throw existingSpecCheck.error;
+    if(existingSpecCheck.data?.length){
+      const [bc,dc]=await Promise.all([
+        db.from("city_buildings").select("id",{count:"exact",head:true}).eq("city_id",cityId).eq("status","completed"),
+        db.from("city_districts").select("id",{count:"exact",head:true}).eq("city_id",cityId).eq("status","completed"),
+      ]);
+      if(bc.error||dc.error||Number(bc.count)<2||Number(dc.count)<1)
+        throw Error("Partially seeded neutral city requires recovery: "+profile.name);
+      result.push({name:profile.name,owner,population:200,
+        specialization:existingSpecCheck.data[0].resource_key,grid_x:macro.grid_x,grid_y:macro.grid_y});
+      continue; // idempotent: do not recreate initial money, goods, land, or buildings.
+    }
     // A neutral city is an economic owner, not a game_player turn-closing seat.
     const realm=await db.from("realm_resources").select("id").eq("session_id",sessionId).eq("player_name",owner).maybeSingle();
     if(realm.error)throw realm.error;
