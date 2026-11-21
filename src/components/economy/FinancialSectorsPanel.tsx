@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { accountKindLabel, fetchFinancialSectors, municipalStateFlows, SECTOR_ROWS, sectorBalance } from '@/lib/financialSectors';
 import { reconcileWageSettlement } from '@/lib/privateSettlement';
+import { reconcileFiscalCash } from '@/lib/fiscalCashReconciliation';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const money = (value: number | null | undefined) => value == null ? 'Nedostupné' : value.toLocaleString('cs-CZ', { maximumFractionDigits: 3 });
@@ -59,6 +60,7 @@ export default function FinancialSectorsPanel({ sessionId }: { sessionId: string
             <TableCell className="text-right font-mono">{f.status === 'unmatched' || f.status === 'no_price' ? '—' : money(Number(f.unpaid))}</TableCell>
             <TableCell className="text-xs">{({ settled: 'zaplaceno', partial: 'částečně', unfunded: 'nezafinancované', unmatched: 'neověřitelný prodávající', no_price: 'bez ceny', no_controller: 'bez správce' } as Record<string, string>)[f.status] ?? f.status}</TableCell></TableRow>)}
         </TableBody></Table></div>}
+      <FiscalCashSection realm={data.state.error ? undefined : data.state.data} stateError={!!data.state.error} />
       <PrivateSettlementSection snapshot={data.state.error ? undefined : (data.state.data?.computed_modifiers as any)?.wage_settlement}
         stateError={!!data.state.error} privateBalance={data.accounts.error ? null : (data.accounts.data ?? []).filter(a => a.sector === 'PRIVATE').reduce((t, a) => t + Number(a.balance), 0)}
         privateCount={data.accounts.data?.filter(a => a.sector === 'PRIVATE').length ?? 0} cityNames={new Map((data.capital.data ?? []).map(c => [c.city_id, c.city_name]))} />
@@ -104,6 +106,29 @@ function PrivateSettlementSection({ snapshot, stateError, privateBalance, privat
               {c.status === 'ok' ? 'Sedí' : c.status === 'mismatch' ? `Nesouhlasí o ${c.residual}` : `Chybí: ${c.missing.join(', ') || 'klíč města'}`}</TableCell>
           </TableRow>)}
         </TableBody></Table>}
+    </>}
+  </div>;
+}
+
+/** Read-only: tax is modelled as credited to STATE, not debited from any PRIVATE account. */
+function FiscalCashSection({ realm, stateError }: { realm: any; stateError: boolean }) {
+  const r = reconcileFiscalCash(realm);
+  const v = (x: number | null) => x === null ? 'Nedostupné' : x.toFixed(2);
+  const rows: [string, number | null][] = [
+    ['Modelově připsaná daň (legacy, bez debetu plátce)', r.legacy_imputed_tax],
+    ['Skutečně zaplacená hotovostní daň', r.real_cash_tax_paid],
+    ['Daň bez doloženého hotovostního zdroje', r.uncovered_tax_source],
+    ['Pilíř: daň z obyvatel', r.pillars.pop_tax], ['Pilíř: domácí trh', r.pillars.domestic_market], ['Pilíř: zboží (cla, mýta, těžba)', r.pillars.goods_fiscal],
+    ['Legacy obchod (čistý, vč. mýt)', r.legacy.trade_net], ['Legacy prestiž', r.legacy.prestige], ['Insolvenční výpomoc', r.legacy.insolvency_relief], ['Zaokrouhlení', r.legacy.rounding],
+    ['Pokladna na začátku tahu', r.opening], ['Změna za tah', r.turn_fiscal_delta], ['Pokladna na konci tahu', r.closing],
+  ];
+  return <div className="border-t border-border pt-3 space-y-2">
+    <h4 className="text-sm font-semibold">Fiskální rekonciliace · jen čtení</h4>
+    <p className="text-xs text-muted-foreground">Daňové příjmy jsou zatím modelově připsané státní pokladně, ale nejsou debitované z účtů domácností ani podniků — nejde o podvojný zápis a nejsou to nové peníze. Skutečně zaplacená daň není zdrojově evidovaná, proto je Nedostupné.</p>
+    {stateError ? <p className="text-xs text-destructive">Stav říše nedostupný.</p> : !r.available ? <p className="text-xs text-muted-foreground">Rozpad pokladny v uloženém snapshotu chybí — Nedostupné.</p> : <>
+      <Table><TableBody>{rows.map(([k, x]) => <TableRow key={k}><TableCell className="text-xs">{k}</TableCell><TableCell className="text-right font-mono">{v(x)}</TableCell></TableRow>)}</TableBody></Table>
+      <ul className="text-xs space-y-1">{r.checks.map(c => <li key={c.key} className={c.ok === false ? 'text-destructive' : 'text-muted-foreground'}>{c.ok === null ? 'Nedostupné' : c.ok ? 'Mechanická kontrola OK' : 'Varování: neshoda'} · {c.key} · {c.detail}</li>)}</ul>
+      {r.source_missing.length > 0 && <p className="text-xs text-muted-foreground">Chybějící zdroje: {r.source_missing.join(', ')}</p>}
     </>}
   </div>;
 }

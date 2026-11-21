@@ -30,7 +30,7 @@ export async function fetchFinancialSectors(sessionId: string, userId: string) {
   if (!seat.data) throw new Error('V této hře není dostupné vaše hráčské sedadlo.');
   const [accounts, state, capital, stateTransfers, session, turnFlows, purchases] = await Promise.all([
     supabase.from('financial_accounts').select('*').eq('session_id', sessionId).eq('controller_user_id', userId).order('created_at').order('id'),
-    supabase.from('realm_resources').select('gold_reserve,total_wealth,computed_modifiers').eq('session_id', sessionId).eq('player_name', seat.data.player_name).maybeSingle(),
+    supabase.from('realm_resources').select('gold_reserve,total_wealth,computed_modifiers,wealth_pop_tax,wealth_domestic_market,goods_wealth_fiscal').eq('session_id', sessionId).eq('player_name', seat.data.player_name).maybeSingle(),
     supabase.rpc('read_financial_capital', { p_session: sessionId }),
     // Actually executed STATE<->municipal transfers only (no modelled income).
     supabase.from('financial_state_transfers').select('account_id,direction,amount').eq('session_id', sessionId),
