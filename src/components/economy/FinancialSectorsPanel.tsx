@@ -1,4 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { accountKindLabel, fetchFinancialSectors, municipalStateFlows, SECTOR_ROWS, sectorBalance } from '@/lib/financialSectors';
 import { reconcileWageSettlement } from '@/lib/privateSettlement';
@@ -41,6 +45,7 @@ export default function FinancialSectorsPanel({ sessionId }: { sessionId: string
             <TableCell className="text-right font-mono text-xs">{a.sector === 'PRIVATE' ? (flows ? (flows.funded > 0 ? `státní dotace ${money(flows.funded)}` : '—') : 'Nedostupné') : a.sector !== 'MUNICIPAL' ? '—' : flows ? `${money(flows.funded)} / ${money(flows.remitted)}` : 'Nedostupné'}</TableCell></TableRow>;
         })}</TableBody></Table>}
       <p className="text-xs text-muted-foreground">Hotovost nyní = skutečný účetní zůstatek. Ze státu / do státu = skutečně provedené převody se státní pokladnou; u soukromých účtů jde o explicitní státní dotaci (pilotní likviditu), jediný legální zdroj jejich hotovosti. Fiskální příjem je modelovaný tok, kapitálová zásoba níže není hotovost.</p>
+      {(data.session.data?.private_cash_version ?? 0) >= 1 && !data.session.error && !data.ownedCities.error && !data.state.error && <PrivateLiquidityGrant sessionId={sessionId} seat={data.verifiedSeat} turn={data.session.data?.current_turn ?? 0} resolving={data.session.data?.resolving_turn != null} stateGold={Number(data.state.data?.gold_reserve ?? 0)} cities={data.ownedCities.data ?? []} />}
       <div className="border-t border-border pt-3 space-y-2"><h4 className="text-sm font-semibold">Soukromý peněžní oběh</h4>
         <p className="text-xs text-muted-foreground">Režim: {data.session.error ? 'Nedostupné' : (data.session.data?.private_cash_version ?? 0) >= 1 ? 'cash backed (mzdy a vlastnické výnosy jen ze skutečného zůstatku podniků)' : 'legacy/model (platby jsou jen modelované)'}</p>
         <p className="text-xs text-muted-foreground">Oběh NENÍ uzavřený: nákupy domácností se platí jen u zboží s doloženým místním prodávajícím; dovoz, zásoby z dřívějška a smíšený původ jsou neověřitelné a neplatí se. Daně nezapojeny. Účty začínají na nule, takže bez skutečné hotovosti zůstávají platby nezaplacené.</p>
@@ -131,5 +136,71 @@ function FiscalCashSection({ realm, stateError, cashBacked }: { realm: any; stat
       <ul className="text-xs space-y-1">{r.checks.map(c => <li key={c.key} className={c.ok === false ? 'text-destructive' : 'text-muted-foreground'}>{c.ok === null ? 'Nedostupné' : c.ok ? 'Mechanická kontrola OK' : 'Varování: neshoda'} · {c.key} · {c.detail}</li>)}</ul>
       {r.source_missing.length > 0 && <p className="text-xs text-muted-foreground">Chybějící zdroje: {r.source_missing.join(', ')}</p>}
     </>}
+  </div>;
+}
+
+/** Explicit government-to-private transfer. Never seeds money, and never runs automatically. */
+function PrivateLiquidityGrant({ sessionId, seat, turn, resolving, stateGold, cities }: {
+  sessionId: string; seat: string; turn: number; resolving: boolean;
+  stateGold: number; cities: { id: string; name: string }[];
+}) {
+  const queryClient = useQueryClient();
+  const [cityId, setCityId] = useState('');
+  const [kind, setKind] = useState<'HOUSEHOLD' | 'BUSINESS'>('HOUSEHOLD');
+  const [amountText, setAmountText] = useState('');
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState('');
+  const [requestKey, setRequestKey] = useState<string | null>(null);
+  const targetCity = cityId || cities[0]?.id || '';
+  const amount = Number(amountText);
+  const valid = Number.isSafeInteger(amount) && amount > 0 && amount <= 100_000 && amount <= stateGold;
+  const invalidateRequest = () => { setRequestKey(null); setResult(''); };
+  const submit = async () => {
+    if (pending || resolving || !targetCity || !valid || !seat || !Number.isInteger(turn)) return;
+    const commandId = requestKey || crypto.randomUUID();
+    setRequestKey(commandId);
+    setPending(true);
+    setResult('');
+    try {
+      const { data, error } = await supabase.functions.invoke('command-dispatch', {
+        body: {
+          sessionId, turnNumber: turn,
+          actor: { name: seat, type: 'player' },
+          commandType: 'GRANT_PRIVATE_LIQUIDITY',
+          commandPayload: { city_id: targetCity, owner_kind: kind, amount },
+          commandId,
+        },
+      });
+      if (error) throw error;
+      if (data?.ok !== true) throw new Error(data?.error || 'Účetní převod nebyl potvrzen.');
+      setResult(`Převedeno ${amount} zlata do ${kind === 'HOUSEHOLD' ? 'domácností' : 'podniků'}. Státní pokladna byla odepsána.`);
+      setAmountText('');
+      setRequestKey(null);
+      await queryClient.invalidateQueries({ queryKey: ['financial-sectors', sessionId] });
+    } catch (err) {
+      setResult(`Převod nebyl potvrzen: ${err instanceof Error ? err.message : String(err)}. Při opakování se použije stejný identifikátor, aby nevznikla duplicitní platba.`);
+    } finally { setPending(false); }
+  };
+  return <div className="border-t border-border pt-3 space-y-2">
+    <h4 className="text-sm font-semibold">Převod státního zlata do soukromého oběhu</h4>
+    <p className="text-xs text-muted-foreground">Volitelný a nevratný účetní převod existujících prostředků. Vzniká současný odpis státu a přípis vybranému sektoru města; žádné zlato se nevytváří. Maximálně 100 000 na příkaz.</p>
+    <div className="grid gap-2 sm:grid-cols-3">
+      <label className="text-xs space-y-1">Město
+        <select aria-label="Město pro převod" className="w-full border rounded-md bg-background p-2" value={targetCity} disabled={pending || resolving} onChange={e => {setCityId(e.target.value);invalidateRequest();}}>
+          {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </label>
+      <label className="text-xs space-y-1">Příjemce
+        <select aria-label="Soukromý sektor" className="w-full border rounded-md bg-background p-2" value={kind} disabled={pending || resolving} onChange={e => {setKind(e.target.value as 'HOUSEHOLD' | 'BUSINESS');invalidateRequest();}}>
+          <option value="HOUSEHOLD">Domácnosti</option><option value="BUSINESS">Podniky</option>
+        </select>
+      </label>
+      <label className="text-xs space-y-1">Částka (celé zlaté)
+        <Input aria-label="Částka dotace" type="number" min="1" max={Math.min(100000,Math.max(0,stateGold))} step="1" value={amountText} disabled={pending || resolving} onChange={e=>{setAmountText(e.target.value);invalidateRequest();}} placeholder="Např. 500" />
+      </label>
+    </div>
+    <Button size="sm" disabled={!valid || !targetCity || pending || resolving} onClick={submit}>{pending ? 'Provádím účetní převod…' : 'Potvrdit převod ze státní pokladny'}</Button>
+    {resolving && <p role="alert" className="text-xs text-destructive">Během uzávěrky tahu převody nejsou povolené.</p>}
+    {!!result && <p role="status" className="text-xs">{result}</p>}
   </div>;
 }
