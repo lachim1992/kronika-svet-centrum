@@ -32,3 +32,23 @@ it('rejects invalid preflight horizons instead of reporting a false safe result'
     expect(() => parcelSubsistencePreflight(baseline, parcels, fixture.terrain, recipes, steps)).toThrow(RangeError);
   }
 });
+
+
+it('20-step parcel replay is deterministic, read-only and samples every city and essential basket', () => {
+  const originalSnapshot = JSON.stringify(baseline);
+  const originalParcels = JSON.stringify(parcels);
+  const originalTerrain = JSON.stringify(fixture.terrain);
+  const run = parcelSubsistencePreflight(baseline, parcels, fixture.terrain, recipes, 20);
+  expect(run.coverage).toHaveLength(baseline.cities.length * 3 * 20);
+  expect(run.fifth).toHaveLength(baseline.cities.length * 3);
+  expect(run.coverage.every(row =>
+    Number.isFinite(row.coverage) && row.coverage >= -1e-6 && row.coverage <= 1 + 1e-6
+  )).toBe(true);
+  expect(run.unsafe).toEqual(run.coverage.filter(row =>
+    row.coverage + 1e-6 < (row.basket === 'fuel' ? 0.8 : 1)
+  ));
+  expect(parcelSubsistencePreflight(baseline, parcels, fixture.terrain, recipes, 20)).toEqual(run);
+  expect(JSON.stringify(baseline)).toBe(originalSnapshot);
+  expect(JSON.stringify(parcels)).toBe(originalParcels);
+  expect(JSON.stringify(fixture.terrain)).toBe(originalTerrain);
+});
