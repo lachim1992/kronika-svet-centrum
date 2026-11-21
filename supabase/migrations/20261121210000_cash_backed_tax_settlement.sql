@@ -82,9 +82,6 @@ DECLARE
     SELECT 'POLL',due_poll,'HOUSEHOLD','cash_poll_tax'
     UNION ALL SELECT 'DOMESTIC',due_dom,'BUSINESS','cash_domestic_tax'
    LOOP
-    IF EXISTS (SELECT 1 FROM public.financial_cash_tax_flows
-      WHERE session_id=p_session AND turn_number=p_turn AND city_id=c AND financial_cash_tax_flows.pillar=pillar)
-    THEN CONTINUE; END IF;
     request_total:=request_total+due;
     payer:=NULL; paid:=0; state_transfer:=NULL;
     IF ctrl IS NOT NULL THEN
