@@ -4362,6 +4362,77 @@ export type Database = {
           },
         ]
       }
+      financial_cash_tax_flows: {
+        Row: {
+          assessed: number
+          city_id: string
+          created_at: string
+          payer_account_id: string | null
+          pillar: string
+          session_id: string
+          settled: number
+          state_transfer_id: string | null
+          status: string
+          turn_number: number
+          unpaid: number
+        }
+        Insert: {
+          assessed: number
+          city_id: string
+          created_at?: string
+          payer_account_id?: string | null
+          pillar: string
+          session_id: string
+          settled: number
+          state_transfer_id?: string | null
+          status: string
+          turn_number: number
+          unpaid: number
+        }
+        Update: {
+          assessed?: number
+          city_id?: string
+          created_at?: string
+          payer_account_id?: string | null
+          pillar?: string
+          session_id?: string
+          settled?: number
+          state_transfer_id?: string | null
+          status?: string
+          turn_number?: number
+          unpaid?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_cash_tax_flows_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_cash_tax_flows_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_cash_tax_flows_session_id_payer_account_id_fkey"
+            columns: ["session_id", "payer_account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["session_id", "id"]
+          },
+          {
+            foreignKeyName: "financial_cash_tax_flows_state_transfer_id_fkey"
+            columns: ["state_transfer_id"]
+            isOneToOne: false
+            referencedRelation: "financial_state_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_commands: {
         Row: {
           actor_user_id: string
@@ -13726,6 +13797,15 @@ export type Database = {
       }
       set_session_generation_status: {
         Args: { p_session: string; p_status: string }
+        Returns: undefined
+      }
+      settle_cash_taxes: {
+        Args: {
+          p_claims: Json
+          p_player: string
+          p_session: string
+          p_turn: number
+        }
         Returns: undefined
       }
       settle_field_battle: {
