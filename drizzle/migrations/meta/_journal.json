@@ -295,6 +295,13 @@
       "when": 1795269625872,
       "tag": "0041_financial_explicit_client_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795272996407,
+      "tag": "0042_financial_stage2a_org_kinds_state_transfers",
+      "breakpoints": true
     }
   ]
 }

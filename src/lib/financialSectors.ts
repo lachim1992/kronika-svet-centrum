@@ -6,12 +6,20 @@ export const SECTOR_ROWS = [
   { sector: 'MUNICIPAL', kind: 'CITY', label: 'Městské pokladny' },
   { sector: 'PRIVATE', kind: 'HOUSEHOLD', label: 'Soukromé · domácnosti' },
   { sector: 'PRIVATE', kind: 'BUSINESS', label: 'Soukromé · podniky' },
-  { sector: 'ORGANIZATION', kind: 'ORGANIZATION', label: 'Organizace' },
+  { sector: 'ORGANIZATION', kind: 'ORGANIZATION', org: 'guild', label: 'Organizace · gildy' },
+  { sector: 'ORGANIZATION', kind: 'ORGANIZATION', org: 'party', label: 'Organizace · strany' },
+  { sector: 'ORGANIZATION', kind: 'ORGANIZATION', org: 'religious', label: 'Organizace · náboženské' },
 ] as const;
 
+export const ORGANIZATION_KIND_LABEL: Record<string, string> = { guild: 'Gilda', party: 'Strana', religious: 'Náboženská' };
+export function accountKindLabel(a: FinancialAccount) {
+  if (a.sector === 'ORGANIZATION') return ORGANIZATION_KIND_LABEL[a.organization_kind ?? ''] ?? 'Organizace';
+  return ({ CITY: 'Město', HOUSEHOLD: 'Domácnost', BUSINESS: 'Podnik' } as Record<string, string>)[a.owner_kind] ?? a.owner_kind;
+}
+
 /** Missing accounts are not zero wealth; only balances of explicitly stored accounts are summed. */
-export function sectorBalance(accounts: FinancialAccount[], sector: string, kind: string) {
-  const rows = accounts.filter(a => a.sector === sector && a.owner_kind === kind);
+export function sectorBalance(accounts: FinancialAccount[], sector: string, kind: string, org?: string) {
+  const rows = accounts.filter(a => a.sector === sector && a.owner_kind === kind && (org === undefined || a.organization_kind === org));
   return { count: rows.length, balance: rows.length ? rows.reduce((sum, a) => sum + Number(a.balance), 0) : null };
 }
 
@@ -20,10 +28,20 @@ export async function fetchFinancialSectors(sessionId: string, userId: string) {
   const seat = await supabase.from('game_players').select('player_name').eq('session_id', sessionId).eq('user_id', userId).maybeSingle();
   if (seat.error) throw seat.error;
   if (!seat.data) throw new Error('V této hře není dostupné vaše hráčské sedadlo.');
-  const [accounts, state, capital] = await Promise.all([
+  const [accounts, state, capital, stateTransfers] = await Promise.all([
     supabase.from('financial_accounts').select('*').eq('session_id', sessionId).eq('controller_user_id', userId).order('created_at').order('id'),
     supabase.from('realm_resources').select('gold_reserve,total_wealth').eq('session_id', sessionId).eq('player_name', seat.data.player_name).maybeSingle(),
     supabase.rpc('read_financial_capital', { p_session: sessionId }),
+    // Actually executed STATE<->municipal transfers only (no modelled income).
+    supabase.from('financial_state_transfers').select('account_id,direction,amount').eq('session_id', sessionId),
   ]);
-  return { accounts, state, capital };
+  return { accounts, state, capital, stateTransfers };
+}
+/** Net amount actually paid out of STATE to a municipal account (funded minus remitted), from the ledger. */
+export function municipalStateFlows(rows: { account_id: string; direction: string; amount: number }[], accountId: string) {
+  let funded = 0, remitted = 0;
+  for (const r of rows) if (r.account_id === accountId) {
+    if (r.direction === 'STATE_TO_MUNICIPAL') funded += Number(r.amount); else remitted += Number(r.amount);
+  }
+  return { funded, remitted };
 }

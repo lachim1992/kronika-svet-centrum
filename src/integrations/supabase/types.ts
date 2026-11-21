@@ -4313,6 +4313,7 @@ export type Database = {
           created_at: string
           id: string
           label: string
+          organization_kind: string | null
           owner_kind: string
           sector: string
           session_id: string
@@ -4324,6 +4325,7 @@ export type Database = {
           created_at?: string
           id?: string
           label: string
+          organization_kind?: string | null
           owner_kind: string
           sector: string
           session_id: string
@@ -4335,6 +4337,7 @@ export type Database = {
           created_at?: string
           id?: string
           label?: string
+          organization_kind?: string | null
           owner_kind?: string
           sector?: string
           session_id?: string
@@ -4427,6 +4430,73 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "financial_transfers"
             referencedColumns: ["session_id", "id"]
+          },
+        ]
+      }
+      financial_state_transfers: {
+        Row: {
+          account_balance_after: number
+          account_id: string
+          actor_user_id: string
+          amount: number
+          command_id: string
+          created_at: string
+          direction: string
+          id: string
+          realm_id: string
+          session_id: string
+          state_gold_after: number
+          state_gold_before: number
+        }
+        Insert: {
+          account_balance_after: number
+          account_id: string
+          actor_user_id: string
+          amount: number
+          command_id: string
+          created_at?: string
+          direction: string
+          id?: string
+          realm_id: string
+          session_id: string
+          state_gold_after: number
+          state_gold_before: number
+        }
+        Update: {
+          account_balance_after?: number
+          account_id?: string
+          actor_user_id?: string
+          amount?: number
+          command_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          realm_id?: string
+          session_id?: string
+          state_gold_after?: number
+          state_gold_before?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_state_transfers_realm_id_fkey"
+            columns: ["realm_id"]
+            isOneToOne: false
+            referencedRelation: "realm_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_state_transfers_session_id_account_id_fkey"
+            columns: ["session_id", "account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["session_id", "id"]
+          },
+          {
+            foreignKeyName: "financial_state_transfers_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
           },
         ]
       }
