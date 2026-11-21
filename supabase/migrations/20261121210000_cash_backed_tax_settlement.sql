@@ -48,7 +48,7 @@ DECLARE
  due numeric; paid numeric; st text; kind text; pillar text; purpose text;
  payer public.financial_accounts; treasury public.realm_resources;
  state_before integer; state_after integer; state_transfer uuid; cash_collected numeric:=0;
- request_total numeric:=0; assessed_per_city numeric;
+ request_total numeric:=0; cash_poll numeric:=0; cash_domestic numeric:=0;
  BEGIN
  IF coalesce((SELECT private_cash_version FROM public.game_sessions WHERE id=p_session),0)<1 THEN RETURN; END IF;
  IF p_claims IS NULL OR jsonb_typeof(p_claims)<>'array' THEN RAISE EXCEPTION 'Cash tax claims unavailable'; END IF;
@@ -101,6 +101,7 @@ DECLARE
         state_before,state_after,payer.balance,ctrl,purpose)
        RETURNING id INTO state_transfer;
       cash_collected:=cash_collected+paid;
+      IF pillar='POLL' THEN cash_poll:=cash_poll+paid; ELSE cash_domestic:=cash_domestic+paid; END IF;
     END IF;
     st:=CASE WHEN ctrl IS NULL THEN 'no_controller'
              WHEN due=paid THEN 'settled'
@@ -113,19 +114,27 @@ DECLARE
  -- Every STATE credit is an actual matched PRIVATE debit. Update the frozen fiscal breakdown
  -- in this SAME transaction, so cash-revenue and closing treasury remain consistent.
  UPDATE public.realm_resources
- SET computed_modifiers =
-  jsonb_set(
-   jsonb_set(
-    jsonb_set(
-     jsonb_set(
-      coalesce(computed_modifiers,'{}'::jsonb),
-      '{wealth_breakdown,fiscal_revenue}',to_jsonb(cash_collected),true),
-     '{wealth_breakdown,treasury_closing}',to_jsonb(gold_reserve),true),
-    '{wealth_breakdown,turn_fiscal_delta}',to_jsonb(
-      gold_reserve-coalesce((computed_modifiers->'wealth_breakdown'->>'treasury_opening')::numeric,gold_reserve)),true),
-   '{cash_tax_settlement}',jsonb_build_object('turn',p_turn,'assessed',request_total,
-      'collected',cash_collected,'unpaid',request_total-cash_collected,
-      'basis','cash_backed_poll_and_verified_local_domestic'),true)
+ SET wealth_pop_tax=cash_poll, wealth_domestic_market=cash_domestic,
+     goods_wealth_fiscal=0, total_wealth=cash_collected,
+     computed_modifiers=jsonb_set(
+       jsonb_set(coalesce(computed_modifiers,'{}'::jsonb),
+         '{wealth_breakdown}',
+         coalesce(computed_modifiers->'wealth_breakdown','{}'::jsonb) ||
+         jsonb_build_object(
+           'fiscal_revenue',cash_collected,
+           'pop_tax',cash_poll,
+           'domestic_market',cash_domestic,
+           'goods_fiscal',0,
+           'goods_fiscal_detail',jsonb_build_object('market_tariff',0,'transit_toll',0,'extraction_tax',0),
+           'total_income',coalesce((computed_modifiers->'wealth_breakdown'->>'total_income')::numeric,0)+cash_collected,
+           'treasury_closing',gold_reserve,
+           'turn_fiscal_delta',gold_reserve-coalesce(
+             (computed_modifiers->'wealth_breakdown'->>'treasury_opening')::numeric,gold_reserve)
+         ),true),
+       '{cash_tax_settlement}',jsonb_build_object('turn',p_turn,'assessed',request_total,
+         'collected',cash_collected,'poll_collected',cash_poll,'domestic_collected',cash_domestic,
+         'unpaid',request_total-cash_collected,
+         'basis','cash_backed_poll_and_verified_local_domestic'),true)
  WHERE id=treasury.id;
 END $$;
 REVOKE ALL ON FUNCTION public.settle_cash_taxes(uuid,text,integer,jsonb) FROM PUBLIC,anon,authenticated;
