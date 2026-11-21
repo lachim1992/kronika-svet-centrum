@@ -28,17 +28,18 @@ export async function fetchFinancialSectors(sessionId: string, userId: string) {
   const seat = await supabase.from('game_players').select('player_name').eq('session_id', sessionId).eq('user_id', userId).maybeSingle();
   if (seat.error) throw seat.error;
   if (!seat.data) throw new Error('V této hře není dostupné vaše hráčské sedadlo.');
-  const [accounts, state, capital, stateTransfers, session, turnFlows, purchases] = await Promise.all([
+  const [accounts, state, capital, stateTransfers, session, turnFlows, purchases, ownedCities] = await Promise.all([
     supabase.from('financial_accounts').select('*').eq('session_id', sessionId).eq('controller_user_id', userId).order('created_at').order('id'),
     supabase.from('realm_resources').select('gold_reserve,total_wealth,computed_modifiers,wealth_pop_tax,wealth_domestic_market,goods_wealth_fiscal').eq('session_id', sessionId).eq('player_name', seat.data.player_name).maybeSingle(),
     supabase.rpc('read_financial_capital', { p_session: sessionId }),
     // Actually executed STATE<->municipal transfers only (no modelled income).
     supabase.from('financial_state_transfers').select('account_id,direction,amount').eq('session_id', sessionId),
-    supabase.from('game_sessions').select('private_cash_version').eq('id', sessionId).maybeSingle(),
+    supabase.from('game_sessions').select('private_cash_version,current_turn,resolving_turn').eq('id', sessionId).maybeSingle(),
     supabase.from('financial_turn_flows').select('*').eq('session_id', sessionId).order('turn_number', { ascending: false }).limit(60),
     supabase.from('financial_purchase_flows').select('*').eq('session_id', sessionId).order('turn_number', { ascending: false }).limit(120),
+    supabase.from('cities').select('id,name').eq('session_id', sessionId).eq('owner_player', seat.data.player_name).order('name'),
   ]);
-  return { accounts, state, capital, stateTransfers, session, turnFlows, purchases };
+  return { accounts, state, capital, stateTransfers, session, turnFlows, purchases, ownedCities, verifiedSeat: seat.data.player_name };
 }
 /** Ledger STATE grants (municipal funding or explicit pilot PRIVATE liquidity) vs remittances for one account (funded minus remitted), from the ledger. */
 export function municipalStateFlows(rows: { account_id: string; direction: string; amount: number }[], accountId: string) {
