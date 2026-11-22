@@ -127,6 +127,17 @@ export function landedInputCost(i: { sourcePrice: number; transport: number; tol
  *                                     flagged emergency_unprofitable_production
  * Callers normalise by max(Σweights, Σnecessity) so a floor never expands to full capacity.
  */
+/** Lagged AUTO-only stock feedback; reads committed stock, never this turn's output. */
+export function inventoryBackpressure(stored: number, lastDemand: number, essential: boolean): number {
+  const stock = Number.isFinite(stored) ? Math.max(0, stored) : 0;
+  const demand = Number.isFinite(lastDemand) ? Math.max(0, lastDemand) : 0;
+  if (stock <= 0) return 1;
+  if (demand <= 0) return essential ? 0.5 : 0.1;
+  const cover = stock / demand;
+  if (cover <= 1) return 1;
+  return Math.max(essential ? 0.5 : 0.1, 1 / (1 + 0.75 * (cover - 1)));
+}
+
 export function autoAllocationDetail(options: { key: string; necessity: number; marginRatio: number; essential?: boolean; inputsAvailable?: boolean }[]) {
   // A profitable alternative only suppresses emergency essential output if it can actually
   // receive positive AUTO weight. Zero-necessity and non-finite margin options cannot run.

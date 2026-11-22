@@ -14,7 +14,7 @@ import {spurWalk,spurCapacity,nodeCatchmentRadius,cityCatchmentRadius,SPUR_COST_
 import { parseInputItem, consumedPerBatch, isFactor, isStaged } from './inputKinds.ts';
 import { DISTINCTIVE_RECIPE_KEYS } from './productionCatalog.ts';
 import { buildRouteGraph, shortestTree, tracePath, usablePath, routeFrictionClass } from './landedRoute.ts';
-import { autoAllocationDetail, craftsmanship, expectedInputCost, PRODUCT_MARKET } from './productMarket.ts';
+import { autoAllocationDetail, inventoryBackpressure, craftsmanship, expectedInputCost, PRODUCT_MARKET } from './productMarket.ts';
 
 const nonnegative=(v:unknown)=>Math.max(0,Number(v)||0);
 /** Baseline market/granary capability that any inhabited settlement has by its size alone. */
@@ -436,11 +436,21 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
       costCache.set(k,v);return v;};
     const expected=(city:string,good:string)=>expectedDetail(city,good).cost;
     const byId=new Map(producers.map(p=>[p.id,p]));
+    // Inventory overhang is measured against last committed local demand, not new production.
+    const stockHistory=new Map<string,{stored:number;demand:number}>(
+      (prior?.balances||[]).map((row:any)=>[
+        `${row.city}::${row.good}`,
+        {stored:nonnegative(row.stored),demand:nonnegative(row.demand)}
+      ]));
     for(const g of autoGroups){
       const avail=g.candidates.map(r=>(r.input_items||[]).filter((x:any)=>!isFactor(x)&&!isStaged(x)).every((x:any)=>expectedDetail(g.city,x.key??x.good_key).available));
       const margins=g.candidates.map((r,i)=>avail[i]?marginRatio(g.city,r,expected):-1);
       const d=autoAllocationDetail(g.candidates.map((r,i)=>({key:String(i),necessity:g.weights[i],marginRatio:margins[i],essential:essential(r),inputsAvailable:avail[i]})));
-      const w=g.candidates.map((_,i)=>d.weights[String(i)]),norm=Math.max(w.reduce((s,x)=>s+x,0),g.weights.reduce((s,x)=>s+x,0));
+      const w=g.candidates.map((r,i)=>{
+        const history=stockHistory.get(`${g.city}::${r.output_good_key}`);
+        return d.weights[String(i)]*(history
+          ? inventoryBackpressure(history.stored,history.demand,essential(r)) : 1);
+      }),norm=Math.max(w.reduce((s,x)=>s+x,0),g.weights.reduce((s,x)=>s+x,0));
       g.ids.forEach((id,i)=>{const p=byId.get(id);if(!p)return;p.allocation=norm>0?w[i]/norm:0;p.autoFlag=d.flags[String(i)];p.expectedMarginProxy=margins[i];
         (p as any).expectedInputSources=Object.fromEntries((g.candidates[i].input_items||[]).map((x:any)=>{const gk=x.key??x.good_key;return [gk,expectedDetail(g.city,gk)];}));});
     }
