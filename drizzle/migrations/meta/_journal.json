@@ -379,6 +379,20 @@
       "when": 1795292700000,
       "tag": "0053_food_honey_meat_labels",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1795350054000,
+      "tag": "0054_neutral_city_autonomy",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1795350055000,
+      "tag": "0055_neutral_city_autonomy_turn_hook",
+      "breakpoints": true
     }
   ]
 }
