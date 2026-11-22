@@ -1,5 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 const { invoke, read } = vi.hoisted(() => ({ invoke: vi.fn(), read: vi.fn() }));
@@ -26,12 +27,13 @@ describe("read-only map updates", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     try {
       for (const [playerName, currentTurn] of [["Hráč", 7], ["Player", 7], ["Player", 8]] as const) {
-        await act(async () => root.render(<IsometricSquareMap sessionId="test" playerName={playerName} currentTurn={currentTurn} />));
+        await act(async () => root.render(<QueryClientProvider client={client}><IsometricSquareMap sessionId="test" playerName={playerName} currentTurn={currentTurn} /></QueryClientProvider>));
       }
       await act(async () => root.render(null));
-      await act(async () => root.render(<IsometricSquareMap sessionId="test" playerName="Player" currentTurn={8} />));
+      await act(async () => root.render(<QueryClientProvider client={client}><IsometricSquareMap sessionId="test" playerName="Player" currentTurn={8} /></QueryClientProvider>));
       expect(read).toHaveBeenCalledWith("tile_parcels", expect.any(String));
       expect(invoke).not.toHaveBeenCalled();
     } finally {
@@ -46,8 +48,9 @@ describe("read-only map updates", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     try {
-      await act(async () => root.render(<IsometricSquareMap sessionId="test" playerName="Player" currentTurn={8} />));
+      await act(async () => root.render(<QueryClientProvider client={client}><IsometricSquareMap sessionId="test" playerName="Player" currentTurn={8} /></QueryClientProvider>));
       const cityParcelRead = read.mock.calls.find(([table, columns]) =>
         table === "tile_parcels" && String(columns).includes("land_use"));
       expect(cityParcelRead?.[1]).toContain("claim_kind");

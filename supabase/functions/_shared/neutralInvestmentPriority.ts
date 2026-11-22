@@ -62,3 +62,38 @@ export function rankNeutralInvestmentPlans<T extends InvestmentCandidate>(
     .sort((a, b) => b.priority - a.priority || a.index - b.index)
     .map((entry) => entry.plan);
 }
+
+/**
+ * Shared action-slot allocation for municipal survival vs territorial growth.
+ * Territorial claims remain optional and their payment still goes through
+ * command-dispatch. Emergency deficits must never be sacrificed for expansion.
+ * No new treasury or resource ledger is introduced here.
+ */
+export function allocateNeutralInvestmentSlots(
+  rankedPlans: readonly InvestmentCandidate[],
+  observations: readonly NeedObservation[],
+  closedTurn: number,
+  hasExpansionProposal: boolean,
+): { buildingLimit: number; expansionLimit: number; rationale: string } {
+  const canExpand = hasExpansionProposal && closedTurn % 3 === 0;
+  if (!canExpand) return { buildingLimit: 2, expansionLimit: 0, rationale: "building_cycle" };
+  // A material shortage is critical only if a candidate construction addresses it.
+  const latest = new Map<string, NeedObservation>();
+  for (const row of observations) {
+    if (!Number.isInteger(row.turn_number) || row.turn_number > closedTurn) continue;
+    const key = row.city_id + "|" + row.basket_key;
+    const prior = latest.get(key);
+    if (!prior || row.turn_number > prior.turn_number) latest.set(key, row);
+  }
+  const critical = rankedPlans.some(plan => {
+    const basket = relevantBasket(plan);
+    if (!basket || basket === "fuel") return false;
+    const row = latest.get(plan.city_id + "|" + basket);
+    if (!row) return false;
+    const demand = clamp(row.local_demand);
+    return demand > 0 && clamp(row.unmet_demand) / demand >= 0.5;
+  });
+  return critical
+    ? { buildingLimit: 2, expansionLimit: 0, rationale: "critical_needs_first" }
+    : { buildingLimit: 1, expansionLimit: 1, rationale: "balanced_investment" };
+}

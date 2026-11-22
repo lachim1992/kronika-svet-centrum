@@ -6,7 +6,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isTrustedInternalRequest } from "../_shared/internalActor.ts";
-import { rankNeutralInvestmentPlans } from "../_shared/neutralInvestmentPriority.ts";
+import { allocateNeutralInvestmentSlots, rankNeutralInvestmentPlans } from "../_shared/neutralInvestmentPriority.ts";
 
 const headers = {
   "Access-Control-Allow-Origin": "*",
@@ -72,9 +72,17 @@ Deno.serve(async (req:Request)=>{
   const rotating=rankNeutralInvestmentPlans(
     (plans||[]) as NeutralPlan[], needs, closedTurn
   );
-  // Every third turn reserve one of the two canonical command action slots for
-  // actual territorial expansion. Buildings still receive at least one slot.
-  const buildingLimit=closedTurn%3===0?1:2;
+  // One shared strategy allocation for construction and territorial expansion.
+  // Check existing proposals only: neither selection nor ranking creates resources.
+  const {data:plannedExpansion,error:plannedExpansionError}=await db
+    .from("neutral_city_expansion_plans").select("city_id")
+    .eq("session_id",sessionId).eq("turn_number",closedTurn)
+    .eq("status","ready").limit(1);
+  const allocation=allocateNeutralInvestmentSlots(
+    rotating, needs, closedTurn,
+    !plannedExpansionError && (plannedExpansion?.length||0)>0,
+  );
+  const buildingLimit=allocation.buildingLimit;
   for(const p of rotating) {
     if(actions>=buildingLimit)break;
     // Re-check owner, city, template and cash NOW. The plan quote is only informational;
@@ -151,7 +159,7 @@ Deno.serve(async (req:Request)=>{
   // Territorial growth uses exactly the same paid survey + macro-claim commands as the
   // human player, after the municipal investments and within the common 2-action cap.
   // No direct UPDATE of province_hexes and no inferred hidden ore rewards.
-  if(actions<2) {
+  if(actions<2 && allocation.expansionLimit>0) {
     const {data:expansions,error:expError}=await db.from("neutral_city_expansion_plans")
       .select("*").eq("session_id",sessionId).eq("turn_number",closedTurn)
 .in("status",["ready","saving"]).order("city_id").limit(20);
@@ -207,5 +215,6 @@ Deno.serve(async (req:Request)=>{
     }
     }
   }
-  return reply({ok:true,closedTurn,attempted:actions,results,fiscalWriter:"command-dispatch",modelCalls:0});
+  return reply({ok:true,closedTurn,attempted:actions,results,allocation,
+    fiscalWriter:"command-dispatch",modelCalls:0});
 });
