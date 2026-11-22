@@ -6,6 +6,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isTrustedInternalRequest } from "../_shared/internalActor.ts";
+import { rankNeutralInvestmentPlans } from "../_shared/neutralInvestmentPriority.ts";
 
 const headers = {
   "Access-Control-Allow-Origin": "*",
@@ -25,6 +26,7 @@ interface NeutralPlan {
   action:string;template_id:string;parcel_id:string;requires_claim:boolean;
   quote_gold:number;quote_production:number;status:string;
   command_id_claim:string|null;command_id_build:string|null;
+  reason?:{chosen_template?:string}|null;
 }
 Deno.serve(async (req:Request)=>{
   if(req.method==="OPTIONS")return new Response(null,{headers});
@@ -47,11 +49,17 @@ Deno.serve(async (req:Request)=>{
   if(plansError) return reply({ok:false,error:plansError.message},500);
   const results:Array<{cityId:string;owner:string;status:string;reason?:string}>=[];
   let actions=0;
-  // Fair round-robin: without turn rotation, the two alphabetically smallest IDs
-  // consume every year's cap and all remaining neutral settlements starve forever.
-  const ordered=[...(plans||[]) as NeutralPlan[]].sort((a,b)=>a.city_id.localeCompare(b.city_id));
-  const shift=ordered.length?(closedTurn*2)%ordered.length:0;
-  const rotating=[...ordered.slice(shift),...ordered.slice(0,shift)];
+  // Prioritize verified shortages, then retain deterministic rotation for equal needs.
+  // Reads only previous committed basket observations, never provisional output.
+  // A read failure falls back to rotation; it must not grant fictitious shortages.
+  const {data:needs,error:needsError}=await db.from("city_market_baskets")
+    .select("city_id,turn_number,basket_key,local_demand,unmet_demand")
+    .eq("session_id",sessionId).lte("turn_number",closedTurn)
+    .in("basket_key",["drinking_water","staple_food","fuel"])
+    .order("turn_number",{ascending:false}).limit(3000);
+  const rotating=rankNeutralInvestmentPlans(
+    (plans||[]) as NeutralPlan[], needsError?[]:(needs||[]), closedTurn
+  );
   // Every third turn reserve one of the two canonical command action slots for
   // actual territorial expansion. Buildings still receive at least one slot.
   const buildingLimit=closedTurn%3===0?1:2;
