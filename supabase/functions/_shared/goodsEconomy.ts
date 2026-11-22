@@ -103,6 +103,12 @@ export interface Balance { city: string; good: string; opening: number; produced
   stored_lots?: OpeningLot[];
   unmet_demand: number; demand: number; quality: number; gross_output_value: number; intermediate_value: number;
   extraction_value: number; capex: number;
+  /** Diagnostic only: closing physical inventory / this turn's physical outflow, never revenue. */
+  inventory_cover_turns?: number | null;
+  /** Physical inventory + discarded volume, not an estimate of unsold sales. */
+  surplus_overhang?: number;
+  /** Gross production-to-realised-throughput ratio, null when no throughput. */
+  production_to_outflow_ratio?: number | null;
   /** capex stays a physical sink. These are normalized construction points, not goods. */
   construction_points?: number; construction_efficiency?: number }
 /** Observational A-material demand; never a physical balance or an extra consumption channel. */
@@ -1036,6 +1042,12 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     { const l=syncLots(b),avail=available(b),f=avail>C.epsilon?b.stored/avail:0; // capex/spoilage drain proportionally
       b.stored_lots=b.stored>0?l.map(x=>({qty:x.qty*f,quality:x.quality,origin:x.origin})).filter(x=>x.qty>1e-12):[]; }
     const discard=Math.max(0,remaining-b.stored);b.lost_spoilage+=discard;b.lost_discard+=discard;
+    // Stock pressure indicators are physical diagnostics, NOT receipts or taxable sales.
+    // Exports are a source-city outflow; imports are excluded to prevent double counting.
+    const outflow=b.consumed_household+b.consumed_state+b.consumed_as_input+b.exported+b.capex;
+    b.inventory_cover_turns=outflow>C.epsilon?b.stored/outflow:(b.stored>C.epsilon?null:0);
+    b.surplus_overhang=b.stored+b.lost_discard;
+    b.production_to_outflow_ratio=outflow>C.epsilon?produced(b)/outflow:(produced(b)>C.epsilon?null:0);
     const residual=b.opening+produced(b)+b.imported-b.exported-b.consumed_household-b.consumed_state-b.consumed_as_input-b.lost_spoilage-b.stored-b.capex;
     if(Math.abs(residual)>1e-6)throw Error(`Goods conservation failed ${key(c.id,g.key)}: ${residual}`);
     // Provenance must always add up to the canonical demand: no demand without a driver.
