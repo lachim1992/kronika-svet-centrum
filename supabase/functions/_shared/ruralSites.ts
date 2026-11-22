@@ -5,18 +5,24 @@
  */
 import { FIELD_RECIPES, fieldBonus } from './farmFields.ts';
 import { FOOD_RURAL_BASE, FOOD_FIELD_RECIPES } from './foodSpecialization.ts';
+import { MATERIAL_SOURCES, MATERIAL_BY_RECIPE } from './materialResources.ts';
+import { certainMicroResources } from './microResources.ts';
 export const RURAL_RECIPES = new Set(["fell_timber", "quarry_stone", "mine_iron", "harvest_wheat", "harvest_barley",
-  "herd_cattle", "harvest_grapes", "cut_peat", "catch_fish", "harvest_rice", "mine_gold", ...Object.keys(FOOD_RURAL_BASE)]);
+  "herd_cattle", "harvest_grapes", "cut_peat", "catch_fish", "harvest_rice", "mine_gold", ...Object.keys(FOOD_RURAL_BASE),
+  ...MATERIAL_SOURCES.map(s=>s.harvest)]);
 /** Every rural output (crops, cattle, fish, grapes, timber, stone, ore, peat) must be hauled to the city market.
  * Subsistence grace comes only from the city's own macro cell (factor 1 "local"); river water is not freight. */
 export const FREIGHT_RECIPES = new Set(RURAL_RECIPES);
 /** Deposit (from a detailed survey) a recipe needs before it may run at all. */
-export const DEPOSIT_REQUIRED: Record<string, string> = { mine_iron: "iron", mine_gold: "gold" };
+export const DEPOSIT_REQUIRED: Record<string, string> = { mine_iron: "iron", mine_gold: "gold",
+  ...Object.fromEntries(MATERIAL_SOURCES.filter(s=>s.macro).map(s=>[s.harvest,s.macro!])) };
 /** Nonrenewable recipes whose total extraction is capped by the TRUE shared macro deposit reserve. */
-export const MACRO_RESERVE_RECIPES: Record<string, string> = { mine_iron: "iron", mine_gold: "gold" };
+export const MACRO_RESERVE_RECIPES: Record<string, string> = { mine_iron: "iron", mine_gold: "gold",
+  ...Object.fromEntries(MATERIAL_SOURCES.filter(s=>s.macro).map(s=>[s.harvest,s.macro!])) };
 /** Lv1 site capacity per recipe (output units/turn before staffing). */
 export const RURAL_BASE: Record<string, number> = { fell_timber: 2.4, quarry_stone: 2, mine_iron: 1.5, harvest_wheat: 2.2,
-  harvest_barley: 2, herd_cattle: 1.2, harvest_grapes: 1.4, cut_peat: 1.4, catch_fish: 2, harvest_rice: 2.2, mine_gold: 0.6, ...FOOD_RURAL_BASE };
+  harvest_barley: 2, herd_cattle: 1.2, harvest_grapes: 1.4, cut_peat: 1.4, catch_fish: 2, harvest_rice: 2.2, mine_gold: 0.6, ...FOOD_RURAL_BASE,
+  ...Object.fromEntries(MATERIAL_SOURCES.map(s=>[s.harvest,s.capacity])) };
 export const FOOTPATH_FACTOR = 0.25;
 
 export type SiteRole = "rural" | "urban";
@@ -66,20 +72,28 @@ export function depositSurveyReason(recipeKeys: string[], survey: DepositSurveyK
   const labels: Record<string, string> = { iron: "železnou rudu", gold: "zlatou žílu" };
   return `Na tomto makropoli není potvrzená ${missing.map(kind => labels[kind] || kind).join(" ani ")}.`;
 }
-export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve>; fieldParcels?: Set<string>; immature?: Set<string>; herdStock?: Map<string, 'found' | 'starter_kit'> }
+export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve>; fieldParcels?: Set<string>; immature?: Set<string>; herdStock?: Map<string, 'found' | 'starter_kit'>; microFindings?:Map<string,Set<string>>; }
 
 /** Merge natural specs with the parcel's rural site; enforce deposits. Returns specs + reasons for blocked recipes. */
 export function siteSpecs(natural: { recipe: string; capacity: number; jobs: number; renewable: boolean }[], site: RuralSite | undefined,
-  x: number, y: number, deposits: Set<string> | undefined) {
+  x: number, y: number, deposits: Set<string> | undefined, microFindings?:Set<string>, subBiome?:string) {
   const specs = new Map(natural.map(s => [s.recipe, { ...s, site: false }]));
   const blocked: { recipe: string; reason: string }[] = [];
   for (const recipe of (site?.recipeKeys || []).filter(k => RURAL_RECIPES.has(k))) {
+    // Any material source is bound to the ACTUAL micro parcel's natural incidence,
+    // including a private survey find (not a generic hill/forest production license).
+    const material=MATERIAL_BY_RECIPE.get(recipe);
+    if(material && !(microFindings?.has(material.kind)
+        || certainMicroResources(subBiome).includes(material.kind as any))){
+      blocked.push({recipe,reason:'nepotvrzený mikrozdroj '+material.kind});continue;
+    }
     const need = DEPOSIT_REQUIRED[recipe];
     if (need && !deposits?.has(depositKey(site!.owner, x, y, need))) { blocked.push({ recipe, reason: `chybí potvrzené ložisko (${need})` }); continue; }
     const bonus = FIELD_RECIPES.has(recipe) || FOOD_FIELD_RECIPES.has(recipe) ? fieldBonus(site!.fields ?? 0) : { capacityFactor: 1, extraJobs: 0 };
     const cap = siteCapacity(recipe, site!.level) * bonus.capacityFactor, prev = specs.get(recipe);
     specs.set(recipe, { recipe, capacity: Math.max(cap, prev?.capacity ?? 0), jobs: Math.max(6, prev?.jobs ?? 0) * Math.max(1, site!.level) + bonus.extraJobs,
-      renewable: !["mine_iron", "mine_gold", "quarry_stone", "cut_peat"].includes(recipe), site: true });
+      renewable: !["mine_iron", "mine_gold", "quarry_stone", "cut_peat"].includes(recipe)
+        && !MATERIAL_BY_RECIPE.get(recipe)?.macro && !["dig_clay","dig_kaolin","collect_sand"].includes(recipe), site: true });
   }
   return { specs: [...specs.values()], blocked };
 }
