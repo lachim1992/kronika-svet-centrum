@@ -187,6 +187,7 @@ function processingFor(r: FoodResource): FoodRecipeDef[] {
 /** Continuous by-products of living herds/flocks (stocks & reproduction: phase 3). */
 const BYPRODUCTS: FoodRecipeDef[] = [
   P('milk_cattle', 'Farma', 'source', ['herding'], 'raw_milk', 3, [], 'Dojení skotu'),
+  P('shear_sheep', 'Farma', 'source', ['herding'], 'raw_wool', 2, [], 'Stříhání ovcí'),
   P('milk_goats', 'Farma', 'source', ['herding'], 'raw_milk', 2, [], 'Dojení koz'),
   P('collect_eggs', 'Farma', 'source', ['herding'], 'eggs', 2, [], 'Sběr vajec'),
   P('make_cheese', 'Pekárna', 'urban', ['baking'], 'dairy_food', 1, [{ good: 'raw_milk', qty: 3 }], 'Sýrařství'),
