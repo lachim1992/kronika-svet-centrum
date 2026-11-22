@@ -88,6 +88,7 @@ export default function RuralVillageMapPanel({ sessionId, playerName, currentTur
       await Promise.all([
         qc.invalidateQueries({ queryKey: villagesKey }),
         qc.invalidateQueries({ queryKey: ["rural_settlements", sessionId] }),
+        qc.invalidateQueries({ queryKey: ["map-rural-villages-all", sessionId] }),
       ]);
       onChanged?.();
     } catch (error) {
