@@ -9,6 +9,7 @@ import sprTrees from "@/assets/map/spr-trees.png";
 import { isSandboxMode } from "@/hooks/useSandboxMode";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUpRight, Castle, Check, Factory, Flag, Gem, Grid3x3, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -431,6 +432,19 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const lastSelectedId = useRef<string | null>(null);
   const [cityLayerCityId, setCityLayerCityId] = useState<string | null>(null);
   const [tileParcels, setTileParcels] = useState<TileParcel[]>([]);
+  // Persisted villages are visual anchors; they never create a second population pool.
+  const { data: mapVillages = [] } = useQuery({
+    queryKey: ["map-rural-villages-all", sessionId],
+    enabled: !!sessionId,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from as any)("rural_settlements")
+        .select("id, parcel_id, name, level").eq("session_id", sessionId);
+      if (error) return [] as { id: string; parcel_id: string; name: string; level: number }[];
+      return (data || []) as { id: string; parcel_id: string; name: string; level: number }[];
+    },
+  });
+  const villageByParcel = useMemo(() => new Map(mapVillages.map(v => [v.parcel_id, v])), [mapVillages]);
+
   const { data: mgmt } = useManagementReport(sessionId, playerName, currentTurn);
   const parcelActuals = useMemo(() => indexParcelProducers((mgmt?.report as any)?.producers), [mgmt]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
@@ -1445,6 +1459,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {/* Strong, persistent hatching distinguishes city-used land from the idle survey grid. */}
           {mine && <polygon points={quad} fill={parcel.claim_kind === "worked" ? hatchFill : "url(#iso-city-paving)"} opacity={parcel.claim_kind === "worked" ? ".32" : ".95"} pointerEvents="none" />}
           <title>{`${parcel.region_name ? parcel.region_name + " · " : ""}${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}${mine ? ` · patří ${holder?.name || "městu"}` : ""}`}</title>
+          {villageByParcel.has(parcel.id) && (() => {
+            const bounds = parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y);
+            const cx = (bounds.a.x + bounds.c.x) / 2;
+            const cy = (bounds.a.y + bounds.c.y) / 2;
+            const village = villageByParcel.get(parcel.id)!;
+            return <g pointerEvents="none">
+              <image href={spriteHamlet} x={cx - 10} y={cy - 17} width="20" height="20" preserveAspectRatio="xMidYMid meet" />
+              <title>{village.name} · vesnice úrovně {village.level}</title>
+            </g>;
+          })()}
           {parcel.region_name && <text x={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.x + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.x) / 2}
             y={(parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).a.y + parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y).c.y) / 2}
             textAnchor="middle" fontSize="4" fontWeight="700" fill="var(--map-label)" pointerEvents="none">{parcel.region_name.length > 17 ? parcel.region_name.slice(0, 16) + "…" : parcel.region_name}</text>}
