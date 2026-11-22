@@ -53,6 +53,7 @@ export { normalizeStructureRoles, normalizeProductionContract, auditProductionCo
 import { CROP_RECIPE, isMature } from './cropSpread.ts';
 import { foodSiteRecipes, establishTurns, FOOD_BYPRODUCT_RECIPES } from './foodSpecialization.ts';
 import { foodResourceByKey, foodResourceByHarvest } from './foodResources.ts';
+import { certainMicroResources } from './microResources.ts';
 import { normalizeStructureRoles, normalizeProductionContract } from './productionContract.ts';
 const remap:Record<string,string>={basic_material:'metalwork',textile:'basic_clothing',ritual:'luxury_clothing',prestige:'luxury_clothing'};
 const basket=(v:string)=>remap[v]||v;
@@ -240,9 +241,24 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   const confirmedDeposits=new Set<string>(surveys.filter((s:any)=>s.level>=2).flatMap((s:any)=>(s.findings||[]).map((f:any)=>depositKey(s.player_name,s.grid_x,s.grid_y,f.kind))));
   // TRUE finite reserves (service-only); only deposits someone has surveyed exist as rows.
   const macroTruth=parcelMode?await rows(sb,'macro_deposits',session):[];
+  const microSurveys=parcelMode?await rows(sb,'micro_surveys',session):[];
   const reserves=new Map<string,{reserve:number;grade:number}>();
   for(const m of macroTruth as any[])for(const d of (m.deposits||[]))if(d.reserve!=null)reserves.set(`${m.grid_x},${m.grid_y}|${d.kind}`,{reserve:Number(d.reserve)||0,grade:Number(d.grade)||1});
-  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,{sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves,fieldParcels,immature,herdStock:new Map(foodSpecs.map((f:any)=>[f.site_parcel_id,f.stock_mode==='starter_kit'?'starter_kit':'found']))}),...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
+  const surveyMap=new Map(microSurveys.map((m:any)=>[`${m.player_name}|${m.micro_x},${m.micro_y}`,new Set<string>((m.findings||[]).map((f:any)=>String(f.kind)))]));
+  const microFindings=new Map<string,Set<string>>();
+  for (const p of db.tile_parcels||[]) {
+    if (!p.city_id || !p.owner_player || p.claim_kind!=='worked') continue;
+    const macro=db.province_hexes.find((h:any)=>h.grid_x===p.grid_x&&h.grid_y===p.grid_y);
+    const mx=p.grid_x*6+p.parcel_index%6,my=p.grid_y*6+Math.floor(p.parcel_index/6);
+    microFindings.set(p.id,new Set([
+      ...certainMicroResources(p.sub_biome,macro?.biome_family),
+      ...(surveyMap.get(`${p.owner_player}|${mx},${my}`) || new Set<string>())
+    ]));
+  }
+  if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,
+    {sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves,fieldParcels,immature,microFindings,
+      herdStock:new Map(foodSpecs.map((f:any)=>[f.site_parcel_id,f.stock_mode==='starter_kit'?'starter_kit':'found']))}),
+    ...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
   const ruralAttached=ruralCatchments(db.province_hexes,cities);
   const ruralByCell=new Map<string,number>();
   for(const r of db.hex_population) {
@@ -332,8 +348,8 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     return rules.flatMap(([match,tags])=>match.test(name)?tags:[]);
   };
   // Food processing specializations are input-bound (never sources), so a whitelisted processor may run them on real stock.
-  const foodProcessingKeys=(effect:any)=>((effect?.specialization_recipe_keys||[]) as unknown[]).map(String)
-    .filter(k=>recipeByKey.has(k)&&!foodResourceByHarvest.has(k)&&!FOOD_BYPRODUCT_RECIPES.has(k));
+  const specializationProcessingKeys=(effect:any)=>((effect?.specialization_recipe_keys||[]) as unknown[]).map(String)
+    .filter(k=>{const r=recipeByKey.get(k);return r && role(r)!=='source' && !FOOD_BYPRODUCT_RECIPES.has(k);});
   const contractNotes:{structure:string;notes:string[]}[]=[];
   for(const b of db.city_buildings.filter(b=>b.status==='completed')){
     // Rural sites on worked parcels run as their parcel's single physical source (ruralSites.ts), never as a second structure.
@@ -349,7 +365,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     const name=`${template?.key||''} ${template?.name||''} ${b.name||''}`;
     const tags=effect.capability_tags||facilityTags(name);
     structure(b.id,b.city_id,'facility',effect.basket_outputs||{},true,tags,
-      {recipeKeys:effect.recipe_keys?[...effect.recipe_keys,...foodProcessingKeys(effect)]:effect.recipe_keys,roles:effect.production_roles,level:b.current_level,order:structureOrder(b.id),jobs:effect.jobs_capacity,
+      {recipeKeys:effect.recipe_keys?[...effect.recipe_keys,...specializationProcessingKeys(effect)]:effect.recipe_keys,roles:effect.production_roles,level:b.current_level,order:structureOrder(b.id),jobs:effect.jobs_capacity,
        allowSource:!!effect.recipe_keys||/well|aqueduct|studn|akvad|woodcut|lumber|dřev/i.test(name)});
   }
   // Abstract production districts are legacy-only. Parcel worlds use physical parcels/buildings;
