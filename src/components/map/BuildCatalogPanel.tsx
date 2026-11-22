@@ -97,6 +97,9 @@ export function BuildCatalogPanel(props: Props) {
       return "Nedostupné: tato stavba potřebuje řeku nebo pobřeží.";
     if (props.treasury.gold < item.cost.gold)
       return `Nedostupné: chybí zlato (${item.cost.gold})`;
+    const materialCost=item.cost.wood+item.cost.stone+item.cost.iron;
+    if (props.treasury.production<materialCost)
+      return `Nedostupné: chybí stavební produkce (${materialCost})`;
     return null;
   };
 
@@ -112,7 +115,7 @@ export function BuildCatalogPanel(props: Props) {
     if (!matchesQuery(item, query)) return false;
     const blocked = !!blockedBy(item);
     return availability === "all" || (availability === "now" ? !blocked : blocked);
-  }), [catalog, query, availability, props.allowProductionDistricts, props.parcelBlock, props.ownCity, props.freeDistrictSlots, props.treasury.gold, props.hasWater, props.terrainBlockReason]);
+  }), [catalog, query, availability, props.allowProductionDistricts, props.parcelBlock, props.ownCity, props.freeDistrictSlots, props.treasury.gold,props.treasury.production,props.hasWater,props.terrainBlockReason,props.siteBlockReason,pickSource]);
 
   const groups = useMemo(() => {
     const map = new Map<BuildCategory, CatalogItem[]>();
