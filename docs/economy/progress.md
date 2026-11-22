@@ -157,3 +157,11 @@ Soubory: supabase/functions/_shared/regionalSettlementEconomy.ts, src/components
 - Tests: written, NOT run. Not deployed. Migration not applied.
 - Gaps: rural tax collection, village level effects, storage capacity, node_inventory construction payments.
 - Next task: apply migration + deploy command-dispatch, then add rural tax claims to settle_cash_taxes inside process-turn's fiscal plan.
+
+## 2026-11-22 — Regional economy stage 3 (village effect + upgrade)
+- Changed: _shared/ruralSettlement.ts (upgrade costs, villageFootpathFactor, upgrade reason), _shared/ruralSites.ts (withVillageTransport, RuralContext.villages), _shared/parcelEconomy.ts, _shared/economyAdapter.ts (loads rural_settlements, tolerant of missing table), _shared/regionalSettlementEconomy.ts (per-producer transport, village_freight_gain_units), command-dispatch UPGRADE_RURAL_SETTLEMENT, migration 20261122170000 (+rural_settlement_upgrades, upgrade_rural_settlement), RegionalSettlementsPanel.
+- Effect: footpath freight 0.25 → 0.40/0.55/0.70 by level; no_road stays 0; road/local unchanged.
+- Tax: not added — rural value added is already inside the city's domestic tax base in settle_cash_taxes; a separate pillar would double tax.
+- Storage: not added (spoilage rules untouched).
+- Tests: src/test/rural-village-effect.test.ts, src/test/rural-settlement-sql.test.ts (upgrade). Written, NOT run. Not deployed. Migration not applied.
+- Next task: apply migration + deploy command-dispatch/process-turn/refresh-economy, then verify one footpath village site's freight in a committed ledger.

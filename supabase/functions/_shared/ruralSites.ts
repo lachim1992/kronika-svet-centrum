@@ -7,6 +7,7 @@ import { FIELD_RECIPES, fieldBonus } from './farmFields.ts';
 import { FOOD_RURAL_BASE, FOOD_FIELD_RECIPES } from './foodSpecialization.ts';
 import { MATERIAL_SOURCES, MATERIAL_BY_RECIPE } from './materialResources.ts';
 import { certainMicroResources } from './microResources.ts';
+import { villageFootpathFactor } from './ruralSettlement.ts';
 export const RURAL_RECIPES = new Set(["fell_timber", "quarry_stone", "mine_iron", "harvest_wheat", "harvest_barley",
   "herd_cattle", "harvest_grapes", "cut_peat", "catch_fish", "harvest_rice", "mine_gold", ...Object.keys(FOOD_RURAL_BASE),
   ...MATERIAL_SOURCES.map(s=>s.harvest)]);
@@ -36,9 +37,14 @@ export function siteCapacity(recipe: string, level: number) { return (RURAL_BASE
 export function depositKey(player: string, x: number, y: number, kind: string) { return `${player}|${x},${y}|${kind}`; }
 
 export interface RoadEdge { from: string; to: string; owner?: string | null }
-export interface Transport { factor: number; mode: "local" | "road" | "footpath" | "no_road" }
+export interface Transport { factor: number; mode: "local" | "road" | "footpath" | "no_road"; village_level?: number; base_factor?: number }
 /** Deterministic access from parcel cell to the city seat over COMPLETED roads (bridges are segments too). */
 /** Only the hauling realm's own roads (or unowned legacy roads) count — no freight over foreign roads. Edge capacity is not modelled. */
+/** Village effect (ruralSettlement.villageFootpathFactor): footpath only, same owner; blocked stays blocked. */
+export function withVillageTransport(t: Transport, village: { level: number; owner: string } | undefined, owner: string | null | undefined): Transport {
+  if (t.mode !== "footpath" || !village || !owner || village.owner !== owner || !(village.level > 0)) return t;
+  return { ...t, factor: villageFootpathFactor(t.factor, village.level), village_level: village.level, base_factor: t.factor };
+}
 export function parcelTransport(parcelCell: string, cityCell: string, roads: RoadEdge[], owner?: string | null): Transport {
   if (parcelCell === cityCell) return { factor: 1, mode: "local" };
   const adj = new Map<string, string[]>();
@@ -72,7 +78,7 @@ export function depositSurveyReason(recipeKeys: string[], survey: DepositSurveyK
   const labels: Record<string, string> = { iron: "železnou rudu", gold: "zlatou žílu" };
   return `Na tomto makropoli není potvrzená ${missing.map(kind => labels[kind] || kind).join(" ani ")}.`;
 }
-export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve>; fieldParcels?: Set<string>; immature?: Set<string>; herdStock?: Map<string, 'found' | 'starter_kit'>; microFindings?:Map<string,Set<string>>; }
+export interface RuralContext { sites?: RuralSite[]; roads?: RoadEdge[]; deposits?: Set<string>; reserves?: Map<string, MacroReserve>; fieldParcels?: Set<string>; immature?: Set<string>; herdStock?: Map<string, 'found' | 'starter_kit'>; microFindings?:Map<string,Set<string>>; villages?: Map<string, { level: number; owner: string }>; }
 
 /** Merge natural specs with the parcel's rural site; enforce deposits. Returns specs + reasons for blocked recipes. */
 export function siteSpecs(natural: { recipe: string; capacity: number; jobs: number; renewable: boolean }[], site: RuralSite | undefined,

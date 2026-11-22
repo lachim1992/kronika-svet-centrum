@@ -22,7 +22,7 @@
 // Nothing here writes, mints gold or adds reserve income.
 
 export type Availability = 'connected' | 'partial' | 'blocked' | 'unknown';
-export interface SettlementProducer { producer: string; recipe: string | null; good: string; capacity: number; realized: number; blocked: string | null }
+export interface SettlementProducer { producer: string; recipe: string | null; good: string; capacity: number; realized: number; blocked: string | null; transport_mode: string | null; freight_factor: number | null; base_freight_factor: number | null; village_level: number | null }
 export interface RegionalSettlement {
   id: string; kind: 'projection' | 'village'; village: { id: string; name: string; level: number; founded_turn: number; parcel_id: string } | null; cell: string; city: string; cities: string[]; province_id: string | null;
   rural_population: number | null; workforce: number | null; employed: number; unemployed: number | null;
@@ -30,10 +30,17 @@ export interface RegionalSettlement {
   gross_output_units: number; revenue: number | null; value_added: number | null; operating_surplus: number | null;
   attributed_demand_units: number | null; demand_attribution: 'population_share_of_city_basket'; tax_base: number | null; tax_collected: null;
   logistics: Availability; reasons: string[];
+  /** Committed-turn output attributable to the village's footpath bonus (0 when none applied). */
+  village_freight_gain_units: number;
 }
 const num = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
 const has = (v: unknown) => v != null && Number.isFinite(Number(v));
 
+/** realized × (applied − base) / applied, only where the village bonus actually applied to a freight recipe. */
+export function villageGain(ps: any[]): number {
+  return ps.reduce((s, p) => { const t = p?.parcel?.transport; const a = num(t?.applied), b = num(t?.base_factor);
+    return has(t?.village_level) && a > b && a > 0 ? s + num(p.realized) * (a - b) / a : s; }, 0);
+}
 export function regionalSettlements(report: { producers?: any[]; labor?: any[]; cities?: any[] }, cityMeta: { id: string; province_id?: string | null }[] = []): RegionalSettlement[] {
   const byCell = new Map<string, any[]>();
   for (const p of report.producers || []) {
@@ -69,7 +76,9 @@ export function regionalSettlements(report: { producers?: any[]; labor?: any[]; 
     return { id: `projection:${cell}`, kind: 'projection', village: null, cell, city, cities: [...jobsBy.keys()].sort(),
       province_id: cityMeta.find(c => c.id === city)?.province_id ?? null,
       rural_population: pop, workforce, employed, unemployed: workforce == null ? null : Math.max(0, workforce - employed), jobs,
-      producers: ps.map(p => ({ producer: p.producer, recipe: p.recipe?.key ?? null, good: p.good, capacity: num(p.capacity), realized: num(p.realized), blocked: p.blocked ?? null })),
+      producers: ps.map(p => { const t = p.parcel?.transport; return { producer: p.producer, recipe: p.recipe?.key ?? null, good: p.good, capacity: num(p.capacity), realized: num(p.realized), blocked: p.blocked ?? null,
+        transport_mode: t?.mode ?? null, freight_factor: has(t?.applied) ? num(t.applied) : null, base_freight_factor: has(t?.base_factor) && has(t?.village_level) && num(t?.applied) > 0 ? num(t.base_factor) : null, village_level: has(t?.village_level) ? num(t.village_level) : null }; }),
+      village_freight_gain_units: villageGain(ps),
       gross_output_units: realized, revenue: sumM('revenue'), value_added, operating_surplus: sumM('operating_surplus'),
       attributed_demand_units: attributed, demand_attribution: 'population_share_of_city_basket', tax_base: value_added, tax_collected: null, logistics, reasons };
   });
@@ -103,9 +112,9 @@ export function withPersistedVillages(rows: RegionalSettlement[], villages: { id
   const out = rows.map(r => { const v = byCell.get(r.cell); if (!v) return r; byCell.delete(r.cell);
     return { ...r, id: `village:${v.id}`, kind: 'village' as const, village: { id: v.id, name: v.name, level: v.level, founded_turn: v.founded_turn, parcel_id: v.parcel_id } }; });
   for (const [cell, v] of byCell) out.push({ id: `village:${v.id}`, kind: 'village', village: { id: v.id, name: v.name, level: v.level, founded_turn: v.founded_turn, parcel_id: v.parcel_id },
-    cell, city: v.city_id, cities: [v.city_id], province_id: null, rural_population: null, workforce: null, employed: 0, unemployed: null, jobs: 0, producers: [],
+    cell, city: v.city_id, cities: [v.city_id], province_id: null, village_freight_gain_units: 0, rural_population: null, workforce: null, employed: 0, unemployed: null, jobs: 0, producers: [],
     gross_output_units: 0, revenue: null, value_added: null, operating_surplus: null, attributed_demand_units: null, demand_attribution: 'population_share_of_city_basket',
     tax_base: null, tax_collected: null, logistics: 'unknown',
-    reasons: ['Vesnice zatím nemá venkovské výrobní místo v uzavřeném tahu — postavte ho na obdělávané parcele v tomto poli.', 'Daň z osady se zatím nevybírá.'] });
+    reasons: ['Vesnice zatím nemá venkovské výrobní místo v uzavřeném tahu — postavte ho na obdělávané parcele v tomto poli. Místo bez cesty a dál než sousední pole od města nic neodveze (doprava 0 %) a vesnice to nezmění.', 'Daň z osady se zatím nevybírá.'] });
   return out.sort((a, b) => a.cell.localeCompare(b.cell));
 }

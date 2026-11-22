@@ -1,5 +1,5 @@
 import { foodRegrowth, herdRole, herdGrowth, herdOutput, HERD_CARRYING_PER_CAPACITY, HERD_OPENING, FOOD_RURAL_BASE } from './foodSpecialization.ts';
-import { parcelTransport, siteSpecs, FREIGHT_RECIPES, MACRO_RESERVE_RECIPES, macroReserveKey, type RuralContext } from './ruralSites.ts';
+import { parcelTransport, withVillageTransport, siteSpecs, FREIGHT_RECIPES, MACRO_RESERVE_RECIPES, macroReserveKey, type RuralContext } from './ruralSites.ts';
 import type { Producer } from './goodsEconomy.ts';
 
 /** Physical potential, not output. Only the goods solver can harvest it with staffed labour. */
@@ -69,7 +69,9 @@ export function parcelProducers(parcels: EconomicParcel[], terrain: ParcelTerrai
     if (rural.fieldParcels?.has(p.id)) continue;
     const site = siteByParcel.get(p.id);
     const { specs } = siteSpecs(parcelPotential(p, terrain, turn), site && site.owner === city.owner ? site : undefined, p.grid_x, p.grid_y, rural.deposits, rural.microFindings?.get(p.id),p.sub_biome);
-    const transport = rural.roads ? parcelTransport(`${p.grid_x},${p.grid_y}`, city.cell, rural.roads, city.owner) : { factor: 1, mode: 'local' as const };
+    const baseTransport = rural.roads ? parcelTransport(`${p.grid_x},${p.grid_y}`, city.cell, rural.roads, city.owner) : { factor: 1, mode: 'local' as const };
+    // A persisted village in this macro cell can only raise a footpath factor (cell-level, once per parcel).
+    const transport = withVillageTransport(baseTransport, rural.villages?.get(`${p.grid_x},${p.grid_y}`), city.owner);
     for (const raw of specs) {
       // Freight applies at the point of entry: only what can be hauled is harvested (no phantom stock).
       const factor = FREIGHT_RECIPES.has(raw.recipe) ? transport.factor : 1;

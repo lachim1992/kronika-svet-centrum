@@ -255,8 +255,13 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
       ...(surveyMap.get(`${p.owner_player}|${mx},${my}`) || new Set<string>())
     ]));
   }
+  // Persisted villages (rural_settlements). Missing table before its migration = no villages, i.e.
+  // no bonus (conservative: never more freight than the plain road graph allows).
+  let villageRows:any[]=[];
+  if(parcelMode){try{villageRows=await rows(sb,'rural_settlements',session);}catch(_){villageRows=[];}}
+  const villages=new Map<string,{level:number;owner:string}>(villageRows.map((v:any)=>[`${v.grid_x},${v.grid_y}`,{level:Number(v.level)||1,owner:String(v.owner_player||'')}]));
   if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,
-    {sites:ruralSites,roads:roadEdges,deposits:confirmedDeposits,reserves,fieldParcels,immature,microFindings,
+    {sites:ruralSites,roads:roadEdges,villages,deposits:confirmedDeposits,reserves,fieldParcels,immature,microFindings,
       herdStock:new Map(foodSpecs.map((f:any)=>[f.site_parcel_id,f.stock_mode==='starter_kit'?'starter_kit':'found']))}),
     ...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
   const ruralAttached=ruralCatchments(db.province_hexes,cities);

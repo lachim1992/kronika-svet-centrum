@@ -11,6 +11,28 @@
 export const RURAL_SETTLEMENT_COST = 20;          // gold, server constant; client never sends a price
 export const RURAL_SETTLEMENT_REACH = 2;          // max Chebyshev macro distance from the city's own square
 export const RURAL_SETTLEMENT_NAME_MAX = 40;
+export const RURAL_SETTLEMENT_MAX_LEVEL = 3;
+/** Upgrade price to reach a level (gold_reserve). Bound in SQL `upgrade_rural_settlement` too; client never sends it. */
+export const RURAL_SETTLEMENT_UPGRADE_COST: Record<number, number> = { 2: 40, 3: 80 };
+/**
+ * The ONLY economic effect of a village: village tracks / carts raise the bulk-freight factor of a
+ * FOOTPATH parcel (the cell adjacent to the city seat with no completed own road) in the village's
+ * own macro cell. It never touches 'no_road' (stays 0 = blocked), 'road' or 'local' (already 1),
+ * never exceeds 1 and stays below a road at every level — roads remain the real infrastructure.
+ * It only changes how much of the existing physical potential can be hauled; nothing is minted.
+ */
+export const VILLAGE_FOOTPATH_STEP = 0.15;
+export function villageFootpathFactor(base: number, level: number): number {
+  const l = Math.max(0, Math.min(RURAL_SETTLEMENT_MAX_LEVEL, Math.floor(Number(level) || 0)));
+  return Math.min(1, base + VILLAGE_FOOTPATH_STEP * l);
+}
+export function upgradeRuralSettlementReason(a: { player: string; village: { owner_player: string; level: number } | null; targetLevel: number }): string | null {
+  if (!a.village) return 'Vesnice neexistuje.';
+  if (a.village.owner_player !== a.player) return 'Vesnice ti nepatří.';
+  if (a.village.level >= RURAL_SETTLEMENT_MAX_LEVEL) return 'Vesnice má nejvyšší úroveň.';
+  if (a.targetLevel !== a.village.level + 1) return 'Lze povýšit jen o jednu úroveň.';
+  return null;
+}
 
 export interface VillageParcel { id: string; session_id?: string; grid_x: number; grid_y: number; city_id: string | null; owner_player: string | null; claim_kind: string | null; building_id?: string | null }
 export interface VillageCity { id: string; owner_player: string | null; grid_x: number | null; grid_y: number | null; status?: string | null }

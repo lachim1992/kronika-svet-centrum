@@ -1,5 +1,14 @@
 # Map-first square-grid roadmap
 
+## Regionální venkovská ekonomika — etapa 3: účinek vesnic (2026-11-22)
+- [x] DONE kód: jediný ekonomický účinek vesnice = odvoz po stezce (footpath, sousední pole města bez vlastní dokončené cesty) v jejím makropoli: 25 % → 40/55/70 % (úroveň 1/2/3). Jen FREIGHT recepty, jen stejný vlastník, max 1, vždy pod cestou. 'no_road' zůstává 0 (blokované zůstává blokované), cesta/lokální 1. Efekt jde přes economyAdapter → parcelProducers → goodsEconomy (žádná paralelní cesta); nic se nemintuje, žádná nová práce ani lidé, jeden efekt na parcelu.
+- [x] DONE kód: UPGRADE_RURAL_SETTLEMENT + RPC `upgrade_rural_settlement` (additivně v NEAPLIKOVANÉ migraci 20261122170000; cena 40/80 vázaná v SQL, vlastník/tah/resolving_turn, krok +1, max 3, jeden debit gold_reserve, idempotence command_id přes `rural_settlement_upgrades`).
+- [x] DONE UI: aktuální bonus, skutečně použitý bonus a odvezené jednotky navíc z committed reportu; tlačítko povýšení jen když je tabulka dostupná a úroveň < 3; chyba se hlásí, nikdy falešný úspěch.
+- [ ] BLOCKED (uživatel): aplikace migrace + deploy command-dispatch a process-turn/refresh-economy (sdílí economyAdapter). Před migrací: adapter bere 0 vesnic = bez bonusu.
+- [ ] BLOCKED sýpky/sklady: `storage` v goodsEconomy je městská kapacita s pravidly spoilage; vesnický příspěvek by vyžadoval změnu city.storage mimo šablony budov — neimplementováno, spoilage beze změny.
+- [ ] BLOCKED daň: `settle_cash_taxes` bere jen claims per město (poll_due + domestic_effective_rate na financial_accounts plátce); venkovská přidaná hodnota už je v městské bázi domácí daně → samostatný venkovský pilíř by danil dvakrát. tax_collected zůstává null.
+- [ ] Známá mezera: venkovské místo s dopravou 0 (bez cesty) nevytvoří producenta, takže v projekci osady chybí; vesnice to vysvětluje důvodem.
+
 ## Regionální venkovská ekonomika — etapa 2 (2026-11-22)
 - [x] DONE oprava etapy 1: goodsEconomy dává venkovská metadata (rural_population/workforce/employed/labor_origin) i předčasným 0-výstupním diagnostikám (missing_local_delivery_route, missing_inputs/missing_input_route); osada tak neztrácí zablokovaná místa ani obyvatele. Poptávka nese `demand_attribution`, chybějící construction_efficiency zůstává null.
 - [x] DONE kód: tabulka `rural_settlements` + RPC `create_rural_settlement` (migrace `supabase/migrations/20261122170000_rural_settlements.sql`, NEAPLIKOVÁNA); příkaz CREATE_RURAL_SETTLEMENT (serverová cena 20 zlata, dosah 2 pole, jedna vesnice na pole, idempotence command_id, platba jen z gold_reserve v RPC); přehled uložených vesnic vs odvozených osad a tlačítko založení v Ekonomice.

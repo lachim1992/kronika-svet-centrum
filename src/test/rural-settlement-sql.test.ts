@@ -59,3 +59,40 @@ describe("create_rural_settlement SQL", () => {
     expect(await count(db)).toBe(1); expect(await gold(db)).toBe(80);
   });
 });
+
+const vid = async (db: PGlite) => (await db.query<{ id: string }>("SELECT id FROM rural_settlements")).rows[0].id;
+const level = async (db: PGlite) => (await db.query<{ l: number }>("SELECT level::int l FROM rural_settlements")).rows[0].l;
+const upg = (db: PGlite, id: string, o: { cmd?: string; player?: string; target?: number; cost?: number; turn?: number } = {}) =>
+  db.query("SELECT upgrade_rural_settlement($1,$2,$3,$4,$5,$6,$7) AS r", [S, o.cmd ?? "u1", o.player ?? "p", id, o.target ?? 2, o.cost ?? 40, o.turn ?? 5]);
+
+describe("upgrade_rural_settlement SQL", () => {
+  it("rejects client prices, skipped levels, foreign players and stale turns without debit", async () => {
+    const db = await database(); await call(db); const id = await vid(db);
+    await expect(upg(db, id, { cost: 0 })).rejects.toThrow();
+    await expect(upg(db, id, { target: 3, cost: 80 })).rejects.toThrow();
+    await expect(upg(db, id, { player: "q" })).rejects.toThrow();
+    await expect(upg(db, id, { turn: 4 })).rejects.toThrow();
+    expect(await gold(db)).toBe(80); expect(await level(db)).toBe(1);
+  });
+  it("debits once and increments once; a retry of the same command is a no-op", async () => {
+    const db = await database(); await call(db); const id = await vid(db);
+    await upg(db, id); await upg(db, id);
+    expect(await gold(db)).toBe(40); expect(await level(db)).toBe(2);
+    await expect(upg(db, id, { cmd: "u1", target: 3, cost: 80 })).rejects.toThrow();
+  });
+  it("concurrent identical upgrades debit once", async () => {
+    const db = await database(); await call(db); const id = await vid(db);
+    await Promise.allSettled([upg(db, id), upg(db, id)]);
+    expect(await gold(db)).toBe(40); expect(await level(db)).toBe(2);
+  });
+  it("stops at level 3 and refuses when gold is short", async () => {
+    const db = await database(); await call(db); const id = await vid(db);
+    await upg(db, id); // 80 -> 40, level 2
+    await expect(upg(db, id, { cmd: "u2", target: 3, cost: 80 })).rejects.toThrow(); // 40 < 80
+    await db.exec(`UPDATE realm_resources SET gold_reserve = 200 WHERE player_name = 'p'`);
+    await upg(db, id, { cmd: "u2", target: 3, cost: 80 });
+    expect(await level(db)).toBe(3); expect(await gold(db)).toBe(120);
+    await expect(upg(db, id, { cmd: "u3", target: 4, cost: 80 })).rejects.toThrow();
+    expect(await gold(db)).toBe(120);
+  });
+});

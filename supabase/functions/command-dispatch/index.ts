@@ -55,7 +55,7 @@ import { FORMATIONS } from "../_shared/fieldBattle.ts";
 import { FORMATION_PRESETS as SHARED_FORMATION_PRESETS, UNIT_GOLD_FACTOR as SHARED_GOLD, UNIT_PROD_FACTOR as SHARED_PROD, UNIT_TYPE_LABELS as SHARED_LABELS, presetRequirements, missingBuildings, computeStackPower } from "../_shared/unitTypes.ts";
 import { generalArmyCapacity } from "../_shared/generalCommand.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
-import { RURAL_SETTLEMENT_COST, RURAL_SETTLEMENT_REACH, ruralSettlementReason, sanitizeVillageName } from "../_shared/ruralSettlement.ts";
+import { RURAL_SETTLEMENT_COST, RURAL_SETTLEMENT_REACH, RURAL_SETTLEMENT_UPGRADE_COST, ruralSettlementReason, sanitizeVillageName, upgradeRuralSettlementReason } from "../_shared/ruralSettlement.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
 import { rationPolicy } from "../_shared/rationPolicy.ts";
@@ -642,6 +642,20 @@ async function executeCommand(
       if (reason) return { events: [], error: reason };
       const { data, error } = await supabase.rpc("create_rural_settlement" as any, { p_session: sessionId, p_command: String(commandId), p_player: actor.name, p_parcel: parcelId,
         p_name: name, p_cost: RURAL_SETTLEMENT_COST, p_reach: RURAL_SETTLEMENT_REACH, p_turn: turnNumber });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: data } as any;
+    }
+
+    case "UPGRADE_RURAL_SETTLEMENT": {
+      // Level 1→2→3. Price is a server constant (also bound in SQL); the RPC debits once and
+      // increments once under lock, idempotent by command_id. Effect: footpath freight in the cell only.
+      const settlementId = String(payload.settlementId || ""), target = Math.floor(Number(payload.targetLevel));
+      const { data: v, error: vErr } = await (supabase.from as any)("rural_settlements").select("id, owner_player, level").eq("session_id", sessionId).eq("id", settlementId).maybeSingle();
+      if (vErr) return { events: [], error: "Vesnice zatím nejsou v databázi dostupné (chybí migrace rural_settlements)." };
+      const reason = upgradeRuralSettlementReason({ player: actor.name, village: v as any, targetLevel: target });
+      if (reason) return { events: [], error: reason };
+      const { data, error } = await supabase.rpc("upgrade_rural_settlement" as any, { p_session: sessionId, p_command: String(commandId), p_player: actor.name,
+        p_settlement: settlementId, p_target_level: target, p_cost: RURAL_SETTLEMENT_UPGRADE_COST[target], p_turn: turnNumber });
       if (error) return { events: [], error: error.message };
       return { events: [], result: data } as any;
     }
