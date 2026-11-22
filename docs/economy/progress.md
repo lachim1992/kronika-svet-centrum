@@ -170,3 +170,11 @@ Soubory: supabase/functions/_shared/regionalSettlementEconomy.ts, src/components
 Soubory: `_shared/goodsFunction.ts` (nový), `_shared/productMarket.ts` (PRODUCT_META pro všechny přímé výrobky), `_shared/materialResources.ts` (hemp_yarn, textile_hemp/cotton/wool, weave_hemp, výstupy spin_hemp/weave_cotton/weave_wool), `_shared/economyAdapter.ts` (catalogDirectUse), migrace `20261122190000_textile_material_identity.sql` (neaplikovaná), atlas (`AtlasBaskets.tsx`, `canon.ts`), test `src/test/goods-function.test.ts` (nespuštěný).
 Omezení: staré zásoby textile_basic/yarn zůstávají lněnou linií (konopná příze vyrobená dříve zůstává `yarn`); sláva navázaná na textile_basic z bavlny/vlny doběhne přirozeným úpadkem. Kvalita a původ dál po městech, ne po šaržích. Bez aplikace migrace DB stále vyrábí z weave_cotton/weave_wool textile_basic (katalog a DB se rozcházejí, dokud se migrace neaplikuje).
 Další úkol: provenience šarží pro kvalitu (grain→flour→bread).
+
+## 2026-11-22 — Villages: granary storage + map production readout
+- DONE: `ruralSettlement.villageStorageLevels` (L1/2/3 = +0.25/+0.5/+1 warehouse level) added in `economyAdapter` to the owning city's canonical `City.storage` → real effect on goodsEconomy storable cap (overflow `lost_discard`) and natural decay. No village inventory, nothing minted; foreign-owner villages ignored.
+- DONE: map parcel panel shows committed-turn rural production per site, realized vs capacity, transport mode/%, explicit no_road warning, village freight gain, granary bonus; load failure disables founding with an error; success colour from theme.
+- DONE: `map-read-only.test.tsx` wraps the map in QueryClientProvider. New `rural-village-storage.test.ts` (pure + solver). Tests written, NOT run.
+- Requires deploy of process-turn + refresh-economy (+ command-dispatch unchanged) for the storage effect.
+- MISSING: neutral/AI city village founding (needs its own planner call in neutral-city-investments — deferred); rural tax stays inside city tax base (no separate pillar by design); construction payments from local inventories; village population growth stays the existing rural pool.
+- NEXT: neutral cities founding villages through the same SQL RPC from the neutral investment planner.

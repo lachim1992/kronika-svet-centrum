@@ -32,6 +32,7 @@ import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
 import RuralVillageMapPanel from "@/components/map/RuralVillageMapPanel";
+import { regionalSettlements } from "../../../supabase/functions/_shared/regionalSettlementEconomy";
 import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import FoodSpecializationPanel from "@/components/map/FoodSpecializationPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
@@ -467,6 +468,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const villageByParcel = useMemo(() => new Map(mapVillages.map(v => [v.parcel_id, v])), [mapVillages]);
 
   const { data: mgmt } = useManagementReport(sessionId, playerName, currentTurn);
+  const cellSettlements = useMemo(() => new Map(regionalSettlements((mgmt?.report as any) || {}).map(s => [s.cell, s])), [mgmt]);
   const parcelActuals = useMemo(() => indexParcelProducers((mgmt?.report as any)?.producers), [mgmt]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
   const [parcelsError, setParcelsError] = useState<string | null>(null);
@@ -2753,6 +2755,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </div>}
           {selectedCell && selectedParcel.id && <RuralVillageMapPanel
             key={selectedParcel.id}
+            settlement={cellSettlements.get(`${selectedParcel.grid_x},${selectedParcel.grid_y}`) ?? null}
+            reportTurn={mgmt?.reportTurn ?? null}
             sessionId={sessionId}
             currentTurn={currentTurn}
             playerName={playerName}

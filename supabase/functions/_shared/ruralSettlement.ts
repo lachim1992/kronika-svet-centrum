@@ -26,6 +26,23 @@ export function villageFootpathFactor(base: number, level: number): number {
   const l = Math.max(0, Math.min(RURAL_SETTLEMENT_MAX_LEVEL, Math.floor(Number(level) || 0)));
   return Math.min(1, base + VILLAGE_FOOTPATH_STEP * l);
 }
+/**
+ * Second (and last) economic effect: a village is a decentralised granary/store for its city.
+ * It adds warehouse LEVELS to the owning city's canonical `storage` (economyAdapter → City.storage),
+ * which goodsEconomy already uses for (a) the storable cap (× ECONOMY.warehouseCapacity bulk units,
+ * overflow = lost_discard) and (b) natural decay storageLoss/(1+storage). No parallel village
+ * inventory exists; goods stay in the city's balances. Only villages of the city's own owner count.
+ */
+export const VILLAGE_STORAGE_LEVELS: Record<number, number> = { 1: 0.25, 2: 0.5, 3: 1 };
+export function villageStorageLevels(level: number): number {
+  const l = Math.max(0, Math.min(RURAL_SETTLEMENT_MAX_LEVEL, Math.floor(Number(level) || 0)));
+  return VILLAGE_STORAGE_LEVELS[l] ?? 0;
+}
+export function villageStorageForCity(villages: { city_id: string; owner_player: string; level: number }[], city: { id: string; owner: string | null }): number {
+  return villages.filter(v => v.city_id === city.id && !!city.owner && v.owner_player === city.owner)
+    .reduce((s, v) => s + villageStorageLevels(v.level), 0);
+}
+
 export function upgradeRuralSettlementReason(a: { player: string; village: { owner_player: string; level: number } | null; targetLevel: number }): string | null {
   if (!a.village) return 'Vesnice neexistuje.';
   if (a.village.owner_player !== a.player) return 'Vesnice ti nepatří.';

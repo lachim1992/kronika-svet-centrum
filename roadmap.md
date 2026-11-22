@@ -676,3 +676,10 @@ Plán: `.lovable/plan/atlas.md` (původní `.lovable/plan.md` obnoven z 166e9b1d
 - [x] Atlas: podkoš, použití, materiál/výživa, recept
 - [ ] BLOCKED (uživatel): aplikace migrace 20261122190000_textile_material_identity.sql + nasazení process-turn/refresh-economy/command-dispatch; spuštění testů
 - [ ] Další: provenience šarží (lot) pro kvalitu; výživová vyváženost bez nové potřeby
+
+## Villages stage 3 (2026-11-22)
+- [x] Village granary → city canonical storage (spoilage/overflow)
+- [x] Map panel: production, haul, no_road warning, storage bonus
+- [x] Map tests QueryClientProvider fix
+- [ ] BLOCKED/deferred: neutral city autonomous villages (new planner step)
+- [ ] Construction payments from local inventories

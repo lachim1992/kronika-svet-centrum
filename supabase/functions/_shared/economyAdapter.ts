@@ -1,3 +1,4 @@
+import { villageStorageForCity } from './ruralSettlement.ts';
 import { aggregateRuralPopulationByCity, ruralCatchments } from './ruralGameplay.ts';
 import { catalogDirectUse } from './goodsFunction.ts';
 import { depositKey } from './ruralSites.ts';
@@ -262,6 +263,9 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   let villageRows:any[]=[];
   if(parcelMode){try{villageRows=await rows(sb,'rural_settlements',session);}catch(_){villageRows=[];}}
   const villages=new Map<string,{level:number;owner:string}>(villageRows.map((v:any)=>[`${v.grid_x},${v.grid_y}`,{level:Number(v.level)||1,owner:String(v.owner_player||'')}]));
+  // Village granaries extend the owning city's ONE canonical storage (no village inventory).
+  for(const c of cities){const extra=villageStorageForCity(villageRows.map((v:any)=>({city_id:String(v.city_id),owner_player:String(v.owner_player||''),level:Number(v.level)||1})),c);
+    if(extra>0){c.storage+=extra;(c as any).villageStorage=extra;}}
   if(parcelMode)producers.push(...parcelProducers(db.tile_parcels,db.province_hexes,cities,recipeByKey,turn,prior?.parcelEcology,
     {sites:ruralSites,roads:roadEdges,villages,deposits:confirmedDeposits,reserves,fieldParcels,immature,microFindings,
       herdStock:new Map(foodSpecs.map((f:any)=>[f.site_parcel_id,f.stock_mode==='starter_kit'?'starter_kit':'found']))}),

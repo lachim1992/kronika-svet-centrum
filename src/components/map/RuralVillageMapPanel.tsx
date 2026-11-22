@@ -13,8 +13,14 @@ import {
   ruralSettlementReason,
   sanitizeVillageName,
   villageFootpathFactor,
+  villageStorageLevels,
 } from "../../../supabase/functions/_shared/ruralSettlement";
 import { FOOTPATH_FACTOR } from "../../../supabase/functions/_shared/ruralSites";
+import type { RegionalSettlement } from "../../../supabase/functions/_shared/regionalSettlementEconomy";
+import { ECONOMY } from "../../../supabase/functions/_shared/economyConfig";
+
+const MODE_LABEL: Record<string, string> = { local: "ve městě", road: "po cestě", footpath: "po stezce", no_road: "bez spojení" };
+const fmt = (v: number | null | undefined) => v == null || !Number.isFinite(v) ? "—" : (Math.round(v * 10) / 10).toLocaleString("cs-CZ");
 
 type Parcel = { id: string; grid_x: number; grid_y: number; city_id: string | null; owner_player: string | null; claim_kind: string | null };
 type Village = { id: string; name: string; level: number; parcel_id: string; owner_player: string; grid_x: number; grid_y: number; city_id: string };
@@ -25,14 +31,18 @@ interface Props {
   currentTurn?: number;
   parcel: Parcel;
   onChanged?: () => void;
+  /** Committed-turn projection of this macro cell from the owner-scoped management report (null = no data). */
+  settlement?: RegionalSettlement | null;
+  reportTurn?: number | null;
 }
 
 /** Map parcel action. All prices, eligibility and payments are rechecked by the SQL RPC. */
-export default function RuralVillageMapPanel({ sessionId, playerName, currentTurn, parcel, onChanged }: Props) {
+export default function RuralVillageMapPanel({ sessionId, playerName, currentTurn, parcel, onChanged, settlement, reportTurn }: Props) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
   const cellKey = [sessionId, parcel.grid_x, parcel.grid_y];
   const villagesKey = ["map-rural-villages", ...cellKey];
   const { data: villages, error: villagesError, isLoading: villagesLoading } = useQuery({
@@ -59,8 +69,11 @@ export default function RuralVillageMapPanel({ sessionId, playerName, currentTur
   });
 
   const village = villages?.[0] ?? null;
-  const blocked = villagesLoading || cityLoading || villagesError || cityError;
-  const reason = blocked
+  const loadFailed = !!villagesError || !!cityError;
+  const blocked = villagesLoading || cityLoading || loadFailed;
+  const reason = loadFailed
+    ? "Údaje o vesnici nebo městě nelze načíst — zakládání je vypnuté."
+    : blocked
     ? "Ověřuji dostupnost parcel a vesnic."
     : ruralSettlementReason({
         player: playerName,
@@ -75,6 +88,7 @@ export default function RuralVillageMapPanel({ sessionId, playerName, currentTur
     if (busy || currentTurn == null || currentTurn < 1 || blocked) return;
     setBusy(true);
     setMessage(null);
+    setOk(false);
     try {
       const result = await dispatchCommand({
         sessionId, turnNumber: currentTurn, actor: { name: playerName },
@@ -84,6 +98,7 @@ export default function RuralVillageMapPanel({ sessionId, playerName, currentTur
         setMessage(result?.error || "Server příkaz odmítl.");
         return;
       }
+      setOk(true);
       setMessage(commandType === "CREATE_RURAL_SETTLEMENT" ? "Vesnice založena." : "Vesnice povýšena.");
       await Promise.all([
         qc.invalidateQueries({ queryKey: villagesKey }),
@@ -114,6 +129,10 @@ export default function RuralVillageMapPanel({ sessionId, playerName, currentTur
             Odvoz po stezce: {Math.round(FOOTPATH_FACTOR * 100)} % → {Math.round(villageFootpathFactor(FOOTPATH_FACTOR, village.level) * 100)} %.
             Dokončená cesta zůstává 100 %, pole bez spojení 0 %.
           </p>
+          <p className="text-muted-foreground">
+            Sýpka: +{villageStorageLevels(village.level)} úrovně skladu města (≈ {fmt(villageStorageLevels(village.level) * ECONOMY.warehouseCapacity)} objemových jednotek), méně kažení a přebytků navíc
+            {village.level < RURAL_SETTLEMENT_MAX_LEVEL ? ` · na úrovni ${village.level + 1}: +${villageStorageLevels(village.level + 1)}` : ""}.
+          </p>
           {village.owner_player === playerName && village.level < RURAL_SETTLEMENT_MAX_LEVEL && (
             <Button size="sm" variant="outline" className="w-full" disabled={busy || currentTurn == null}
               onClick={() => void run("UPGRADE_RURAL_SETTLEMENT", {
@@ -140,7 +159,31 @@ export default function RuralVillageMapPanel({ sessionId, playerName, currentTur
           {reason && <p className="text-muted-foreground">{reason}</p>}
         </div>
       )}
-      {message && <p role="status" className={message.includes("založena") || message.includes("povýšena") ? "text-emerald-500" : "text-destructive"}>{message}</p>}
+      <div className="space-y-1 border-t border-border/60 pt-2" aria-label="Výroba a odvoz pole">
+        <p className="font-medium">Výroba a odvoz do města{reportTurn ? ` (uzavřený tah ${reportTurn})` : ""}</p>
+        {!settlement || settlement.producers.length === 0 ? (
+          <p className="text-muted-foreground">— Uzavřený tah zde neeviduje žádné venkovské provozy (pole není obdělávané, nemá stavbu nebo chybí přehled).</p>
+        ) : (
+          <>
+            <p className="text-muted-foreground">Venkované {fmt(settlement.rural_population)} · pracuje {fmt(settlement.employed)} z {fmt(settlement.workforce)}</p>
+            <ul className="space-y-0.5">
+              {settlement.producers.map(p => (
+                <li key={p.producer} className={p.transport_mode === "no_road" ? "text-destructive" : ""}>
+                  {p.good}: odvezeno {fmt(p.realized)} z kapacity {fmt(p.capacity)} · {MODE_LABEL[p.transport_mode ?? ""] ?? "doprava neznámá"}
+                  {p.freight_factor != null ? ` (${Math.round(p.freight_factor * 100)} %)` : ""}
+                  {p.blocked ? ` · ${p.blocked}` : ""}
+                </li>
+              ))}
+            </ul>
+            {settlement.producers.some(p => p.transport_mode === "no_road") && (
+              <p role="alert" className="text-destructive">Pole nemá spojení s městem: těžké zboží se neodveze. Postav cestu — vesnice samotná to nezmění.</p>
+            )}
+            {settlement.village_freight_gain_units > 0 && <p className="text-muted-foreground">Díky vesnici odvezeno navíc {fmt(settlement.village_freight_gain_units)}.</p>}
+            <p className="text-muted-foreground">Zboží jde do skladu a trhu města; daň jen přes daně města, samostatná vesnická daň neexistuje.</p>
+          </>
+        )}
+      </div>
+      {message && <p role="status" className={ok ? "text-primary" : "text-destructive"}>{message}</p>}
     </section>
   );
 }

@@ -2,6 +2,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const { invoke, read } = vi.hoisted(() => ({ invoke: vi.fn(), read: vi.fn() }));
 vi.mock("@/integrations/supabase/client", () => ({
@@ -20,6 +22,9 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 vi.mock("@/hooks/useManagementReport", () => ({ useManagementReport: () => ({ data: null }) }));
 import IsometricSquareMap from "@/components/map/IsometricSquareMap";
+
+const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const wrap = (node: ReactNode) => <QueryClientProvider client={client}>{node}</QueryClientProvider>;
 
 describe("read-only map updates", () => {
   it("never invokes seeding on mount, player changes, turn changes or remount", async () => {
