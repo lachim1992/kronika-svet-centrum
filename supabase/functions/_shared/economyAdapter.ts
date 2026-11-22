@@ -440,7 +440,10 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     const stockHistory=new Map<string,{stored:number;demand:number}>(
       (prior?.balances||[]).map((row:any)=>[
         `${row.city}::${row.good}`,
-        {stored:nonnegative(row.stored),demand:nonnegative(row.demand)}
+        {stored:nonnegative(row.stored),demand:Math.max(
+          nonnegative(row.demand),
+          nonnegative(row.consumed_household)+nonnegative(row.consumed_state)
+            +nonnegative(row.consumed_as_input)+nonnegative(row.exported))}
       ]));
     for(const g of autoGroups){
       const avail=g.candidates.map(r=>(r.input_items||[]).filter((x:any)=>!isFactor(x)&&!isStaged(x)).every((x:any)=>expectedDetail(g.city,x.key??x.good_key).available));
