@@ -159,54 +159,19 @@ describe('catalog-wide industrial chains (adapter, LOCK)', () => {
     // All catalog chains are already verified individually in the cases above.
     // Running the entire enlarged (197+ recipes) world as ONE O(N^3) network stalls CI;
     // this stress fixture deliberately samples separate baskets and multi-input chains.
-    // Choose at least one material-consuming recipe per demand basket and add
-    // difficult multi-input recipes. Individual A chains above still cover
-    // every catalog processing recipe; this is a deliberately bounded stress world.
-    const allMaterialRecipes = RECIPES.filter(r => materialInputs(r).length > 0);
-    const baskets = new Map<string,CatalogRecipe>();
-    for (const r of allMaterialRecipes) {
-      const basket = goodByKey.get(r.output)?.basket ?? 'unclassified';
-      if (!baskets.has(basket)) baskets.set(basket,r);
-    }
-    const stressRecipes = [...new Map([
-      ...[...baskets.values(), ...allMaterialRecipes.filter(r=>materialInputs(r).length >= 2).slice(0,8)]
-        .map(r=>[r.key,r] as const)
-    ]).values()];
-
-    // This is a contention/stress fixture, not an infinite-supply fixture:
-    // many producers compete for the same upstream goods, household reserves,
-    // and road capacity. Individual recipe tests above require full A delivery.
-    const need = new Map<string, number>();
-    for (const g of GOODS) if (g.finalUse) need.set(g.key, 150);
-    // Memoize downstream depth: the previous per-recursion graph scan repeated
-    // the same exponentially branching work as the number of recipes grew.
-    const consumerGoods = new Map<string,string[]>();
-    for (const r of RECIPES) for (const input of materialInputs(r)) {
-      const targets = consumerGoods.get(input.good) ?? [];
-      targets.push(r.output); consumerGoods.set(input.good,targets);
-    }
-    const cachedDepth = new Map<string,number>();
-    const depth = (good:string, visited=new Set<string>()):number => {
-      if (visited.has(good)) return 0;
-      const cached = cachedDepth.get(good);
-      if (cached !== undefined) return cached;
-      visited.add(good);
-      const consumers=consumerGoods.get(good) ?? [];
-      const result=consumers.length?1+Math.max(...consumers.map(g=>depth(g,visited))):0;
-      visited.delete(good);
-      cachedDepth.set(good,result);
-      return result;
-    };
-    const capacityOf = new Map<string, number>();
-    for (const r of RECIPES.slice().sort((a, b) => depth(a.output) - depth(b.output))) {
-      const target = Math.max(20, need.get(r.output) ?? 0);
-      capacityOf.set(r.key, target / 0.5);
-      for (const i of materialInputs(r)) need.set(i.good, (need.get(i.good) ?? 0) + target * i.qty / r.qty);
-    }
+    // Connected miniature economy across food, metal, tool and ceramic branches.
+    // Every individual A-input recipe is already tested independently above;
+    // this fixture exercises shared ledgers and transport contention without
+    // the unrealistic exponential all-to-all world topology.
+    const stressKeys = new Set(['mill_grain','bake_staples','smelt_iron',
+      'forge_tools','make_pottery','cast_bronze']);
+    const stressRecipes=RECIPES.filter(r=>stressKeys.has(r.key));
+    expect(stressRecipes).toHaveLength(stressKeys.size);
+    const baseCapacity=40;
     const w = world();
     w.tables.economy_turn_ledgers = [{ opening: [] as any[] }];
     const built = new Set<string>();
-    for (const r of stressRecipes) addProducer(w, r.key, `c_${r.key}`, capacityOf.get(r.key)!, built);
+    for (const r of stressRecipes) addProducer(w, r.key, `c_${r.key}`, baseCapacity, built);
     const t=finalize(w);
     // This outlying processing town has NO physical road connection. Guaranteed
     // scarcity lets the stress fixture assert both positive commerce and
