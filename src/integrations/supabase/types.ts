@@ -7945,6 +7945,66 @@ export type Database = {
           },
         ]
       }
+      neutral_city_expansion_plans: {
+        Row: {
+          city_id: string
+          command_id_claim: string
+          command_id_survey: string
+          created_at: string
+          grid_x: number
+          grid_y: number
+          owner_player: string
+          quote_gold: number
+          reason: Json
+          session_id: string
+          status: string
+          turn_number: number
+        }
+        Insert: {
+          city_id: string
+          command_id_claim: string
+          command_id_survey: string
+          created_at?: string
+          grid_x: number
+          grid_y: number
+          owner_player: string
+          quote_gold: number
+          reason?: Json
+          session_id: string
+          status: string
+          turn_number: number
+        }
+        Update: {
+          city_id?: string
+          command_id_claim?: string
+          command_id_survey?: string
+          created_at?: string
+          grid_x?: number
+          grid_y?: number
+          owner_player?: string
+          quote_gold?: number
+          reason?: Json
+          session_id?: string
+          status?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "neutral_city_expansion_plans_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "neutral_city_expansion_plans_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       neutral_city_investment_plans: {
         Row: {
           action: string
@@ -8027,6 +8087,50 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "building_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      neutral_city_relations: {
+        Row: {
+          disposition: string
+          faction_a: string
+          faction_b: string
+          last_decision_turn: number
+          observed_trade: number
+          rationale: Json
+          rivalry: number
+          session_id: string
+          trust: number
+        }
+        Insert: {
+          disposition: string
+          faction_a: string
+          faction_b: string
+          last_decision_turn: number
+          observed_trade?: number
+          rationale?: Json
+          rivalry?: number
+          session_id: string
+          trust?: number
+        }
+        Update: {
+          disposition?: string
+          faction_a?: string
+          faction_b?: string
+          last_decision_turn?: number
+          observed_trade?: number
+          rationale?: Json
+          rivalry?: number
+          session_id?: string
+          trust?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "neutral_city_relations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -13983,6 +14087,10 @@ export type Database = {
         }
         Returns: Json
       }
+      plan_neutral_city_expansion: {
+        Args: { p_session: string; p_turn: number }
+        Returns: Json
+      }
       plan_neutral_city_investments: {
         Args: { p_session: string; p_turn: number }
         Returns: Json
@@ -14063,6 +14171,10 @@ export type Database = {
       replace_goods_economy_projection: {
         Args: { p_payload: Json; p_session: string; p_turn: number }
         Returns: undefined
+      }
+      resolve_neutral_city_diplomacy: {
+        Args: { p_session: string; p_turn: number }
+        Returns: Json
       }
       set_food_specialization: {
         Args: {
