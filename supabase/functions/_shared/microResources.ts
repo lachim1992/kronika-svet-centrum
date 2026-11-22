@@ -5,21 +5,27 @@
  * true deposits allow them — so a micro find never invents a deposit the macro geology does not hold.
  */
 import { type Deposit, type DepositKind } from "./geology.ts";
+import { MATERIAL_SOURCES } from "./materialResources.ts";
 
 export type MicroResourceKind =
   | "grain" | "stone" | "timber" | "fish" | "peat" | "clay" | "fibre" | "game" | "resin"
-  | "wild_grapes" | "olives" | "iron" | "gold" | "copper" | "granite" | "herbs";
+  | "wild_grapes" | "olives" | "iron" | "gold" | "copper" | "granite" | "herbs"
+  | "tin" | "lead" | "silver" | "coal" | "salt" | "sulfur" | "marble" | "limestone" | "sandstone"
+  | "flint" | "obsidian" | "gypsum" | "kaolin" | "sand" | "ochre" | "cedar" | "hardwood"
+  | "hemp" | "cotton" | "reeds" | "papyrus";
 
 export const MICRO_RESOURCE_GOOD: Record<MicroResourceKind, string | null> = {
   grain: "raw_grain", stone: "raw_stone", timber: "raw_timber", fish: "raw_fish", peat: "peat", clay: null,
   fibre: "raw_fiber", game: "raw_meat", resin: "raw_incense", wild_grapes: "raw_grapes", olives: "raw_olives",
-  iron: "raw_ore", gold: "gold_ore", copper: null, granite: null, herbs: null,
-};
+  iron: "iron_ore", gold: "gold_ore", copper: "copper_ore", granite: "raw_granite", herbs: "raw_herbs",
+  ...Object.fromEntries(MATERIAL_SOURCES.map(s => [s.kind,s.good])),
+} as Record<MicroResourceKind,string|null>;
 export const MICRO_RESOURCE_LABEL: Record<MicroResourceKind, string> = {
   grain: "Obilí", stone: "Kámen", timber: "Dřevo", fish: "Ryby", peat: "Rašelina", clay: "Hlína", fibre: "Len a vlákna",
   game: "Zvěř", resin: "Pryskyřice", wild_grapes: "Divoká réva", olives: "Olivy", iron: "Železná ruda", gold: "Zlatá ruda",
   copper: "Měděná ruda", granite: "Žula", herbs: "Byliny",
-};
+  ...Object.fromEntries(MATERIAL_SOURCES.map(s => [s.kind,s.label])),
+} as Record<MicroResourceKind,string>;
 
 const ARABLE = new Set(["grassland", "fertile_flat", "clearing", "fertile_silt", "terrace", "sheltered_hollow", "creek_bank", "raised_bank"]);
 const ROCKY = new Set(["hillock", "cliff_edge", "steep_slope", "saddle", "permafrost_rise"]);
@@ -36,6 +42,7 @@ export function certainMicroResources(subBiome: string | null | undefined, macro
   if (WOODS.has(s)) out.push("timber");
   if (WET_EDGE.has(s)) out.push("fish");
   if (BOG.has(s)) out.push("peat");
+  if (s === "sand_flat" || s === "dune") out.push("sand");
   return out;
 }
 
@@ -61,12 +68,22 @@ export const MICRO_CHANCES: Record<string, Partial<Record<MicroResourceKind, num
   shore: { clay: .15 },
   dune: { olives: .08 },
 };
+// Other natural sources have the exact same per-parcel survey/deterministic incidence.
+// Never guess geologic mineral truth from a biome alone.
+for(const item of MATERIAL_SOURCES) for(const [sub,p] of Object.entries(item.biomes)) {
+  (MICRO_CHANCES[sub] ??= {})[item.kind as MicroResourceKind] = p;
+}
 
-const MINERAL: Partial<Record<MicroResourceKind, DepositKind>> = { iron: "iron", gold: "gold", copper: "copper", granite: "granite", wild_grapes: "wild_grapes" };
+const MINERAL: Partial<Record<MicroResourceKind, DepositKind>> = { iron: "iron", gold: "gold", copper: "copper", granite: "granite", wild_grapes: "wild_grapes",
+ ...Object.fromEntries(MATERIAL_SOURCES.filter(s=>s.macro).map(s=>[s.kind,s.macro])) as Partial<Record<MicroResourceKind,DepositKind>> };
 
 /** Public prospect probability for maps/editors: 1 for certain resources, otherwise the biome chance gated by macro geology. */
 export function microResourceProbability(kind: MicroResourceKind, subBiome: string | null | undefined,
-  macroBiome: string | null | undefined, macroDeposits: Deposit[]): number {
+  macroBiome: string | null | undefined, macroDeposits: Deposit[], climate?: {temp_band?:number|null;moisture_band?:number|null;has_river?:boolean;coastal?:boolean}): number {
+  const t=climate?.temp_band, m=climate?.moisture_band;
+  if (t != null && ((kind==="cotton" || kind==="papyrus") && t<3 || (kind==="cedar" && t<1))) return 0;
+  if (m != null && (kind==="cotton" && m<2 || kind==="papyrus" && m<2 || kind==="salt" && m>2)) return 0;
+  if (kind==="papyrus" && climate && !(climate.has_river || macroBiome==="swamp")) return 0;
   if (certainMicroResources(subBiome, macroBiome).includes(kind)) return 1;
   const needs = MINERAL[kind];
   if (needs && !macroDeposits.some(d => d.kind === needs)) return 0;
@@ -78,7 +95,7 @@ function hash(s: string): number { let h = 2166136261; for (let i = 0; i < s.len
 export interface MicroFinding { kind: MicroResourceKind; good: string | null; implemented: boolean; certain: boolean }
 
 /** Server only (needs the private salt + macro truth). Deterministic: same inputs → same finds. */
-export function surveyMicroSquare(salt: string, mx: number, my: number, subBiome: string | null | undefined, macroBiome: string | null | undefined, macroDeposits: Deposit[]): MicroFinding[] {
+export function surveyMicroSquare(salt: string, mx: number, my: number, subBiome: string | null | undefined, macroBiome: string | null | undefined, macroDeposits: Deposit[], climate?: {temp_band?:number|null;moisture_band?:number|null;has_river?:boolean;coastal?:boolean}): MicroFinding[] {
   const macroKinds = new Set(macroDeposits.map(d => d.kind));
   const found = new Map<MicroResourceKind, boolean>();
   for (const k of certainMicroResources(subBiome, macroBiome)) found.set(k, true);
@@ -86,7 +103,8 @@ export function surveyMicroSquare(salt: string, mx: number, my: number, subBiome
   for (const [kind, p] of Object.entries(chances) as [MicroResourceKind, number][]) {
     const needs = MINERAL[kind];
     if (needs && !macroKinds.has(needs)) continue;
-    if (hash(`${salt}:micro:${kind}:${mx}:${my}`) < p && !found.has(kind)) found.set(kind, false);
+    const chance=microResourceProbability(kind,subBiome,macroBiome,macroDeposits,climate);
+    if (hash(`${salt}:micro:${kind}:${mx}:${my}`) < chance && !found.has(kind)) found.set(kind, false);
   }
   return [...found.entries()].map(([kind, certain]) => ({ kind, good: MICRO_RESOURCE_GOOD[kind], implemented: MICRO_RESOURCE_GOOD[kind] !== null, certain }));
 }
@@ -98,7 +116,8 @@ export const MICRO_SURVEY_COST = 2;
 export const RECIPE_MICRO_RESOURCE: Record<string, MicroResourceKind> = {
   fell_timber: "timber", quarry_stone: "stone", mine_iron: "iron", mine_gold: "gold", harvest_wheat: "grain", harvest_barley: "grain",
   harvest_rice: "grain", herd_cattle: "grain", harvest_grapes: "wild_grapes", cut_peat: "peat", catch_fish: "fish",
-};
+  ...Object.fromEntries(MATERIAL_SOURCES.map(s=>[s.harvest,s.kind])),
+} as Record<string,MicroResourceKind>;
 
 /**
  * Stage 2 gate: a rural site may stand only on a micro-square where at least one of its recipes' resources is confirmed —
