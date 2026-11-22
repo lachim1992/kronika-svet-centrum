@@ -1463,7 +1463,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     </g>;
   };
 
-  const buildOnParcel = async (template: BuildingTemplate) => {
+  const buildOnParcel = async (template: BuildingTemplate, resourceRecipe?:string) => {
     if (!selectedParcel || !parcelBuildCity || parcelBuildCity.owner_player !== playerName) return;
     if (selectedParcel.status === "wild") { toast.error("Nejprve parcelu zaber"); return; }
     const needGold = Number(template.cost_wealth || 0);
@@ -1473,6 +1473,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setBuildingAction(`building-${template.id}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_BUILDING", commandPayload: {
       cityId: parcelBuildCity.id, cityName: parcelBuildCity.name, parcelId: selectedParcel.id,
+      resourceRecipe,
       building: { template_id: template.id, name: template.name, category: template.category, description: template.description,
         cost_wealth: template.cost_wealth, cost_wood: template.cost_wood, cost_stone: template.cost_stone, cost_iron: template.cost_iron,
         build_duration: template.build_turns, effects: template.effects, max_level: template.max_level, level_data: template.level_data },
@@ -2802,15 +2803,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             hasWater={!!selected?.has_river || !!selected?.coastal}
             treasury={{ gold: treasury.gold, production: treasury.production }}
             subnodeBlockReason={key => subnodeBlockReason({ key } as SubnodeOption)}
-            siteBlockReason={item => {
-              const rural = item.kind === "building" && templateSiteRole(item.recipes.map(recipe => recipe.key)) === "rural";
+            siteBlockReason={(item,resourceRecipe) => {
+              const selectedRecipeKeys=resourceRecipe?[resourceRecipe]:item.recipes.map(recipe => recipe.key);
+              const rural = item.kind === "building" && templateSiteRole(selectedRecipeKeys) === "rural";
               if (selectedParcel?.claim_kind === "worked" && !rural) return "Na využívané půdě lze stavět jen farmy, doly, lomy, tábory a rybářství — zpracování patří do města";
               if (selectedParcel?.claim_kind !== "worked" && rural) return "Těžební stavba patří na využívanou parcelu za městem — vyber ji nebo ji zdarma zaber";
-              if (rural) return microSiteReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome, selected?.biome_family, selectedMicroFindings)
-                ?? depositSurveyReason(item.recipes.map(recipe => recipe.key), selectedMacroSurvey);
+              if (rural) return microSiteReason(selectedRecipeKeys, selectedParcel?.sub_biome, selected?.biome_family, selectedMicroFindings)
+                ?? depositSurveyReason(selectedRecipeKeys, selectedMacroSurvey);
               return null;
             }}
-            terrainBlockReason={item => terrainReason(item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome)}
+            terrainBlockReason={(item,resourceRecipe) => terrainReason(resourceRecipe?[resourceRecipe]:item.recipes.map(recipe => recipe.key), selectedParcel?.sub_biome)}
             basketOptions={districtKey => {
               const blueprint = availableDistrictBlueprints(parcelEconomyVersion).find(d => d.key === districtKey);
               const choices = blueprint?.baskets?.length ? blueprint.baskets : DEMAND_BASKETS.map(b => b.key);
@@ -2821,10 +2823,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               : item.kind === "district"
                 ? (item.category === "housing" ? buildResidential : (DISTRICT_SPRITE[item.refId] || buildInfrastructure))
                 : buildSprite(item.name, item.category)}
-            onBuild={(item, basketKey) => {
+            onBuild={(item, basketKey, resourceRecipe) => {
               if (item.kind === "building") {
                 const template = buildingTemplates.find(t => t.id === item.refId);
-                if (template) void buildOnParcel(template);
+                if (template) void buildOnParcel(template,resourceRecipe);
               } else if (item.kind === "district") {
                 const blueprint = availableDistrictBlueprints(parcelEconomyVersion).find(d => d.key === item.refId);
                 if (blueprint) void buildDistrict(blueprint, blueprint.district_type === "production" ? basketKey : undefined);
