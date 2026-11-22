@@ -256,6 +256,8 @@ export const PRODUCTION_BUILDINGS: BuildingContract[] = [
     levels: [['forge_arms'], ['leather_armor'], ['forge_fine_arms']] },
   { name: 'Stavební dílna', category: 'economic', roles: ['urban', 'guild'], tags: ['construction', 'master_craft'],
     levels: [['build_materials'], [], ['build_luxury']] },
+  { name: 'Sklárna', category: 'economic', roles: ['urban'], tags: ['glassmaking'],
+    levels: [['make_glass'], [], []] },
   { name: 'Hrnčířská dílna', category: 'economic', roles: ['urban'], tags: ['crafting'],
     levels: [['make_pottery'], [], []] },
   { name: 'Vinařství', category: 'economic', roles: ['urban', 'guild'], tags: ['fermenting', 'master_craft'],
