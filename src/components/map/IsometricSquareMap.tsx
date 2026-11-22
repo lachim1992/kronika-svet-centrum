@@ -1331,7 +1331,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       // the first claim (CLAIM_TILE_PARCEL → ensureTileParcels). Unsaved preview rows have id "",
       // so id-based actions stay disabled; claiming sends only the parcel index. Read-only.
       const tile = tileByCell.get(cellKey(gridX, gridY));
-      setTileParcels(tile ? subBiomesOf(tile, gridX, gridY).map(spec => ({
+      const neighbours = tile ? CARDINAL_STEPS.flatMap(step => {
+        const n = tileByCell.get(cellKey(gridX + step.dx, gridY + step.dy));
+        return n ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(n) }] : [];
+      }) : [];
+      setTileParcels(tile ? generateTileParcels(sessionId, gridX, gridY, terrainOf(tile), neighbours).map(spec => ({
         id: "", grid_x: gridX, grid_y: gridY, parcel_index: spec.parcelIndex, parcel_x: spec.parcelX, parcel_y: spec.parcelY,
         sub_biome: spec.subBiome, elevation: spec.elevation, buildable: spec.buildable, build_cost_multiplier: spec.buildCostMultiplier,
         capacity_slots: spec.capacitySlots, status: "wild", land_use: null, city_id: null, owner_player: null, claim_kind: null,
@@ -1342,7 +1346,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     } finally {
       if (request === parcelRequestRef.current) setParcelsLoading(false);
     }
-  }, [sessionId, tileByCell, subBiomesOf]);
+  }, [sessionId, tileByCell, terrainOf]);
 
   useEffect(() => {
     if (!selected) {
