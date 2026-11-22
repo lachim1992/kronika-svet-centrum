@@ -77,7 +77,7 @@ export function BuildCatalogPanel(props: Props) {
     return MATERIAL_SOURCES.filter(s=>s.building===item.name && allowed.has(s.harvest));
   };
   const selectedSource=(item:CatalogItem) =>
-    pickSource[item.key] || sourceChoices(item)[0]?.harvest;
+    pickSource[item.key] || undefined;
 
   /** Hard blocker — the parcel or the treasury refuses this build right now. */
   const blockedBy = (item: CatalogItem,sourceRecipe?:string): string | null => {
@@ -194,8 +194,9 @@ export function BuildCatalogPanel(props: Props) {
               {materialOptions.length > 0 && <div className="mt-2 space-y-1">
                 <p className="text-[10px] font-medium">Těžená / sklízená surovina</p>
                 <select className="h-7 w-full rounded border border-input bg-background px-1 text-[11px]"
-                  aria-label="Přírodní surovina stavby" value={resourceRecipe}
+                  aria-label="Přírodní surovina stavby" value={resourceRecipe || ""}
                   onChange={e=>setPickSource(x=>({...x,[item.key]:e.target.value}))}>
+                  <option value="">Výchozí výroba (bez zvláštní těžby)</option>
                   {materialOptions.map(s=><option key={s.harvest} value={s.harvest}>{s.label}</option>)}
                 </select>
                 <p className="text-[10px] text-muted-foreground">Vyžaduje nalezené ložisko nebo surovinu na vybrané mikroparcele.</p>
@@ -206,7 +207,7 @@ export function BuildCatalogPanel(props: Props) {
               </select>}
               <div className="mt-2 flex items-center gap-2">
                 <Button size="sm" className="h-7 flex-1 px-2 text-[11px]" disabled={!!blocked || !!props.busyKey}
-                  title={blocked || undefined} onClick={() => props.onBuild(item, picked, resourceRecipe)}>
+                  title={blocked || undefined} onClick={() => props.onBuild(item, picked, resourceRecipe || undefined)}>
                   {props.busyKey === item.key ? <Loader2 className="h-3 w-3 animate-spin" /> : "Postavit"}
                 </Button>
               </div>
