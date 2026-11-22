@@ -8,7 +8,9 @@ describe("admin resource atlas", () => {
   });
   it("rare chance is shown over a certain everyday resource", () => {
     const c = microAtlasCell("dense_forest", "forest", []);
-    expect(c.top).toBe("game"); expect(c.p).toBe(.45);
+    // Newly introduced hardwood has the same rare probability as game.
+    // Tie-breaking between equally likely resources is display-only.
+    expect(["game", "hardwood"]).toContain(c.top); expect(c.p).toBe(.45);
     expect(c.all.find(x => x.kind === "timber")?.p).toBe(1);
   });
 });

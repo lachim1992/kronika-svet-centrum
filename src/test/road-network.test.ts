@@ -41,7 +41,8 @@ describe("road tiers", () => {
   });
 
   it("returns the next tier or null at the top", () => {
-    expect(nextRoadTier("trail")?.key).toBe("road");
+    // Two-tier road model: trail -> paved; "road" is a legacy alias of paved.
+    expect(nextRoadTier("trail")?.key).toBe("paved");
     expect(nextRoadTier("paved")).toBeNull();
   });
 

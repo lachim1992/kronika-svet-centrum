@@ -11,9 +11,11 @@
 export const SPUR_COST_PER_TILE = 1.4; // off-road haul is pricier than a road tile
 export const MAX_CATCHMENT_RADIUS = 4;
 
-/** A resource node connects on its own cell or one cardinal neighbour. */
-export function nodeCatchmentRadius(_node: any): number {
-  return 1;
+/** Rural minor parent sites may walk two PASSABLE cardinal cells to the city or network,
+ * then their child micro sites join that spur at one cell. This is a real per-cell
+ * foot haul (each edge charged), never an unconstrained instant transfer. */
+export function nodeCatchmentRadius(node: { node_tier?:string|null }): number {
+  return node.node_tier === 'minor' ? 2 : 1;
 }
 
 /** A city connects on its own cell or one cardinal neighbour. */

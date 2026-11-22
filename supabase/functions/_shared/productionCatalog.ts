@@ -64,7 +64,8 @@ export const GOODS: CatalogGood[] = [
   { key: 'raw_grapes', basket: 'variety', stage: 'raw', finalUse: false, household: false },
   { key: 'raw_fiber', basket: 'basic_clothing', stage: 'raw', finalUse: false, household: false },
   { key: 'raw_hide', basket: 'basic_clothing', stage: 'raw', finalUse: false, household: false },
-  { key: 'raw_ore', basket: 'metalwork', stage: 'raw', finalUse: false, household: false }, // legacy only, no longer mined
+  // raw_ore remains a DB compatibility good for historical stock, but is deliberately
+  // excluded from the NEW producible catalog: iron_ore/copper_ore have disjoint recipes.
   { key: 'raw_stone', basket: 'construction', stage: 'raw', finalUse: false, household: false },
   { key: 'raw_timber', basket: 'construction', stage: 'raw', finalUse: false, household: false },
   { key: 'raw_incense', basket: 'admin_supplies', stage: 'raw', finalUse: false, household: false },
