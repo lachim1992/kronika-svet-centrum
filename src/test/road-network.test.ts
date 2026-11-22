@@ -38,10 +38,13 @@ describe("road tiers", () => {
     const byKey = roadTierByKey("paved");
     const byLevel = roadTierByLevel(3);
     expect(byKey).toEqual(byLevel);
+    expect(roadTierByKey("road")).toEqual(byKey); // persisted legacy key
+    expect(roadTierByLevel(2)).toEqual(byKey); // canonical new level
   });
 
   it("returns the next tier or null at the top", () => {
-    expect(nextRoadTier("trail")?.key).toBe("road");
+    expect(nextRoadTier("trail")?.key).toBe("paved");
+    expect(nextRoadTier("road")).toBeNull(); // legacy alias is already paved
     expect(nextRoadTier("paved")).toBeNull();
   });
 
