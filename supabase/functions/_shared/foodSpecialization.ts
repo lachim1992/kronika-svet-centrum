@@ -12,7 +12,7 @@ import { FOOD_RESOURCES, foodResourceByKey, foodResourceChance, foodHash, WATER_
 /** Single-crop recipes of the pre-v1 rural templates; a food specialization replaces them on its site. */
 export const LEGACY_CROP_RECIPES = new Set(['harvest_wheat', 'harvest_barley', 'harvest_rice', 'herd_cattle', 'harvest_grapes', 'catch_fish']);
 /** Living-herd by-products: no slaughter, no herd depletion. */
-export const FOOD_BYPRODUCT: Record<string, string> = { cattle: 'milk_cattle', goats: 'milk_goats', chickens: 'collect_eggs' };
+export const FOOD_BYPRODUCT: Record<string, string> = { cattle: 'milk_cattle', goats: 'milk_goats', chickens: 'collect_eggs', sheep: 'shear_sheep' };
 export const FOOD_BYPRODUCT_RECIPES = new Set(Object.values(FOOD_BYPRODUCT));
 
 const PERENNIAL = new Set(['olives', 'grapes', 'dates', 'bananas_plantains']);
@@ -25,7 +25,7 @@ export function establishTurns(r: FoodResource): number {
 const BASE: Record<FoodGroup, number> = { cereal: 2.2, legume: 2, tuber: 2.4, vegetable: 2, fruit: 1.4, livestock: 1, poultry: 1.2, fish: 1.8, apiary: 0.5 };
 export const FOOD_RURAL_BASE: Record<string, number> = {
   ...Object.fromEntries(FOOD_RESOURCES.map((r) => [r.harvest, BASE[r.group]])),
-  milk_cattle: 1.5, milk_goats: 1, collect_eggs: 1,
+  milk_cattle: 1.5, milk_goats: 1, collect_eggs: 1, shear_sheep: 1.25,
 };
 /** Crops that profit from attached farm fields (same bonus as legacy field crops). */
 export const FOOD_FIELD_RECIPES = new Set(FOOD_RESOURCES.filter((r) => ['cereal', 'legume', 'tuber', 'vegetable'].includes(r.group)).map((r) => r.harvest));
