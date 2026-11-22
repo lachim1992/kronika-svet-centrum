@@ -60,7 +60,9 @@ export default function RuralVillageMapPanel({ sessionId, playerName, currentTur
 
   const village = villages?.[0] ?? null;
   const blocked = villagesLoading || cityLoading || villagesError || cityError;
-  const reason = blocked
+  const reason = villagesError || cityError
+    ? "Údaje o vesnici nebo městě nelze načíst; zakládání je vypnuté."
+    : blocked
     ? "Ověřuji dostupnost parcel a vesnic."
     : ruralSettlementReason({
         player: playerName,
@@ -140,7 +142,7 @@ export default function RuralVillageMapPanel({ sessionId, playerName, currentTur
           {reason && <p className="text-muted-foreground">{reason}</p>}
         </div>
       )}
-      {message && <p role="status" className={message.includes("založena") || message.includes("povýšena") ? "text-emerald-500" : "text-destructive"}>{message}</p>}
+      {message && <p role="status" className={message.includes("založena") || message.includes("povýšena") ? "text-primary" : "text-destructive"}>{message}</p>}
     </section>
   );
 }
