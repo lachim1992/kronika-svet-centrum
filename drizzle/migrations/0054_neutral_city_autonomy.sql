@@ -73,10 +73,10 @@ BEGIN
     -- A city can specialize its sole worked resource site. Its choice is deterministic
     -- from the map's food_specializations, not inferred from its display name.
     v_source_key:=NULL;v_source_good:=NULL;
-    SELECT fs.resource_key,r.output_good_key INTO v_source_key,v_source_good
+    SELECT fs.resource_key,har.output_good_key INTO v_source_key,v_source_good
       FROM public.food_specializations fs
       JOIN public.tile_parcels tp ON tp.id=fs.site_parcel_id AND tp.session_id=fs.session_id
-      JOIN public.production_recipes r ON r.recipe_key='harvest_food_'||fs.resource_key
+      JOIN public.production_recipes har ON har.recipe_key='harvest_food_'||fs.resource_key
      WHERE fs.session_id=p_session AND tp.city_id=b.city_id AND tp.claim_kind='worked'
      ORDER BY fs.resource_key LIMIT 1;
 
