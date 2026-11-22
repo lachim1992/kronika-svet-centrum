@@ -2703,6 +2703,72 @@ export type Database = {
           },
         ]
       }
+      construction_allocations: {
+        Row: {
+          building_id: string | null
+          city_id: string
+          command_id: string
+          created_at: string
+          draws: Json
+          gold_paid: number
+          id: string
+          player_name: string
+          production_paid: number
+          requirement: Json
+          session_id: string
+          status: string
+          turn_number: number
+          updated_at: string
+        }
+        Insert: {
+          building_id?: string | null
+          city_id: string
+          command_id: string
+          created_at?: string
+          draws: Json
+          gold_paid: number
+          id?: string
+          player_name: string
+          production_paid: number
+          requirement: Json
+          session_id: string
+          status?: string
+          turn_number: number
+          updated_at?: string
+        }
+        Update: {
+          building_id?: string | null
+          city_id?: string
+          command_id?: string
+          created_at?: string
+          draws?: Json
+          gold_paid?: number
+          id?: string
+          player_name?: string
+          production_paid?: number
+          requirement?: Json
+          session_id?: string
+          status?: string
+          turn_number?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "construction_allocations_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "construction_allocations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       council_evaluations: {
         Row: {
           created_at: string
@@ -10034,6 +10100,7 @@ export type Database = {
           computed_modifiers: Json | null
           connected_nodes: number | null
           construction_available_for_capex: number
+          construction_reserve_composition: Json
           created_at: string
           cultural_prestige: number
           economic_prestige: number
@@ -10147,6 +10214,7 @@ export type Database = {
           computed_modifiers?: Json | null
           connected_nodes?: number | null
           construction_available_for_capex?: number
+          construction_reserve_composition?: Json
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
@@ -10260,6 +10328,7 @@ export type Database = {
           computed_modifiers?: Json | null
           connected_nodes?: number | null
           construction_available_for_capex?: number
+          construction_reserve_composition?: Json
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
@@ -13945,6 +14014,20 @@ export type Database = {
         }
         Returns: Json
       }
+      allocate_construction_reserve: {
+        Args: {
+          p_city: string
+          p_command: string
+          p_gold: number
+          p_iron: number
+          p_player: string
+          p_session: string
+          p_stone: number
+          p_turn: number
+          p_wood: number
+        }
+        Returns: Json
+      }
       apply_atomic_turn_phase: {
         Args: {
           p_phase: string
@@ -14085,6 +14168,10 @@ export type Database = {
         Args: { p_current_turn: number; p_session_id: string }
         Returns: undefined
       }
+      commit_construction_allocation: {
+        Args: { p_building: string; p_command: string; p_session: string }
+        Returns: Json
+      }
       commit_goods_economy_ledger: {
         Args: { p_session: string; p_turn: number }
         Returns: undefined
@@ -14098,6 +14185,10 @@ export type Database = {
           p_turn: number
         }
         Returns: undefined
+      }
+      construction_composition_normalize: {
+        Args: { p_comp: Json; p_reserve: number }
+        Returns: Json
       }
       create_rural_settlement: {
         Args: {
@@ -14288,6 +14379,10 @@ export type Database = {
           p_x: number
           p_y: number
         }
+        Returns: Json
+      }
+      release_construction_allocation: {
+        Args: { p_command: string; p_session: string }
         Returns: Json
       }
       rename_province: {
