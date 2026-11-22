@@ -218,6 +218,27 @@ interface Props {
 }
 
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; province_id: string | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null; coastal: boolean | null };
+/**
+ * Terrain sub-biomes and building templates never change during play, so they are
+ * fetched once per world and reused across turn/player changes and remounts.
+ * Failed reads are not cached, so the next load retries.
+ */
+const staticTerrainCache = new Map<string, Promise<{ subBiomes: { data: any[] | null }; templates: { data: any[] | null } }>>();
+function loadStaticTerrain(sessionId: string) {
+  let hit = staticTerrainCache.get(sessionId);
+  if (!hit) {
+    hit = Promise.all([
+      supabase.from("tile_parcels").select("grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId).limit(40000),
+      supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
+    ]).then(([subBiomes, templates]) => {
+      if (subBiomes.error || templates.error || !(subBiomes.data?.length)) staticTerrainCache.delete(sessionId);
+      return { subBiomes: { data: subBiomes.data }, templates: { data: templates.data } };
+    });
+    staticTerrainCache.set(sessionId, hit);
+  }
+  return hit;
+}
+
 type StoredSubBiome = { grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number; sub_biome: string };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
 type HexPopulation = { q: number; r: number; carrying_capacity: number; rural_population: number; mobile_population: number; last_resolved_turn: number };
@@ -542,13 +563,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("basket_trade_flows").select("id, basket_key, path_cells, transport_modes, source_city_id, target_city_id, source_player, target_player, volume, gross_value").eq("session_id", sessionId).eq("turn_number", currentTurn).not("path_cells", "is", null),
       supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, controller_player, soldiers, morale, unit_count, power, stance, formation_type, battle_formation, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player, claim_kind").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
-      supabase.from("tile_parcels").select("grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome").eq("session_id", sessionId).limit(40000),
+      loadStaticTerrain(sessionId).then(t => t.subBiomes),
       supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
       supabase.from("tile_parcel_contents").select("id, parcel_id, entity_type, entity_id, slots_used").eq("session_id", sessionId),
       supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
       supabase.from("road_segments").select("id, project_id, owner_player, from_x, from_y, to_x, to_y, level, status, progress, capacity, utilization, maintenance, bridge_count, sub_path_cells").eq("session_id", sessionId),
       supabase.from("road_projects").select("id, owner_player, level, status, progress, path_cells, sub_path_cells, bridge_count, cost_gold, cost_production").eq("session_id", sessionId),
-      supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
+      loadStaticTerrain(sessionId).then(t => t.templates),
       supabase.from("city_buildings").select("id, name, category, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
       supabase.from("city_districts").select("id, city_id, name, status, district_type, basket_key, basket_output, is_staffed, population_capacity, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId),
       supabase.from("hex_population").select("q, r, carrying_capacity, rural_population, mobile_population, last_resolved_turn").eq("session_id", sessionId).limit(4000),
