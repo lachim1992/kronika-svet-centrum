@@ -13827,6 +13827,18 @@ export type Database = {
         Args: { _session_id: string; _user_id?: string }
         Returns: boolean
       }
+      occupy_city_parcel_atomic: {
+        Args: {
+          p_entity: string
+          p_kind: string
+          p_land_use: string
+          p_parcel: string
+          p_player: string
+          p_session: string
+          p_worked?: boolean
+        }
+        Returns: Json
+      }
       plant_crop: {
         Args: {
           p_cost: number
