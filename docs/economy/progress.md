@@ -147,3 +147,7 @@ Textile/tools/storage still have no producer, AI fuel stocks remain disconnected
 
 ## 2026-11-18 turn-21 deactivation audit
 See docs/economy/JV72O7-turn21-deactivation-audit.md. Tests: full suite 1140 passed / 3 skipped. Next: real Player→AI1 road or physical sea mode for built ports.
+
+
+## 2026-11-22 Regionální osady etapa 1
+Soubory: supabase/functions/_shared/regionalSettlementEconomy.ts, src/components/economy/RegionalSettlementsPanel.tsx, PhysicalEconomyPanel.tsx, src/test/regional-settlement-economy.test.ts. Testy napsány, nespuštěny, bez deploye. Další krok: migrace persistované vesnice + příkaz.

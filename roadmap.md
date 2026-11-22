@@ -1,5 +1,12 @@
 # Map-first square-grid roadmap
 
+## Regionální venkovská ekonomika — etapa 1 (2026-11-22)
+- [x] DONE: čistý modul `_shared/regionalSettlementEconomy.ts` — osady jako deterministická projekce makropole (hex_population → producer.ruralLabor) nad committed management reportem; obyvatelstvo/pracovní síla jednou za pole, bez započtení do městské práce; výroba, tržby, přidaná hodnota, přiřazený podíl poptávky, daňová základna (nevybraná), doprava `unknown` při chybějících datech, důvody nerůstu.
+- [x] DONE: odvozený report stavební rezervy z balances.stored × construction_efficiency; převedená rezerva zvlášť, nikdy nesčítaná; mimo město `unknown`.
+- [x] DONE: read-only panel ve Fyzické ekonomice (Economy tab). Testy napsány, nespuštěny.
+- [ ] BLOCKED: založení vesnice — existuje jen FOUND_CITY a venkovská místa na obdělávaných parcelách; nový příkaz bez migrace a perzistentní entity nevznikl.
+- [ ] Etapa 2: persistovaná entita vesnice + command-dispatch příkaz (migrace); skutečné mzdy/domácnosti/daně přes existující finanční účty; kapacity sýpek/skladů; platby staveb z lokálních inventářů; uzlová (node_inventory) dostupnost přes cesty.
+
 ## Finanční sektory — etapa 1 (2026-11-21)
 - [x] Audit aktuálního schématu a writerů; STATE pouze čte gold_reserve; existující mzdová hotovost není kopírována.
 - [x] Nové nulové účty MUNICIPAL / PRIVATE / ORGANIZATION, atomické ověřené převody a read-only přehled v Ekonomice i Dev; migrace 0038–0041 aplikované.
