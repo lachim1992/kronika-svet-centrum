@@ -38,6 +38,19 @@ export default function PhysicalEconomyPanel({sessionId,cities,playerName,curren
       <thead><tr>{['Město / zboží','Potřeba','Domácnosti','Uzly','Budovy','Čtvrti','Vstupy','Spotřeba','Dovoz','Vývoz','Sklad','Ztráty','CAPEX','Chybí','Kvalita','Přidaná hodnota'].map(x=><th className="p-2 text-right" key={x}>{x}</th>)}</tr></thead>
       <tbody>{balances.map(b=><tr className="border-t" key={`${b.city}:${b.good}`}><td>{name(b.city)} / {b.good}</td>{[b.demand,b.produced_household,b.produced_node,b.produced_facility,b.produced_district,b.consumed_as_input,b.consumed_household+b.consumed_state,b.imported,b.exported,b.stored,b.lost_spoilage,b.capex,b.unmet_demand,b.quality,b.gross_output_value-b.intermediate_value].map((n,i)=><td className="text-right p-2" key={i} title={i===10?`Ztráty: zkáza zásob ${fmt(b.lost_decay??0)} · doprava ${fmt(b.lost_transport??0)} · neuskladněný přebytek ${fmt(b.lost_discard??0)}`:undefined}>{fmt(n)}</td>)}</tr>)}</tbody>
     </table></div>
+    <details>
+      <summary className="font-semibold cursor-pointer">Přebytky a tlak zásob</summary>
+      <p className="text-xs text-muted-foreground my-2">Fyzické ukazatele z uzavřeného kola. Sklad ani hodnota výroby nejsou tržby; převod na peníze vyžaduje doložený prodej.</p>
+      <div className="overflow-auto"><table className="text-xs w-full">
+        <thead><tr>{['Město / výrobek','Sklad + vyřazeno','Sklad (kol odbytu)','Výroba / fyzický odtok'].map(x=><th key={x} className="p-2 text-right">{x}</th>)}</tr></thead>
+        <tbody>{balances.filter(b=>(b.surplus_overhang??0)>0).map(b=><tr className="border-t" key={`overhang:${b.city}:${b.good}`}>
+          <td className="p-2">{name(b.city)} / {b.good}</td>
+          <td className="p-2 text-right">{fmt(b.surplus_overhang??0)}</td>
+          <td className="p-2 text-right">{b.inventory_cover_turns==null?'Bez odbytu':fmt(b.inventory_cover_turns)}</td>
+          <td className="p-2 text-right">{b.production_to_outflow_ratio==null?'Bez odtoku':fmt(b.production_to_outflow_ratio)}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </details>
     {(()=>{const lostRows=balances.filter(b=>(b.lost_spoilage||0)>0);const blockers=((report as any).import_blockers||[]).filter((x:any)=>!city||x.city===city);if(!lostRows.length&&!blockers.length)return null;
       const reasonLabel:Record<string,string>={trade_blocked:'obchod blokován (válečný stav)',route_unreachable:'nedosažitelná cesta',beyond_reach:'mimo dosah trasy',margin_unprofitable:'nezisková přeprava',route_capacity:'kapacita trasy',source_retained:'zdroj si ponechal rezervu',source_empty:'zdroj nemá přebytek',no_source_attempted:'žádný zdroj se nepokusil dodat'};
       return <details open><summary className="font-semibold cursor-pointer">Rozpad ztrát a blokátoři dovozu</summary>
