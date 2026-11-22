@@ -10807,6 +10807,133 @@ export type Database = {
           },
         ]
       }
+      rural_settlement_upgrades: {
+        Row: {
+          command_id: string
+          cost_paid: number
+          created_at: string
+          from_level: number
+          id: string
+          owner_player: string
+          session_id: string
+          settlement_id: string
+          to_level: number
+          turn_number: number
+        }
+        Insert: {
+          command_id: string
+          cost_paid: number
+          created_at?: string
+          from_level: number
+          id?: string
+          owner_player: string
+          session_id: string
+          settlement_id: string
+          to_level: number
+          turn_number: number
+        }
+        Update: {
+          command_id?: string
+          cost_paid?: number
+          created_at?: string
+          from_level?: number
+          id?: string
+          owner_player?: string
+          session_id?: string
+          settlement_id?: string
+          to_level?: number
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rural_settlement_upgrades_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rural_settlement_upgrades_settlement_id_fkey"
+            columns: ["settlement_id"]
+            isOneToOne: false
+            referencedRelation: "rural_settlements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rural_settlements: {
+        Row: {
+          city_id: string
+          command_id: string
+          cost_paid: number
+          created_at: string
+          founded_turn: number
+          grid_x: number
+          grid_y: number
+          id: string
+          level: number
+          name: string
+          owner_player: string
+          parcel_id: string
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          city_id: string
+          command_id: string
+          cost_paid?: number
+          created_at?: string
+          founded_turn?: number
+          grid_x: number
+          grid_y: number
+          id?: string
+          level?: number
+          name: string
+          owner_player: string
+          parcel_id: string
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          city_id?: string
+          command_id?: string
+          cost_paid?: number
+          created_at?: string
+          founded_turn?: number
+          grid_x?: number
+          grid_y?: number
+          id?: string
+          level?: number
+          name?: string
+          owner_player?: string
+          parcel_id?: string
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rural_settlements_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rural_settlements_parcel_id_fkey"
+            columns: ["parcel_id"]
+            isOneToOne: true
+            referencedRelation: "tile_parcels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rural_settlements_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saga_versions: {
         Row: {
           author_player: string
@@ -13972,6 +14099,19 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_rural_settlement: {
+        Args: {
+          p_command: string
+          p_cost: number
+          p_name: string
+          p_parcel: string
+          p_player: string
+          p_reach: number
+          p_session: string
+          p_turn: number
+        }
+        Returns: Json
+      }
       create_territory_district: {
         Args: {
           p_kind: string
@@ -14273,6 +14413,18 @@ export type Database = {
           p_session: string
         }
         Returns: undefined
+      }
+      upgrade_rural_settlement: {
+        Args: {
+          p_command: string
+          p_cost: number
+          p_player: string
+          p_session: string
+          p_settlement: string
+          p_target_level: number
+          p_turn: number
+        }
+        Returns: Json
       }
     }
     Enums: {
