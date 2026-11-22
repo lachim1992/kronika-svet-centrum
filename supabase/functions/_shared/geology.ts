@@ -3,18 +3,24 @@
  * Deposits depend only on a private per-session salt + coordinates, so regeneration is idempotent.
  * Only resources with a canonical goods chain are `implemented`; the rest are prospects (no output).
  */
-export type DepositKind = "stone" | "granite" | "iron" | "copper" | "gold" | "timber" | "fertile_soil" | "wild_grapes" | "herbs";
+import { MATERIAL_SOURCES } from './materialResources.ts';
+export type DepositKind =
+  | "stone" | "granite" | "iron" | "copper" | "gold" | "timber" | "fertile_soil" | "wild_grapes" | "herbs"
+  | "tin" | "lead" | "silver" | "coal" | "salt" | "sulfur" | "marble" | "limestone" | "sandstone"
+  | "flint" | "obsidian" | "gypsum" | "kaolin" | "ochre";
 export interface Deposit { kind: DepositKind; good: string | null; implemented: boolean; grade: 1 | 2 | 3; reserve: number | null; regenerates: boolean; tag?: string }
 export interface MacroHexInput { biome_family: string; mean_height?: number | null; temp_band?: number | null; moisture_band?: number | null; is_passable?: boolean | null; has_river?: boolean | null; coastal?: boolean | null }
 
 export const DEPOSIT_GOOD: Record<DepositKind, string | null> = {
-  stone: "raw_stone", granite: null, iron: "raw_ore", copper: null, gold: "gold_ore",
-  timber: "raw_timber", fertile_soil: null, wild_grapes: "raw_grapes", herbs: null,
-};
+  stone: "raw_stone", granite: "raw_granite", iron: "iron_ore", copper: "copper_ore", gold: "gold_ore",
+  timber: "raw_timber", fertile_soil: null, wild_grapes: "raw_grapes", herbs: "raw_herbs",
+  ...Object.fromEntries(MATERIAL_SOURCES.filter(r=>r.macro).map(r=>[r.macro!,r.good])),
+} as Record<DepositKind,string|null>;
 export const DEPOSIT_LABEL: Record<DepositKind, string> = {
   stone: "Kámen", granite: "Žula", iron: "Železná ruda", copper: "Měděná ruda", gold: "Zlatá ruda",
   timber: "Dřevo", fertile_soil: "Úrodná půda", wild_grapes: "Divoká réva", herbs: "Byliny",
-};
+  ...Object.fromEntries(MATERIAL_SOURCES.filter(r=>r.macro).map(r=>[r.macro!,r.label])),
+} as Record<DepositKind,string>;
 
 function hash(s: string): number { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; }
 /** Coarse value noise so ore bodies cluster across neighbouring tiles. */
@@ -69,6 +75,24 @@ export function generateMacroDeposits(salt: string, x: number, y: number, hex: M
     const copper = cluster(salt, "copper", x, y, 6);
     if (copper > .7) add("copper", grade(copper), Math.round(100 + copper * 300));
     if (goldVeins?.has(`${x},${y}`)) { const g = goldScore(salt, x, y, b); add("gold", mountain ? grade(g) : g > .9 ? 2 : 1, Math.round((mountain ? 40 : 15) + g * (mountain ? 60 : 25))); }
+  }
+  // Geological occurrences are stable and PRIVATE until a paid survey.
+  // Coarse clustered noise yields deposits in coherent regions; finite reserves are
+  // later debited only against committed extraction in parcelEcology.
+  for (const source of MATERIAL_SOURCES) {
+    if(!source.macro || ["iron","copper","granite"].includes(source.macro))continue;
+    const kind=source.macro as DepositKind;
+    const sedimentary=["limestone","sandstone","gypsum","salt","flint","kaolin","ochre"].includes(kind);
+    const eligible=rocky || (sedimentary && (/plain|coast|desert|swamp/.test(b)||hex.coastal));
+    if(!eligible)continue;
+    const signal=cluster(salt,kind,x,y,kind==="silver"||kind==="obsidian"?3:5);
+    const threshold=kind==="silver"?0.78:kind==="obsidian"?0.83:kind==="tin"?0.7:
+      kind==="marble"?0.72:kind==="salt"?0.64:kind==="sulfur"?0.73:
+      ["limestone","sandstone","flint"].includes(kind)?0.48:0.63;
+    if(signal<threshold)continue;
+    const amount=Math.round((kind==="silver"||kind==="obsidian"?60:200) + signal*
+      (kind==="silver"||kind==="obsidian"?170:500));
+    add(kind,grade(signal),amount);
   }
   if (/forest|jungle|taiga|wood/.test(b)) {
     const q = r("timber"); const species = q > .8 ? "cedr" : q > .45 ? "dub" : "buk";
