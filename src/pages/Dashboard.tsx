@@ -110,11 +110,12 @@ const Dashboard = () => {
 
   const isMultiplayer = session?.game_mode === "tb_multi";
 
-  const { processing: turnProcessing, processNextTurn } = useNextTurn({
+  const { processing: turnProcessing, processNextTurn, turnProblem } = useNextTurn({
     sessionId: session?.id || sessionId || "",
     currentTurn,
     playerName: myPlayerName,
     gameMode: session?.game_mode,
+    resolvingTurn: session?.resolving_turn,
     onComplete: refetch,
   });
 
@@ -125,7 +126,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!isMultiplayer) return;
-    if (allPlayersClosed && !prevAllClosed.current && !turnProcessing && !commitLockRef.current) {
+    if (allPlayersClosed && !prevAllClosed.current && !turnProcessing && !turnProblem && !commitLockRef.current) {
       // All players just closed — auto-trigger next turn (with lock to prevent race condition)
       prevAllClosed.current = true;
       commitLockRef.current = true;
@@ -133,7 +134,7 @@ const Dashboard = () => {
     } else if (!allPlayersClosed) {
       prevAllClosed.current = false;
     }
-  }, [allPlayersClosed, isMultiplayer, turnProcessing, processNextTurn]);
+  }, [allPlayersClosed, isMultiplayer, turnProcessing, turnProblem, processNextTurn]);
 
   // ── Detect turn change and show notification to all players ──
   useEffect(() => {
@@ -384,7 +385,7 @@ const Dashboard = () => {
           playerName={myPlayerName}
           myRole={myRole}
           currentSessionId={session.id}
-          onNextTurn={processNextTurn}
+          onNextTurn={turnProblem ? undefined : processNextTurn}
           onCloseTurn={async () => {
             const me = players.find((p: any) => p.player_name === myPlayerName);
             if (!me) return;
@@ -409,6 +410,11 @@ const Dashboard = () => {
       }
       resourceHud={
         <>
+          {turnProblem && (
+            <div role="alert" className="border-b border-destructive/30 bg-background px-4 py-2 text-sm text-destructive">
+              {turnProblem}
+            </div>
+          )}
           <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} currentTurn={currentTurn} realm={myRealm} />
           <DevHUD sessionId={session.id} currentTurn={currentTurn} playerName={myPlayerName} />
         </>
@@ -586,6 +592,7 @@ const Dashboard = () => {
           sessionId={session.id}
           currentPlayerName={myPlayerName}
           currentTurn={currentTurn}
+          turnProblem={turnProblem}
           myRole={myRole}
           onRefetch={refetch}
           citiesCount={cities.length}

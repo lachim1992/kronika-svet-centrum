@@ -115,7 +115,7 @@ const TurnExecutionReport = ({ sessionId, canReconcile, onReconciled }: Props) =
   const errorPhases = phases.filter(([, r]) => statusOf(r) === "error");
   const warnPhases = phases.filter(([, r]) => statusOf(r) === "warn");
   const overallStatus: "ok" | "warn" | "error" =
-    errorPhases.length > 0 ? "error" : warnPhases.length > 0 ? "warn" : "ok";
+    !report.ok || report.topError || errorPhases.length > 0 ? "error" : warnPhases.length > 0 ? "warn" : "ok";
 
   const totalFailures = phases.reduce((sum, [, r]) => sum + (r.failures?.length || 0), 0);
   const ageMin = Math.round((Date.now() - report.ts) / 60000);
@@ -139,7 +139,7 @@ const TurnExecutionReport = ({ sessionId, canReconcile, onReconciled }: Props) =
               )}
               {overallStatus === "error" && (
                 <Badge className="text-[10px] py-0 bg-red-500/20 text-red-400 border-red-500/40">
-                  {errorPhases.length} fází selhalo
+                  {errorPhases.length > 0 ? `${errorPhases.length} fází selhalo` : "Tah nedokončen"}
                 </Badge>
               )}
               <span className="text-muted-foreground">

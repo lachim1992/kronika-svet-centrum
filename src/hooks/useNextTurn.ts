@@ -9,14 +9,21 @@ interface UseNextTurnOptions {
   currentTurn: number;
   playerName: string;
   gameMode?: string;
+  resolvingTurn?: number | null;
   onComplete: () => void;
 }
 
-export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onComplete }: UseNextTurnOptions) {
+export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, resolvingTurn, onComplete }: UseNextTurnOptions) {
   const [processing, setProcessing] = useState(false);
   const inFlight = useRef(false);
+  const [conflictState, setConflictState] = useState<{ sessionId: string; turn: number; message: string } | null>(null);
+  const turnProblem = resolvingTurn != null
+    ? "Předchozí tah ještě není dokončen. Nové zpracování je pozastaveno, aby se platby a změny neopakovaly."
+    : conflictState?.sessionId === sessionId && conflictState.turn === currentTurn
+      ? conflictState.message : null;
 
   const processNextTurn = async () => {
+    if (turnProblem) return;
     if (inFlight.current) return;
     inFlight.current = true;
     setProcessing(true);
@@ -48,6 +55,7 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
           const conflict = getCommitTurnConflict(body);
           if (conflict.changed) toast.info(conflict.message);
           else {
+            setConflictState({ sessionId, turn: currentTurn, message: conflict.message });
             toast.warning(conflict.message, { duration: 10000 });
             saveCommitTurnReport({
               ts: Date.now(), turn: currentTurn, sessionId, ok: false,
@@ -143,5 +151,5 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
     }
   };
 
-  return { processing, processNextTurn };
+  return { processing, processNextTurn, turnProblem };
 }

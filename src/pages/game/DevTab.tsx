@@ -11,6 +11,7 @@ interface Props {
   sessionId: string;
   currentPlayerName: string;
   currentTurn: number;
+  turnProblem?: string | null;
   myRole: string;
   citiesCount: number;
   eventsCount: number;
@@ -21,7 +22,7 @@ interface Props {
 }
 
 const DevTab = ({
-  sessionId, currentPlayerName, currentTurn, myRole,
+  sessionId, currentPlayerName, currentTurn, myRole, turnProblem,
   citiesCount, eventsCount, wondersCount, memoriesCount, playersCount,
   onRefetch,
 }: Props) => {
@@ -29,7 +30,7 @@ const DevTab = ({
   const [recomputing, setRecomputing] = useState(false);
 
   const handleNextTurn = async () => {
-    if (advancing) return;
+    if (advancing || turnProblem) return;
     setAdvancing(true);
     try {
       const { data, error } = await supabase.functions.invoke("commit-turn", {
@@ -67,6 +68,7 @@ const DevTab = ({
   };
 
   const handleRecomputeAll = async () => {
+    if (turnProblem) return;
     setRecomputing(true);
     try {
       const { data, error } = await supabase.functions.invoke("recompute-all", {
@@ -136,7 +138,7 @@ const DevTab = ({
           size="sm"
           variant="outline"
           onClick={handleRecomputeAll}
-          disabled={recomputing || advancing}
+          disabled={recomputing || advancing || !!turnProblem}
           className="gap-1.5"
         >
           {recomputing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -146,7 +148,7 @@ const DevTab = ({
           size="sm"
           variant="default"
           onClick={handleNextTurn}
-          disabled={advancing || recomputing}
+          disabled={advancing || recomputing || !!turnProblem}
           className="gap-1.5"
         >
           {advancing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SkipForward className="h-3.5 w-3.5" />}
