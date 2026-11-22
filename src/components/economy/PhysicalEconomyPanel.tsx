@@ -28,7 +28,7 @@ export default function PhysicalEconomyPanel({sessionId,cities,playerName,curren
     <SubsistencePanel subsistence={(report as any).subsistence?.filter((x:any)=>!city||x.city===city)} labor={report.labor?.filter((l:any)=>!city||l.city===city)} producers={report.producers?.filter((p:any)=>!city||p.city===city)} name={name} guidance={(report as any).build_guidance?.filter((x:any)=>!city||x.city===city)} />
     <FuelGuidancePanel warnings={(report as any).fuel_guidance} name={name} />
     <ConstructionMaterialsPanel rows={balances} name={name} reserve={report.metrics.find(m=>m.key==='construction_stock')?.value??undefined} />
-    <RegionalSettlementsPanel report={report} cities={cities} name={name} city={city||undefined} />
+    <RegionalSettlementsPanel report={report} cities={cities} name={name} city={city||undefined} sessionId={sessionId} playerName={playerName} currentTurn={currentTurn} />
     <IndustrialInputsPanel rows={report.industrial_inputs?.filter(x=>!city||x.city===city)} name={name} />
     <div className="flex flex-wrap gap-3">
       <label>Město <select className="bg-background border rounded p-1" value={city} onChange={e=>setCity(e.target.value)}><option value="">Všechna</option>{cities.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>

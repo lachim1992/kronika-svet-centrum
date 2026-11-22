@@ -137,6 +137,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const importBlockers: {city:string; good:string; unmet:number; reason:string; source:string|null}[]=[];
   const diagnostics: {producer:string; good:string; capacity:number; realized:number; factors:Record<string,number>;
     jobs_capacity?:number; employed?:number; staffing_ratio?:number; potential_output?:number;
+    rural_population?:number; rural_workforce?:number; rural_workforce_employed?:number; labor_origin?:'rural';
     inputs?:{good:string;required:number;supplied:number}[]; bottleneck?:string|null;
     blocked:string|null; delivery_path?:string[];
     /** Observational: quality and origin city of the lots this producer actually consumed. */
@@ -748,12 +749,15 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     for(const i of p.recipe.inputs)if(kindOf(i)==='material')industrialInputs.push({producer:p.id,city:p.city,good:i.good,
       planned:potential*i.qty/Math.max(C.epsilon,p.recipe.qty),local:0,imported:0,received:0,used:0,unmet:0,supplier:null,landed_unit_cost:null,blocked:null});
   }
+  // Rural labour metadata on EVERY diagnostic (also early blocked/zero-output exits), so the
+  // regional settlement projection never loses a cell's population or a blocked rural site.
+  const ruralMeta=(p:Producer)=>p.ruralLabor?{rural_population:p.ruralLabor.population,rural_workforce:Math.floor(p.ruralLabor.population*RURAL_WORKFORCE_SHARE),rural_workforce_employed:employed.get(p.id)||0,labor_origin:'rural' as const}:{};
   for(let pass=0;pending.size&&pass<C.maxProductionPasses;pass++){
     let progress=false;
     for(const [id,p] of pending){const c=cityById.get(p.city),g=goodByKey.get(p.recipe.good);if(!c||!g)throw Error(`Invalid producer ${id}`);
       const remote=!!p.cell&&p.cell!==c.cell,delivery=remote?route(p.cell!,c.cell,g):null;
       if(remote&&(!delivery||delivery.loss>=1||delivery.capacity<=0)){
-        if(!realized.has(id))diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors:{logistics:0},blocked:'missing_local_delivery_route'});
+        if(!realized.has(id))diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors:{logistics:0},jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),...ruralMeta(p),blocked:'missing_local_delivery_route'});
         pending.delete(id);continue;
       }
       const sector=BASKET_SECTOR[g.basket]||'crafting';
@@ -768,7 +772,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         infrastructure:sector==='farming'?1+c.irrigation*C.irrigationGain:1,tools:toolFactor(p),capital:capitalFactor(p)};
       const target=n(p.capacity)*clamp(p.allocation)*Object.values(factors).reduce((a,b)=>a*b,1);
       const desired=Math.max(0,target-(realized.get(id)||0));
-      const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target, ...(p.ruralLabor?{rural_population:p.ruralLabor.population,rural_workforce:Math.floor(p.ruralLabor.population*RURAL_WORKFORCE_SHARE),rural_workforce_employed:employed.get(p.id)||0,labor_origin:'rural'}:{})};
+      const labor={jobs_capacity:jobs,employed:employed.get(p.id)||0,staffing_ratio:staffed,potential_output:target,...ruralMeta(p)};
       let qty=desired;
       const inputPaths=new Map<string,Path>();
       const loadByEdge=new Map<string,number>();
@@ -883,7 +887,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
       const holders=cities.filter(s=>available(stock(s.id,ig.key))>C.minLot);
       return holders.length>0&&!holders.some(s=>s.id===c.id||!!route(s.cell,c.cell,ig));});
     diagnostics.push({producer:id,good:p.recipe.good,capacity:p.capacity,realized:0,factors:{},
-      jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),
+      jobs_capacity:jobsOf(p),employed:employed.get(id)||0,staffing_ratio:staffingRatio(p),...ruralMeta(p),
       inputs:p.recipe.inputs.filter(i=>!isFactor(i)).map(i=>({good:i.good,required:i.qty,supplied:available(stock(p.city,i.good))})),
       blocked:unreachable?'missing_input_route':'missing_inputs'});
   }

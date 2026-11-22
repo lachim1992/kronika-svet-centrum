@@ -151,3 +151,9 @@ See docs/economy/JV72O7-turn21-deactivation-audit.md. Tests: full suite 1140 pas
 
 ## 2026-11-22 Regionální osady etapa 1
 Soubory: supabase/functions/_shared/regionalSettlementEconomy.ts, src/components/economy/RegionalSettlementsPanel.tsx, PhysicalEconomyPanel.tsx, src/test/regional-settlement-economy.test.ts. Testy napsány, nespuštěny, bez deploye. Další krok: migrace persistované vesnice + příkaz.
+
+## 2026-11-22 — Regional economy stage 2 (persisted villages)
+- Changed: goodsEconomy.ts (rural metadata on early zero-output diagnostics), regionalSettlementEconomy.ts (demand_attribution, withPersistedVillages), new _shared/ruralSettlement.ts, command-dispatch CREATE_RURAL_SETTLEMENT, RegionalSettlementsPanel/PhysicalEconomyPanel, migration 20261122170000_rural_settlements.sql (not applied), src/test/rural-settlement.test.ts.
+- Tests: written, NOT run. Not deployed. Migration not applied.
+- Gaps: rural tax collection, village level effects, storage capacity, node_inventory construction payments.
+- Next task: apply migration + deploy command-dispatch, then add rural tax claims to settle_cash_taxes inside process-turn's fiscal plan.

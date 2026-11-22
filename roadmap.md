@@ -1,10 +1,19 @@
 # Map-first square-grid roadmap
 
+## Regionální venkovská ekonomika — etapa 2 (2026-11-22)
+- [x] DONE oprava etapy 1: goodsEconomy dává venkovská metadata (rural_population/workforce/employed/labor_origin) i předčasným 0-výstupním diagnostikám (missing_local_delivery_route, missing_inputs/missing_input_route); osada tak neztrácí zablokovaná místa ani obyvatele. Poptávka nese `demand_attribution`, chybějící construction_efficiency zůstává null.
+- [x] DONE kód: tabulka `rural_settlements` + RPC `create_rural_settlement` (migrace `supabase/migrations/20261122170000_rural_settlements.sql`, NEAPLIKOVÁNA); příkaz CREATE_RURAL_SETTLEMENT (serverová cena 20 zlata, dosah 2 pole, jedna vesnice na pole, idempotence command_id, platba jen z gold_reserve v RPC); přehled uložených vesnic vs odvozených osad a tlačítko založení v Ekonomice.
+- [ ] BLOCKED (uživatel): aplikace migrace a deploy command-dispatch; bez nich příkaz fail-closed s hláškou o chybějící migraci.
+- [ ] BLOCKED (návrh): UPGRADE_RURAL_SETTLEMENT — sloupec level existuje, ale úroveň zatím nemá ekonomický efekt; bez efektu by byl kosmetický.
+- [ ] TODO cashflow: venkovská daň jako další pilíř v `settle_cash_taxes` (claims z rural producer value added / rural wages), placená z cash producenta/domácností do STATE přes stávající fiskální plán process-turn; do té doby tax_collected = null.
+- [ ] TODO sýpky/sklady: kapacita = existující `storage` v goodsEconomy (balances.stored ořez), vesnice by jen přidávala storage k městu přes building_templates efekty; spoiling beze změny.
+- [ ] TODO: stavební platby z lokálních node_inventory, dostupnost zásob po cestách.
+
 ## Regionální venkovská ekonomika — etapa 1 (2026-11-22)
 - [x] DONE: čistý modul `_shared/regionalSettlementEconomy.ts` — osady jako deterministická projekce makropole (hex_population → producer.ruralLabor) nad committed management reportem; obyvatelstvo/pracovní síla jednou za pole, bez započtení do městské práce; výroba, tržby, přidaná hodnota, přiřazený podíl poptávky, daňová základna (nevybraná), doprava `unknown` při chybějících datech, důvody nerůstu.
 - [x] DONE: odvozený report stavební rezervy z balances.stored × construction_efficiency; převedená rezerva zvlášť, nikdy nesčítaná; mimo město `unknown`.
 - [x] DONE: read-only panel ve Fyzické ekonomice (Economy tab). Testy napsány, nespuštěny.
-- [ ] BLOCKED: založení vesnice — existuje jen FOUND_CITY a venkovská místa na obdělávaných parcelách; nový příkaz bez migrace a perzistentní entity nevznikl.
+- [x] (vyřešeno v etapě 2 kódem, čeká na migraci) založení vesnice — existovalo jen FOUND_CITY a venkovská místa na obdělávaných parcelách; nový příkaz bez migrace a perzistentní entity nevznikl.
 - [ ] Etapa 2: persistovaná entita vesnice + command-dispatch příkaz (migrace); skutečné mzdy/domácnosti/daně přes existující finanční účty; kapacity sýpek/skladů; platby staveb z lokálních inventářů; uzlová (node_inventory) dostupnost přes cesty.
 
 ## Finanční sektory — etapa 1 (2026-11-21)

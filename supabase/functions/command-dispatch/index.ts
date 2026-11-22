@@ -55,6 +55,7 @@ import { FORMATIONS } from "../_shared/fieldBattle.ts";
 import { FORMATION_PRESETS as SHARED_FORMATION_PRESETS, UNIT_GOLD_FACTOR as SHARED_GOLD, UNIT_PROD_FACTOR as SHARED_PROD, UNIT_TYPE_LABELS as SHARED_LABELS, presetRequirements, missingBuildings, computeStackPower } from "../_shared/unitTypes.ts";
 import { generalArmyCapacity } from "../_shared/generalCommand.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
+import { RURAL_SETTLEMENT_COST, RURAL_SETTLEMENT_REACH, ruralSettlementReason, sanitizeVillageName } from "../_shared/ruralSettlement.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
 import { rationPolicy } from "../_shared/rationPolicy.ts";
@@ -623,6 +624,24 @@ async function executeCommand(
       }
       const { data, error } = await supabase.rpc("set_food_specialization_v3", { p_session: sessionId, p_command: String(commandId), p_player: actor.name, p_parcel: siteId, p_key: key, p_x: sx, p_y: sy, p_turn: turnNumber,
         p_mode: found ? "found" : "starter_kit", p_cost: kitCost });
+      if (error) return { events: [], error: error.message };
+      return { events: [], result: data } as any;
+    }
+
+    case "CREATE_RURAL_SETTLEMENT": {
+      // Village anchor on an own worked parcel. Price/reach are server constants; population is the
+      // cell's existing rural pool (nothing minted). The RPC re-validates under lock and charges once.
+      const parcelId = String(payload.parcelId || ""), name = sanitizeVillageName(payload.name);
+      const { data: parcel } = await supabase.from("tile_parcels").select("id, grid_x, grid_y, city_id, owner_player, claim_kind").eq("session_id", sessionId).eq("id", parcelId).maybeSingle();
+      const { data: city } = parcel?.city_id ? await supabase.from("cities").select("id, owner_player, grid_x, grid_y, status").eq("session_id", sessionId).eq("id", parcel.city_id).maybeSingle() : { data: null };
+      const { data: rows, error: vErr } = parcel ? await (supabase.from as any)("rural_settlements").select("id, parcel_id").eq("session_id", sessionId)
+        .or(`parcel_id.eq.${parcelId},and(grid_x.eq.${parcel.grid_x},grid_y.eq.${parcel.grid_y})`) : { data: [], error: null };
+      if (vErr) return { events: [], error: "Vesnice zatím nejsou v databázi dostupné (chybí migrace rural_settlements)." };
+      const reason = ruralSettlementReason({ player: actor.name, parcel: parcel as any, city: city as any, name,
+        villageOnParcel: (rows || []).some((r: any) => r.parcel_id === parcelId), villageInCell: (rows || []).length > 0 });
+      if (reason) return { events: [], error: reason };
+      const { data, error } = await supabase.rpc("create_rural_settlement" as any, { p_session: sessionId, p_command: String(commandId), p_player: actor.name, p_parcel: parcelId,
+        p_name: name, p_cost: RURAL_SETTLEMENT_COST, p_reach: RURAL_SETTLEMENT_REACH, p_turn: turnNumber });
       if (error) return { events: [], error: error.message };
       return { events: [], result: data } as any;
     }

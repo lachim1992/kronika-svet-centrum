@@ -24,11 +24,11 @@
 export type Availability = 'connected' | 'partial' | 'blocked' | 'unknown';
 export interface SettlementProducer { producer: string; recipe: string | null; good: string; capacity: number; realized: number; blocked: string | null }
 export interface RegionalSettlement {
-  id: string; kind: 'projection'; cell: string; city: string; cities: string[]; province_id: string | null;
+  id: string; kind: 'projection' | 'village'; village: { id: string; name: string; level: number; founded_turn: number; parcel_id: string } | null; cell: string; city: string; cities: string[]; province_id: string | null;
   rural_population: number | null; workforce: number | null; employed: number; unemployed: number | null;
   jobs: number; producers: SettlementProducer[];
   gross_output_units: number; revenue: number | null; value_added: number | null; operating_surplus: number | null;
-  attributed_demand_units: number | null; tax_base: number | null; tax_collected: null;
+  attributed_demand_units: number | null; demand_attribution: 'population_share_of_city_basket'; tax_base: number | null; tax_collected: null;
   logistics: Availability; reasons: string[];
 }
 const num = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
@@ -66,12 +66,12 @@ export function regionalSettlements(report: { producers?: any[]; labor?: any[]; 
     if (capacity > 0 && realized < capacity * 0.999 && !ps.some(p => p.blocked)) reasons.push(`Využito ${Math.round(realized / capacity * 100)} % kapacity (omezení vstupy, prací nebo dopravou).`);
     if (logistics === 'unknown') reasons.push('Dopravní dostupnost nelze z dat tahu odvodit.');
     reasons.push('Daň z osady se zatím nevybírá: fiskální cesta nemá venkovský daňový pilíř; zobrazená základna je jen přidaná hodnota.');
-    return { id: `projection:${cell}`, kind: 'projection', cell, city, cities: [...jobsBy.keys()].sort(),
+    return { id: `projection:${cell}`, kind: 'projection', village: null, cell, city, cities: [...jobsBy.keys()].sort(),
       province_id: cityMeta.find(c => c.id === city)?.province_id ?? null,
       rural_population: pop, workforce, employed, unemployed: workforce == null ? null : Math.max(0, workforce - employed), jobs,
       producers: ps.map(p => ({ producer: p.producer, recipe: p.recipe?.key ?? null, good: p.good, capacity: num(p.capacity), realized: num(p.realized), blocked: p.blocked ?? null })),
       gross_output_units: realized, revenue: sumM('revenue'), value_added, operating_surplus: sumM('operating_surplus'),
-      attributed_demand_units: attributed, tax_base: value_added, tax_collected: null, logistics, reasons };
+      attributed_demand_units: attributed, demand_attribution: 'population_share_of_city_basket', tax_base: value_added, tax_collected: null, logistics, reasons };
   });
 }
 
@@ -90,4 +90,22 @@ export function buildingReserveReport(balances: any[], convertedReserve: number 
   const convertible_points = lines.some(l => l.point_equivalent == null) ? null : lines.reduce((s, l) => s + l.point_equivalent!, 0);
   return { lines, physical_units, convertible_points, converted_reserve: convertedReserve,
     note: 'Bodový ekvivalent je jen alternativní vyjádření fyzické zásoby, ne další příjem; převedená rezerva je samostatná a nesčítá se. Konkrétní stavby dál vyžadují konkrétní suroviny.' };
+}
+
+/**
+ * Stage 2: overlay persisted villages (rural_settlements) on the committed-turn projection.
+ * Joined by macro cell — the same key the solver uses for the shared rural pool — so a village
+ * never adds people or a second staffing pass. A village with no rural site yet is listed with
+ * zero output and an explicit reason, never with invented numbers.
+ */
+export function withPersistedVillages(rows: RegionalSettlement[], villages: { id: string; city_id: string; parcel_id: string; grid_x: number; grid_y: number; name: string; level: number; founded_turn: number }[]): RegionalSettlement[] {
+  const byCell = new Map(villages.map(v => [`${v.grid_x},${v.grid_y}`, v]));
+  const out = rows.map(r => { const v = byCell.get(r.cell); if (!v) return r; byCell.delete(r.cell);
+    return { ...r, id: `village:${v.id}`, kind: 'village' as const, village: { id: v.id, name: v.name, level: v.level, founded_turn: v.founded_turn, parcel_id: v.parcel_id } }; });
+  for (const [cell, v] of byCell) out.push({ id: `village:${v.id}`, kind: 'village', village: { id: v.id, name: v.name, level: v.level, founded_turn: v.founded_turn, parcel_id: v.parcel_id },
+    cell, city: v.city_id, cities: [v.city_id], province_id: null, rural_population: null, workforce: null, employed: 0, unemployed: null, jobs: 0, producers: [],
+    gross_output_units: 0, revenue: null, value_added: null, operating_surplus: null, attributed_demand_units: null, demand_attribution: 'population_share_of_city_basket',
+    tax_base: null, tax_collected: null, logistics: 'unknown',
+    reasons: ['Vesnice zatím nemá venkovské výrobní místo v uzavřeném tahu — postavte ho na obdělávané parcele v tomto poli.', 'Daň z osady se zatím nevybírá.'] });
+  return out.sort((a, b) => a.cell.localeCompare(b.cell));
 }
