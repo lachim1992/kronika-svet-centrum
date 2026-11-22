@@ -42,7 +42,8 @@ import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 import { PRODUCTION_PER_RESIDENTIAL, districtBlueprint, storedDistrictBlueprint, districtBasketProblem } from "../_shared/cityDistricts.ts";
 import { settlementUpgradeDefinition, settlementUpgradeProblem } from "../_shared/settlementUpgrades.ts";
 import { infrastructureUpgradeByField, infrastructureUpgradeQuote } from "../_shared/cityInfrastructure.ts";
-import { templateSiteRole, DEPOSIT_REQUIRED, availableMacroReserve, macroReserveKey, type SiteRole } from "../_shared/ruralSites.ts";
+import { templateSiteRole, DEPOSIT_REQUIRED, availableMacroReserve, macroReserveKey, RURAL_RECIPES, type SiteRole } from "../_shared/ruralSites.ts";
+import { MATERIAL_BY_RECIPE } from "../_shared/materialResources.ts";
 import { goldVeinCells, generateMacroDeposits, surveyFindings, SURVEY_COST } from "../_shared/geology.ts";
 import { generateTileParcels } from "../_shared/tileParcels.ts";
 import { MICRO_SURVEY_COST, surveyMicroSquare, microSiteReason } from "../_shared/microResources.ts";
@@ -681,7 +682,7 @@ async function executeCommand(
       }
       const mx = x * 6 + (pi % 6), my = y * 6 + Math.floor(pi / 6);
       const elev = Number((hex as any).mean_height);
-      const findings = [...surveyMicroSquare(seed!.salt, mx, my, subBiome, hex.biome_family, (truth as any)?.deposits || []),
+      const findings = [...surveyMicroSquare(seed!.salt, mx, my, subBiome, hex.biome_family, (truth as any)?.deposits || [],hex as any),
         // Food resources: same private seed, real climate bands, water access and regional origin (never spoiled to clients).
         ...foodSurveyFindings(seed!.salt, mx, my, { subBiome, tempBand: (hex as any).temp_band, moistureBand: (hex as any).moisture_band,
           elevation: Number.isFinite(elev) ? (elev > 1 ? elev / 100 : elev) : null, hasRiver: !!(hex as any).has_river, coastal: !!(hex as any).coastal })] as any[];
@@ -3405,6 +3406,7 @@ async function executeBuildBuilding(
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
   let { cityId, cityName, building, isAiGenerated, chronicleText, parcelId } = payload;
+  const resourceRecipe = typeof payload.resourceRecipe === 'string' ? payload.resourceRecipe : null;
 
   // Back-compat: AI faction calls send buildingName/templateId without a building object.
   // Resolve the template into a building payload so the command does not 400 on legacy callers.
@@ -3468,7 +3470,26 @@ async function executeBuildBuilding(
     if (reason) return { events: [], error: reason };
   }
 
-  const recipeKeys: string[] | undefined = template?.effects?.recipe_keys;
+  // A rural building must pick ONE confirmed natural material when changing the
+  // default template extraction. Otherwise a generic mine could generate iron AND
+  // copper AND tin merely because all recipes were listed in its catalogue.
+  if (resourceRecipe) {
+    const natural = MATERIAL_BY_RECIPE.get(resourceRecipe);
+    if (!natural || !template || template.name !== natural.building ||
+        !RURAL_RECIPES.has(resourceRecipe) ||
+        ![...(template.effects?.recipe_keys || []),...(template.effects?.specialization_recipe_keys || [])].includes(resourceRecipe)) {
+      return { events: [], error: 'Neplatná nebo nepovolená specializace přírodního zdroje' };
+    }
+    const { data: chosenRecipe } = await supabase.from('production_recipes')
+      .select('required_role,required_tags,output_good_key').eq('recipe_key',resourceRecipe).maybeSingle();
+    if (!chosenRecipe || chosenRecipe.required_role !== 'source' ||
+        chosenRecipe.output_good_key !== natural.good ||
+        !(chosenRecipe.required_tags || []).every((tag: string) => (template.effects?.capability_tags || []).includes(tag)))
+      return { events: [], error: 'Zdrojová receptura neodpovídá výrobnímu kontraktu' };
+    building.effects = { ...building.effects,recipe_keys:[resourceRecipe],
+      selected_natural_resource:natural.kind };
+  }
+  const recipeKeys: string[] | undefined = resourceRecipe ? [resourceRecipe] : template?.effects?.recipe_keys;
   const siteRole = templateSiteRole(recipeKeys);
   if (parcelId) {
     const { data: chosen } = await supabase.from("tile_parcels").select("claim_kind").eq("id", parcelId).eq("city_id", cityId).maybeSingle();
@@ -3514,7 +3535,7 @@ async function executeBuildBuilding(
     return { events: [], error: terrainReason(recipeKeys, null)!.replace(/ \(parcela: .*\)$/, "") + " — město nemá volnou stavební parcelu s vhodným terénem" };
   }
   if (targetParcel) {
-    const tr = terrainReason(template?.effects?.recipe_keys, targetParcel.sub_biome);
+    const tr = terrainReason(recipeKeys, targetParcel.sub_biome);
     if (tr) return { events: [], error: tr };
   }
 
