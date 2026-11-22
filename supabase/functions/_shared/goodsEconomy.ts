@@ -984,13 +984,20 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   const famous: Fame[]=[];
   for(const c of cities)for(const g of goods){const b=stock(c.id,g.key),old=priorFame.get(key(c.id,g.key));
     const output=produced(b)-b.produced_household,cityOutput=[...balances.values()].filter(x=>x.city===c.id).reduce((a,x)=>a+produced(x),0);
-    const exported=flows.filter(f=>f.source===c.id&&f.good===g.key).reduce((a,f)=>a+f.delivered,0);
     const distinctive=producers.some(p=>p.city===c.id&&p.recipe.good===g.key&&p.distinctive);
-    const eligible=output>=C.fameMinOutput&&exported>=C.fameMinExport&&b.quality>=C.fameMinQuality&&c.guild>0&&distinctive&&output/Math.max(1,cityOutput)>=C.fameSpecialization;
-    if(!old&&!eligible)continue;const streak=eligible?(old?.turn===snapshot.turn-1?old.streak+1:1):0;
-    const created=old?.created??(streak>=C.fameTurns?snapshot.turn:null);
-    famous.push({city:c.id,good:g.key,name:old?.name||`${c.name}: ${g.key}`,streak,
-      fame:Math.max(0,Math.min(100,(old?.fame||0)+(eligible&&created!=null?C.fameGain:-C.fameDecay))),quality:b.quality,created,turn:snapshot.turn});
+    // Export is NOT a gate: sustained, specialised, high-quality local production can become famous.
+    const eligible=output>=C.fameMinOutput&&b.quality>=C.fameMinQuality&&c.guild>0&&distinctive&&output/Math.max(1,cityOutput)>=C.fameSpecialization;
+    if(!old&&!eligible)continue;
+    // Re-resolving the same turn (refresh/retry) never advances the brand: keep the committed row.
+    if(old&&old.turn===snapshot.turn){famous.push(old);continue;}
+    // Streak counts only consecutive COMMITTED turns.
+    const streak=eligible?(old?.turn===snapshot.turn-1?old.streak+1:1):0;
+    const active=old?.created!=null&&old.fame>0;
+    let fame:number,created:number|null;
+    if(active){fame=Math.max(0,Math.min(100,old!.fame+(eligible?C.fameGain:-C.fameDecay)));created=fame>0?old!.created:null;}
+    else{created=streak>=C.fameTurns?snapshot.turn:null;fame=created!=null?Math.min(100,C.fameGain):0;}
+    if(created==null&&streak===0)continue; // fully deactivated brand: no premium, no branded demand
+    famous.push({city:c.id,good:g.key,name:old?.name||`${c.name}: ${g.key}`,streak,fame,quality:b.quality,created,turn:snapshot.turn});
   }
   const metrics=cities.map(c=>{const own=[...balances.values()].filter(b=>b.city===c.id);
     const inbound=flows.filter(f=>f.destination===c.id),outbound=flows.filter(f=>f.source===c.id);

@@ -77,6 +77,11 @@ describe('economy chain closure',()=>{
     for(const key of ['forge_fine_arms','age_wine','craft_jewelry','prepare_feast'])expect(DISTINCTIVE_RECIPE_KEYS.has(key)).toBe(true);
     expect(DISTINCTIVE_RECIPE_KEYS.has('mine_iron')).toBe(false);
   });
+  it('extends fame eligibility to processed recipes outside the guild role, never to source extraction',()=>{
+    expect(DISTINCTIVE_RECIPE_KEYS.has('mill_grain')).toBe(true);
+    for(const r of RECIPES.filter(r=>r.role==='source'))expect(DISTINCTIVE_RECIPE_KEYS.has(r.key)).toBe(false);
+    for(const key of DISTINCTIVE_RECIPE_KEYS){const r=RECIPES.find(x=>x.key===key)!;expect(r.role==='guild'||(r.inputs.length>0&&GOODS.find(g=>g.key===r.output)?.stage!=='raw')).toBe(true);}
+  });
   it('scales famine deaths with the unmet fraction and ignores tiny deficits',()=>{
     expect(foodShortageImpact(1000,10,0.00001).deaths).toBe(0);
     expect(foodShortageImpact(1000,10,0.1).famine).toBe(false);

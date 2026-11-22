@@ -285,7 +285,10 @@ export const recipeByKey = new Map(RECIPES.map((x) => [x.key, x]));
 export const goodByKey = new Map(GOODS.map((g) => [g.key, g]));
 
 /** Master recipes are eligible for an origin brand; no dependence on input-name substrings. */
-export const DISTINCTIVE_RECIPE_KEYS = new Set(RECIPES.filter(r => r.role === 'guild').map(r => r.key));
+/** Brand-eligible recipes: all guild recipes, plus processing/urban/producer recipes that transform
+ *  inputs into a non-raw catalogue good. Pure source extraction is never distinctive by itself. */
+export const DISTINCTIVE_RECIPE_KEYS = new Set(RECIPES.filter(r => r.role === 'guild' || (r.role !== 'source' && r.inputs.length > 0
+  && (() => { const g = GOODS.find(x => x.key === r.output); return !!g && g.stage !== 'raw'; })())).map(r => r.key));
 
 /** Cumulative recipe whitelist a structure runs at the given level (1-based). */
 export function recipesForLevel(contract: BuildingContract, level: number): string[] {

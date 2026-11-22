@@ -107,6 +107,33 @@ describe('canonical physical goods economy',()=>{
     s.fame=branded.famous;s.producers=[];s.turn=5;const dormant=resolveGoodsEconomy(s);
     expect(dormant.famous[0].fame).toBeLessThan(s.fame[0].fame);expect(dormant.famous[0].created).toBe(3);
   });
+  const brandSetup=()=>{const s=setup();s.cities=[city('bakery',0,0)];s.cities[0].guild=2;s.edges=[];
+    s.goods=[good('spice'),{...good('pastries','feast',100),stage:'final',prestige:1}];
+    s.producers=[producer('spice','bakery','spice',20),{...producer('pastries','bakery','pastries',20,[{good:'spice',qty:1}]),distinctive:true}];
+    s.opening=[{city:'bakery',good:'spice',qty:100,quality:3} as any];return s;};
+  const runTurns=(s:Snapshot,from:number,to:number)=>{for(let t=from;t<=to;t++){s.turn=t;s.fame=resolveGoodsEconomy(s).famous;}};
+  it('creates fame without any export route and does not advance on a same-turn re-resolve',()=>{
+    const s=brandSetup();runTurns(s,1,2);const before=s.fame[0];expect(before?.streak).toBe(2);
+    const again=resolveGoodsEconomy(s);expect(again.famous[0].streak).toBe(2);expect(again.famous[0].created).toBeNull();
+    runTurns(s,3,3);expect(s.fame[0].created).toBe(3);expect(s.fame[0].fame).toBeGreaterThan(0);
+  });
+  it('deactivates a brand at zero fame and requires three fresh committed turns to return',()=>{
+    const s=brandSetup();runTurns(s,1,3);const producers=s.producers;s.producers=[];
+    runTurns(s,4,6);expect(s.fame.find(f=>f.good==='pastries')).toBeUndefined();
+    s.producers=producers;runTurns(s,7,8);expect(s.fame[0].created).toBeNull();
+    runTurns(s,9,9);expect(s.fame[0].created).toBe(9);
+  });
+  it('a non-distinctive (raw) recipe never becomes famous',()=>{
+    const s=brandSetup();s.producers=s.producers.map(p=>({...p,distinctive:false}));runTurns(s,1,5);expect(s.fame.length).toBe(0);
+  });
+  it('fame premium applies once to branded trade, not to origin acquisition',()=>{
+    const s=setup();s.cities=[city('bakery',0,2),city('court',1,4)];s.cities[0].guild=2;
+    s.cities[1].population=12000;s.cities[1].classes={peasants:6000,burghers:5000,clerics:1000};
+    s.goods=[good('spice'),{...good('pastries','feast',100),stage:'final',prestige:1}];
+    s.producers=[producer('spice','bakery','spice',20),{...producer('pastries','bakery','pastries',20,[{good:'spice',qty:1}]),distinctive:true}];
+    runTurns(s,1,3);s.turn=4;const r=resolveGoodsEconomy(s);const fame=s.fame[0].fame;
+    for(const f of r.flows.filter(f=>f.famous&&f.delivered>0))expect(f.gross_value/f.delivered).toBeLessThanOrEqual(100*4*(1+ECONOMY.famePremium*fame/100)+1e-6);
+  });
   it('normalizes historical percent allocations without reviving explicit zero sectors',()=>{
     expect(normalizeLabor({farming:60,crafting:25,scribes:5,canal:10})).toEqual({farming:0.6,crafting:0.25,administration:0.05,logistics:0.1});
     expect(normalizeLabor({farming:0,crafting:100})).toEqual({farming:0,crafting:1,administration:0,logistics:0});
