@@ -1041,6 +1041,24 @@ Deno.serve(async (req) => {
     const backgroundResults: Record<string, any> = {};
 
     const backgroundWork = async () => {
+      // Rule-based neutral construction: at most 2 real investments, AFTER the canonical
+      // economic snapshot and turn commit. Service-only execution uses command-dispatch
+      // for paid parcel claims and template-validated buildings, never direct fiscal writes.
+      // Failure cannot undo or block the already-committed player turn.
+      try {
+        const { data: investment, error: investmentError } = await supabase.functions.invoke(
+          "neutral-city-investments", { body: { sessionId, closedTurn: turnNumber } }
+        );
+        if (investmentError || investment?.ok !== true) {
+          backgroundResults.neutralInvestments = { error: investmentError?.message || investment?.error || "unavailable" };
+          console.warn("[commit-turn] neutral investment background:", backgroundResults.neutralInvestments.error);
+        } else {
+          backgroundResults.neutralInvestments = investment;
+        }
+      } catch (investmentError) {
+        backgroundResults.neutralInvestments = { error: (investmentError as Error).message };
+      }
+
       // ─── 6a. AUTO-GENERATE CHRONICLES ───
       if (skipNarrative) {
         backgroundResults.chronicles = { skipped: true, reason: "skipNarrative" };
