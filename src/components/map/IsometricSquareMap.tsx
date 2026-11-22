@@ -30,6 +30,7 @@ import { parcelTransport } from "../../../supabase/functions/_shared/ruralSites"
 import { cityCatchmentRadius, nodeCatchmentRadius } from "@/lib/roadCatchment";
 import { useIsMobile } from "@/hooks/use-mobile";
 import MicroResourcePanel from "@/components/map/MicroResourcePanel";
+import RuralVillageMapPanel from "@/components/map/RuralVillageMapPanel";
 import FarmFieldPanel from "@/components/map/FarmFieldPanel";
 import FoodSpecializationPanel from "@/components/map/FoodSpecializationPanel";
 import CropPlantPanel from "@/components/map/CropPlantPanel";
@@ -2705,6 +2706,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <p className="mt-1 text-muted-foreground">{selectedNode.node_subtype || selectedNode.node_type} · správce {selectedNode.controlled_by || "nezávislý"}</p>
             <div className="mt-2 flex gap-3"><span>Produkce {selectedNode.production_output}</span><span>Bohatství {selectedNode.wealth_output}</span><span>Potraviny {selectedNode.food_value}</span></div>
           </div>}
+          {selectedCell && selectedParcel.id && <RuralVillageMapPanel
+            key={selectedParcel.id}
+            sessionId={sessionId}
+            currentTurn={currentTurn}
+            playerName={playerName}
+            parcel={{
+              id: selectedParcel.id,
+              grid_x: selectedParcel.grid_x,
+              grid_y: selectedParcel.grid_y,
+              city_id: selectedParcel.city_id ?? null,
+              owner_player: selectedParcel.owner_player ?? null,
+              claim_kind: selectedParcel.claim_kind ?? null,
+            }}
+            onChanged={() => void load()}
+          />}
           {selectedCell && <MicroResourcePanel sessionId={sessionId} currentTurn={currentTurn} playerName={playerName}
             gridX={selectedCell.a} gridY={selectedCell.b} parcelIndex={selectedParcel.parcel_index}
             subBiome={selectedParcel.sub_biome ?? null} macroBiome={selected?.biome_family ?? null} onSurveyed={() => void load()} />}
