@@ -16,6 +16,7 @@
  */
 import { ECONOMY, BASKET_TIER } from './economyConfig.ts';
 import { GOODS, PRODUCTION_BUILDINGS, type BuildingContract } from './productionCatalog.ts';
+import { MATERIAL_RAW_GOODS,MATERIAL_DERIVED } from './materialResources.ts';
 import { RESIDENTIAL_DISTRICTS, PRODUCTION_DISTRICTS, PRODUCTION_PER_RESIDENTIAL, type DistrictBlueprint } from './cityDistricts.ts';
 import { SUBNODE_DEFS } from './subnodeCatalog.ts';
 
@@ -56,7 +57,8 @@ export const GOOD_LABELS: Record<string, string> = {
   wine_luxury: 'Archivní víno', fine_arms: 'Zdobená výzbroj', jewelry: 'Klenoty', ritual_goods: 'Rituální předměty',
 };
 
-export const goodLabel = (key: string) => GOOD_LABELS[key] || key;
+const MATERIAL_LABELS:Record<string,string>=Object.fromEntries([...MATERIAL_RAW_GOODS,...MATERIAL_DERIVED].map(g=>[g.key,g.label]));
+export const goodLabel = (key: string) => GOOD_LABELS[key] || MATERIAL_LABELS[key] || key;
 
 export const ROLE_LABELS: Record<string, string> = {
   source: 'Zdroj surovin', processing: 'Zpracování', urban: 'Městská výroba',
@@ -181,7 +183,7 @@ function templateItem(t: TemplateRow, recipesByKey: Map<string, RecipeRow>): Cat
   const capacityBase = Object.values(baskets).reduce((s, v) => s + num(v), 0);
   const maxLevel = Math.max(1, Number(t.max_level) || 1);
   const dataGaps: string[] = [];
-  const allKeys = contractRecipes(contract, maxLevel);
+  const allKeys = [...new Set([...contractRecipes(contract,maxLevel),...((effects.specialization_recipe_keys||[]) as string[])])];
   const missing = allKeys.filter(k => !recipesByKey.has(k));
   if (missing.length) dataGaps.push(`Recepty bez dat: ${missing.join(', ')}`);
 
