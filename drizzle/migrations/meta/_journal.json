@@ -407,6 +407,13 @@
       "when": 1795350057000,
       "tag": "0057_neutral_investment_turn_hook",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1795350700000,
+      "tag": "0058_neutral_investment_uuid_command_ids",
+      "breakpoints": true
     }
   ]
 }
