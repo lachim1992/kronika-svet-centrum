@@ -70,8 +70,8 @@ describe('production catalog contract', () => {
   it('industrial intermediates are not household final-use goods', () => {
     // Legacy raw_ore is deliberately NOT in the producible catalog: it has no
     // valid ore-specific source after iron/copper separation.
-    expect(GOOD_FINAL_USE.raw_ore).toBe(false);
-    expect(GOOD_HOUSEHOLD.raw_ore).toBe(false);
+    expect(GOOD_FINAL_USE.raw_ore).toBeUndefined();
+    expect(GOOD_HOUSEHOLD.raw_ore).toBeUndefined();
     expect(goodByKey.has('raw_ore')).toBe(false);
     for (const key of ['raw_timber', 'raw_stone', 'raw_fiber', 'raw_hide', 'flour', 'yarn', 'leather', 'iron_ingot', 'copper_ingot']) {
       expect(GOOD_FINAL_USE[key], key).toBe(false);

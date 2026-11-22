@@ -207,7 +207,14 @@ describe('catalog-wide industrial chains (adapter, LOCK)', () => {
     w.tables.economy_turn_ledgers = [{ opening: [] as any[] }];
     const built = new Set<string>();
     for (const r of stressRecipes) addProducer(w, r.key, `c_${r.key}`, capacityOf.get(r.key)!, built);
-    const p = await run(finalize(w));
+    const t=finalize(w);
+    // This outlying processing town has NO physical road connection. Guaranteed
+    // scarcity lets the stress fixture assert both positive commerce and
+    // correctly diagnosed, zero-output isolation without creating fake losses.
+    const remote=t.cities.find((c:any)=>c.id===`c_${stressRecipes[stressRecipes.length-1].key}`);
+    if (!remote) throw Error('Missing outlying stress producer');
+    remote.grid_x=10000;
+    const p = await run(t);
     conserve(p);
 
     let activeRecipes = 0, blockedRecipes = 0, scarceInputs = 0, usedInputs = 0;
