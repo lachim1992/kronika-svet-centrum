@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { auditGoodsFunctions, goodFunctionByKey, catalogDirectUse, GOOD_FUNCTIONS, TEXTILE_MATERIAL } from "../../supabase/functions/_shared/goodsFunction.ts";
 import { auditProductionCatalog, GOODS, RECIPES, recipeByKey, goodReachability } from "../../supabase/functions/_shared/productionCatalog.ts";
-import { PRODUCT_META, demandShares } from "../../supabase/functions/_shared/productMarket.ts";
+import { PRODUCT_META, demandShares, textileMaterialFit } from "../../supabase/functions/_shared/productMarket.ts";
 
 describe("goods function catalogue", () => {
   it("has no invariant violations and the production audit stays clean", () => {
@@ -74,5 +74,21 @@ describe("textile material identity", () => {
     const sql = readFileSync("supabase/migrations/20261122190000_textile_material_identity.sql", "utf8");
     expect(sql).not.toMatch(/\bDELETE\b|\bDROP\b/i);
     for (const k of ["hemp_yarn", "textile_hemp", "textile_cotton", "textile_wool", "weave_hemp"]) expect(sql).toContain(`'${k}'`);
+  });
+});
+
+describe("bounded textile preferences",()=>{
+  it("prefers wool in cold climate and cotton in hot climate without changing legacy",()=>{
+    expect(textileMaterialFit("textile_wool",0.5,"cold")).toBeGreaterThan(textileMaterialFit("textile_cotton",0.5,"cold"));
+    expect(textileMaterialFit("textile_cotton",0.5,"hot")).toBeGreaterThan(textileMaterialFit("textile_wool",0.5,"hot"));
+    expect(textileMaterialFit("textile_basic",0.5,"cold")).toBe(1);
+  });
+  it("clothing shares remain normalized for both climates",()=>{
+    const opt=(good:string,clothingClimate:"cold"|"hot")=>({good,basket:"basic_clothing",referencePrice:2,basketAveragePrice:2,
+      quality:1,fame:0,familiarity:0,prevalence:0.25,coastal:false,affordability:0.5,substitutability:1,clothingClimate});
+    for(const climate of ["cold","hot"] as const) {
+      const shares=demandShares(["textile_wool","textile_cotton"].map(k=>opt(k,climate)));
+      expect(shares.reduce((sum,x)=>sum+x.share,0)).toBeCloseTo(1,9);
+    }
   });
 });

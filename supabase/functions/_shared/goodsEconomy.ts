@@ -26,6 +26,7 @@ export interface City {
   labor: Partial<Record<Sector, number>>; market: number; storage: number; admin: number;
   security: number; guild: number; /** Active building sites / projects: the only driver of construction demand. */
   constructionProjects?: number; ideology: keyof typeof IDEOLOGIES; coastal: boolean;
+  clothingClimate?: 'cold' | 'temperate' | 'hot';
   activePopModifier?: number; maxMobModifier?: number;
   /** Informal part of market+storage (settlement baseline) — creates no service jobs. */
   commercialBaseline?: number;
@@ -401,7 +402,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const shares=demandShares(options.map((g,i)=>({good:g.key,basket,referencePrice:referencePrice(c,g),basketAveragePrice:avgPrice,
       quality:stock(c.id,g.key).quality,fame:bestFame(c,g).fame,
       familiarity:snapshot.familiarity?.[c.id]?.[g.key]??0,prevalence:offerTotal>0?offer[i]/offerTotal:1/options.length,
-      coastal:c.coastal,affordability:afford,substitutability:g.substitutability})));
+      coastal:c.coastal,clothingClimate:c.clothingClimate,affordability:afford,substitutability:g.substitutability})));
     const result={options,shares};productChoiceCache.set(cacheKey,result);return result;
   };
   /** One output-per-worker estimate for both subsistence priority and the perishable demand ceiling. */

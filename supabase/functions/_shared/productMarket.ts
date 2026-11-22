@@ -354,6 +354,22 @@ export function productMeta(good: string, basket: string): ProductMeta {
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 const pos = (x: number) => (Number.isFinite(x) ? Math.max(0, x) : 0);
 
+export type ClothingClimate = 'cold' | 'temperate' | 'hot';
+/** Material variants change preference only, never the number of needed clothes. */
+export const TEXTILE_TRAITS: Record<string, {warmth:number; breathability:number; comfort:number; durability:number; prestige:number}> = {
+  textile_hemp: {warmth:0.52,breathability:0.65,comfort:0.43,durability:0.90,prestige:0.20},
+  textile_cotton:{warmth:0.35,breathability:0.92,comfort:0.86,durability:0.65,prestige:0.50},
+  textile_wool: {warmth:0.96,breathability:0.28,comfort:0.65,durability:0.80,prestige:0.45},
+};
+export function textileMaterialFit(good:string, affordability:number, climate:ClothingClimate='temperate'):number {
+  const t=TEXTILE_TRAITS[good]; if(!t)return 1; // Preserve legacy textile_basic behaviour.
+  const a=clamp01(affordability);
+  const w=climate==='cold'?{warmth:0.38,breathability:0.05}:climate==='hot'?{warmth:0.05,breathability:0.38}:{warmth:0.20,breathability:0.20};
+  const utility=t.warmth*w.warmth+t.breathability*w.breathability+t.comfort*(0.10+0.08*a)
+    +t.durability*(0.24-0.10*a)+t.prestige*(0.03+0.08*a);
+  return Math.max(0.8,Math.min(1.2,1+0.4*(utility-0.5)));
+}
+
 export interface ProductChoiceInput {
   good: string;
   basket: string;
@@ -369,6 +385,8 @@ export interface ProductChoiceInput {
   /** Share (0..1) of this product among what is locally available / produced now. */
   prevalence: number;
   coastal: boolean;
+  /** Use actual city climate when known; coastal status is not a climate proxy. */
+  clothingClimate?: ClothingClimate;
   /** Household budget relief: 1 = comfortable, 0 = cannot afford anything above subsistence. */
   affordability: number;
   /** Legacy substitutability weight from goods.friction_profile. */
@@ -397,7 +415,8 @@ export function attractiveness(i: ProductChoiceInput): Attractiveness {
   // Poorer households react more strongly to price differences.
   const elasticity = M.priceElasticity * (1.5 - 0.5 * clamp01(i.affordability));
   const price = Math.pow(Math.max(0.2, relative), -elasticity);
-  const total = preference * region * familiarity * novelty * quality * fame * price * Math.max(0.01, i.substitutability);
+  const materialFit=i.basket==='basic_clothing'?textileMaterialFit(i.good,i.affordability,i.clothingClimate):1;
+  const total = preference * region * familiarity * novelty * quality * fame * price * materialFit * Math.max(0.01, i.substitutability);
   return { good: i.good, preference, region, familiarity, novelty, quality, fame, price, total };
 }
 
