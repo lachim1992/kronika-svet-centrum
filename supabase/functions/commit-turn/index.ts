@@ -854,9 +854,22 @@ Deno.serve(async (req) => {
         .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
       const aiFactionNames = (activeFactions || []).map((f: any) => f.faction_name);
 
+      // Independent neutral CITY owners are real economic entities even though they are
+      // deliberately absent from game_players (no human turn seat) and ai_factions
+      // (never spend LLM credits). Omitting them leaves their realm_resources at
+      // last_processed_turn=0 while the goods solver still models their production.
+      // Reuse the canonical process-turn, which alone settles fiscal/population/wage state.
+      const { data: neutralOwners, error: neutralOwnersError } = await supabase.from("cities")
+        .select("owner_player")
+        .eq("session_id", sessionId)
+        .like("owner_player", "Neutral:%")
+        .eq("status", "ok");
+      if (neutralOwnersError) throw new Error("Loading independent neutral economic owners: " + neutralOwnersError.message);
+
       const allEconEntities = new Set<string>();
       for (const p of (allPlayers || [])) allEconEntities.add(p.player_name);
       for (const name of aiFactionNames) allEconEntities.add(name);
+      for (const city of (neutralOwners || [])) if (city.owner_player) allEconEntities.add(city.owner_player);
 
       const settled = await Promise.allSettled(
         Array.from(allEconEntities).map(async (name) => {
