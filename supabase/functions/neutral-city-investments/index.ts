@@ -47,8 +47,16 @@ Deno.serve(async (req:Request)=>{
   if(plansError) return reply({ok:false,error:plansError.message},500);
   const results:Array<{cityId:string;owner:string;status:string;reason?:string}>=[];
   let actions=0;
-  for(const p of (plans||[]) as NeutralPlan[]) {
-    if(actions>=2)break;
+  // Fair round-robin: without turn rotation, the two alphabetically smallest IDs
+  // consume every year's cap and all remaining neutral settlements starve forever.
+  const ordered=[...(plans||[]) as NeutralPlan[]].sort((a,b)=>a.city_id.localeCompare(b.city_id));
+  const shift=ordered.length?(closedTurn*2)%ordered.length:0;
+  const rotating=[...ordered.slice(shift),...ordered.slice(0,shift)];
+  // Every third turn reserve one of the two canonical command action slots for
+  // actual territorial expansion. Buildings still receive at least one slot.
+  const buildingLimit=closedTurn%3===0?1:2;
+  for(const p of rotating) {
+    if(actions>=buildingLimit)break;
     // Re-check owner, city, template and cash NOW. The plan quote is only informational;
     // command-dispatch makes the authoritative cost and permission decision.
     const [cityResult,realmResult,buildingResult,parcelResult] = await Promise.all([
@@ -126,10 +134,13 @@ Deno.serve(async (req:Request)=>{
   if(actions<2) {
     const {data:expansions,error:expError}=await db.from("neutral_city_expansion_plans")
       .select("*").eq("session_id",sessionId).eq("turn_number",closedTurn)
-      .in("status",["ready","saving"]).order("city_id").limit(20);
+.in("status",["ready","saving"]).order("city_id").limit(20);
     if(expError)results.push({cityId:"",owner:"",status:"expansion_read_failed",reason:expError.message});
-    else for(const e of (expansions||[])) {
-      if(actions>=2)break;
+    else {
+    const available=[...(expansions||[])].sort((a,b)=>a.city_id.localeCompare(b.city_id));
+    const offset=available.length?closedTurn%available.length:0;
+    for(const e of [...available.slice(offset),...available.slice(0,offset)]) {
+      if(actions>=2||closedTurn%3!==0)break;
       const [cityResult,realmResult,hexResult]=await Promise.all([
         db.from("cities").select("id,owner_player,status").eq("id",e.city_id)
           .eq("session_id",sessionId).maybeSingle(),
@@ -173,6 +184,7 @@ Deno.serve(async (req:Request)=>{
           .eq("session_id",sessionId).eq("turn_number",closedTurn).eq("city_id",e.city_id);
         results.push({cityId:e.city_id,owner:e.owner_player,status:"expansion_refused",reason:why});
       }
+    }
     }
   }
   return reply({ok:true,closedTurn,attempted:actions,results,fiscalWriter:"command-dispatch",modelCalls:0});
