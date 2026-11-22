@@ -683,3 +683,5 @@ Plán: `.lovable/plan/atlas.md` (původní `.lovable/plan.md` obnoven z 166e9b1d
 - [x] Map tests QueryClientProvider fix
 - [ ] BLOCKED/deferred: neutral city autonomous villages (new planner step)
 - [ ] Construction payments from local inventories
+- [x] Neutral cities found/upgrade villages through player commands (2-action cap)
+- [ ] BLOCKED: construction paid from stored wood/stone (needs reservation columns + process-turn capex consumption)

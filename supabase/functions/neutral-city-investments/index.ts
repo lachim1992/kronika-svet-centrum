@@ -6,6 +6,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isTrustedInternalRequest } from "../_shared/internalActor.ts";
+import { planNeutralVillage } from "../_shared/neutralVillagePlanner.ts";
 import { allocateNeutralInvestmentSlots, rankNeutralInvestmentPlans } from "../_shared/neutralInvestmentPriority.ts";
 
 const headers = {
@@ -213,6 +214,39 @@ Deno.serve(async (req:Request)=>{
         results.push({cityId:e.city_id,owner:e.owner_player,status:"expansion_refused",reason:why});
       }
     }
+    }
+  }
+  // Villages: same 2-action cap, deterministic order, executed only through the player's own
+  // CREATE/UPGRADE_RURAL_SETTLEMENT commands (SQL RPC prices, ownership, idempotent command_id).
+  if(actions<2) {
+    const [citiesRes,villagesRes,roadsRes]=await Promise.all([
+      db.from("cities").select("id,name,owner_player,status,grid_x,grid_y").eq("session_id",sessionId).like("owner_player","Neutral:%").eq("status","ok").order("id"),
+      (db.from as any)("rural_settlements").select("id,city_id,owner_player,grid_x,grid_y,level").eq("session_id",sessionId),
+      db.from("road_segments").select("from_x,from_y,to_x,to_y,status,owner_player").eq("session_id",sessionId),
+    ]);
+    if(citiesRes.error||villagesRes.error||roadsRes.error) results.push({cityId:"",owner:"",status:"village_read_failed"});
+    else {
+      const list=citiesRes.data||[];const offset=list.length?closedTurn%list.length:0;
+      for(const city of [...list.slice(offset),...list.slice(0,offset)]) {
+        if(actions>=2)break;
+        const [realmRes,parcelRes]=await Promise.all([
+          db.from("realm_resources").select("gold_reserve").eq("session_id",sessionId).eq("player_name",city.owner_player).maybeSingle(),
+          db.from("tile_parcels").select("id,grid_x,grid_y,parcel_index,city_id,owner_player,claim_kind").eq("session_id",sessionId).eq("city_id",city.id).eq("claim_kind","worked"),
+        ]);
+        if(realmRes.error||parcelRes.error||!realmRes.data)continue;
+        const plan=planNeutralVillage({sessionId,closedTurn,city:city as any,gold:number(realmRes.data.gold_reserve),
+          parcels:(parcelRes.data||[]) as any,villages:(villagesRes.data||[]) as any,roads:(roadsRes.data||[]) as any});
+        if(!plan)continue;
+        actions++;
+        const actor={name:city.owner_player,type:"ai_faction"};
+        const body=plan.kind==="create"
+          ?{sessionId,turnNumber:closedTurn+1,actor,commandType:"CREATE_RURAL_SETTLEMENT",commandPayload:{parcelId:plan.parcelId,name:plan.name},commandId:plan.commandId}
+          :{sessionId,turnNumber:closedTurn+1,actor,commandType:"UPGRADE_RURAL_SETTLEMENT",commandPayload:{settlementId:plan.settlementId,targetLevel:plan.targetLevel},commandId:plan.commandId};
+        const {data,error}=await db.functions.invoke("command-dispatch",{body});
+        results.push({cityId:city.id,owner:city.owner_player,
+          status:error||data?.ok===false||data?.error?"village_refused":plan.kind==="create"?"village_founded":"village_upgraded",
+          reason:error?.message||data?.error||undefined});
+      }
     }
   }
   return reply({ok:true,closedTurn,attempted:actions,results,allocation,
