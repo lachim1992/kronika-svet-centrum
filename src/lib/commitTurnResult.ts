@@ -13,6 +13,21 @@ export interface TurnResult {
   results?: Record<string, TurnPhaseResult>;
 }
 
+// A conflict is not proof that the calendar advanced; older servers return an
+// ambiguous 409 for running/interrupted turns. Fail closed unless explicitly stale.
+export function getCommitTurnConflict(body: { code?: string; error?: string } | null): {
+  changed: boolean;
+  message: string;
+} {
+  if (body?.code === "TURN_CHANGED") {
+    return { changed: true, message: body.error || "Tah se mezitím změnil. Stav hry byl obnoven." };
+  }
+  return {
+    changed: false,
+    message: body?.error || "Zpracování tahu je blokováno nebo předchozí pokus vyžaduje opravu. Tah nebyl opakován.",
+  };
+}
+
 export function getCommitTurnIssues(result: TurnResult | null | undefined): string[] {
   if (!result) return ["Server nevrátil výsledek tahu."];
   const issues: string[] = [];

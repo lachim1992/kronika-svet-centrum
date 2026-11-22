@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { getCommitTurnIssues } from "@/lib/commitTurnResult";
+import { getCommitTurnConflict, getCommitTurnIssues } from "@/lib/commitTurnResult";
 
 describe("turn result reporting", () => {
+  it("does not interpret a blocked or interrupted turn as an advanced calendar", () => {
+    expect(getCommitTurnConflict({ code: "TURN_RECOVERY_REQUIRED" }).changed).toBe(false);
+    expect(getCommitTurnConflict({ code: "TURN_IN_PROGRESS" }).changed).toBe(false);
+    expect(getCommitTurnConflict(null).changed).toBe(false);
+    expect(getCommitTurnConflict({ code: "TURN_CHANGED" }).changed).toBe(true);
+  });
   it("does not trust HTTP success or a top-level ok when a phase failed", () => {
     expect(getCommitTurnIssues({
       ok: true, newTurn: 2, results: { economy: { failures: [{ name: "Alice", error: "write failed" }] } },

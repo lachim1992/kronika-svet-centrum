@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { getCommitTurnIssues } from "@/lib/commitTurnResult";
+import { getCommitTurnConflict, getCommitTurnIssues } from "@/lib/commitTurnResult";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { saveCommitTurnReport } from "@/components/realm/TurnExecutionReport";
@@ -45,8 +45,15 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
 
         const status = (error.context as Response | undefined)?.status;
         if (status === 409) {
-          // Stale view: the server already moved on. Reload state (onComplete) instead of reporting a failed turn.
-          toast.info("Hra mezitím pokročila do dalšího kola. Stav byl obnoven — zkontrolujte ho a ukončete kolo znovu.");
+          const conflict = getCommitTurnConflict(body);
+          if (conflict.changed) toast.info(conflict.message);
+          else {
+            toast.warning(conflict.message, { duration: 10000 });
+            saveCommitTurnReport({
+              ts: Date.now(), turn: currentTurn, sessionId, ok: false,
+              topError: conflict.message, results: {},
+            });
+          }
           return;
         }
         const msg = body?.error || error.message || "Neznámá chyba";

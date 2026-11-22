@@ -5,6 +5,7 @@ import { Wrench, SkipForward, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getCommitTurnConflict, getCommitTurnIssues } from "@/lib/commitTurnResult";
 
 interface Props {
   sessionId: string;
@@ -28,24 +29,35 @@ const DevTab = ({
   const [recomputing, setRecomputing] = useState(false);
 
   const handleNextTurn = async () => {
+    if (advancing) return;
     setAdvancing(true);
     try {
       const { data, error } = await supabase.functions.invoke("commit-turn", {
-        body: { sessionId, playerName: currentPlayerName, skipNarrative: true },
+        body: { sessionId, playerName: currentPlayerName, skipNarrative: true, expectedTurn: currentTurn },
       });
 
       if (error) {
         let msg = error.message || "Neznámá chyba";
+        let body: { code?: string; error?: string } | null = null;
         try {
           if (error.context && typeof error.context === "object" && "json" in error.context) {
-            const body = await (error.context as Response).json();
+            body = await (error.context as Response).json();
             msg = body?.error || msg;
           }
         } catch { /* ignore */ }
+        if ((error.context as Response | undefined)?.status === 409) {
+          const conflict = getCommitTurnConflict(body);
+          if (conflict.changed) toast.info(conflict.message);
+          else toast.warning(conflict.message, { duration: 10000 });
+          onRefetch();
+          return;
+        }
         throw new Error(msg);
       }
 
-      toast.success(`Kolo posunuto na ${currentTurn + 1}`);
+      const issues = getCommitTurnIssues(data);
+      if (issues.length > 0) toast.error("Tah nebyl dokončen bez chyb.", { description: issues.join("; ") });
+      else toast.success(`Kolo posunuto na ${data.newTurn ?? currentTurn + 1}`);
       onRefetch();
     } catch (err: any) {
       toast.error("Chyba při posunu kola: " + (err.message || "Neznámá chyba"));

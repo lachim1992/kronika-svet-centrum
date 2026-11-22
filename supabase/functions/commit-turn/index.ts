@@ -90,9 +90,23 @@ Deno.serve(async (req) => {
     }
 
     const turnNumber = session.current_turn;
-    if(expectedTurn!==undefined&&expectedTurn!==turnNumber)return new Response(JSON.stringify({ok:false,error:'Tah se mezitím změnil. Obnovte stav hry.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
+    if(expectedTurn!==undefined&&expectedTurn!==turnNumber)return new Response(JSON.stringify({ok:false,code:'TURN_CHANGED',error:'Tah se mezitím změnil. Obnovte stav hry.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
     const {data:acquired}=await supabase.rpc('begin_turn_resolution',{p_session:sessionId,p_turn:turnNumber});
-    if(typeof acquired!=='string')return new Response(JSON.stringify({ok:false,error:'Zpracování tahu již běží nebo předchozí pokus vyžaduje opravu. Tah nebyl opakován.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
+    if(typeof acquired!=='string') {
+      const {data:guard}=await supabase.from('turn_execution_guards')
+        .select('status,started_at').eq('session_id',sessionId).maybeSingle();
+      // Diagnostic only: age never grants ownership or permits replay of effects.
+      const startedAt=Date.parse(guard?.started_at ?? '');
+      const recentlyRunning=guard?.status==='running' && Number.isFinite(startedAt)
+        && Date.now()-startedAt < 10*60*1000;
+      const code=recentlyRunning?'TURN_IN_PROGRESS':guard?'TURN_RECOVERY_REQUIRED':'TURN_BLOCKED';
+      const error=recentlyRunning
+        ? 'Zpracování tahu již běží. Tah nebyl spuštěn znovu.'
+        : guard
+          ? 'Předchozí zpracování tahu není dokončeno a vyžaduje kontrolované obnovení. Tah nebyl opakován; již provedené platby a změny zůstávají chráněny.'
+          : 'Zpracování tahu je dočasně blokováno. Stav hry byl ponechán beze změny.';
+      return new Response(JSON.stringify({ok:false,code,error}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}});
+    }
     execution={client:supabase,session:sessionId,turn:turnNumber,token:acquired};effectsStarted=false;
     const journal=turnJournal(supabase,sessionId,turnNumber,acquired);
     const isAIMode = session.game_mode === "tb_single_ai";
