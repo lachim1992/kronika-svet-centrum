@@ -414,6 +414,20 @@
       "when": 1795350700000,
       "tag": "0058_neutral_investment_uuid_command_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1795350759000,
+      "tag": "0059_neutral_city_lagged_market_signal",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1795350760000,
+      "tag": "0060_neutral_reuse_paid_urban_capacity",
+      "breakpoints": true
     }
   ]
 }
