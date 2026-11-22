@@ -28,14 +28,25 @@ ALTER TABLE public.rural_settlements ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Session members read rural settlements" ON public.rural_settlements FOR SELECT TO authenticated
   USING (app_private.is_session_member(session_id, auth.uid()));
 
--- Atomic founding: all checks under lock, one gold_reserve debit, idempotent by command_id.
+-- Atomic founding: one function = one transaction; debit and insert commit or roll back together.
+-- Idempotent by (session, command_id), bound to the same player and parcel.
 CREATE OR REPLACE FUNCTION public.create_rural_settlement(p_session uuid, p_command text, p_player text, p_parcel uuid, p_name text, p_cost integer, p_reach integer, p_turn integer)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $$
-DECLARE par record; cty record; prior record; g numeric; new_id uuid;
+DECLARE par record; cty record; prior record; g numeric; new_id uuid; cur integer;
 BEGIN
-  IF p_cost IS NULL OR p_cost < 0 OR p_reach IS NULL OR p_reach < 0 THEN RAISE EXCEPTION 'Neplatné parametry vesnice'; END IF;
+  -- Price and reach are bound to the server constants (ruralSettlement.ts); any other value fails closed.
+  IF p_cost IS DISTINCT FROM 20 OR p_reach IS DISTINCT FROM 2 THEN RAISE EXCEPTION 'Neplatné parametry vesnice'; END IF;
+  IF p_command IS NULL OR length(p_command) = 0 OR p_player IS NULL OR p_parcel IS NULL THEN RAISE EXCEPTION 'Neplatný příkaz'; END IF;
+  -- Serialize retries of the same command before any read, so a retry can never debit twice.
+  PERFORM pg_advisory_xact_lock(hashtext('rural_settlement_cmd:' || p_session::text || ':' || p_command));
   SELECT * INTO prior FROM rural_settlements WHERE session_id = p_session AND command_id = p_command;
-  IF FOUND THEN RETURN jsonb_build_object('id', prior.id, 'cost', prior.cost_paid, 'duplicate', true); END IF;
+  IF FOUND THEN
+    IF prior.owner_player IS DISTINCT FROM p_player OR prior.parcel_id IS DISTINCT FROM p_parcel THEN RAISE EXCEPTION 'Příkaz patří jinému záznamu'; END IF;
+    RETURN jsonb_build_object('id', prior.id, 'cost', prior.cost_paid, 'duplicate', true);
+  END IF;
+  SELECT current_turn INTO cur FROM game_sessions WHERE id = p_session FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Hra neexistuje'; END IF;
+  IF p_turn IS NULL OR p_turn < 0 OR p_turn IS DISTINCT FROM cur THEN RAISE EXCEPTION 'Tah neodpovídá aktuálnímu tahu serveru'; END IF;
   IF EXISTS (SELECT 1 FROM game_sessions WHERE id = p_session AND resolving_turn IS NOT NULL) THEN RAISE EXCEPTION 'Probíhá vyhodnocení tahu'; END IF;
   SELECT id, grid_x, grid_y, city_id, owner_player, claim_kind INTO par FROM tile_parcels WHERE id = p_parcel AND session_id = p_session FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Políčko neexistuje'; END IF;
@@ -49,7 +60,7 @@ BEGIN
   IF g IS NULL OR g < p_cost THEN RAISE EXCEPTION 'Nedostatek zlata (potřeba %, máte %)', p_cost, coalesce(g, 0); END IF;
   UPDATE realm_resources SET gold_reserve = gold_reserve - p_cost WHERE session_id = p_session AND player_name = p_player;
   INSERT INTO rural_settlements (session_id, owner_player, city_id, parcel_id, grid_x, grid_y, name, founded_turn, cost_paid, command_id)
-    VALUES (p_session, p_player, cty.id, p_parcel, par.grid_x, par.grid_y, p_name, greatest(0, p_turn), p_cost, p_command) RETURNING id INTO new_id;
+    VALUES (p_session, p_player, cty.id, p_parcel, par.grid_x, par.grid_y, p_name, cur, p_cost, p_command) RETURNING id INTO new_id;
   RETURN jsonb_build_object('id', new_id, 'cost', p_cost, 'duplicate', false);
 END $$;
 REVOKE ALL ON FUNCTION public.create_rural_settlement(uuid, text, text, uuid, text, integer, integer, integer) FROM PUBLIC, anon, authenticated;

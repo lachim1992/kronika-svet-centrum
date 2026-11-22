@@ -20,8 +20,10 @@ export default function RegionalSettlementsPanel({ report, cities, name, city, s
   const rows = withPersistedVillages(regionalSettlements(report, cities), mine).filter(s => !city || s.cities.includes(city));
   const found = async (cell: string, parcelId: string) => {
     if (!sessionId || !playerName || currentTurn == null) return;
+    if (vErr) { setMsg('Vesnici nelze založit: uložené vesnice nejsou v databázi dostupné.'); return; }
     const res: any = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: 'CREATE_RURAL_SETTLEMENT', commandPayload: { parcelId, name: names[cell] || '' } });
-    setMsg(res?.error ? `Vesnici nelze založit: ${res.error}` : 'Vesnice založena.');
+    if (!res?.ok || res?.error) { setMsg(`Vesnici nelze založit: ${res?.error || 'server příkaz odmítl'}`); return; }
+    setMsg('Vesnice založena.');
     qc.invalidateQueries({ queryKey: ['rural_settlements', sessionId] });
   };
   const balances = (report.cities || []).flatMap((c: any) => c.balances || []).filter((b: any) => !city || b.city === city);
