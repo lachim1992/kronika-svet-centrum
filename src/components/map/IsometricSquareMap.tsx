@@ -1325,14 +1325,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         .order("parcel_index");
       if (request !== parcelRequestRef.current) return;
       if (error) throw error;
-      setTileParcels((data ?? []) as TileParcel[]);
+      const stored = (data ?? []) as TileParcel[];
+      if (stored.length) { setTileParcels(stored); return; }
+      // Not yet materialised: show the same deterministic 6×6 layout the server will create on
+      // the first claim (CLAIM_TILE_PARCEL → ensureTileParcels). Unsaved preview rows have id "",
+      // so id-based actions stay disabled; claiming sends only the parcel index. Read-only.
+      const tile = tileByCell.get(cellKey(gridX, gridY));
+      setTileParcels(tile ? subBiomesOf(tile, gridX, gridY).map(spec => ({
+        id: "", grid_x: gridX, grid_y: gridY, parcel_index: spec.parcelIndex, parcel_x: spec.parcelX, parcel_y: spec.parcelY,
+        sub_biome: spec.subBiome, elevation: spec.elevation, buildable: spec.buildable, build_cost_multiplier: spec.buildCostMultiplier,
+        capacity_slots: spec.capacitySlots, status: "wild", land_use: null, city_id: null, owner_player: null, claim_kind: null,
+      })) : []);
     } catch {
       if (request !== parcelRequestRef.current) return;
       setParcelsError("Parcely se nepodařilo načíst. Zkontrolujte připojení a přihlášení a zkuste to znovu.");
     } finally {
       if (request === parcelRequestRef.current) setParcelsLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, tileByCell, subBiomesOf]);
 
   useEffect(() => {
     if (!selected) {
