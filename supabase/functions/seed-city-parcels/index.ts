@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { seatCityOnParcels } from "../_shared/citySeat.ts";
+import { bearer } from "../_shared/sessionAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,23 +20,24 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization") ?? "";
-    if (!authHeader) return json({ error: "Přihlášení je vyžadováno" }, 401);
+    const token = bearer(req);
+    if (!token) return json({ error: "Přihlášení je vyžadováno" }, 401);
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const authClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
     });
-    const { data: userData } = await authClient.auth.getUser();
-    const user = userData?.user;
-    if (!user) return json({ error: "Neplatná session" }, 401);
+    const { data, error: authError } = await authClient.auth.getClaims(token);
+    const userId = data?.claims?.sub;
+    if (authError || typeof userId !== "string" || !userId) return json({ error: "Neplatná session" }, 401);
 
     const body = await req.json().catch(() => ({}));
     const sessionId = String(body?.session_id ?? "");
     if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return json({ error: "session_id je povinné" }, 400);
 
     const { data: membership } = await sb.from("game_memberships")
-      .select("id").eq("session_id", sessionId).eq("user_id", user.id).maybeSingle();
+      .select("id").eq("session_id", sessionId).eq("user_id", userId).maybeSingle();
     if (!membership) return json({ error: "Nejste členem této hry" }, 403);
 
     const { data: session } = await sb.from("game_sessions")

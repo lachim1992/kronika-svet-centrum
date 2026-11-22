@@ -213,6 +213,7 @@ export async function seedNeutralCities(db:any,sessionId:string) {
     // Source industry always on its own real worked parcel, one active recipe per rural site.
     const sourceTpl=templates.get(resource.building);
     if(!sourceTpl)throw Error("Missing harvest building "+resource.building);
+    const parcels=await ensureTileParcels(db,sessionId,macro.grid_x,macro.grid_y);
     const candidate=parcels.filter((p:any)=>p.buildable&&p.status==="wild"&&!p.city_id)
       .map((p:any)=>({p,chance:foodResourceChance(resource,{
         subBiome:p.sub_biome,tempBand:macro.temp_band,moistureBand:macro.moisture_band,
@@ -230,7 +231,6 @@ export async function seedNeutralCities(db:any,sessionId:string) {
     });
     if(seats.seatIndex==null)throw Error("No seat for "+profile.name);
     await one(db.from("cities").update({founded_parcel_index:seats.seatIndex}).eq("id",cityId).select("id").single(),"seat index");
-    const parcels=await ensureTileParcels(db,sessionId,macro.grid_x,macro.grid_y);
     const cityUrban=(await ensureTileParcels(db,sessionId,macro.grid_x,macro.grid_y)).filter((p:any)=>p.city_id===cityId&&p.status==="claimed"&&p.claim_kind!=="worked");
     const residential=cityUrban.shift();
     if(!residential)throw Error("Missing housing parcel for "+profile.name);
