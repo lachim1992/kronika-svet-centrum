@@ -1124,7 +1124,7 @@ async function executeBuildRoadPath(
       .forEach((sub: any) => riverSubCells.add(`${cell.x},${cell.y},${sub.x},${sub.y}`));
   });
   const bridgeCount = new Set(subPath.filter((cell: any) => riverSubCells.has(`${cell.gridX},${cell.gridY},${cell.parcelX},${cell.parcelY}`)).map(globalSubKey)).size;
-  const uniquePathTiles = [...new Map(path.map((cell: any, index: number) => [`${cell.x},${cell.y}`, pathTiles[index]])).values()];
+  const uniquePathTiles: any[] = [...new Map<string, any>(path.map((cell: any, index: number): [string, any] => [`${cell.x},${cell.y}`, pathTiles[index]])).values()];
   const terrainFactor = uniquePathTiles.reduce((sum: number, tile: any) => sum + (["mountain", "mountains"].includes(tile.biome_family) ? 1.8 : tile.biome_family === "swamp" ? 1.5 : tile.biome_family === "hills" ? 1.25 : 1), 0) / uniquePathTiles.length;
   const length = new Set(edges.map((edge: any) => `${edge.from_x},${edge.from_y}>${edge.to_x},${edge.to_y}`)).size;
   const subLength = Math.max(0, new Set(subPath.map(globalSubKey)).size - 1);
