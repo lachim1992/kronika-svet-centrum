@@ -8,12 +8,13 @@
  * FOOTPATH cell (Chebyshev distance 1 from the seat, no completed own road on that edge), where the
  * village freight bonus applies. Cells with a road (already 100 %) or no connection (stays 0) are skipped.
  */
+import { parcelTransport, type RoadEdge } from './ruralSites.ts';
 import { RURAL_SETTLEMENT_COST, RURAL_SETTLEMENT_MAX_LEVEL, RURAL_SETTLEMENT_REACH, RURAL_SETTLEMENT_UPGRADE_COST, macroDistance, sanitizeVillageName } from './ruralSettlement.ts';
 
 export const NEUTRAL_VILLAGE_GOLD_BUFFER = 40;
 export interface NvCity { id: string; name: string; owner_player: string; status: string | null; grid_x: number | null; grid_y: number | null }
 export interface NvParcel { id: string; grid_x: number; grid_y: number; parcel_index: number; city_id: string | null; owner_player: string | null; claim_kind: string | null }
-export interface NvVillage { id: string; city_id: string; owner_player: string; grid_x: number; grid_y: number; level: number }
+export interface NvVillage { id: string; city_id: string; owner_player: string; grid_x: number; grid_y: number; level: number; founded_turn?: number | null }
 export interface NvRoad { from_x: number; from_y: number; to_x: number; to_y: number; status: string; owner_player?: string | null }
 export type NvAction =
   | { kind: 'create'; parcelId: string; name: string; commandId: string; cost: number; cell: string }
@@ -30,29 +31,40 @@ export function deterministicCommandId(seed: string): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
-const roadDone = (roads: NvRoad[], a: [number, number], b: [number, number]) => roads.some(r => r.status === 'completed' &&
-  ((r.from_x === a[0] && r.from_y === a[1] && r.to_x === b[0] && r.to_y === b[1]) || (r.from_x === b[0] && r.from_y === b[1] && r.to_x === a[0] && r.to_y === a[1])));
-
-/** Footpath cell of the city: adjacent (4-neighbour) to the seat and without a completed road edge. */
+/**
+ * Footpath cell exactly as the canonical solver sees it (ruralSites.parcelTransport): only
+ * COMPLETED roads of the city's own realm (or unowned legacy roads) count, multi-hop road
+ * paths count, and a foreign road never upgrades a footpath. A village only helps 'footpath'.
+ */
 export function isFootpathCell(city: NvCity, x: number, y: number, roads: NvRoad[]): boolean {
   if (city.grid_x == null || city.grid_y == null) return false;
-  if (Math.abs(x - city.grid_x) + Math.abs(y - city.grid_y) !== 1) return false;
-  return !roadDone(roads, [city.grid_x, city.grid_y], [x, y]);
+  const edges: RoadEdge[] = roads.filter(r => r.status === 'completed')
+    .map(r => ({ from: `${r.from_x},${r.from_y}`, to: `${r.to_x},${r.to_y}`, owner: r.owner_player ?? null }));
+  return parcelTransport(`${x},${y}`, `${city.grid_x},${city.grid_y}`, edges, city.owner_player).mode === 'footpath';
 }
 
-export function planNeutralVillage(a: { sessionId: string; closedTurn: number; city: NvCity; gold: number; parcels: NvParcel[]; villages: NvVillage[]; roads: NvRoad[] }): NvAction | null {
+/** Turns a neutral village waits after founding/upgrade before the next upgrade (no level-per-turn spree). */
+export const NEUTRAL_VILLAGE_UPGRADE_COOLDOWN = 3;
+
+export function planNeutralVillage(a: { sessionId: string; closedTurn: number; city: NvCity; gold: number; parcels: NvParcel[]; villages: NvVillage[]; roads: NvRoad[];
+  /** Latest turn_number of rural_settlement_upgrades per settlement id (server read). */
+  lastUpgradeTurn?: Record<string, number> }): NvAction | null {
   const { city } = a;
   if (!city.owner_player.startsWith('Neutral:') || city.status !== 'ok' || city.grid_x == null || city.grid_y == null) return null;
   const own = a.villages.filter(v => v.city_id === city.id && v.owner_player === city.owner_player)
     .filter(v => isFootpathCell(city, v.grid_x, v.grid_y, a.roads))
     .sort((x, y) => x.level - y.level || x.id.localeCompare(y.id));
+  const lastAction = (v: NvVillage) => Math.max(Number(v.founded_turn ?? 0) || 0, Number(a.lastUpgradeTurn?.[v.id] ?? 0) || 0);
   const up = own.find(v => v.level < RURAL_SETTLEMENT_MAX_LEVEL);
+  // One village per city: while its upgrade is cooling down the city does nothing (no second village).
+  if (up && a.closedTurn + 1 - lastAction(up) < NEUTRAL_VILLAGE_UPGRADE_COOLDOWN) return null;
   if (up) {
     const target = up.level + 1, cost = RURAL_SETTLEMENT_UPGRADE_COST[target];
     if (a.gold < cost + NEUTRAL_VILLAGE_GOLD_BUFFER) return null;
     return { kind: 'upgrade', settlementId: up.id, targetLevel: target, cost, cell: `${up.grid_x},${up.grid_y}`,
       commandId: deterministicCommandId(`nv-up|${a.sessionId}|${a.closedTurn}|${up.id}|${target}`) };
   }
+  if (a.villages.some(v => v.city_id === city.id)) return null; // upgrade path only; never a village spree
   if (a.gold < RURAL_SETTLEMENT_COST + NEUTRAL_VILLAGE_GOLD_BUFFER) return null;
   const occupied = new Set(a.villages.map(v => `${v.grid_x},${v.grid_y}`));
   const site = a.parcels

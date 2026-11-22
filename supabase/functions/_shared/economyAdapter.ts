@@ -1,4 +1,5 @@
 import { villageStorageForCity } from './ruralSettlement.ts';
+import { constructionPointsByMaterial } from './constructionMaterials.ts';
 import { aggregateRuralPopulationByCity, ruralCatchments } from './ruralGameplay.ts';
 import { catalogDirectUse } from './goodsFunction.ts';
 import { depositKey } from './ruralSites.ts';
@@ -573,7 +574,9 @@ const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
         transit_value:result.metrics.filter(m=>owned.has(m.city)).reduce((s,m)=>s+m.transit_importance,0),
         food_produced:bs.filter(b=>goodMap.get(b.good)!.basket==='staple_food').reduce((s,b)=>s+produced(b),0),
         food_stored:bs.filter(b=>goodMap.get(b.good)!.basket==='staple_food').reduce((s,b)=>s+b.stored,0),
-        fame_prestige:result.famous.filter(f=>owned.has(f.city)&&f.created!=null).reduce((s,f)=>s+f.fame*ECONOMY.famePrestige,0)}};
+        fame_prestige:result.famous.filter(f=>owned.has(f.city)&&f.created!=null).reduce((s,f)=>s+f.fame*ECONOMY.famePrestige,0),
+        // Same points as construction_available_for_capex, attributed to their physical capex material.
+        construction_by_material:constructionPointsByMaterial(bs)}};
   });
   const priceIndex=new Map(result.prices.map(p=>[`${p.city}::${p.good}`,p]));
   const summaries=result.balances.filter(b=>cityNode.has(b.city)).map(b=>{const price=priceIndex.get(`${b.city}::${b.good}`);

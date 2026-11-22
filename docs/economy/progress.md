@@ -184,3 +184,24 @@ Další úkol: provenience šarží pro kvalitu (grain→flour→bread).
 - DONE (C): map panel already shows marker, committed output/haul, no_road warning, granary bonus (unchanged).
 - BLOCKED (B): paying construction from stored wood/stone. Physical stock is written only by process-turn's committed ledger (`balances.capex`/`construction_points`); a build-time debit of city stock would be a second stock writer and could double-spend against the same turn's capex. Needed design: a build command reserves an explicit material quantity on `city_buildings` (new columns, migration), and process-turn's atomic fiscal plan consumes it as capex the next turn with an SQL conservation check. Read-only quote stays `buildingReserveReport`.
 - Tests written, NOT run: `src/test/neutral-village-planner.test.ts`. Deploy needed: neutral-city-investments (+ command-dispatch unchanged).
+
+## 2026-11-22 — Stavební materiály v kanonickém cyklu + opravy plánovače vesnic
+
+### DONE (kód, nespuštěno, nenasazeno)
+- `_shared/constructionMaterials.ts`: atribuce `production_reserve` podle materiálu {wood, stone, mixed, unattributed}; suma = rezerva vždy (normalizace, jiné výdaje = proporční čerpání). Jediný výdajový kanál: dřevo/kámen fyzicky spotřebuje goodsEconomy jako `capex` při uzavření tahu; stavba čerpá jen tytéž body, nikdy podruhé ze skladu města.
+- economyAdapter: `economy_detail.construction_by_material` (stejné body jako `construction_available_for_capex`).
+- process-turn: tentýž přírůstek rezervy se připíše do složení (`scaleAccrual`), jen pokud existuje sloupec `construction_reserve_composition`.
+- Migrace `20261123100000_construction_material_allocations.sql` (ADDITIVNÍ, NEAPLIKOVANÁ): sloupec složení, tabulka `construction_allocations` (unikátní command_id), RPC `allocate_construction_reserve` (FOR UPDATE, kontrola tahu a vlastníka města, zlato + materiál v jedné transakci, idempotence), `commit_construction_allocation`, `release_construction_allocation` (vrací přesně do stejných košů).
+- BUILD_BUILDING: platí přes RPC; bez migrace legacy pooled charge (označeno v události `materials.allocation`). Opakovaný příkaz s rezervací bez budovy stavbu dokončí bez druhé platby.
+- UI CityBuildingsPanel: řádek dřevo/kámen/železo, „chybí" jen podle stejného pravidla jako server; železo výslovně „ze společné zásoby".
+- Plánovač vesnic: cesta = kanonický `parcelTransport` (cizí cesty se nepočítají, vícekrokové vlastní ano); cooldown 3 tahy mezi vylepšeními (founded_turn + rural_settlement_upgrades); jedno město = jedna vesnice.
+- Testy (nespuštěné): `construction-materials.test.ts`, rozšířený `neutral-village-planner.test.ts`, DB `construction-allocation-db.integration.test.ts` (skip bez CHRONICLE_IT_DB_URL; v transakci + ROLLBACK).
+
+### BLOCKED / omezení
+- Železo není capex zboží (goodsEconomy ho nepřevádí na stavební body) → `cost_iron` se dál platí ze společných bodů; skutečný odběr železa ze skladu vyžaduje spotřebu v process-turn fiscal plan (capex kontrola v `apply_goods_fiscal_turn`).
+- UPGRADE_BUILDING, projekty, cesty a armády dál čerpají rezervu bez materiálu (proporčně).
+- Marmorová sleva se v UI náhledu neuplatňuje (server ano).
+- Pořadí nasazení: migrace → command-dispatch, process-turn, refresh-economy (adapter), neutral-city-investments.
+
+### Další krok
+Fyzická spotřeba železa pro stavby přes capex kontrakt goodsEconomy (iron jako capex good s vlastním košem).

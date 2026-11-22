@@ -1,4 +1,5 @@
 import { householdPurchaseCandidates } from "../_shared/householdPurchases.ts";
+import { accrueComposition, scaleAccrual } from "../_shared/constructionMaterials.ts";
 import { STRATEGIC_TIER_BONUSES } from "../_shared/strategicEffects.ts";
 import { planFiscalWrites } from '../_shared/atomicWrites.ts';
 import { treasuryBreakdown } from '../_shared/treasury.ts';
@@ -1378,6 +1379,12 @@ Deno.serve(async (req) => {
     const constructionForCapex = Number((realm as any).construction_available_for_capex || 0);
     const productionIncome = allowCapexAccrual === true ? constructionForCapex : 0;
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
+    // Material attribution of the SAME reserve (no second channel): only when the additive column
+    // exists (migration 20261123100000). Accrual by material comes from economy_detail written by refresh.
+    const compositionPatch = 'construction_reserve_composition' in (realm as any)
+      ? { construction_reserve_composition: accrueComposition((realm as any).construction_reserve_composition, realm.production_reserve || 0,
+          productionIncome > 0 ? scaleAccrual((realm as any).economy_detail?.construction_by_material, productionIncome) : null, newProductionReserve) }
+      : {};
 
 
 
@@ -1575,6 +1582,7 @@ Deno.serve(async (req) => {
       last_turn_iron_prod: 0,
       gold_reserve: Math.round(newGoldReserve),
       production_reserve: newProductionReserve,
+      ...compositionPatch,
       famine_city_count: famineCityCount,
       faith: Math.round(newFaith * 100) / 100,
       faith_growth: Math.round(faithGrowth * 100) / 100,

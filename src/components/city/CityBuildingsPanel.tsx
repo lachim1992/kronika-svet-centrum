@@ -1,4 +1,5 @@
 import { settlementRank } from "../../../supabase/functions/_shared/buildValidation";
+import { ConstructionMaterialQuote, constructionQuote } from "./ConstructionMaterialQuote";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
@@ -139,7 +140,9 @@ const CityBuildingsPanel = ({
   const canAfford = (costs: { cost_wealth?: number; cost_wood?: number; cost_stone?: number; cost_iron?: number }) =>
     realm &&
     (realm.gold_reserve || 0) >= (costs.cost_wealth || 0) &&
-    (realm.production_reserve || 0) >= getProductionCost(costs);
+    (realm.production_reserve || 0) >= getProductionCost(costs) &&
+    // Material-specific: wood needs wood-origin reserve, stone stone-origin (server rule mirror).
+    (!("construction_reserve_composition" in realm) || constructionQuote(realm, costs).ok);
 
   // Get upgrade info for a building
   const getUpgradeInfo = (b: any) => {
@@ -767,6 +770,7 @@ const CityBuildingsPanel = ({
                       {((cb.cost_wood || 0) + (cb.cost_stone || 0) + (cb.cost_iron || 0)) > 0 && <span>⚒️{(cb.cost_wood || 0) + (cb.cost_stone || 0) + (cb.cost_iron || 0)}</span>}
                       <span>⏱️{cb.build_duration}k</span>
                     </div>
+                    <ConstructionMaterialQuote realm={realm} costs={cb} />
                     <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
                     <div className="flex gap-1 text-[9px] flex-wrap">
                       {Object.entries(effects).filter(([k, v]) => k !== "basket_outputs" && k !== "basket_quality" && Number(v) > 0).map(([k, v]) => (
@@ -891,6 +895,7 @@ const CityBuildingsPanel = ({
                               {((t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0)) > 0 && <span>⚒️{(t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0)}</span>}
                               <span>⏱️{t.build_turns}k</span>
                             </div>
+                            <ConstructionMaterialQuote realm={realm} costs={t} />
                             <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
                             <div className="flex gap-1 text-[9px] flex-wrap">
                               {Object.entries(t.effects || {}).filter(([k, v]) => k !== "basket_outputs" && k !== "basket_quality" && Number(v) > 0).map(([k, v]) => (

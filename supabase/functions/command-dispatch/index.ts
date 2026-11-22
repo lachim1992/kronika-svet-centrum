@@ -57,6 +57,7 @@ import { generalArmyCapacity } from "../_shared/generalCommand.ts";
 import { FARM_FIELD_COST, MAX_FARM_FIELDS, farmFieldReason } from "../_shared/farmFields.ts";
 import { RURAL_SETTLEMENT_COST, RURAL_SETTLEMENT_REACH, RURAL_SETTLEMENT_UPGRADE_COST, ruralSettlementReason, sanitizeVillageName, upgradeRuralSettlementReason } from "../_shared/ruralSettlement.ts";
 import { chargeReserves, refundReserves, realmReserveIO } from "../_shared/reserveLedger.ts";
+import { materialRequirement } from "../_shared/constructionMaterials.ts";
 import { requirePlayerSeat, PlayerIdentityError } from "../_shared/playerIdentity.ts";
 import { rationPolicy } from "../_shared/rationPolicy.ts";
 import { LEGACY_FOOD_TRANSFER_ERROR } from "../_shared/legacyFood.ts";
@@ -3589,11 +3590,34 @@ async function executeBuildBuilding(
   if ((realm.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold}, máš ${Math.floor(realm.gold_reserve || 0)})` };
   if ((realm.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost}, máš ${Math.floor(realm.production_reserve || 0)})` };
 
-  // Delta compare-and-set with retry (shared ledger helper): charged at most once, refunds add back exactly the cost.
+  // ONE spending channel for construction materials: wood/stone were already consumed physically as
+  // goodsEconomy capex and accrued into production_reserve. The atomic SQL allocation draws the
+  // template's wood/stone/iron split from that reserve's material attribution (never from city stock)
+  // and records it per command_id (idempotent). Legacy pooled charge only while the migration is absent.
   const reserveIO = realmReserveIO(supabase, realm.id);
   const buildCost = { gold: costGold, production: prodCost };
-  const charge = await chargeReserves(reserveIO, buildCost, 3, realm);
-  if (charge.ok === false) return { events: [], error: charge.error };
+  const materialReq = materialRequirement(building, prodCost);
+  let materialAllocation: "sql" | "legacy_pooled" = "sql";
+  const { data: alloc, error: allocErr } = await supabase.rpc("allocate_construction_reserve", {
+    p_session: sessionId, p_command: commandId, p_player: actor.name, p_city: cityId, p_turn: turnNumber,
+    p_gold: costGold, p_wood: materialReq.wood, p_stone: materialReq.stone, p_iron: materialReq.iron });
+  if (allocErr && isMissingRpc(allocErr)) {
+    materialAllocation = "legacy_pooled";
+    const charge = await chargeReserves(reserveIO, buildCost, 3, realm);
+    if (charge.ok === false) return { events: [], error: charge.error };
+  } else if (allocErr) {
+    return { events: [], error: `Stavební materiály nelze rezervovat: ${allocErr.message}` };
+  } else if (!alloc?.ok) {
+    return { events: [], error: alloc?.error || "Stavební materiály nelze rezervovat" };
+  } else if (alloc.idempotent && alloc.status !== "reserved") {
+    return { events: [], error: "Tato stavba už byla zaplacena (opakovaný příkaz)" };
+  } // idempotent 'reserved' = paid earlier, building never inserted: finish it without charging again.
+
+  const refundBuild = async () => {
+    if (materialAllocation === "legacy_pooled") return refundReserves(reserveIO, buildCost);
+    const { data } = await supabase.rpc("release_construction_allocation", { p_session: sessionId, p_command: commandId });
+    return !!data?.ok;
+  };
 
   // Insert building
   const buildDuration = building.build_duration || building.build_turns || 1;
@@ -3626,16 +3650,20 @@ async function executeBuildBuilding(
   }).select("id").single();
 
   if (insertErr) {
-    await refundReserves(reserveIO, buildCost);
+    await refundBuild();
     return { events: [], error: `Insert failed: ${insertErr.message}` };
   }
   if (targetParcel) {
     const occupancyError = await occupyParcel(supabase, sessionId, actor.name, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category), targetParcel.claim_kind === "worked");
     if (occupancyError) {
       await supabase.from("city_buildings").delete().eq("id", inserted.id);
-      await refundReserves(reserveIO, buildCost);
+      await refundBuild();
       return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
     }
+  }
+  if (materialAllocation === "sql") {
+    const { data: bound } = await supabase.rpc("commit_construction_allocation", { p_session: sessionId, p_command: commandId, p_building: inserted.id });
+    if (!bound?.ok) console.error("[BUILD_BUILDING] allocation not bound to building", commandId);
   }
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
@@ -3644,7 +3672,8 @@ async function executeBuildBuilding(
     city_id: cityId,
     note: payload.note || `Stavba ${building.name} v ${cityName}.`,
     importance: "normal",
-    reference: { buildingId: inserted.id, buildingName: building.name, cityId, cityName, parcelId: targetParcel?.id || null },
+    reference: { buildingId: inserted.id, buildingName: building.name, cityId, cityName, parcelId: targetParcel?.id || null,
+      materials: { requirement: materialReq, allocation: materialAllocation, draws: materialAllocation === "sql" ? alloc?.draws ?? null : null, physical_stock_drawn: false } },
   }], chronicleText, { buildingId: inserted.id });
 }
 
@@ -5204,4 +5233,9 @@ async function executeResolveUprising(
     reference: { uprising_id: uprisingId, concession, effects },
   }, ...extraEvents], payload.chronicleText
     || `**Vzpoura v ${uprising.city_name} ukončena (rok ${turnNumber}):** Vládce ${actor.name} zvolil: "${label}".`);
+}
+
+/** PostgREST/Postgres "function does not exist" — the additive migration is not applied yet. */
+function isMissingRpc(e: any): boolean {
+  return e?.code === "PGRST202" || e?.code === "42883" || /Could not find the function/i.test(String(e?.message || ""));
 }

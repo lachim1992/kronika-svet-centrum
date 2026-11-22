@@ -685,3 +685,9 @@ Plán: `.lovable/plan/atlas.md` (původní `.lovable/plan.md` obnoven z 166e9b1d
 - [ ] Construction payments from local inventories
 - [x] Neutral cities found/upgrade villages through player commands (2-action cap)
 - [ ] BLOCKED: construction paid from stored wood/stone (needs reservation columns + process-turn capex consumption)
+
+## Stavební materiály (2026-11-22)
+- [x] Atribuce stavební rezervy podle materiálu + atomická rezervace (kód; migrace 20261123100000 neaplikována)
+- [x] Plánovač vesnic: vlastní cesty, cooldown, jedna vesnice na město
+- [ ] BLOCKED: fyzický odběr železa (není capex zboží)
+- [ ] Nasazení po testech: migrace → command-dispatch, process-turn, refresh-economy, neutral-city-investments

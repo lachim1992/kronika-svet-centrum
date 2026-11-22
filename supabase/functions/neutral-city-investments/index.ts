@@ -219,14 +219,17 @@ Deno.serve(async (req:Request)=>{
   // Villages: same 2-action cap, deterministic order, executed only through the player's own
   // CREATE/UPGRADE_RURAL_SETTLEMENT commands (SQL RPC prices, ownership, idempotent command_id).
   if(actions<2) {
-    const [citiesRes,villagesRes,roadsRes]=await Promise.all([
+    const [citiesRes,villagesRes,upgradesRes,roadsRes]=await Promise.all([
       db.from("cities").select("id,name,owner_player,status,grid_x,grid_y").eq("session_id",sessionId).like("owner_player","Neutral:%").eq("status","ok").order("id"),
-      (db.from as any)("rural_settlements").select("id,city_id,owner_player,grid_x,grid_y,level").eq("session_id",sessionId),
+      (db.from as any)("rural_settlements").select("id,city_id,owner_player,grid_x,grid_y,level,founded_turn").eq("session_id",sessionId),
+      (db.from as any)("rural_settlement_upgrades").select("settlement_id,turn_number").eq("session_id",sessionId),
       db.from("road_segments").select("from_x,from_y,to_x,to_y,status,owner_player").eq("session_id",sessionId),
     ]);
-    if(citiesRes.error||villagesRes.error||roadsRes.error) results.push({cityId:"",owner:"",status:"village_read_failed"});
+    if(citiesRes.error||villagesRes.error||upgradesRes.error||roadsRes.error) results.push({cityId:"",owner:"",status:"village_read_failed"});
     else {
       const list=citiesRes.data||[];const offset=list.length?closedTurn%list.length:0;
+      const lastUpgradeTurn:Record<string,number>={};
+      for(const u of (upgradesRes.data||[]) as any[]) lastUpgradeTurn[u.settlement_id]=Math.max(lastUpgradeTurn[u.settlement_id]??0,Number(u.turn_number)||0);
       for(const city of [...list.slice(offset),...list.slice(0,offset)]) {
         if(actions>=2)break;
         const [realmRes,parcelRes]=await Promise.all([
@@ -235,7 +238,7 @@ Deno.serve(async (req:Request)=>{
         ]);
         if(realmRes.error||parcelRes.error||!realmRes.data)continue;
         const plan=planNeutralVillage({sessionId,closedTurn,city:city as any,gold:number(realmRes.data.gold_reserve),
-          parcels:(parcelRes.data||[]) as any,villages:(villagesRes.data||[]) as any,roads:(roadsRes.data||[]) as any});
+          parcels:(parcelRes.data||[]) as any,villages:(villagesRes.data||[]) as any,roads:(roadsRes.data||[]) as any,lastUpgradeTurn});
         if(!plan)continue;
         actions++;
         const actor={name:city.owner_player,type:"ai_faction"};
