@@ -159,18 +159,43 @@ describe('catalog-wide industrial chains (adapter, LOCK)', () => {
     // All catalog chains are already verified individually in the cases above.
     // Running the entire enlarged (197+ recipes) world as ONE O(N^3) network stalls CI;
     // this stress fixture deliberately samples separate baskets and multi-input chains.
-    const stressRecipes = RECIPES.filter(r => materialInputs(r).length > 0)
-      .filter((r,i)=>i<32);
+    // Choose at least one material-consuming recipe per demand basket and add
+    // difficult multi-input recipes. Individual A chains above still cover
+    // every catalog processing recipe; this is a deliberately bounded stress world.
+    const allMaterialRecipes = RECIPES.filter(r => materialInputs(r).length > 0);
+    const baskets = new Map<string,CatalogRecipe>();
+    for (const r of allMaterialRecipes) {
+      const basket = goodByKey.get(r.output)?.basket ?? 'unclassified';
+      if (!baskets.has(basket)) baskets.set(basket,r);
+    }
+    const stressRecipes = [...new Map([
+      ...[...baskets.values(), ...allMaterialRecipes.filter(r=>materialInputs(r).length >= 2).slice(0,8)]
+        .map(r=>[r.key,r] as const)
+    ]).values()];
 
     // This is a contention/stress fixture, not an infinite-supply fixture:
     // many producers compete for the same upstream goods, household reserves,
     // and road capacity. Individual recipe tests above require full A delivery.
     const need = new Map<string, number>();
     for (const g of GOODS) if (g.finalUse) need.set(g.key, 150);
-    const depth = (good: string, seen = new Set<string>()): number => {
-      if (seen.has(good)) return 0; seen.add(good);
-      const users = RECIPES.filter(r => materialInputs(r).some(i => i.good === good));
-      return users.length ? 1 + Math.max(...users.map(r => depth(r.output, new Set(seen)))) : 0;
+    // Memoize downstream depth: the previous per-recursion graph scan repeated
+    // the same exponentially branching work as the number of recipes grew.
+    const consumerGoods = new Map<string,string[]>();
+    for (const r of RECIPES) for (const input of materialInputs(r)) {
+      const targets = consumerGoods.get(input.good) ?? [];
+      targets.push(r.output); consumerGoods.set(input.good,targets);
+    }
+    const cachedDepth = new Map<string,number>();
+    const depth = (good:string, visited=new Set<string>()):number => {
+      if (visited.has(good)) return 0;
+      const cached = cachedDepth.get(good);
+      if (cached !== undefined) return cached;
+      visited.add(good);
+      const consumers=consumerGoods.get(good) ?? [];
+      const result=consumers.length?1+Math.max(...consumers.map(g=>depth(g,visited))):0;
+      visited.delete(good);
+      cachedDepth.set(good,result);
+      return result;
     };
     const capacityOf = new Map<string, number>();
     for (const r of RECIPES.slice().sort((a, b) => depth(a.output) - depth(b.output))) {
