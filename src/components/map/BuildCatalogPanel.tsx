@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
+import { MATERIAL_SOURCES } from "../../../supabase/functions/_shared/materialResources";
 import {
   buildCatalog, matchesQuery, BUILD_CATEGORY_ORDER, BUILD_CATEGORY_LABELS, goodLabel, ROLE_LABELS,
   type CatalogItem, type RecipeRow, type TemplateRow, type BuildCategory,
@@ -34,13 +35,13 @@ interface Props {
   treasury: { gold: number; production: number };
   subnodeBlockReason: (key: string) => string | null;
   /** Canonical terrain/deposit restrictions for selected purchased microparcel. */
-  terrainBlockReason?: (item: CatalogItem) => string | null;
+  terrainBlockReason?: (item: CatalogItem,sourceRecipe?:string) => string | null;
   /** Rural (worked land) vs urban site rule; checked before terrain. */
-  siteBlockReason?: (item: CatalogItem) => string | null;
+  siteBlockReason?: (item: CatalogItem,sourceRecipe?:string) => string | null;
   basketOptions: (districtKey: string) => { key: string; label: string }[];
   spriteFor: (item: CatalogItem) => string;
   devMode?: boolean;
-  onBuild: (item: CatalogItem, basketKey?: string) => void;
+  onBuild: (item: CatalogItem, basketKey?: string, sourceRecipe?:string) => void;
 }
 
 const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("cs-CZ");
@@ -52,6 +53,7 @@ export function BuildCatalogPanel(props: Props) {
   const [open, setOpen] = useState<Record<string, boolean>>({ housing: true, source: true });
   const [detail, setDetail] = useState<string | null>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
+  const [pickSource,setPickSource] = useState<Record<string,string>>({});
 
   useEffect(() => {
     let alive = true;
@@ -63,15 +65,29 @@ export function BuildCatalogPanel(props: Props) {
 
   const catalog = useMemo(() => buildCatalog({ templates: props.templates, recipes }), [props.templates, recipes]);
 
+  /** The template exposes possible raw products; construction always selects exactly one
+   * material source instead of mining all deposit types at once. */
+  const sourceChoices = (item:CatalogItem) => {
+    if (item.kind!=='building' || item.category!=='source') return [];
+    const template=props.templates.find(t=>t.id===item.refId);
+    const allowed=new Set([
+      ...((template?.effects?.recipe_keys||[]) as string[]),
+      ...((template?.effects?.specialization_recipe_keys||[]) as string[])
+    ]);
+    return MATERIAL_SOURCES.filter(s=>s.building===item.name && allowed.has(s.harvest));
+  };
+  const selectedSource=(item:CatalogItem) =>
+    pickSource[item.key] || sourceChoices(item)[0]?.harvest;
+
   /** Hard blocker — the parcel or the treasury refuses this build right now. */
-  const blockedBy = (item: CatalogItem): string | null => {
+  const blockedBy = (item: CatalogItem,sourceRecipe?:string): string | null => {
     if (item.kind === "subnode") return props.subnodeBlockReason(item.refId);
     if (props.parcelBlock) return props.parcelBlock;
     if (!props.ownCity) return "Nedostupné: stavět lze jen na parcele vlastního města";
-    const site = props.siteBlockReason?.(item);
+    const site = props.siteBlockReason?.(item,sourceRecipe??selectedSource(item));
     if (site) return site;
     if (item.kind === "building") {
-      const mismatch = props.terrainBlockReason?.(item);
+      const mismatch = props.terrainBlockReason?.(item,sourceRecipe??selectedSource(item));
       if (mismatch) return mismatch;
     }
     if (item.kind === "district" && item.category === "district" && props.freeDistrictSlots <= 0)
@@ -149,7 +165,9 @@ export function BuildCatalogPanel(props: Props) {
         {expanded && <div className="space-y-2 px-2 pb-2">
           <p className="text-[10px] text-muted-foreground">{BUILD_CATEGORY_LABELS[category].hint}</p>
           {items.map(item => {
-            const blocked = blockedBy(item);
+            const materialOptions=sourceChoices(item);
+            const resourceRecipe=selectedSource(item);
+            const blocked = blockedBy(item,resourceRecipe);
             const warning = warningFor(item);
             const basketChoices = item.kind === "district" && item.category === "district" ? props.basketOptions(item.refId) : [];
             const picked = pick[item.key] || basketChoices[0]?.key;
@@ -173,13 +191,22 @@ export function BuildCatalogPanel(props: Props) {
                   <Info className="h-3 w-3" />
                 </Button>
               </div>
+              {materialOptions.length > 0 && <div className="mt-2 space-y-1">
+                <p className="text-[10px] font-medium">Těžená / sklízená surovina</p>
+                <select className="h-7 w-full rounded border border-input bg-background px-1 text-[11px]"
+                  aria-label="Přírodní surovina stavby" value={resourceRecipe}
+                  onChange={e=>setPickSource(x=>({...x,[item.key]:e.target.value}))}>
+                  {materialOptions.map(s=><option key={s.harvest} value={s.harvest}>{s.label}</option>)}
+                </select>
+                <p className="text-[10px] text-muted-foreground">Vyžaduje nalezené ložisko nebo surovinu na vybrané mikroparcele.</p>
+              </div>}
               {basketChoices.length > 0 && <select className="mt-2 h-7 w-full rounded border border-input bg-background px-1 text-[11px]"
                 value={picked} onChange={e => setPick(c => ({ ...c, [item.key]: e.target.value }))}>
                 {basketChoices.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
               </select>}
               <div className="mt-2 flex items-center gap-2">
                 <Button size="sm" className="h-7 flex-1 px-2 text-[11px]" disabled={!!blocked || !!props.busyKey}
-                  title={blocked || undefined} onClick={() => props.onBuild(item, picked)}>
+                  title={blocked || undefined} onClick={() => props.onBuild(item, picked, resourceRecipe)}>
                   {props.busyKey === item.key ? <Loader2 className="h-3 w-3 animate-spin" /> : "Postavit"}
                 </Button>
               </div>
