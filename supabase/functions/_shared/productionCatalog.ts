@@ -120,7 +120,7 @@ export const RECIPES: CatalogRecipe[] = [
   r('harvest_olives', 'source', ['farming'], 'raw_olives', 2),
   r('harvest_grapes', 'source', ['farming', 'viticulture'], 'raw_grapes', 3),
   r('herd_cattle', 'source', ['herding'], 'raw_meat', 2),
-  r('herd_sheep', 'source', ['herding'], 'raw_fiber', 2),
+  r('herd_sheep', 'source', ['herding'], 'raw_wool', 2),
   r('skin_cattle', 'source', ['herding'], 'raw_hide', 1),
   r('catch_fish', 'source', ['fishing'], 'raw_fish', 3),
   r('mine_iron', 'source', ['mining'], 'iron_ore', 2),
@@ -169,7 +169,7 @@ export const RECIPES: CatalogRecipe[] = [
   r('forge_arms', 'urban', ['smithing', 'armoring'], 'arms_basic', 1, [['iron_ingot', 2], ['leather', 1]]),
   r('leather_armor', 'urban', ['armoring'], 'arms_basic', 1, [['leather', 2], ['copper_ingot', 1]]),
   r('build_materials', 'urban', ['construction'], 'construction_materials', 2, [['lumber', 1], ['stone_blocks', 1]]),
-  r('make_pottery', 'urban', ['crafting'], 'pottery', 2, [['raw_stone', 1]]),
+  r('make_pottery', 'urban', ['crafting'], 'pottery', 2, [['raw_clay', 2]]),
   r('press_wine', 'urban', ['fermenting'], 'wine_standard', 2, [['raw_grapes', 3]]),
   // guild (luxury / master craft)
   r('build_luxury', 'guild', ['construction', 'master_craft'], 'construction_materials', 3, [['stone_blocks', 2], ['lumber', 2]]),
