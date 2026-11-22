@@ -13,6 +13,7 @@
 
 import type { InputKind } from './inputKinds.ts';
 import { FOOD_DERIVED_GOODS, FOOD_RAW_GOODS, FOOD_RECIPES } from './foodResources.ts';
+import { MATERIAL_RAW_GOODS,MATERIAL_DERIVED,MATERIAL_SOURCES,MATERIAL_SOURCE_RECIPES,MATERIAL_PROCESSING } from './materialResources.ts';
 export type ProductionRole = 'source' | 'processing' | 'urban' | 'guild' | 'producer';
 
 export interface CatalogRecipe {
@@ -63,7 +64,7 @@ export const GOODS: CatalogGood[] = [
   { key: 'raw_grapes', basket: 'variety', stage: 'raw', finalUse: false, household: false },
   { key: 'raw_fiber', basket: 'basic_clothing', stage: 'raw', finalUse: false, household: false },
   { key: 'raw_hide', basket: 'basic_clothing', stage: 'raw', finalUse: false, household: false },
-  { key: 'raw_ore', basket: 'metalwork', stage: 'raw', finalUse: false, household: false },
+  { key: 'raw_ore', basket: 'metalwork', stage: 'raw', finalUse: false, household: false }, // legacy only, no longer mined
   { key: 'raw_stone', basket: 'construction', stage: 'raw', finalUse: false, household: false },
   { key: 'raw_timber', basket: 'construction', stage: 'raw', finalUse: false, household: false },
   { key: 'raw_incense', basket: 'admin_supplies', stage: 'raw', finalUse: false, household: false },
@@ -101,6 +102,7 @@ export const GOODS: CatalogGood[] = [
   { key: 'ritual_goods', basket: 'admin_supplies', stage: 'luxury', finalUse: true, household: false },
   // Food resources v1 (foodResources.ts is the authority).
   ...[...FOOD_RAW_GOODS, ...FOOD_DERIVED_GOODS].map((g): CatalogGood => ({ key: g.key, basket: g.basket, stage: g.stage, finalUse: g.finalUse, household: false })),
+  ...[...MATERIAL_RAW_GOODS,...MATERIAL_DERIVED].map((g):CatalogGood=>({key:g.key,basket:g.basket,stage:g.stage,finalUse:g.finalUse,household:false})),
 ];
 
 // ───────────────────────────── recipes ─────────────────────────────
@@ -121,13 +123,13 @@ export const RECIPES: CatalogRecipe[] = [
   r('herd_sheep', 'source', ['herding'], 'raw_fiber', 2),
   r('skin_cattle', 'source', ['herding'], 'raw_hide', 1),
   r('catch_fish', 'source', ['fishing'], 'raw_fish', 3),
-  r('mine_iron', 'source', ['mining'], 'raw_ore', 2),
-  r('mine_copper', 'source', ['mining'], 'raw_ore', 2),
+  r('mine_iron', 'source', ['mining'], 'iron_ore', 2),
+  r('mine_copper', 'source', ['mining'], 'copper_ore', 2),
   r('mine_gold', 'source', ['gold_mining'], 'gold_ore', 1),
   r('quarry_stone', 'source', ['quarrying'], 'raw_stone', 3),
-  r('quarry_marble', 'source', ['quarrying'], 'raw_stone', 2),
+  r('quarry_marble', 'source', ['quarrying'], 'raw_marble', 2),
   r('fell_timber', 'source', ['logging'], 'raw_timber', 3),
-  r('fell_cedar', 'source', ['logging'], 'raw_timber', 2),
+  r('fell_cedar', 'source', ['logging'], 'raw_cedar', 2),
   r('gather_incense', 'source', ['gathering'], 'raw_incense', 2),
   // gathering/extraction without inputs is a SOURCE too
   r('cut_peat', 'source', ['gathering'], 'peat', 2),
@@ -177,6 +179,10 @@ export const RECIPES: CatalogRecipe[] = [
   r('craft_ritual', 'guild', ['ritual_craft'], 'ritual_goods', 1, [['raw_incense', 1], ['olive_oil', 1]]),
   r('embroider_fine', 'guild', ['weaving', 'master_craft'], 'textile_fine', 1, [['textile_basic', 2]]),
   r('age_wine', 'guild', ['fermenting', 'master_craft'], 'wine_luxury', 1, [['wine_standard', 2]]),
+  // New nonfood physical source and processing contracts, no extra building types.
+  ...MATERIAL_SOURCE_RECIPES.filter(f=>!['mine_iron','mine_copper','quarry_marble','fell_cedar'].includes(f.key))
+    .map(f=>r(f.key,'source',[f.tag],f.output,f.qty)),
+  ...MATERIAL_PROCESSING.map(f=>r(f.key,f.role as ProductionRole,[f.tag],f.output,f.qty,f.inputs)),
   // Food resources v1
   ...FOOD_RECIPES.map((f): CatalogRecipe => ({ key: f.key, role: f.role, tags: f.tags, output: f.output, qty: f.qty,
     inputs: f.inputs.map((i) => ({ good: i.good, qty: i.qty, ...(i.kind ? { kind: i.kind } : {}) })) })),
@@ -266,6 +272,11 @@ for (const f of FOOD_RECIPES) {
   if (!b) throw new Error(`food recipe ${f.key} targets unknown building ${f.building}`);
   (b.specializations ??= []).push(f.key);
 }
+for(const m of [...MATERIAL_SOURCES.map(s=>({key:s.harvest,building:s.building})),...MATERIAL_PROCESSING]){
+  const b=PRODUCTION_BUILDINGS.find(x=>x.name===m.building);
+  if(b)(b.specializations??=[]).push(m.key);
+}
+
 
 export const recipeByKey = new Map(RECIPES.map((x) => [x.key, x]));
 export const goodByKey = new Map(GOODS.map((g) => [g.key, g]));
