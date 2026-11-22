@@ -27,7 +27,7 @@ BEGIN
  THEN RAISE EXCEPTION 'Neutral diplomacy: stale turn';END IF;
  FOR pair IN
   SELECT a.owner_player faction_a,b.owner_player faction_b,
-    a.grid_x ax,a.grid_y ay,b.grid_x bx,b.grid_y by
+    a.grid_x ax,a.grid_y ay,b.grid_x bx,b.grid_y byy
   FROM cities a JOIN cities b ON b.session_id=a.session_id AND a.owner_player<b.owner_player
   WHERE a.session_id=p_session AND a.owner_player LIKE 'Neutral:%'
     AND b.owner_player LIKE 'Neutral:%' AND a.status='ok' AND b.status='ok'
@@ -40,7 +40,7 @@ BEGIN
     WHERE tf.session_id=p_session AND tf.status='active'
       AND ((tf.source_player=pair.faction_a AND tf.target_player=pair.faction_b)
        OR (tf.source_player=pair.faction_b AND tf.target_player=pair.faction_a));
-  v_dist:=abs(pair.ax-pair.bx)+abs(pair.ay-pair.by);
+  v_dist:=abs(pair.ax-pair.bx)+abs(pair.ay-pair.byy);
   -- Relationship growth requires proven goods transfer; proximity gives competition
   -- for land but does NOT invent hostility or battle events.
   v_trust:=greatest(-100,least(100,coalesce(v_prior.trust,0)+least(5,v_volume*10)
