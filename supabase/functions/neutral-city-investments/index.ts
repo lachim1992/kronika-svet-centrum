@@ -49,16 +49,28 @@ Deno.serve(async (req:Request)=>{
   if(plansError) return reply({ok:false,error:plansError.message},500);
   const results:Array<{cityId:string;owner:string;status:string;reason?:string}>=[];
   let actions=0;
-  // Prioritize verified shortages, then retain deterministic rotation for equal needs.
-  // Reads only previous committed basket observations, never provisional output.
-  // A read failure falls back to rotation; it must not grant fictitious shortages.
-  const {data:needs,error:needsError}=await db.from("city_market_baskets")
-    .select("city_id,turn_number,basket_key,local_demand,unmet_demand")
-    .eq("session_id",sessionId).lte("turn_number",closedTurn)
-    .in("basket_key",["drinking_water","staple_food","fuel"])
-    .order("turn_number",{ascending:false}).limit(3000);
+  // Prioritize only shortages belonging to an ACTUALLY committed economic turn.
+  // Reading any uncommitted basket rows would make an interrupted calculation
+  // affect real construction decisions. Never use the current provisional turn.
+  const {data:ledger,error:ledgerError}=await db.from("economy_turn_ledgers")
+    .select("turn_number").eq("session_id",sessionId).eq("committed",true)
+    .lte("turn_number",closedTurn).order("turn_number",{ascending:false})
+    .limit(1).maybeSingle();
+  let needs: Array<{
+    city_id:string;turn_number:number;basket_key:string;
+    local_demand:number|string|null;unmet_demand:number|string|null;
+  }> = [];
+  if(!ledgerError && ledger) {
+    const {data:observed,error:observedError}=await db.from("city_market_baskets")
+      .select("city_id,turn_number,basket_key,local_demand,unmet_demand")
+      .eq("session_id",sessionId).eq("turn_number",ledger.turn_number)
+      .in("basket_key",["drinking_water","staple_food","fuel"])
+      .limit(10000);
+    if(!observedError)needs=observed||[];
+  }
+  // Missing committed evidence => fair rotation, NEVER a fabricated deficit.
   const rotating=rankNeutralInvestmentPlans(
-    (plans||[]) as NeutralPlan[], needsError?[]:(needs||[]), closedTurn
+    (plans||[]) as NeutralPlan[], needs, closedTurn
   );
   // Every third turn reserve one of the two canonical command action slots for
   // actual territorial expansion. Buildings still receive at least one slot.
