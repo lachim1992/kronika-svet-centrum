@@ -1,6 +1,6 @@
 /* Canonical, geographic non-food materials. Game probabilities, not empirical geological frequencies. */
 export interface MaterialSource {kind:string;good:string;label:string;harvest:string;building:string;tag:string;basket:string;price:number;capacity:number;macro:string|null;biomes:Record<string,number>}
-export interface MaterialGood {key:string;label:string;category:string;basket:string;price:number;stage:string;finalUse:boolean}
+export interface MaterialGood {key:string;label:string;category:string;basket:string;price:number;stage:'raw'|'processed'|'luxury'|'final';finalUse:boolean}
 export interface MaterialProcessing {key:string;building:string;tag:string;role:string;output:string;qty:number;inputs:[string,number][]}
 export const MATERIAL_SOURCES:MaterialSource[]=[
   {
