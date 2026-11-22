@@ -871,8 +871,15 @@ Deno.serve(async (req) => {
       for (const name of aiFactionNames) allEconEntities.add(name);
       for (const city of (neutralOwners || [])) if (city.owner_player) allEconEntities.add(city.owner_player);
 
-      const settled = await Promise.allSettled(
-        Array.from(allEconEntities).map(async (name) => {
+      // Cap concurrent fiscal transactions. A world with 16 independent neutral cities
+      // must not launch 17+ overlapping process-turn writes against one Postgres instance.
+      // Every entity still uses the unchanged canonical fiscal pipeline.
+      const entityNames = Array.from(allEconEntities);
+      const settled: PromiseSettledResult<{ ok: boolean; name: string; error?: string }>[] = [];
+      const FISCAL_BATCH = 4;
+      for (let offset = 0; offset < entityNames.length; offset += FISCAL_BATCH) {
+        const batch = await Promise.allSettled(
+          entityNames.slice(offset, offset + FISCAL_BATCH).map(async (name) => {
           if (economyStepFailures.length) return { ok: false, name, error: "Mandatory derived economy phase failed" };
           const { data: ptData, error: ptErr } = await guardedFiscal<any>(economyStepFailures, () => supabase.functions.invoke("process-turn", {
             // CAPEX accrual only when every Layer B step succeeded — stale goods data
@@ -885,8 +892,10 @@ Deno.serve(async (req) => {
             return { ok: false, name, error: economyFailure(ptData, ptErr) };
           }
           return { ok: true, name };
-        }),
-      );
+          }),
+        );
+        settled.push(...batch);
+      }
       const econProcessed = settled.filter((s) => s.status === "fulfilled" && (s.value as any).ok).length;
       const econFailures = settled
         .map((s) => s.status === "fulfilled" ? s.value as any : { ok: false, name: "unknown", error: String((s as any).reason) })
