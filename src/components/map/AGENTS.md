@@ -1,2 +1,3 @@
 - Battle attack playback belongs to BattleAttackEffects and consumes only newly committed field-battle reports; never resolve combat or dispatch game commands from cosmetic animation.
 - City paving, alleyways and pedestrians are decorative layers over existing urban parcels, not physical transport capacity or additional population.- Admin resource atlas reads true deposits only via the admin-only read-only `admin-resource-atlas` function and colours micro-squares with `microResourceProbability` (`src/lib/resourceAtlas.ts`) — never writes, never shows hidden geology to players.
+- Cell selection reads existing tile_parcels through client RLS and handles failures inline; it never invokes tile-parcels or city seeding, so viewing the map cannot mutate a world.

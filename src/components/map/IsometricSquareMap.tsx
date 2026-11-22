@@ -433,6 +433,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const { data: mgmt } = useManagementReport(sessionId, playerName, currentTurn);
   const parcelActuals = useMemo(() => indexParcelProducers((mgmt?.report as any)?.producers), [mgmt]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
+  const [parcelsError, setParcelsError] = useState<string | null>(null);
+  const parcelRequestRef = useRef(0);
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
   const [regionDraft, setRegionDraft] = useState("");
   const [treasury, setTreasury] = useState({ gold: 0, production: 0 });
@@ -1274,15 +1276,31 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const netGrowth = cityForPressure ? Math.round(cityForPressure.population_total * ((cityForPressure.birth_rate || 0) - (cityForPressure.death_rate || 0)) + (cityForPressure.migration_pressure || 0)) : 0;
 
   const loadTileParcels = useCallback(async (gridX: number, gridY: number) => {
+    const request = ++parcelRequestRef.current;
     setParcelsLoading(true);
-    const { data, error } = await supabase.functions.invoke("tile-parcels", { body: { session_id: sessionId, grid_x: gridX, grid_y: gridY } });
-    setParcelsLoading(false);
-    if (error) { setTileParcels([]); return; }
-    setTileParcels(((data as { parcels?: TileParcel[] })?.parcels || []) as TileParcel[]);
+    setParcelsError(null);
+    setTileParcels([]);
+    try {
+      // Viewing a cell is a member-scoped read, never a parcel/city seed command.
+      const { data, error } = await supabase.from("tile_parcels")
+        .select("*").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY)
+        .order("parcel_index");
+      if (request !== parcelRequestRef.current) return;
+      if (error) throw error;
+      setTileParcels((data ?? []) as TileParcel[]);
+    } catch {
+      if (request !== parcelRequestRef.current) return;
+      setParcelsError("Parcely se nepodařilo načíst. Zkontrolujte připojení a přihlášení a zkuste to znovu.");
+    } finally {
+      if (request === parcelRequestRef.current) setParcelsLoading(false);
+    }
   }, [sessionId]);
 
   useEffect(() => {
     if (!selected) {
+      ++parcelRequestRef.current;
+      setParcelsLoading(false);
+      setParcelsError(null);
       setTileParcels([]);
       setSelectedParcelId(null);
       setSelectedNodeId(null);
@@ -2519,8 +2537,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <h3 className="text-sm">Podparcely pole ({TILE_PARCEL_COLS}×{TILE_PARCEL_ROWS})</h3>
             <span className="text-[10px] text-muted-foreground">{claimedSlots * POPULATION_PER_SLOT} míst k bydlení</span>
           </div>
-          {parcelsLoading && <p className="text-xs text-muted-foreground">Vyměřuji parcely…</p>}
-          {!parcelsLoading && !tileParcels.length && <p className="text-xs text-muted-foreground">Toto pole nemá vyměřené parcely.</p>}
+          {parcelsLoading && <p className="text-xs text-muted-foreground">Načítám parcely…</p>}
+          {!parcelsLoading && parcelsError && <div role="alert" className="space-y-2">
+            <p className="text-xs text-destructive">{parcelsError}</p>
+            <Button size="sm" variant="outline" onClick={() => {
+              if (selectedCell) void loadTileParcels(selectedCell.a, selectedCell.b);
+            }}>Zkusit znovu</Button>
+          </div>}
+          {!parcelsLoading && !parcelsError && !tileParcels.length && <p className="text-xs text-muted-foreground">Toto pole nemá vyměřené parcely.</p>}
           {!parcelsLoading && tileParcels.length > 0 && <>
             <div className="grid grid-cols-6 gap-[3px]">
               {tileParcels.map(parcel => {

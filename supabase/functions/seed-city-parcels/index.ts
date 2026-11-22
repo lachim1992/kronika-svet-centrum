@@ -30,7 +30,12 @@ Deno.serve(async (req) => {
     });
     const { data, error: authError } = await authClient.auth.getClaims(token);
     const userId = data?.claims?.sub;
-    if (authError || typeof userId !== "string" || !userId) return json({ error: "Neplatná session" }, 401);
+    if (authError) {
+      const unavailable = (typeof authError.status === "number" && authError.status >= 500)
+        || authError.name === "AuthRetryableFetchError" || authError.name === "AuthUnknownError";
+      return json({ error: unavailable ? "Ověření přihlášení je dočasně nedostupné" : "Neplatná session" }, unavailable ? 503 : 401);
+    }
+    if (typeof userId !== "string" || !userId) return json({ error: "Neplatná session" }, 401);
 
     const body = await req.json().catch(() => ({}));
     const sessionId = String(body?.session_id ?? "");
