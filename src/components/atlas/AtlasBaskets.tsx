@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import ProvenanceBadge, { AtlasCard } from "./ProvenanceBadge";
-import { BASKET_DEMAND, PRODUCT_META, substitutionEfficiency } from "@/lib/atlas/canon";
+import { BASKET_DEMAND, PRODUCT_META, RECIPES, goodFunctionByKey, substitutionEfficiency } from "@/lib/atlas/canon";
 import { fmt } from "@/lib/atlas/provenance";
 import type { AtlasGood } from "@/hooks/useAtlasData";
 
 export const CLASS_LABEL: Record<string, string> = { critical_need: "Kritická potřeba", basic_need: "Základní potřeba", operational: "Provoz výroby", civic: "Správa a instituce", development: "Výstavba", military: "Vojsko", discretionary: "Volitelná spotřeba", luxury: "Luxus", intermediate_only: "Jen polotovar" };
+const USE_LABEL: Record<string, string> = { household_final: "domácnost", household_discretionary: "domácnost (volitelné)", industrial_input: "výroba", institutional: "úřady", military: "armáda", construction: "stavby", fuel: "palivo" };
+const MATERIAL_LABEL: Record<string, string> = { flax: "len", hemp: "konopí", cotton: "bavlna", wool: "vlna", mixed_fine: "jemná směs" };
 const DRIVER_LABEL: Record<string, string> = { household_need: "domácnosti (potřeba)", household_discretionary: "domácnosti (volitelné)", industrial_operational: "výroba", institutional: "úřady", construction: "stavby", military: "armády" };
 
 /** Products of one basket with substitution efficiency against the basket's reference (first) product. */
@@ -39,14 +41,17 @@ export default function AtlasBaskets({ goods, onOpenChain }: { goods: AtlasGood[
       </div>
       <h4 className="mt-4 mb-2 text-sm font-medium">Produkty v koši ({products.length})</h4>
       {products.length === 0 ? <p className="text-xs text-muted-foreground">Katalog zboží nemá pro tento koš žádný produkt.</p> :
-      <div className="overflow-x-auto"><table className="w-full text-xs"><thead className="text-left text-muted-foreground"><tr><th className="py-1">Produkt</th><th>Funkční hodnota</th><th>Zaměnitelnost</th><th>Účinnost náhrady</th><th /></tr></thead>
+      <div className="overflow-x-auto"><table className="w-full text-xs"><thead className="text-left text-muted-foreground"><tr><th className="py-1">Produkt</th><th>Podkoš</th><th>Použití</th><th>Materiál / výživa</th><th>Recept</th><th>Funkční hodnota</th><th>Zaměnitelnost</th><th>Účinnost náhrady</th><th /></tr></thead>
         <tbody>{products.map(p => <tr key={p.good.key} className="border-t border-border/50">
           <td className="py-1.5">{p.good.icon} {p.good.display_name}</td>
+          {(() => { const f = goodFunctionByKey.get(p.good.key); const recipes = RECIPES.filter(r => r.output === p.good.key).map(r => r.key);
+            return <><td>{f?.subbasket ?? "—"}</td><td>{f ? (f.direct ? f.uses.map(u => USE_LABEL[u] || u).join(", ") : "jen polotovar") : "—"}</td>
+              <td>{f?.material ? MATERIAL_LABEL[f.material] : f?.nutrition ?? "—"}</td><td>{recipes.length ? recipes.join(", ") : "—"}</td></>; })()}
           <td>{fmt(p.meta?.functional_value ?? null)}</td><td>{fmt(p.meta?.substitutability ?? null)}</td>
           <td>{p.meta ? fmt(p.efficiency) : <ProvenanceBadge status="unavailable" />}</td>
           <td><button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => onOpenChain(p.good.key)}>řetězec</button></td>
         </tr>)}</tbody></table></div>}
-      <p className="mt-2 text-[11px] text-muted-foreground">Účinnost = kolik potřeby pokryje 1 jednotka vůči prvnímu produktu koše. {products[0]?.nutritionOnly ? "U kritického jídla se počítá jen výživa; chuť ovlivňuje volbu, ne přežití." : "Zahrnuje zaměnitelnost i funkční hodnotu."}</p>
+      <p className="mt-2 text-[11px] text-muted-foreground">Náhrady = ostatní přímé produkty stejného podkoše. Polotovary se z koše nekupují. Účinnost = kolik potřeby pokryje 1 jednotka vůči prvnímu produktu koše. {products[0]?.nutritionOnly ? "U kritického jídla se počítá jen výživa; chuť ovlivňuje volbu, ne přežití." : "Zahrnuje zaměnitelnost i funkční hodnotu."}</p>
     </AtlasCard>}
   </div>;
 }

@@ -667,3 +667,12 @@ Plán: `.lovable/plan/atlas.md` (původní `.lovable/plan.md` obnoven z 166e9b1d
 - Testy: `micro-resources.test.ts` 5/5; celá sada viz poslední běh. Nasazeno: command-dispatch.
 - Neověřeno: placený průzkum v živé hře (zapsal by do hry).
 - Zbývá: etapa 2 stavby jen na potvrzených surovinách; 3 pole u farmy (max 8, sousedící); 4 množení plodin (vinice 3 kola); 5 opatrný převod uložených her.
+
+## Functional Demand / Material Identity — etapa 1
+- [x] goodsFunction.ts: jeden katalog funkce zboží (použití, kupující, koš/podkoš, výživa, materiál) + auditGoodsFunctions
+- [x] Adaptér: katalog rozhoduje o přímém nákupu z koše; DB smí jen zakázat
+- [x] PRODUCT_META explicitně pro všechny přímo kupované výrobky; polotovary bez spotřebitelského profilu
+- [x] Textilie: hemp_yarn, textile_hemp/cotton/wool; textile_basic + yarn = legacy lněná linie
+- [x] Atlas: podkoš, použití, materiál/výživa, recept
+- [ ] BLOCKED (uživatel): aplikace migrace 20261122190000_textile_material_identity.sql + nasazení process-turn/refresh-economy/command-dispatch; spuštění testů
+- [ ] Další: provenience šarží (lot) pro kvalitu; výživová vyváženost bez nové potřeby

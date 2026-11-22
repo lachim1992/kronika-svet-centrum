@@ -638,6 +638,42 @@ export const MATERIAL_DERIVED:MaterialGood[]=[
     "finalUse": false
   },
   {
+    "key": "hemp_yarn",
+    "label": "Konopná příze",
+    "category": "textile",
+    "basket": "basic_clothing",
+    "price": 0.9,
+    "stage": "processed",
+    "finalUse": false
+  },
+  {
+    "key": "textile_hemp",
+    "label": "Konopné plátno",
+    "category": "textile",
+    "basket": "basic_clothing",
+    "price": 1.6,
+    "stage": "final",
+    "finalUse": true
+  },
+  {
+    "key": "textile_cotton",
+    "label": "Bavlněná látka",
+    "category": "textile",
+    "basket": "basic_clothing",
+    "price": 2.2,
+    "stage": "final",
+    "finalUse": true
+  },
+  {
+    "key": "textile_wool",
+    "label": "Vlněné sukno",
+    "category": "textile",
+    "basket": "basic_clothing",
+    "price": 2,
+    "stage": "final",
+    "finalUse": true
+  },
+  {
     "key": "rope",
     "label": "Provazy a lana",
     "category": "textile",
@@ -986,7 +1022,7 @@ export const MATERIAL_PROCESSING:MaterialProcessing[]=[
     "building": "Přádelna",
     "tag": "spinning",
     "role": "processing",
-    "output": "yarn",
+    "output": "hemp_yarn",
     "qty": 3,
     "inputs": [
       [
@@ -1024,11 +1060,25 @@ export const MATERIAL_PROCESSING:MaterialProcessing[]=[
     ]
   },
   {
+    "key": "weave_hemp",
+    "building": "Tkalcovna",
+    "tag": "weaving",
+    "role": "urban",
+    "output": "textile_hemp",
+    "qty": 2,
+    "inputs": [
+      [
+        "hemp_yarn",
+        2
+      ]
+    ]
+  },
+  {
     "key": "weave_cotton",
     "building": "Tkalcovna",
     "tag": "weaving",
     "role": "urban",
-    "output": "textile_basic",
+    "output": "textile_cotton",
     "qty": 2,
     "inputs": [
       [
@@ -1042,7 +1092,7 @@ export const MATERIAL_PROCESSING:MaterialProcessing[]=[
     "building": "Tkalcovna",
     "tag": "weaving",
     "role": "urban",
-    "output": "textile_basic",
+    "output": "textile_wool",
     "qty": 2,
     "inputs": [
       [

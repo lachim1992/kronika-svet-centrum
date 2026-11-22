@@ -296,9 +296,56 @@ export const PRODUCT_META: Record<string, ProductMeta> = {
   wine_luxury:    { basket: 'feast', subbasket: 'wine', functional_value: 1, base_preference: 1.3, substitutability: 0.7, distinctiveness: 0.8 },
   feast_goods:    { basket: 'feast', subbasket: 'banquet', functional_value: 1, base_preference: 1.2, substitutability: 0.7, distinctiveness: 0.8 },
   textile_fine:   { basket: 'luxury_clothing', subbasket: 'fine_cloth', functional_value: 1, base_preference: 1, substitutability: 0.7, distinctiveness: 0.7 },
-  jewelry:        { basket: 'luxury_clothing', subbasket: 'adornment', functional_value: 1, base_preference: 1.2, substitutability: 0.6, distinctiveness: 0.9 },
+  jewelry:        { basket: 'luxury_clothing', subbasket: 'adornment', functional_value: 1, base_preference: 1.2, substitutability: 0.6, distinctiveness: 0.9 },  // ── household staples (explicit; nutrition group lives in goodsFunction.ts) ──
+  raw_rice: { basket: 'staple_food', subbasket: 'grain_porridge', functional_value: 1, base_preference: 0.9, substitutability: 1, distinctiveness: 0.3 },
+  milled_rice: { basket: 'staple_food', subbasket: 'grain_porridge', functional_value: 1, base_preference: 1.1, substitutability: 1, distinctiveness: 0.4 },
+  food_dates: { basket: 'staple_food', subbasket: 'fruit', functional_value: 1, base_preference: 0.9, substitutability: 0.9, distinctiveness: 0.6 },
+  dried_fruit: { basket: 'staple_food', subbasket: 'fruit', functional_value: 1, base_preference: 1, substitutability: 0.9, distinctiveness: 0.5 },
+  pulse_stew: { basket: 'staple_food', subbasket: 'pulses', functional_value: 1, base_preference: 1, substitutability: 1, distinctiveness: 0.4 },
+  cooked_tubers: { basket: 'staple_food', subbasket: 'tubers', functional_value: 1, base_preference: 0.95, substitutability: 1, distinctiveness: 0.3 },
+  dairy_food: { basket: 'staple_food', subbasket: 'dairy', functional_value: 1, base_preference: 1.1, substitutability: 0.9, distinctiveness: 0.5 },
+  eggs: { basket: 'staple_food', subbasket: 'protein', functional_value: 1, base_preference: 1, substitutability: 1, distinctiveness: 0.4 },
+  raw_coal: { basket: 'fuel', subbasket: 'solid_fuel', functional_value: 1, base_preference: 0.7, substitutability: 1, distinctiveness: 0.1 },
+  // Material identity of plain cloth: one comparable 'garments' subbasket, distinct products.
+  textile_hemp: { basket: 'basic_clothing', subbasket: 'garments', functional_value: 1, base_preference: 0.85, substitutability: 1, distinctiveness: 0.3 },
+  textile_cotton: { basket: 'basic_clothing', subbasket: 'garments', functional_value: 1, base_preference: 1.15, substitutability: 1, distinctiveness: 0.5 },
+  textile_wool: { basket: 'basic_clothing', subbasket: 'garments', functional_value: 1, base_preference: 1.1, substitutability: 1, distinctiveness: 0.5 },
+  food_honey: { basket: 'variety', subbasket: 'sweeteners', functional_value: 1, base_preference: 1.1, substitutability: 0.8, distinctiveness: 0.7 },
+  seed_oil: { basket: 'variety', subbasket: 'condiments', functional_value: 1, base_preference: 0.95, substitutability: 0.8, distinctiveness: 0.5 },
+  glassware: { basket: 'variety', subbasket: 'household_wares', functional_value: 1, base_preference: 1.1, substitutability: 0.7, distinctiveness: 0.8 },
+  remedy_goods: { basket: 'variety', subbasket: 'remedies', functional_value: 1, base_preference: 1, substitutability: 0.6, distinctiveness: 0.7 },
+  refined_salt: { basket: 'variety', subbasket: 'condiments', functional_value: 1, base_preference: 1, substitutability: 0.8, distinctiveness: 0.4 },
+  mead: { basket: 'feast', subbasket: 'fermented_drinks', functional_value: 1, base_preference: 1.1, substitutability: 0.8, distinctiveness: 0.7 },
+  // ── non-household purchasers (state, industry, builders, army): split within their basket only ──
+  lumber: { basket: 'construction', subbasket: 'timber', functional_value: 1, base_preference: 1, substitutability: 1, distinctiveness: 0.2 },
+  fine_lumber: { basket: 'construction', subbasket: 'timber', functional_value: 1, base_preference: 1.1, substitutability: 0.9, distinctiveness: 0.4 },
+  hardwood_lumber: { basket: 'construction', subbasket: 'timber', functional_value: 1, base_preference: 1.1, substitutability: 0.9, distinctiveness: 0.4 },
+  stone_blocks: { basket: 'construction', subbasket: 'masonry', functional_value: 1, base_preference: 1, substitutability: 1, distinctiveness: 0.2 },
+  marble_blocks: { basket: 'construction', subbasket: 'masonry', functional_value: 1, base_preference: 1.2, substitutability: 0.8, distinctiveness: 0.7 },
+  granite_blocks: { basket: 'construction', subbasket: 'masonry', functional_value: 1, base_preference: 1.05, substitutability: 0.9, distinctiveness: 0.4 },
+  sandstone_blocks: { basket: 'construction', subbasket: 'masonry', functional_value: 1, base_preference: 0.95, substitutability: 0.9, distinctiveness: 0.4 },
+  bricks: { basket: 'construction', subbasket: 'masonry', functional_value: 1, base_preference: 1, substitutability: 1, distinctiveness: 0.3 },
+  quicklime: { basket: 'construction', subbasket: 'binders', functional_value: 1, base_preference: 1, substitutability: 0.9, distinctiveness: 0.2 },
+  plaster: { basket: 'construction', subbasket: 'binders', functional_value: 1, base_preference: 1, substitutability: 0.9, distinctiveness: 0.3 },
+  construction_materials: { basket: 'construction', subbasket: 'assembled', functional_value: 1, base_preference: 1, substitutability: 0.8, distinctiveness: 0.3 },
+  metalwork_tools: { basket: 'tools', subbasket: 'metal_tools', functional_value: 1, base_preference: 1.2, substitutability: 1, distinctiveness: 0.3 },
+  stone_tools: { basket: 'tools', subbasket: 'primitive_tools', functional_value: 1, base_preference: 0.7, substitutability: 0.9, distinctiveness: 0.2 },
+  obsidian_tools: { basket: 'tools', subbasket: 'primitive_tools', functional_value: 1, base_preference: 0.8, substitutability: 0.9, distinctiveness: 0.4 },
+  arms_basic: { basket: 'military_supply', subbasket: 'arms', functional_value: 1, base_preference: 1, substitutability: 1, distinctiveness: 0.3 },
+  fine_arms: { basket: 'military_supply', subbasket: 'arms', functional_value: 1, base_preference: 1.3, substitutability: 0.7, distinctiveness: 0.8 },
+  granary_storage: { basket: 'storage_logistics', subbasket: 'storage', functional_value: 1, base_preference: 1, substitutability: 1, distinctiveness: 0.2 },
+  rope: { basket: 'storage_logistics', subbasket: 'cordage', functional_value: 1, base_preference: 1, substitutability: 0.9, distinctiveness: 0.3 },
+  basketry: { basket: 'storage_logistics', subbasket: 'containers', functional_value: 1, base_preference: 1, substitutability: 0.9, distinctiveness: 0.4 },
+  scribed_documents: { basket: 'admin_supplies', subbasket: 'records', functional_value: 1, base_preference: 1, substitutability: 1, distinctiveness: 0.3 },
+  pigments: { basket: 'admin_supplies', subbasket: 'pigments', functional_value: 1, base_preference: 1, substitutability: 0.8, distinctiveness: 0.5 },
+  sulfur_pigment: { basket: 'admin_supplies', subbasket: 'pigments', functional_value: 1, base_preference: 0.9, substitutability: 0.8, distinctiveness: 0.5 },
+  ritual_goods: { basket: 'admin_supplies', subbasket: 'ritual', functional_value: 1, base_preference: 1.2, substitutability: 0.6, distinctiveness: 0.8 },
 };
 
+/**
+ * Catalogue goods MUST have an explicit entry (enforced by auditGoodsFunctions); the neutral
+ * fallback only serves ad-hoc keys outside the canonical catalogue (legacy DB rows, test fixtures).
+ */
 export function productMeta(good: string, basket: string): ProductMeta {
   return PRODUCT_META[good] ?? { basket, subbasket: good, functional_value: 1, base_preference: 1, substitutability: 1, distinctiveness: 0.3 };
 }
@@ -357,6 +404,7 @@ export function attractiveness(i: ProductChoiceInput): Attractiveness {
 export const SUBBASKET_META: Record<string, { base_weight: number }> = {
   bread: { base_weight: 1 }, grain_porridge: { base_weight: 1 }, preserved: { base_weight: 1 }, protein: { base_weight: 1 },
   water: { base_weight: 1 }, solid_fuel: { base_weight: 1 }, garments: { base_weight: 1 },
+  fruit: { base_weight: 1 }, pulses: { base_weight: 1 }, tubers: { base_weight: 1 }, dairy: { base_weight: 1 },
 };
 export const subbasketWeight = (sub: string) => pos(SUBBASKET_META[sub]?.base_weight ?? 1);
 

@@ -6,3 +6,5 @@ export { BASKET_DEMAND, BASKET_GROUPS, type BasketDemandSpec } from "../../../su
 export { PRODUCT_META, substitutionEfficiency, type ProductMeta } from "../../../supabase/functions/_shared/productMarket.ts";
 export { PRODUCTION_BUILDINGS, producersOfRecipe } from "../../../supabase/functions/_shared/productionCatalog.ts";
 export { parcelPotential, type EconomicParcel, type ParcelTerrain } from "../../../supabase/functions/_shared/parcelEconomy.ts";
+export { goodFunctionByKey, type GoodFunction } from "../../../supabase/functions/_shared/goodsFunction.ts";
+export { RECIPES } from "../../../supabase/functions/_shared/productionCatalog.ts";

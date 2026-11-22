@@ -1,4 +1,5 @@
 import { aggregateRuralPopulationByCity, ruralCatchments } from './ruralGameplay.ts';
+import { catalogDirectUse } from './goodsFunction.ts';
 import { depositKey } from './ruralSites.ts';
 import { STARTER_RESERVE_GOODS } from './starterEconomy.ts';
 import { suppressStarterLandExtraction } from './starterParcelPolicy.ts';
@@ -96,7 +97,8 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     const profile=g.friction_profile||{};
     const luxury=['luxury_clothing','feast'].includes(bk),stone=/stone|marble|brick/.test(g.key),food=bk==='staple_food'||bk==='feast';
     return {key:g.key,basket:bk,price:nonnegative(g.base_price_numeric),stage:g.production_stage,storable:g.storable,
-      finalUse:profile.final_use??GOOD_FINAL_USE[g.key]??!INDUSTRIAL_INPUTS.includes(g.key),
+      // Catalogue goods: goodsFunction decides direct basket purchase; DB may only restrict it.
+      finalUse:catalogDirectUse(g.key,profile.final_use)??profile.final_use??GOOD_FINAL_USE[g.key]??!INDUSTRIAL_INPUTS.includes(g.key),
       household:profile.household??GOOD_HOUSEHOLD[g.key]??(HOUSEHOLD_GOODS[bk]||[]).includes(g.key),
       bulk:profile.bulk_factor??(stone?12:luxury?0.2:1),density:profile.value_density??(luxury?30:stone?0.1:3),
       perishability:profile.perishability??(food?0.01:0),storageLoss:profile.storage_loss??(food?0.03:0.001),

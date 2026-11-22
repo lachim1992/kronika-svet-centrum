@@ -165,3 +165,8 @@ Soubory: supabase/functions/_shared/regionalSettlementEconomy.ts, src/components
 - Storage: not added (spoilage rules untouched).
 - Tests: src/test/rural-village-effect.test.ts, src/test/rural-settlement-sql.test.ts (upgrade). Written, NOT run. Not deployed. Migration not applied.
 - Next task: apply migration + deploy command-dispatch/process-turn/refresh-economy, then verify one footpath village site's freight in a committed ledger.
+
+## Functional Demand / Material Identity — etapa 1 (2026-11-22)
+Soubory: `_shared/goodsFunction.ts` (nový), `_shared/productMarket.ts` (PRODUCT_META pro všechny přímé výrobky), `_shared/materialResources.ts` (hemp_yarn, textile_hemp/cotton/wool, weave_hemp, výstupy spin_hemp/weave_cotton/weave_wool), `_shared/economyAdapter.ts` (catalogDirectUse), migrace `20261122190000_textile_material_identity.sql` (neaplikovaná), atlas (`AtlasBaskets.tsx`, `canon.ts`), test `src/test/goods-function.test.ts` (nespuštěný).
+Omezení: staré zásoby textile_basic/yarn zůstávají lněnou linií (konopná příze vyrobená dříve zůstává `yarn`); sláva navázaná na textile_basic z bavlny/vlny doběhne přirozeným úpadkem. Kvalita a původ dál po městech, ne po šaržích. Bez aplikace migrace DB stále vyrábí z weave_cotton/weave_wool textile_basic (katalog a DB se rozcházejí, dokud se migrace neaplikuje).
+Další úkol: provenience šarží pro kvalitu (grain→flour→bread).
