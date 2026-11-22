@@ -2551,7 +2551,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             {buildingAction === "road-path" ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Check className="mr-1 h-3 w-3" />}Potvrdit
           </Button>
         </div>
-        {roadDraftBlock && <p className="mt-2 text-[11px] text-muted-foreground">{roadDraftBlock}</p>}
+        {roadDraftBlock && <p role="alert" className="mt-2 text-xs font-medium text-destructive">Nelze postavit: {roadDraftBlock}</p>}
         <p className="mt-1 text-[11px] text-muted-foreground">Stezka stačí ke zdrojům; dlážděnou cestu postavíš přímo, bez postupného vylepšování. Města a zdroje se napojí z vlastního nebo sousedního pole. Trasa se může vracet přes stejná pole a přes řeku se automaticky připočte most.</p>
       </div>, document.body)}
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
