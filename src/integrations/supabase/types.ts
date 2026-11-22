@@ -7887,6 +7887,150 @@ export type Database = {
           },
         ]
       }
+      neutral_city_decisions: {
+        Row: {
+          city_id: string
+          created_at: string
+          decision: string
+          reason: Json
+          recipe_key: string | null
+          session_id: string
+          structure_id: string
+          target_good_key: string | null
+          turn_number: number
+        }
+        Insert: {
+          city_id: string
+          created_at?: string
+          decision: string
+          reason?: Json
+          recipe_key?: string | null
+          session_id: string
+          structure_id: string
+          target_good_key?: string | null
+          turn_number: number
+        }
+        Update: {
+          city_id?: string
+          created_at?: string
+          decision?: string
+          reason?: Json
+          recipe_key?: string | null
+          session_id?: string
+          structure_id?: string
+          target_good_key?: string | null
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "neutral_city_decisions_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "neutral_city_decisions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "neutral_city_decisions_structure_id_fkey"
+            columns: ["structure_id"]
+            isOneToOne: false
+            referencedRelation: "city_buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      neutral_city_investment_plans: {
+        Row: {
+          action: string
+          city_id: string
+          command_id_build: string | null
+          command_id_claim: string | null
+          created_at: string
+          owner_player: string
+          parcel_id: string
+          quote_gold: number
+          quote_production: number
+          reason: Json
+          requires_claim: boolean
+          session_id: string
+          status: string
+          template_id: string
+          turn_number: number
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          city_id: string
+          command_id_build?: string | null
+          command_id_claim?: string | null
+          created_at?: string
+          owner_player: string
+          parcel_id: string
+          quote_gold: number
+          quote_production: number
+          reason?: Json
+          requires_claim: boolean
+          session_id: string
+          status: string
+          template_id: string
+          turn_number: number
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          city_id?: string
+          command_id_build?: string | null
+          command_id_claim?: string | null
+          created_at?: string
+          owner_player?: string
+          parcel_id?: string
+          quote_gold?: number
+          quote_production?: number
+          reason?: Json
+          requires_claim?: boolean
+          session_id?: string
+          status?: string
+          template_id?: string
+          turn_number?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "neutral_city_investment_plans_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "neutral_city_investment_plans_parcel_id_fkey"
+            columns: ["parcel_id"]
+            isOneToOne: false
+            referencedRelation: "tile_parcels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "neutral_city_investment_plans_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "neutral_city_investment_plans_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "building_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       neutral_trade_pacts: {
         Row: {
           created_at: string
@@ -13837,6 +13981,14 @@ export type Database = {
           p_session: string
           p_worked?: boolean
         }
+        Returns: Json
+      }
+      plan_neutral_city_investments: {
+        Args: { p_session: string; p_turn: number }
+        Returns: Json
+      }
+      plan_neutral_city_production: {
+        Args: { p_session: string; p_turn: number }
         Returns: Json
       }
       plant_crop: {
