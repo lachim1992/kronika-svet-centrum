@@ -857,7 +857,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     });
     roadSegments.filter(segment => segment.status !== "blocked" && (!segment.project_id || !projectsWithExactTrace.has(segment.project_id))).forEach(segment => {
       if (segment.sub_path_cells?.length) {
-        segment.sub_path_cells.forEach(sub => push(sub.gridX, sub.gridY, segment.level, null, segment.status === "building", { x: sub.parcelX, y: sub.parcelY }));
+        // Stored traces may hold only the border crossing points: densify gaps and join each
+        // crossing to its macro cell centre, so connected segments render as one continuous road.
+        const cells = segment.sub_path_cells as SubRoadCell[];
+        const dense: SubRoadCell[] = [cells[0]];
+        for (let i = 1; i < cells.length; i++) dense.push(...(areSubRoadNeighbours(cells[i - 1], cells[i]) ? [cells[i]] : subRoadPathBetween(cells[i - 1], cells[i])));
+        const ends = [cells[0], cells[cells.length - 1]];
+        ends.forEach(end => {
+          const centre: SubRoadCell = { gridX: end.gridX, gridY: end.gridY, parcelX: ROAD_TRACE_CENTER.x, parcelY: ROAD_TRACE_CENTER.y };
+          if (end.parcelX !== centre.parcelX || end.parcelY !== centre.parcelY) dense.push(...subRoadPathBetween(end, centre));
+        });
+        dense.forEach(sub => push(sub.gridX, sub.gridY, segment.level, null, segment.status === "building", { x: sub.parcelX, y: sub.parcelY }));
       } else {
         // Legacy segments carry no sub-parcel trace: draw the same thin line a player would build.
         const mid = { x: Math.floor(TILE_PARCEL_COLS / 2), y: Math.floor(TILE_PARCEL_ROWS / 2) };
