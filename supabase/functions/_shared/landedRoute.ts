@@ -34,11 +34,20 @@ export function buildRouteGraph<E extends RouteEdge>(edges: E[]) {
 }
 
 export function shortestTree<E extends RouteEdge>(graph: Map<string, E[]>, from: string, g: RouteGood) {
-  const dist = new Map([[from, 0]]), prev = new Map<string, E>(), open = new Set([from]);
-  while (open.size) {
-    const u = [...open].sort((a, b) => dist.get(a)! - dist.get(b)! || a.localeCompare(b))[0]; open.delete(u);
-    for (const e of graph.get(u) || []) { const d = dist.get(u)! + edgeTransportCost(e, g);
-      if (d < (dist.get(e.to) ?? Infinity)) { dist.set(e.to, d); prev.set(e.to, e); open.add(e.to); } }
+  // Dijkstra with a binary heap. Pop order = (distance, id via localeCompare) exactly as the former
+  // sort-the-open-set loop, so trees are identical — only O(E log V) instead of O(V² log V).
+  const dist = new Map([[from, 0]]), prev = new Map<string, E>(), done = new Set<string>();
+  const heap: [number, string][] = [[0, from]];
+  const less = (a: [number, string], b: [number, string]) => a[0] < b[0] || (a[0] === b[0] && a[1].localeCompare(b[1]) < 0);
+  const push = (x: [number, string]) => { heap.push(x); let i = heap.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (!less(heap[i], heap[p])) break; [heap[i], heap[p]] = [heap[p], heap[i]]; i = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop()!; if (heap.length) { heap[0] = last; let i = 0;
+    for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && less(heap[l], heap[m])) m = l;
+      if (r < heap.length && less(heap[r], heap[m])) m = r; if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; } } return top; };
+  while (heap.length) {
+    const [du, u] = pop(); if (done.has(u) || du !== dist.get(u)) continue; done.add(u);
+    for (const e of graph.get(u) || []) { const d = du + edgeTransportCost(e, g);
+      if (d < (dist.get(e.to) ?? Infinity)) { dist.set(e.to, d); prev.set(e.to, e); push([d, e.to]); } }
   }
   return { dist, prev };
 }

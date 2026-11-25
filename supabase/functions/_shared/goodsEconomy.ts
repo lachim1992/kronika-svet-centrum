@@ -242,6 +242,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
 
   const graph=buildRouteGraph(snapshot.edges);const reserved=new Map<string,number>();
   type Path=RoutePath<Edge>;
+  const edgeById=new Map(snapshot.edges.map((e:any)=>[e.id,e]));
   const routeCache=new Map<string,Path|null>();
   const routeTrees=new Map<string,{dist:Map<string,number>;prev:Map<string,Edge>}>();
   // Shared landed-route model (landedRoute.ts): the same path/cost AUTO planning estimates with.
@@ -782,7 +783,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         const path=route(c.cell,p.cell!,ig);if(!path||path.loss>=1){if(isStaged(i))continue;qty=0;break;}inputPaths.set(i.good,path);
         for(const e of path.edges)loadByEdge.set(e.id,(loadByEdge.get(e.id)||0)+i.qty/Math.max(C.epsilon,p.recipe.qty)*Math.max(1,ig.bulk)/(1-path.loss));
       }
-      for(const [edge,load] of loadByEdge){const e=snapshot.edges.find(e=>e.id===edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
+      for(const [edge,load] of loadByEdge){const e=edgeById.get(edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
       if(!p.source&&!p.recipe.inputs.length){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,...labor,inputs:[],blocked:'missing_recipe_inputs'});pending.delete(id);continue;}
       // INDUSTRIAL INPUT DEMAND scales from potential output, not from realized output: a staffed
       // mill demands grain before the grain arrives, through the canonical route engine.
@@ -826,7 +827,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         qty=Math.min(qty,allowed);
       }
       // Input imports above may reserve the same road as the local delivery.
-      for(const [edge,load] of loadByEdge){const e=snapshot.edges.find(e=>e.id===edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
+      for(const [edge,load] of loadByEdge){const e=edgeById.get(edge)!;qty=Math.min(qty,Math.max(0,e.capacity-(reserved.get(edge)||0))/load);}
       if(qty<=C.epsilon){if(desired<=C.epsilon){diagnostics.push({producer:id,good:g.key,capacity:p.capacity,realized:0,factors,...labor,inputs,
         blocked:jobs>C.epsilon&&staffed<=C.epsilon?'no_workers':'capacity_labor_or_staffing'});pending.delete(id);}continue;}
       let inputValue=0,minQuality=Infinity;const inputLots:NonNullable<typeof diagnostics[number]['input_lots']>=[];
