@@ -129,6 +129,7 @@ export const produced = (b: Balance) => b.produced_household+b.produced_node+b.p
 
 /** Pure deterministic physical ledger. No DB/time/random state, no fiscal mutations. */
 export function resolveGoodsEconomy(snapshot: Snapshot) {
+  const __g0=performance.now(),__gm=(s:string)=>console.log('[goods-timing]',s,Math.round(performance.now()-__g0),'ms');
   const cities=[...snapshot.cities].sort((a,b)=>a.id.localeCompare(b.id));
   const goods=[...snapshot.goods].sort((a,b)=>a.key.localeCompare(b.key));
   const cityById=new Map(cities.map(c=>[c.id,c])); const goodByKey=new Map(goods.map(g=>[g.key,g]));
@@ -184,14 +185,20 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     b[`produced_${channel}`]+=qty;b.gross_output_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
     if(source)b.extraction_value+=qty*goodByKey.get(b.good)!.price*(1+quality*C.qualityPremium);
   };
+  // Lookup indexes (pure performance; same rows, same order as the former linear filters).
+  const goodsByBasket=new Map<string,Good[]>();for(const g of goods)goodsByBasket.set(g.basket,[...(goodsByBasket.get(g.basket)||[]),g]);
+  let industrialIndex:Map<string,any[]>|null=null,industrialIndexed=-1;
+  const industrialInputsOf=(city:string,good:string)=>{if(!industrialIndex||industrialIndexed!==industrialInputs.length){industrialIndex=new Map();
+    for(const x of industrialInputs){const k=`${x.city}::${x.good}`;let a=industrialIndex.get(k);if(!a){a=[];industrialIndex.set(k,a);}a.push(x);}industrialIndexed=industrialInputs.length;}
+    return industrialIndex.get(`${city}::${good}`)||[];};
   /** Bounded endogenous price. Reads the ledger, never creates or destroys physical units. */
   const priceDetail=(city:string,good:string):PriceRow=>{
     const b=stock(city,good),g=goodByKey.get(good)!,c=cityById.get(city)!;
     const supply=b.opening+produced(b)+b.imported-b.lost_spoilage;
-    const material=industrialInputs.filter(x=>x.city===city&&x.good===good);
+    const material=industrialInputsOf(city,good);
     const need=b.demand+material.reduce((t,x)=>t+x.planned,0)+Math.max(0,b.consumed_as_input-material.reduce((t,x)=>t+x.used,0));
     const coverage=need>C.epsilon?supply/need:(supply>C.epsilon?2:1);
-    const substitutes=goods.filter(s=>s.key!==good&&s.basket===g.basket&&s.substitutability>0)
+    const substitutes=(goodsByBasket.get(g.basket)||[]).filter(s=>s.key!==good&&s.substitutability>0)
       .reduce((a,s)=>a+available(stock(city,s.key)),0);
     const relief=1/(1+substitutes*Math.max(0.01,g.substitutability)/Math.max(1,need))
       /(1+n(c.storage)*C.priceStorageRelief);
@@ -923,8 +930,12 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     b.consumed_state+=state;b.consumed_household+=qty-state;};
   for(const c of cities)for(const g of goods)consume(c,g);
   // Substitution debits actual goods, transfers unmet need, never creates physical units.
-  const substitute=()=>{for(const c of cities)for(const g of goods){const b=stock(c.id,g.key);let missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
-    for(const sub of goods.filter(s=>s.key!==g.key&&s.basket===g.basket&&s.substitutability>0&&(s.finalUse??s.stage!=='intermediate'))){
+  // Same candidate order as goods.filter(...) per good, computed once (pure performance).
+  const finalSubstitutes=new Map<string,Good[]>(goods.map(g=>[g.key,goods.filter(s=>s.key!==g.key&&s.basket===g.basket&&s.substitutability>0&&(s.finalUse??s.stage!=='intermediate'))]));
+  const substitute=(only?:City)=>{for(const c of only?[only]:cities)for(const g of goods){const b=stock(c.id,g.key);let missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
+    // missing never grows inside the loop and qty=min(missing/eff,…)≤0 skips every candidate, so this is an exact shortcut.
+    if(!(missing>0))continue;
+    for(const sub of finalSubstitutes.get(g.key)!){
       // Need units of g covered per physical unit of sub: substitutability × functional value ratio.
       // Critical needs (staple_food) substitute by pure nutrition so preference friction never starves anyone.
       const efficiency=substitutionEfficiency(g,sub,{nutritionOnly:basketSpec(g.basket)?.class==='critical_need'});if(efficiency<=0)continue;
@@ -947,13 +958,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     const b=stock(c.id,g.key),policy=IDEOLOGIES[c.ideology]||IDEOLOGIES.customary_local;
     transfer(c,h,g,demand,'hub_aggregation',[h.id],b.demand*C.reserveTurns+available(b)*policy.retention);
   }
-  for(const c of cities)for(const g of goods){consume(c,g);const b=stock(c.id,g.key);let missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
+  for(const c of cities){for(const g of goods){consume(c,g);const b=stock(c.id,g.key);let missing=Math.max(0,b.demand-b.consumed_household-b.consumed_state);
     for(const s of inputSources(c,g)){if(missing<C.minLot)break;const sb=stock(s.id,g.key);
       missing-=transfer(s,c,g,missing,'regional_redistribution',[s.id],sb.demand*C.reserveTurns);consume(c,g);}
     // Long distance is restricted to center-to-center trade, not every producer × city.
     if(c.market>0&&missing>C.minLot)for(const s of cities.filter(s=>s.market>0&&s.id!==c.id)){
       const sb=stock(s.id,g.key);missing-=transfer(s,c,g,missing,'household_consumption',[],sb.demand*C.reserveTurns);consume(c,g);if(missing<C.minLot)break;}
-  }
+
+  }}
   // Imports can satisfy a different final good in the same basket too.
   substitute();
   // Basket-level subsistence trade: a city still short of a CRITICAL or BASIC need may import
@@ -961,12 +973,14 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // needs; fuel/clothing retain preference friction. transfer() enforces routes, capacity,
   // reserves, margins and losses; nothing is created, and substitute() settles imported units
   // against the deficit with shifted demand provenance (no double counting).
+  __gm('subsist-start');
   for(const c of cities)for(const g of goods){
+    if(g===goods[0])__gm('subsist city '+c.id);const __cg=performance.now();
     const demandClass=basketSpec(g.basket)?.class;
     if(demandClass!=='critical_need'&&demandClass!=='basic_need')continue;
     let missing=Math.max(0,stock(c.id,g.key).demand-stock(c.id,g.key).consumed_household-stock(c.id,g.key).consumed_state);
     if(missing<C.minLot)continue;
-    for(const sub of goods.filter(s=>s.key!==g.key&&s.basket===g.basket&&s.substitutability>0&&(s.finalUse??s.stage!=='intermediate'))){
+    for(const sub of finalSubstitutes.get(g.key)!){
       if(missing<C.minLot)break;
       const eff=substitutionEfficiency(g,sub,{nutritionOnly:demandClass==='critical_need'});if(eff<=0)continue;
       const wanted=missing/eff;
@@ -978,9 +992,12 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
         if(missing<C.minLot)break;}
     }
     // Settle this city's substitutes right away so a later city cannot re-export
-    // the units this one just imported to cover its own needs.
-    substitute();
+    // the units this one just imported to cover its own needs. Only city c's imports changed;
+    // every other city was already settled and transfers only lowered its stock, so re-running
+    // them is a no-op — settling c alone is equivalent and avoids an O(cities²·goods²) loop.
+    const __sx=performance.now();substitute(c);const __se=performance.now();if(__se-__cg>15)console.log('[goods-timing] slow',c.id.slice(0,8),g.key,'transfers',Math.round(__sx-__cg),'subst',Math.round(__se-__sx));
   }
+  __gm('subsist-done');
   substitute();
   // Reputation creates origin-specific additional demand, fulfilled only by that brand.
   for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0)){

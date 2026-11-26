@@ -74,7 +74,6 @@ export async function finalizeManagementReports(sb:any,session:string,turn:numbe
   if(saved.error)throw saved.error;
 }
 export async function computeCanonicalEconomy(sb:any,session:string,options:{parcelPreview?:any[];readOnly?:boolean}={}){
-  const __t0=performance.now(),__mark=(s:string)=>console.log('[economy-timing]',s,Math.round(performance.now()-__t0),'ms');
   const names=['goods','production_recipes','cities','province_nodes','city_buildings','building_templates','city_districts','military_stacks','realm_resources','road_segments','province_hexes','node_production_orders','structure_production_orders','laws','war_declarations','node_projects','hex_population'];
   const loaded=await Promise.all(names.map(t=>rows(sb,t,['goods','production_recipes','building_templates'].includes(t)?undefined:session)));
   const db=Object.fromEntries(names.map((name,i)=>[name,loaded[i]]));
@@ -217,7 +216,6 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
         source:node.production_role==='source',distinctive:DISTINCTIVE_RECIPE_KEYS.has(r.recipe_key)});});
   }
 
-  __mark('loaded');
   const recipeByKey=new Map(db.production_recipes.map((r:any)=>[r.recipe_key,r]));
   const workedIds=new Set((db.tile_parcels||[]).filter((p:any)=>p.claim_kind==='worked').map((p:any)=>p.id));
   // Farm fields: only fields still worked by the farm's own city count (one physical source, no double harvest).
@@ -273,7 +271,6 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     {sites:ruralSites,roads:roadEdges,villages,deposits:confirmedDeposits,reserves,fieldParcels,immature,microFindings,
       herdStock:new Map(foodSpecs.map((f:any)=>[f.site_parcel_id,f.stock_mode==='starter_kit'?'starter_kit':'found']))}),
     ...parcelWorkshops(db.tile_parcels,cities,recipeByKey));
-  __mark('parcelProducers');
   const ruralAttached=ruralCatchments(db.province_hexes,cities);
   const ruralByCell=new Map<string,number>();
   for(const r of db.hex_population) {
@@ -394,7 +391,6 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
         {allowSource:farm,level:d.level??d.current_level,order:structureOrder(d.id)});
     }
   }
-  __mark('structures');
   const edges:Edge[]=db.road_segments.filter(r=>r.status==='completed').map(r=>({id:r.id,from:`${r.from_x},${r.from_y}`,to:`${r.to_x},${r.to_y}`,
     cost:nonnegative(r.friction),capacity:nonnegative(r.capacity),mode:'road',risk:0,toll:0,border:0}));
   const rivers=new Set(db.province_hexes.filter(h=>h.has_river&&h.is_passable!==false).map(h=>`${h.grid_x??h.q},${h.grid_y??h.r}`));
@@ -417,11 +413,9 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
     // can feed into their parent's spur instead of failing with missing_local_delivery_route.
     for(const c of hit.cells)transport.add(c);
   };
-  __mark('edges');
   for(const c of db.cities){const city=cityMap.get(c.id);if(city)attach(city.cell,cityCatchmentRadius(c));}
   // Larger catchments first so micro sites can join their spurs (deterministic: radius desc, then id).
   for(const node of [...db.province_nodes].sort((a:any,b:any)=>nodeCatchmentRadius(b)-nodeCatchmentRadius(a)||String(a.id).localeCompare(String(b.id))))if(node.is_active!==false&&anchor(node))attach(`${node.grid_x??node.hex_q},${node.grid_y??node.hex_r}`,nodeCatchmentRadius(node));
-  __mark('spurs');
   /**
    * AUTO FINALISATION. Expected margin uses the cheapest EXPECTED LANDED input cost: previous
    * committed (bootstrap: catalogue) prices at every reachable supplier + route transport ×
@@ -527,8 +521,7 @@ export async function computeCanonicalEconomy(sb:any,session:string,options:{par
   }
 const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
   const snapshot:Snapshot={turn,goods,cities,producers,edges,opening,fame:prior?.famous||[],familiarity,budget,priorPrices,householdTaxRate,settledWages,settledRuralWages,settledOwnership,settlement,blockedTrade:db.war_declarations.filter(w=>['active','peace_offered'].includes(w.status)).map(w=>[w.declaring_player,w.target_player])};
-  __mark('snapshot');
-  const physical=resolveGoodsEconomy(snapshot);__mark('goodsEconomy');
+  const physical=resolveGoodsEconomy(snapshot);
   const management=Object.fromEntries(db.realm_resources.map(r=>[r.player_name,buildManagementReport(snapshot,physical,r,prior?.management?.[r.player_name])]));
   const result={...physical,opening,snapshot,management,contractNormalizations:contractNotes,
     ...(parcelMode?{parcelEcology:parcelClosing(producers,physical.diagnostics)}:{})};
@@ -614,7 +607,6 @@ const priorPrices=prior?.prices?Object.fromEntries([...priorPrice]):undefined;
     fulfillment_type:'canonical',min_quality:0,preferred_quality:0}));
   const payload={result,marketBaskets,demandBaskets,tradeFlows,basketFlows,realms,summaries,marketShares};
   if(options.readOnly)return payload;
-  __mark('aggregates');
   const saved=await sb.rpc('replace_goods_economy_projection',{p_session:session,p_turn:turn,p_payload:payload});if(saved.error)throw saved.error;
   /**
    * The management report is a read-only view of the projection just written, so a refresh must
