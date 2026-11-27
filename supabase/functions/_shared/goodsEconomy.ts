@@ -129,7 +129,6 @@ export const produced = (b: Balance) => b.produced_household+b.produced_node+b.p
 
 /** Pure deterministic physical ledger. No DB/time/random state, no fiscal mutations. */
 export function resolveGoodsEconomy(snapshot: Snapshot) {
-  const __g0=performance.now(),__gm=(s:string)=>console.log('[goods-timing]',s,Math.round(performance.now()-__g0),'ms');
   const cities=[...snapshot.cities].sort((a,b)=>a.id.localeCompare(b.id));
   const goods=[...snapshot.goods].sort((a,b)=>a.key.localeCompare(b.key));
   const cityById=new Map(cities.map(c=>[c.id,c])); const goodByKey=new Map(goods.map(g=>[g.key,g]));
@@ -306,6 +305,9 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     if(!prev||!empty||prev.reason==='source_empty')tradeRefusals.set(k,{reason:empty?'source_empty':r,source:empty?null as any:src.id});
     return 0;};
   const transfer=(src:City,dst:City,g:Good,wanted:number,reason:string,via:string[]=[],keep=0,minQ=-Infinity)=>{
+    // Exact fast path: from an empty source every branch below ends in refuse(), and refuse() of an
+    // empty source records the same outcome whatever the reason — skip routing/pricing entirely.
+    if(available(stock(src.id,g.key))<=C.minLot){if(!tradeBlocked(src,dst)&&(src.id===dst.id||wanted<C.minLot))return 0;return refuse(src,dst,g,reason,'source_empty');}
     if(tradeBlocked(src,dst))return refuse(src,dst,g,reason,'trade_blocked');
     if(src.id===dst.id||wanted<C.minLot)return 0;const p=route(src.cell,dst.cell,g);if(!p||p.loss>=1)return refuse(src,dst,g,reason,'route_unreachable');
     const policy=IDEOLOGIES[src.ideology]||IDEOLOGIES.customary_local;
@@ -973,9 +975,7 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
   // needs; fuel/clothing retain preference friction. transfer() enforces routes, capacity,
   // reserves, margins and losses; nothing is created, and substitute() settles imported units
   // against the deficit with shifted demand provenance (no double counting).
-  __gm('subsist-start');
   for(const c of cities)for(const g of goods){
-    if(g===goods[0])__gm('subsist city '+c.id);const __cg=performance.now();
     const demandClass=basketSpec(g.basket)?.class;
     if(demandClass!=='critical_need'&&demandClass!=='basic_need')continue;
     let missing=Math.max(0,stock(c.id,g.key).demand-stock(c.id,g.key).consumed_household-stock(c.id,g.key).consumed_state);
@@ -995,9 +995,8 @@ export function resolveGoodsEconomy(snapshot: Snapshot) {
     // the units this one just imported to cover its own needs. Only city c's imports changed;
     // every other city was already settled and transfers only lowered its stock, so re-running
     // them is a no-op — settling c alone is equivalent and avoids an O(cities²·goods²) loop.
-    const __sx=performance.now();substitute(c);const __se=performance.now();if(__se-__cg>15)console.log('[goods-timing] slow',c.id.slice(0,8),g.key,'transfers',Math.round(__sx-__cg),'subst',Math.round(__se-__sx));
+    substitute(c);
   }
-  __gm('subsist-done');
   substitute();
   // Reputation creates origin-specific additional demand, fulfilled only by that brand.
   for(const f of snapshot.fame.filter(f=>f.created!=null&&f.fame>0)){
